@@ -6,11 +6,15 @@
 
 static void usage(FILE *file) {
     fprintf(file, "Usage:\n");
-    fprintf(file, "    glos COMMAND [...]\n\n");
+    fprintf(file, "    glos COMMAND [...]\n");
+    fprintf(file, "\n");
     fprintf(file, "Commands:\n");
-    fprintf(file, "    help            Show this message\n");
-    fprintf(file, "    run   [FILE]    Run the program\n");
-    fprintf(file, "    build [FILE]    Compile the program\n");
+    fprintf(file, "    help                       Show this message\n");
+    fprintf(file, "    run   [FILE]               Run the program\n");
+    fprintf(file, "    build [FLAGS...] [FILE]    Compile the program\n");
+    fprintf(file, "\n");
+    fprintf(file, "Build Flags:\n");
+    fprintf(file, "    -o OUTPUT                  Set the output path\n");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -30,21 +34,26 @@ int main(int argc, char **argv) {
     shift(&argc, &argv, "Program name");
 
     bool        run = false;
+    const char *input = NULL;
+    const char *output = NULL;
     const char *command = shift(&argc, &argv, "Command");
     if (!strcmp(command, "help")) {
         usage(stdout);
         exit(0);
     } else if (!strcmp(command, "run")) {
         run = true;
+        input = shift(&argc, &argv, "Input file");
     } else if (!strcmp(command, "build")) {
-        // Pass
+        input = shift(&argc, &argv, "Input file");
+        if (!strcmp(input, "-o")) {
+            output = shift(&argc, &argv, "Output file");
+            input = shift(&argc, &argv, "Input file");
+        }
     } else {
         fprintf(stderr, "ERROR: Invalid command '%s'\n\n", command);
         usage(stderr);
         exit(1);
     }
-
-    const char *input = shift(&argc, &argv, "Input file");
 
     Lexer l = {0};
     if (!lexer_open(&l, input, &arena)) {
@@ -77,10 +86,11 @@ int main(int argc, char **argv) {
 
         result = cmd_run(&cmd);
         remove(output);
-
         da_free(&cmd);
     } else {
-        const char *output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        if (!output) {
+            output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        }
         compile_nodes(&c, output);
     }
 
