@@ -67,6 +67,7 @@ int main(int argc, char **argv) {
     Context c = {0};
     check_nodes(&c, p.nodes);
 
+    Cmd cmd = {0};
     if (run) {
         static char output[] = "/tmp/glos_run_XXXXXX";
 
@@ -78,23 +79,22 @@ int main(int argc, char **argv) {
             close(fd);
             remove(output); // TODO: The production compiler need not do this
         }
-        compile_nodes(&c, output);
+        compile_nodes(&c, &cmd, output);
 
-        Cmd cmd = {0};
         da_push(&cmd, output);
         da_push_many(&cmd, argv, argc);
 
-        result = cmd_run(&cmd);
+        result = cmd_run_sync(&cmd, (CmdStdio) {0});
         remove(output);
-        da_free(&cmd);
     } else {
         if (!output) {
             output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
         }
-        compile_nodes(&c, output);
+        compile_nodes(&c, &cmd, output);
     }
 
     context_free(&c);
     arena_free(&arena);
+    da_free(&cmd);
     return result;
 }

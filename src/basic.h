@@ -15,6 +15,8 @@
 #define todo()        (fprintf(stderr, "%s:%d: TODO\n", __FILE__, __LINE__), abort())
 #define unreachable() (fprintf(stderr, "%s:%d: Unreachable\n", __FILE__, __LINE__), abort())
 
+#define PrintfLike(n) __attribute__((format(printf, n, (n) + 1)))
+
 // Dynamic Array
 #define DA_INIT_CAP 128
 
@@ -76,7 +78,7 @@ SV sv_strip_suffix(SV a, SV b);
 
 // Temporary Allocator
 void *temp_alloc(size_t n);
-char *temp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+char *temp_sprintf(const char *fmt, ...) PrintfLike(1);
 char *temp_sv_to_cstr(SV sv);
 void  temp_remove_null(void);
 
@@ -99,6 +101,16 @@ typedef struct {
     size_t       capacity;
 } Cmd;
 
-int cmd_run(Cmd *c);
+typedef struct {
+    FILE **in;
+    FILE **out;
+    FILE **err;
+} CmdStdio;
+
+typedef int Proc;
+
+Proc cmd_run_async(Cmd *c, CmdStdio stdio);
+int  cmd_run_sync(Cmd *c, CmdStdio stdio);
+int  cmd_wait(Proc proc);
 
 #endif // BASIC_H

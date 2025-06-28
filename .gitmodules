@@ -1,3 +1,0 @@
-[submodule "src/libqbe"]
-	path = src/libqbe
-	url = https://github.com/shoumodip/libqbe
