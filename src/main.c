@@ -25,6 +25,8 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
 }
 
 int main(int argc, char **argv) {
+    int   result = 0;
+    Arena arena = {0};
     shift(&argc, &argv, "Program name");
 
     bool        run = false;
@@ -45,12 +47,11 @@ int main(int argc, char **argv) {
     const char *input = shift(&argc, &argv, "Input file");
 
     Lexer l = {0};
-    if (!lexer_open(&l, input)) {
+    if (!lexer_open(&l, input, &arena)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
         exit(1);
     }
 
-    Arena  arena = {0};
     Parser p = {.arena = &arena};
     parse_file(&p, l);
 
@@ -73,12 +74,17 @@ int main(int argc, char **argv) {
         Cmd cmd = {0};
         da_push(&cmd, output);
         da_push_many(&cmd, argv, argc);
-        const int code = cmd_run(&cmd);
+
+        result = cmd_run(&cmd);
         remove(output);
-        return code;
+
+        da_free(&cmd);
+    } else {
+        const char *output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        compile_nodes(&c, output);
     }
 
-    const char *output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
-    compile_nodes(&c, output);
-    return 0;
+    context_free(&c);
+    arena_free(&arena);
+    return result;
 }

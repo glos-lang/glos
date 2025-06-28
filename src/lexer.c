@@ -3,8 +3,8 @@
 
 #include "lexer.h"
 
-bool lexer_open(Lexer *l, const char *path) {
-    if (!read_file(&l->sv, path)) {
+bool lexer_open(Lexer *l, const char *path, Arena *arena) {
+    if (!read_file(&l->sv, path, arena)) {
         return false;
     }
 

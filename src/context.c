@@ -29,3 +29,8 @@ Node *context_fn_find(ContextFn f, Scope s, SV name) {
     s.count -= f.base;
     return scope_find(s, name);
 }
+
+void context_free(Context *c) {
+    da_free(&c->locals);
+    da_free(&c->globals);
+}

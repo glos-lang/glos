@@ -91,7 +91,7 @@ void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
 
 // OS
-bool read_file(SV *out, const char *path);
+bool read_file(SV *out, const char *path, Arena *arena);
 
 typedef struct {
     const char **data;

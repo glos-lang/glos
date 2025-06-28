@@ -372,6 +372,8 @@ void compile_nodes(Context *context, const char *output) {
 #endif
 
     const int code = qbe_generate(c.qbe, QBE_TARGET_DEFAULT, output, NULL, 0);
+    qbe_free(c.qbe);
+
     if (code) {
         exit(code);
     }

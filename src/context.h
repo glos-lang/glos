@@ -27,4 +27,6 @@ ContextFn context_fn_begin(Context *c, NodeFn *fn);
 void      context_fn_end(Context *c, ContextFn save);
 Node     *context_fn_find(ContextFn f, Scope s, SV name);
 
+void context_free(Context *c);
+
 #endif // CONTEXT_H

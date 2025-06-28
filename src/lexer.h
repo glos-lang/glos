@@ -12,7 +12,7 @@ typedef struct {
     Token buffer;
 } Lexer;
 
-bool lexer_open(Lexer *l, const char *path);
+bool lexer_open(Lexer *l, const char *path, Arena *arena);
 
 void lexer_buffer(Lexer *l, Token token);
 void lexer_unbuffer(Lexer *l);

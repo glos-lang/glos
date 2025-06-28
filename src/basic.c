@@ -122,7 +122,7 @@ void *arena_alloc(Arena *a, size_t size) {
 }
 
 // OS
-bool read_file(SV *out, const char *path) {
+bool read_file(SV *out, const char *path, Arena *arena) {
     char *data = NULL;
     bool  result = true;
 
@@ -141,14 +141,11 @@ bool read_file(SV *out, const char *path) {
     }
     rewind(f);
 
-    data = malloc(count);
-    if (!data) {
-        return_defer(false);
-    }
-
+    data = arena_alloc(arena, count + 1);
     if (fread(data, 1, count, f) != (size_t) count) {
         return_defer(false);
     }
+    data[count] = '\0';
 
     out->data = data;
     out->count = count;
