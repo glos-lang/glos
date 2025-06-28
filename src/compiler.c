@@ -316,6 +316,12 @@ static NodeFn *get_main(Context *c) {
     Node *main = scope_find(c->globals, sv_from_cstr("main"));
     if (!main) {
         fprintf(stderr, "ERROR: Function 'main' is not defined\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "```\n");
+        fprintf(stderr, "fn main() {\n");
+        fprintf(stderr, "    // HINT: Define this\n");
+        fprintf(stderr, "}\n");
+        fprintf(stderr, "```\n");
         exit(1);
     }
 
