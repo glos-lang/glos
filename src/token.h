@@ -33,6 +33,13 @@ typedef enum {
 
     TOKEN_SET,
 
+    TOKEN_GT,
+    TOKEN_GE,
+    TOKEN_LT,
+    TOKEN_LE,
+    TOKEN_EQ,
+    TOKEN_NE,
+
     TOKEN_IF,
     TOKEN_ELSE,
 

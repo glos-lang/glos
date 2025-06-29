@@ -125,7 +125,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 21, "");
+        static_assert(COUNT_TOKENS == 27, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_I64};
@@ -192,7 +192,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 21, "");
+        static_assert(COUNT_TOKENS == 27, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -207,7 +207,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 21, "");
+        static_assert(COUNT_TOKENS == 27, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -224,6 +224,19 @@ static void check_expr(Context *c, Node *n, bool ref) {
             check_expr(c, binary->rhs, false);
             type_assert_node(binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_GT:
+        case TOKEN_GE:
+        case TOKEN_LT:
+        case TOKEN_LE:
+        case TOKEN_EQ:
+        case TOKEN_NE:
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
+            type_assert_arith(binary->lhs);
+            type_assert_node(binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
         default:
