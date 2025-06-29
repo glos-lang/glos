@@ -99,6 +99,16 @@ typedef struct {
     size_t       capacity;
 } Cmd;
 
-int cmd_run(Cmd *c);
+typedef struct {
+    FILE **in;
+    FILE **out;
+    FILE **err;
+} CmdStdio;
+
+typedef int Proc;
+
+Proc cmd_run_async(Cmd *c, CmdStdio stdio);
+int  cmd_run_sync(Cmd *c, CmdStdio stdio);
+int  cmd_wait(Proc proc);
 
 #endif // BASIC_H

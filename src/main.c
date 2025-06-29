@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
         da_push(&cmd, output);
         da_push_many(&cmd, argv, argc);
 
-        result = cmd_run(&cmd);
+        result = cmd_run_sync(&cmd, (CmdStdio) {0});
         remove(output);
         da_free(&cmd);
     } else {
