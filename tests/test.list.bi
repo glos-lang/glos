@@ -1,4 +1,4 @@
-:i count 17
+:i count 18
 :b testcase 22
 001-integers/main.glos
 :i returncode 0
@@ -97,6 +97,16 @@
 420
 69
 420
+
+:b stderr 0
+
+:b testcase 44
+004-functions/argument-evaluation-order.glos
+:i returncode 0
+:b stdout 12
+69
+420
+1337
 
 :b stderr 0
 

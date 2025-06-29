@@ -99,257 +99,6 @@ static void compile_type(Compiler *c, Type type) {
 }
 
 static_assert(COUNT_NODES == 10, "");
-static void compile_expr(Compiler *c, Node *n) {
-    if (!n) {
-        return;
-    }
-
-    switch (n->kind) {
-    case NODE_ATOM: {
-        NodeAtom *atom = (NodeAtom *) n;
-
-        static_assert(COUNT_TOKENS == 21, "");
-        switch (n->token.kind) {
-        case TOKEN_INT:
-            compile_sprintf(c, "%zuL", n->token.as.integer);
-            break;
-
-        case TOKEN_BOOL:
-            compile_sprintf(c, "%dL", n->token.as.boolean);
-            break;
-
-        case TOKEN_IDENT:
-            compile_backend_data(c, atom->definition->backend);
-            break;
-
-        default:
-            unreachable();
-        }
-    } break;
-
-    case NODE_CALL: {
-        NodeCall *call = (NodeCall *) n;
-        compile_expr(c, call->fn);
-        compile_sprintf(c, "(");
-        for (Node *it = call->args.head; it; it = it->next) {
-            // TODO: This inherits the undefined order of call arguments from C
-            //       Use "SSA" to define the evaluation from left to right
-            compile_expr(c, it);
-            if (it->next) {
-                compile_sprintf(c, ", ");
-            }
-        }
-        compile_sprintf(c, ")");
-    } break;
-
-    case NODE_UNARY: {
-        NodeUnary *unary = (NodeUnary *) n;
-
-        static_assert(COUNT_TOKENS == 21, "");
-        switch (n->token.kind) {
-        case TOKEN_SUB: {
-            compile_sprintf(c, "-(");
-            compile_expr(c, unary->operand);
-            compile_sprintf(c, ")");
-        } break;
-
-        default:
-            unreachable();
-        }
-    } break;
-
-    case NODE_BINARY: {
-        NodeBinary *binary = (NodeBinary *) n;
-
-        static_assert(COUNT_TOKENS == 21, "");
-        switch (n->token.kind) {
-        case TOKEN_ADD:
-            compile_sprintf(c, "(");
-            compile_expr(c, binary->lhs);
-            compile_sprintf(c, " + ");
-            compile_expr(c, binary->rhs);
-            compile_sprintf(c, ")");
-            break;
-
-        case TOKEN_SUB:
-            compile_sprintf(c, "(");
-            compile_expr(c, binary->lhs);
-            compile_sprintf(c, " - ");
-            compile_expr(c, binary->rhs);
-            compile_sprintf(c, ")");
-            break;
-
-        case TOKEN_MUL:
-            compile_sprintf(c, "(");
-            compile_expr(c, binary->lhs);
-            compile_sprintf(c, " * ");
-            compile_expr(c, binary->rhs);
-            compile_sprintf(c, ")");
-            break;
-
-        case TOKEN_DIV:
-            compile_sprintf(c, "(");
-            compile_expr(c, binary->lhs);
-            compile_sprintf(c, " / ");
-            compile_expr(c, binary->rhs);
-            compile_sprintf(c, ")");
-            break;
-
-        case TOKEN_SET:
-            compile_sprintf(c, "(");
-            compile_expr(c, binary->lhs);
-            compile_sprintf(c, " = ");
-            compile_expr(c, binary->rhs);
-            compile_sprintf(c, ")");
-            break;
-
-        default:
-            unreachable();
-        }
-    } break;
-
-    case NODE_FN:
-        da_push(&c->fns, n);
-        compile_backend_data(c, n->backend);
-        break;
-
-    default:
-        unreachable();
-    }
-}
-
-static void compile_fn(Compiler *c, Node *n);
-
-static_assert(COUNT_NODES == 10, "");
-static void compile_stmt(Compiler *c, Node *n) {
-    if (!n) {
-        return;
-    }
-
-    switch (n->kind) {
-    case NODE_IF: {
-        NodeIf *iff = (NodeIf *) n;
-        compile_sprintf(c, "if (");
-        compile_expr(c, iff->condition);
-        compile_sprintf(c, ") ");
-        compile_stmt(c, iff->consequence);
-
-        if (iff->antecedence) {
-            compile_sprintf(c, " else ");
-            compile_stmt(c, iff->antecedence);
-        }
-    } break;
-
-    case NODE_BLOCK: {
-        NodeBlock *block = (NodeBlock *) n;
-        compile_sprintf(c, "{\n");
-
-        c->indent++;
-        for (Node *it = block->body.head; it; it = it->next) {
-            compile_sprintf(c, "#line %zu\n", it->token.pos.row + 1);
-            compile_indent(c);
-            compile_stmt(c, it);
-            compile_sprintf(c, "\n");
-        }
-        c->indent--;
-
-        compile_sprintf(c, "#line %zu\n", n->token.pos.row + 1);
-        compile_indent(c);
-        compile_sprintf(c, "}");
-    } break;
-
-    case NODE_RETURN: {
-        NodeReturn *ret = (NodeReturn *) n;
-        compile_sprintf(c, "return");
-        if (ret->value) {
-            compile_sprintf(c, " ");
-            compile_expr(c, ret->value);
-        }
-        compile_sprintf(c, ";");
-    } break;
-
-    case NODE_FN: {
-        NodeFn *fn = (NodeFn *) n;
-        if (fn->local) {
-            da_push(&c->fns, n);
-        } else {
-            compile_fn(c, n);
-            while (c->fns.count) {
-                compile_fn(c, c->fns.data[--c->fns.count]);
-            }
-        }
-    } break;
-
-    case NODE_VAR: {
-        NodeVar *var = (NodeVar *) n;
-        if (var->local) {
-            compile_type(c, n->type);
-            compile_sprintf(c, " ");
-
-            n->backend = backend_data_new(c);
-            compile_backend_data(c, n->backend);
-
-            if (var->expr) {
-                compile_sprintf(c, " = ");
-                compile_expr(c, var->expr);
-            }
-
-            compile_sprintf(c, ";");
-        }
-    } break;
-
-    case NODE_PRINT: {
-        NodePrint *print = (NodePrint *) n;
-        compile_sprintf(c, "printf(\"%%ld\\n\", (long) (");
-        compile_expr(c, print->operand);
-        compile_sprintf(c, "));");
-    } break;
-
-    default:
-        compile_expr(c, n);
-        compile_sprintf(c, ";");
-        break;
-    }
-}
-
-static void compile_fn(Compiler *c, Node *n) {
-    NodeFn *fn = (NodeFn *) n;
-    compile_sprintf(c, "\n#line %zu ", n->token.pos.row + 1);
-    compile_quoted(c, sv_from_cstr(n->token.pos.path));
-
-    compile_sprintf(c, "\nstatic ");
-    compile_type(c, node_fn_return_type(fn));
-    compile_sprintf(c, " ");
-    compile_backend_data(c, n->backend);
-
-    const bool local_save = c->local;
-    c->local = true;
-    c->locals = 0;
-
-    compile_sprintf(c, "(");
-    if (fn->args.head) {
-        for (Node *it = fn->args.head; it; it = it->next) {
-            compile_type(c, it->type);
-            compile_sprintf(c, " ");
-
-            it->backend = backend_data_new(c);
-            compile_backend_data(c, it->backend);
-
-            if (it->next) {
-                compile_sprintf(c, ", ");
-            }
-        }
-    } else {
-        compile_sprintf(c, "void");
-    }
-    compile_sprintf(c, ") ");
-
-    compile_stmt(c, fn->body);
-    c->local = local_save;
-    compile_sprintf(c, "\n");
-}
-
-static_assert(COUNT_NODES == 10, "");
 static void pre_compile_type(Compiler *c, Type *type) {
     if (!type || type->backend.iota) {
         return;
@@ -386,6 +135,7 @@ static void pre_compile_type(Compiler *c, Type *type) {
             compile_sprintf(c, "void");
         }
         compile_sprintf(c, ");\n");
+        compile_indent(c);
     } break;
 
     default:
@@ -495,6 +245,331 @@ static void pre_compile_node(Compiler *c, Node *n) {
         unreachable();
         break;
     }
+}
+
+static void compile_expr(Compiler *c, Node *n);
+
+static_assert(COUNT_NODES == 10, "");
+static void hoist_expr(Compiler *c, Node *n) {
+    if (!n) {
+        return;
+    }
+
+    if (n->kind == NODE_FN) {
+        pre_compile_type(c, &n->type);
+        return;
+    }
+
+    if (n->backend.iota) {
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_ATOM:
+        // Pass
+        break;
+
+    case NODE_CALL: {
+        NodeCall *call = (NodeCall *) n;
+        hoist_expr(c, call->fn);
+        for (Node *it = call->args.head; it; it = it->next) {
+            if (it->kind == NODE_FN) {
+                continue;
+            }
+            hoist_expr(c, it);
+
+            compile_sprintf(c, "const ");
+            compile_type(c, it->type);
+            compile_sprintf(c, " ");
+
+            const BackendData backend = backend_data_new(c);
+            compile_backend_data(c, backend);
+
+            compile_sprintf(c, " = ");
+            compile_expr(c, it);
+
+            const size_t row = it->next ? it->next->token.pos.row : n->token.pos.row;
+            compile_sprintf(c, ";\n#line %zu\n", row + 1);
+            compile_indent(c);
+
+            it->backend = backend;
+        }
+    } break;
+
+    case NODE_UNARY: {
+        NodeUnary *unary = (NodeUnary *) n;
+        hoist_expr(c, unary->operand);
+    } break;
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+        hoist_expr(c, binary->lhs);
+        hoist_expr(c, binary->rhs);
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
+static_assert(COUNT_NODES == 10, "");
+static void compile_expr(Compiler *c, Node *n) {
+    if (!n) {
+        return;
+    }
+
+    if (n->kind == NODE_FN) {
+        da_push(&c->fns, n);
+        compile_backend_data(c, n->backend);
+        return;
+    }
+
+    if (n->backend.iota) {
+        compile_backend_data(c, n->backend);
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_ATOM: {
+        NodeAtom *atom = (NodeAtom *) n;
+
+        static_assert(COUNT_TOKENS == 21, "");
+        switch (n->token.kind) {
+        case TOKEN_INT:
+            compile_sprintf(c, "%zuL", n->token.as.integer);
+            break;
+
+        case TOKEN_BOOL:
+            compile_sprintf(c, "%dL", n->token.as.boolean);
+            break;
+
+        case TOKEN_IDENT:
+            compile_backend_data(c, atom->definition->backend);
+            break;
+
+        default:
+            unreachable();
+        }
+    } break;
+
+    case NODE_CALL: {
+        NodeCall *call = (NodeCall *) n;
+        compile_expr(c, call->fn);
+        compile_sprintf(c, "(");
+        for (Node *it = call->args.head; it; it = it->next) {
+            compile_expr(c, it);
+            if (it->next) {
+                compile_sprintf(c, ", ");
+            }
+        }
+        compile_sprintf(c, ")");
+    } break;
+
+    case NODE_UNARY: {
+        NodeUnary *unary = (NodeUnary *) n;
+
+        static_assert(COUNT_TOKENS == 21, "");
+        switch (n->token.kind) {
+        case TOKEN_SUB: {
+            compile_sprintf(c, "-(");
+            compile_expr(c, unary->operand);
+            compile_sprintf(c, ")");
+        } break;
+
+        default:
+            unreachable();
+        }
+    } break;
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+
+        static_assert(COUNT_TOKENS == 21, "");
+        switch (n->token.kind) {
+        case TOKEN_ADD:
+            compile_sprintf(c, "(");
+            compile_expr(c, binary->lhs);
+            compile_sprintf(c, " + ");
+            compile_expr(c, binary->rhs);
+            compile_sprintf(c, ")");
+            break;
+
+        case TOKEN_SUB:
+            compile_sprintf(c, "(");
+            compile_expr(c, binary->lhs);
+            compile_sprintf(c, " - ");
+            compile_expr(c, binary->rhs);
+            compile_sprintf(c, ")");
+            break;
+
+        case TOKEN_MUL:
+            compile_sprintf(c, "(");
+            compile_expr(c, binary->lhs);
+            compile_sprintf(c, " * ");
+            compile_expr(c, binary->rhs);
+            compile_sprintf(c, ")");
+            break;
+
+        case TOKEN_DIV:
+            compile_sprintf(c, "(");
+            compile_expr(c, binary->lhs);
+            compile_sprintf(c, " / ");
+            compile_expr(c, binary->rhs);
+            compile_sprintf(c, ")");
+            break;
+
+        case TOKEN_SET:
+            compile_sprintf(c, "(");
+            compile_expr(c, binary->lhs);
+            compile_sprintf(c, " = ");
+            compile_expr(c, binary->rhs);
+            compile_sprintf(c, ")");
+            break;
+
+        default:
+            unreachable();
+        }
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
+static void compile_fn(Compiler *c, Node *n);
+
+static_assert(COUNT_NODES == 10, "");
+static void compile_stmt(Compiler *c, Node *n) {
+    if (!n) {
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_IF: {
+        NodeIf *iff = (NodeIf *) n;
+        hoist_expr(c, iff->condition);
+        compile_sprintf(c, "if (");
+        compile_expr(c, iff->condition);
+        compile_sprintf(c, ") ");
+        compile_stmt(c, iff->consequence);
+
+        if (iff->antecedence) {
+            compile_sprintf(c, " else ");
+            compile_stmt(c, iff->antecedence);
+        }
+    } break;
+
+    case NODE_BLOCK: {
+        NodeBlock *block = (NodeBlock *) n;
+        compile_sprintf(c, "{\n");
+
+        c->indent++;
+        for (Node *it = block->body.head; it; it = it->next) {
+            compile_sprintf(c, "#line %zu\n", it->token.pos.row + 1);
+            compile_indent(c);
+            compile_stmt(c, it);
+            compile_sprintf(c, "\n");
+        }
+        c->indent--;
+
+        compile_sprintf(c, "#line %zu\n", n->token.pos.row + 1);
+        compile_indent(c);
+        compile_sprintf(c, "}");
+    } break;
+
+    case NODE_RETURN: {
+        NodeReturn *ret = (NodeReturn *) n;
+        hoist_expr(c, ret->value);
+        compile_sprintf(c, "return");
+        if (ret->value) {
+            compile_sprintf(c, " ");
+            compile_expr(c, ret->value);
+        }
+        compile_sprintf(c, ";");
+    } break;
+
+    case NODE_FN: {
+        NodeFn *fn = (NodeFn *) n;
+        if (fn->local) {
+            da_push(&c->fns, n);
+        } else {
+            compile_fn(c, n);
+            while (c->fns.count) {
+                compile_fn(c, c->fns.data[--c->fns.count]);
+            }
+        }
+    } break;
+
+    case NODE_VAR: {
+        NodeVar *var = (NodeVar *) n;
+        if (var->local) {
+            hoist_expr(c, var->expr);
+            compile_type(c, n->type);
+            compile_sprintf(c, " ");
+
+            n->backend = backend_data_new(c);
+            compile_backend_data(c, n->backend);
+
+            if (var->expr) {
+                compile_sprintf(c, " = ");
+                compile_expr(c, var->expr);
+            }
+
+            compile_sprintf(c, ";");
+        }
+    } break;
+
+    case NODE_PRINT: {
+        NodePrint *print = (NodePrint *) n;
+        hoist_expr(c, print->operand);
+        compile_sprintf(c, "printf(\"%%ld\\n\", (long) ");
+        compile_expr(c, print->operand);
+        compile_sprintf(c, ");");
+    } break;
+
+    default:
+        hoist_expr(c, n);
+        compile_expr(c, n);
+        compile_sprintf(c, ";");
+        break;
+    }
+}
+
+static void compile_fn(Compiler *c, Node *n) {
+    NodeFn *fn = (NodeFn *) n;
+    compile_sprintf(c, "\n#line %zu ", n->token.pos.row + 1);
+    compile_quoted(c, sv_from_cstr(n->token.pos.path));
+
+    compile_sprintf(c, "\nstatic ");
+    compile_type(c, node_fn_return_type(fn));
+    compile_sprintf(c, " ");
+    compile_backend_data(c, n->backend);
+
+    const bool local_save = c->local;
+    c->local = true;
+    c->locals = 0;
+
+    compile_sprintf(c, "(");
+    if (fn->args.head) {
+        for (Node *it = fn->args.head; it; it = it->next) {
+            compile_type(c, it->type);
+            compile_sprintf(c, " ");
+
+            it->backend = backend_data_new(c);
+            compile_backend_data(c, it->backend);
+
+            if (it->next) {
+                compile_sprintf(c, ", ");
+            }
+        }
+    } else {
+        compile_sprintf(c, "void");
+    }
+    compile_sprintf(c, ") ");
+
+    compile_stmt(c, fn->body);
+    c->local = local_save;
+    compile_sprintf(c, "\n");
 }
 
 static NodeFn *get_main(Context *c) {

@@ -1,0 +1,17 @@
+fn f() i64 {
+    print 69
+    return 600
+}
+
+fn g() i64 {
+    print 420
+    return 737
+}
+
+fn h(x i64, y i64) {
+    print x + y
+}
+
+fn main() {
+    h(f(), g())
+}
