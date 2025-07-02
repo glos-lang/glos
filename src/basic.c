@@ -34,9 +34,49 @@ SV sv_strip_suffix(SV a, SV b) {
     return a;
 }
 
+SV sv_trim(SV s, char ch) {
+    while (s.count && *s.data == ch) {
+        s.data++;
+        s.count--;
+    }
+
+    while (s.count && s.data[s.count - 1] == ch) {
+        s.count--;
+    }
+
+    return s;
+}
+
+SV sv_drop(SV *s, size_t count) {
+    const SV result = (SV) {.data = s->data, .count = count};
+    s->data += count;
+    s->count -= count;
+    return result;
+}
+
+SV sv_split(SV *s, char ch) {
+    const char *p = memchr(s->data, ch, s->count);
+    if (!p) {
+        const SV result = *s;
+        s->data += s->count;
+        s->count = 0;
+        return result;
+    }
+
+    const SV result = (SV) {.data = s->data, .count = p - s->data};
+    s->data = p + 1;
+    s->count -= result.count + 1;
+    return result;
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;
+
+void temp_reset(const void *p) {
+    assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
+    temp_count = (const char *) p - temp_data;
+}
 
 void *temp_alloc(size_t n) {
     assert(temp_count + n <= len(temp_data));
