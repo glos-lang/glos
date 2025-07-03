@@ -1,0 +1,9 @@
+fn add_and_print(x i64, y i64) {
+    var z = x + y
+    print z
+}
+
+fn main() {
+    add_and_print(34, 35)
+    add_and_print(200, 220)
+}

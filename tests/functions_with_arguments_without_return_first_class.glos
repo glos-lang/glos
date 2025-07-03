@@ -1,0 +1,12 @@
+fn apply(x i64, f fn (i64)) {
+    f(x)
+}
+
+fn twice(x i64) {
+    print x
+    print x
+}
+
+fn main() {
+    apply(69, twice)
+}

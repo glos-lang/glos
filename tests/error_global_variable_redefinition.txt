@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 147
+error_global_variable_redefinition.glos:2:5: ERROR: Redefinition of identifier 'x'
+error_global_variable_redefinition.glos:1:5: NOTE: Defined here
+

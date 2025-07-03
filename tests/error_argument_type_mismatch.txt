@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 78
+error_argument_type_mismatch.glos:4:9: ERROR: Expected type 'i64', got 'bool'
+
