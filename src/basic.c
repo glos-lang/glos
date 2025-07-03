@@ -34,9 +34,49 @@ SV sv_strip_suffix(SV a, SV b) {
     return a;
 }
 
+SV sv_trim(SV s, char ch) {
+    while (s.count && *s.data == ch) {
+        s.data++;
+        s.count--;
+    }
+
+    while (s.count && s.data[s.count - 1] == ch) {
+        s.count--;
+    }
+
+    return s;
+}
+
+SV sv_drop(SV *s, size_t count) {
+    const SV result = (SV) {.data = s->data, .count = count};
+    s->data += count;
+    s->count -= count;
+    return result;
+}
+
+SV sv_split(SV *s, char ch) {
+    const char *p = memchr(s->data, ch, s->count);
+    if (!p) {
+        const SV result = *s;
+        s->data += s->count;
+        s->count = 0;
+        return result;
+    }
+
+    const SV result = (SV) {.data = s->data, .count = p - s->data};
+    s->data = p + 1;
+    s->count -= result.count + 1;
+    return result;
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;
+
+void temp_reset(const void *p) {
+    assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
+    temp_count = (const char *) p - temp_data;
+}
 
 void *temp_alloc(size_t n) {
     assert(temp_count + n <= len(temp_data));
@@ -162,13 +202,47 @@ defer:
     return result;
 }
 
-int cmd_run(Cmd *c) {
-    pid_t pid = fork();
-    if (pid < 0) {
-        return 127;
+Proc cmd_run_async(Cmd *c, CmdStdio stdio) {
+    int in[2] = {-1, -1};
+    int out[2] = {-1, -1};
+    int err[2] = {-1, -1};
+
+    if (stdio.in && pipe(in) < 0) {
+        goto fail;
     }
 
-    if (!pid) {
+    if (stdio.out && pipe(out) < 0) {
+        goto fail;
+    }
+
+    if (stdio.err && pipe(err) < 0) {
+        goto fail;
+    }
+
+    Proc proc = fork();
+    if (proc < 0) {
+        goto fail;
+    }
+
+    if (!proc) {
+        if (stdio.in) {
+            close(in[1]);
+            dup2(in[0], STDIN_FILENO);
+            close(in[0]);
+        }
+
+        if (stdio.out) {
+            close(out[0]);
+            dup2(out[1], STDOUT_FILENO);
+            close(out[1]);
+        }
+
+        if (stdio.err) {
+            close(err[0]);
+            dup2(err[1], STDERR_FILENO);
+            close(err[1]);
+        }
+
         da_push(c, NULL);
         execvp(*c->data, (char *const *) c->data);
         exit(127);
@@ -176,8 +250,71 @@ int cmd_run(Cmd *c) {
 
     c->count = 0;
 
+    if (stdio.in) {
+        close(in[0]);
+        *stdio.in = fdopen(in[1], "w");
+        if (!*stdio.in) {
+            close(in[1]);
+        }
+    }
+
+    if (stdio.out) {
+        close(out[1]);
+        *stdio.out = fdopen(out[0], "r");
+        if (!*stdio.out) {
+            close(out[0]);
+        }
+    }
+
+    if (stdio.err) {
+        close(err[1]);
+        *stdio.err = fdopen(err[0], "r");
+        if (!*stdio.err) {
+            close(err[0]);
+        }
+    }
+
+    return proc;
+
+fail:
+    if (in[0] != -1) {
+        close(in[0]);
+    }
+
+    if (in[1] != -1) {
+        close(in[1]);
+    }
+
+    if (out[0] != -1) {
+        close(out[0]);
+    }
+
+    if (out[1] != -1) {
+        close(out[1]);
+    }
+
+    if (err[0] != -1) {
+        close(err[0]);
+    }
+
+    if (err[1] != -1) {
+        close(err[1]);
+    }
+
+    return -1;
+}
+
+int cmd_run_sync(Cmd *c, CmdStdio stdio) {
+    return cmd_wait(cmd_run_async(c, stdio));
+}
+
+int cmd_wait(Proc proc) {
+    if (proc == -1) {
+        return 1;
+    }
+
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) {
+    if (waitpid(proc, &status, 0) < 0) {
         return 1;
     }
 

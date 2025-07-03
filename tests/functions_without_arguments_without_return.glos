@@ -1,0 +1,9 @@
+fn foo() {
+    print 69
+    print 420
+}
+
+fn main() {
+    foo()
+    foo()
+}

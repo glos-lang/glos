@@ -9,12 +9,12 @@ static void usage(FILE *file) {
     fprintf(file, "    glos COMMAND [...]\n");
     fprintf(file, "\n");
     fprintf(file, "Commands:\n");
-    fprintf(file, "    help                       Show this message\n");
-    fprintf(file, "    run   [FILE]               Run the program\n");
-    fprintf(file, "    build [FLAGS...] [FILE]    Compile the program\n");
+    fprintf(file, "    help                     Show this message\n");
+    fprintf(file, "    run   FILE               Run the program\n");
+    fprintf(file, "    build [FLAGS...] FILE    Compile the program\n");
     fprintf(file, "\n");
     fprintf(file, "Build Flags:\n");
-    fprintf(file, "    -o OUTPUT                  Set the output path\n");
+    fprintf(file, "    -o OUTPUT                Set the output path\n");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
         da_push(&cmd, output);
         da_push_many(&cmd, argv, argc);
 
-        result = cmd_run(&cmd);
+        result = cmd_run_sync(&cmd, (CmdStdio) {0});
         remove(output);
         da_free(&cmd);
     } else {

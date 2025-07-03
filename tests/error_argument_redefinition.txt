@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 132
+error_argument_redefinition.glos:1:15: ERROR: Redefinition of argument 'x'
+error_argument_redefinition.glos:1:8: NOTE: Defined here
+

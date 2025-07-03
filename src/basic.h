@@ -74,7 +74,12 @@ bool sv_has_suffix(SV a, SV b);
 SV sv_from_cstr(const char *cstr);
 SV sv_strip_suffix(SV a, SV b);
 
+SV sv_trim(SV s, char ch);
+SV sv_drop(SV *s, size_t count);
+SV sv_split(SV *s, char ch);
+
 // Temporary Allocator
+void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
 char *temp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 char *temp_sv_to_cstr(SV sv);
@@ -99,6 +104,16 @@ typedef struct {
     size_t       capacity;
 } Cmd;
 
-int cmd_run(Cmd *c);
+typedef struct {
+    FILE **in;
+    FILE **out;
+    FILE **err;
+} CmdStdio;
+
+typedef int Proc;
+
+Proc cmd_run_async(Cmd *c, CmdStdio stdio);
+int  cmd_run_sync(Cmd *c, CmdStdio stdio);
+int  cmd_wait(Proc proc);
 
 #endif // BASIC_H
