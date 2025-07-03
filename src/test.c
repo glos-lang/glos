@@ -56,6 +56,12 @@ typedef struct {
     size_t       capacity;
 } Paths;
 
+static int compare_cstrings(const void *a, const void *b) {
+    const char *str1 = *(const char **) a;
+    const char *str2 = *(const char **) b;
+    return strcmp(str1, str2);
+}
+
 static bool load_glos_file_paths(Paths *p, const char *dir) {
     DIR *d = opendir(dir);
     if (!d) {
@@ -82,6 +88,7 @@ static bool load_glos_file_paths(Paths *p, const char *dir) {
     }
 
     closedir(d);
+    qsort(p->data, p->count, sizeof(const char *), compare_cstrings);
     return true;
 }
 
