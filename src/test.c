@@ -62,28 +62,16 @@ static int compare_cstrings(const void *a, const void *b) {
     return strcmp(str1, str2);
 }
 
-static bool load_glos_file_paths(Paths *p, const char *dir) {
-    DIR *d = opendir(dir);
+static bool load_glos_file_paths(Paths *p) {
+    DIR *d = opendir(".");
     if (!d) {
         return false;
-    }
-
-    bool dir_ends_with_slash = false;
-    {
-        const size_t dir_count = strlen(dir);
-        dir_ends_with_slash = dir_count && dir[dir_count - 1] == '/';
     }
 
     struct dirent *entry = NULL;
     while ((entry = readdir(d)) != NULL) {
         if (sv_has_suffix(sv_from_cstr(entry->d_name), sv_from_cstr(".glos"))) {
-            const char *path = NULL;
-            if (dir_ends_with_slash) {
-                path = temp_sprintf("%s%s", dir, entry->d_name);
-            } else {
-                path = temp_sprintf("%s/%s", dir, entry->d_name);
-            }
-            da_push(p, path);
+            da_push(p, temp_sprintf("%s", entry->d_name));
         }
     }
 
@@ -277,6 +265,15 @@ static bool compare_tests(Test expected, Test actual) {
     }
 }
 
+static void usage(FILE *f) {
+    fprintf(f, "Usage:\n");
+    fprintf(f, "    test [COMMAND]\n");
+    fprintf(f, "\n");
+    fprintf(f, "Commands:\n");
+    fprintf(f, "    help     Show this message\n");
+    fprintf(f, "    check    Only check the programs, don't prompt for error recording\n");
+}
+
 int main(int argc, char **argv) {
     const char *runner = NULL;
     {
@@ -291,31 +288,25 @@ int main(int argc, char **argv) {
         runner = temp_sprintf(SVFmt "glos", SVArg(program));
     }
 
-    bool        check = false;
-    const char *dir = ".";
+    bool check = false;
     if (argc > 1) {
-        dir = argv[1];
-        if (!strcmp(dir, "-c") || !strcmp(dir, "-check") || !strcmp(dir, "--check")) {
-            check = true;
-            if (argc > 2) {
-                dir = argv[2];
-            } else {
-                dir = ".";
-            }
-        } else if (!strcmp(dir, "-h") || !strcmp(dir, "-help") || !strcmp(dir, "--help")) {
-            printf("Usage:\n");
-            printf("    test [FLAGS] [DIR]\n");
-            printf("\n");
-            printf("Flags:\n");
-            printf("    -help     Show this message\n");
-            printf("    -check    Only check the programs, don't prompt for error recording\n");
+        const char *command = argv[1];
+        if (!strcmp(command, "help")) {
+            usage(stdout);
             exit(0);
+        } else if (!strcmp(command, "check")) {
+            check = true;
+        } else {
+            fprintf(stderr, "ERROR: Invalid command '%s'\n", command);
+            fprintf(stderr, "\n");
+            usage(stderr);
+            exit(1);
         }
     }
 
     Paths paths = {0};
-    if (!load_glos_file_paths(&paths, dir)) {
-        fprintf(stderr, "ERROR: Could not contents of directory '%s'\n", dir);
+    if (!load_glos_file_paths(&paths)) {
+        fprintf(stderr, "ERROR: Could not contents of current directory\n");
         exit(1);
     }
 
