@@ -1,0 +1,14 @@
+fn print_i64(x i64)   { print x }
+fn print_bool(x bool) { print x }
+
+fn main() {
+    var a &&i64 = <&&i64> 0
+    var b &bool = <&bool> a
+
+    print_i64(<i64> true)
+    print_i64(<i64> false)
+
+    print_bool(<bool> -69)
+    print_bool(<bool> 0)
+    print_bool(<bool> 420)
+}
