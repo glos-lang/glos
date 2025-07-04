@@ -51,11 +51,12 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom),
         [NODE_CALL] = sizeof(NodeCall),
+        [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
         [NODE_BINARY] = sizeof(NodeBinary),
 
@@ -167,6 +168,16 @@ static Node *parse_expr(Parser *p, Power mbp) {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
         unary->operand = parse_expr(p, POWER_PRE);
         node = (Node *) unary;
+    } break;
+
+    case TOKEN_LT: {
+        NodeCast *cast = node_alloc(p, NODE_CAST, token);
+        cast->to = parse_type(p);
+
+        lexer_expect(&p->lexer, TOKEN_GT);
+        cast->from = parse_expr(p, POWER_PRE);
+
+        node = (Node *) cast;
     } break;
 
     case TOKEN_LPAREN:
