@@ -44,7 +44,7 @@ static Type type_assert_scalar(const Node *n) {
         return n->type;
     }
 
-    if (type_eq(n->type, (Type) {.kind = TYPE_BOOL})) {
+    if (n->type.kind == TYPE_BOOL || n->type.kind == TYPE_FN) {
         return n->type;
     }
 

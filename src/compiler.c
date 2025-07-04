@@ -108,6 +108,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
         QbeNode  *from = compile_expr(c, cast->from, false);
+        if (type_eq(n->type, (Type) {.kind = TYPE_BOOL}) && !type_eq(cast->from->type, (Type) {.kind = TYPE_BOOL})) {
+            QbeNode *zero = qbe_atom_int(c->qbe, cast->from->type.qbe.kind, 0);
+            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_NE, n->type.qbe, from, zero);
+        }
+
         return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, true); // TODO: Signedness
     }
 
