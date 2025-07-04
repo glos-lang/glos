@@ -7,7 +7,9 @@
 typedef struct {
     Arena *arena;
     Lexer  lexer;
-    bool   local;
+
+    bool local;
+    bool dont_consume_eols;
 
     Nodes nodes;
 } Parser;

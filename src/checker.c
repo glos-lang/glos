@@ -78,7 +78,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 10, "");
+static_assert(COUNT_NODES == 11, "");
 static void check_type(Node *n) {
     if (!n) {
         return;
@@ -114,7 +114,7 @@ static void check_type(Node *n) {
 
 static void check_fn(Context *c, Node *n);
 
-static_assert(COUNT_NODES == 10, "");
+static_assert(COUNT_NODES == 11, "");
 static void check_expr(Context *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -125,7 +125,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 27, "");
+        static_assert(COUNT_TOKENS == 28, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_I64};
@@ -192,7 +192,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 27, "");
+        static_assert(COUNT_TOKENS == 28, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -207,7 +207,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 27, "");
+        static_assert(COUNT_TOKENS == 28, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -264,7 +264,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 10, "");
+static_assert(COUNT_NODES == 11, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -285,6 +285,29 @@ static bool always_returns(Node *n) {
         return always_returns(iff->consequence) && always_returns(iff->antecedence);
     }
 
+    case NODE_FOR: {
+        NodeFor *forr = (NodeFor *) n;
+        if (forr->init && always_returns(forr->init)) {
+            return true;
+        }
+
+        bool infinite = false;
+        if (!forr->condition) {
+            infinite = true;
+        } else if (
+            forr->condition->kind == NODE_ATOM && forr->condition->token.kind == TOKEN_BOOL &&
+            forr->condition->token.as.boolean) {
+            infinite = true;
+        }
+
+        if (infinite) {
+            // NOTE: Till we get break, an infinite loop "always returns"
+            return true;
+        }
+
+        return false;
+    }
+
     case NODE_RETURN:
         return true;
 
@@ -293,7 +316,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 10, "");
+static_assert(COUNT_NODES == 11, "");
 static void check_stmt(Context *c, Node *n) {
     if (!n) {
         return;
@@ -307,6 +330,19 @@ static void check_stmt(Context *c, Node *n) {
 
         check_stmt(c, iff->consequence);
         check_stmt(c, iff->antecedence);
+    } break;
+
+    case NODE_FOR: {
+        NodeFor *forr = (NodeFor *) n;
+        check_stmt(c, forr->init);
+
+        if (forr->condition) {
+            check_expr(c, forr->condition, false);
+            type_assert(forr->condition, (Type) {.kind = TYPE_BOOL});
+        }
+
+        check_expr(c, forr->update, false);
+        check_stmt(c, forr->body);
     } break;
 
     case NODE_BLOCK: {
