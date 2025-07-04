@@ -52,6 +52,33 @@ static Type type_assert_scalar(const Node *n) {
     exit(1);
 }
 
+static bool is_type_cast_illegal(Node *from_node, Node *to_node) {
+    const Type from = from_node->type;
+    const Type to = to_node->type;
+
+    // Function -> Not rawptr
+    if (from.kind == TYPE_FN) {
+        return !type_eq(to, (Type) {.kind = TYPE_RAWPTR});
+    }
+
+    // Not rawptr -> Function
+    if (to.kind == TYPE_FN) {
+        return !type_eq(from, (Type) {.kind = TYPE_RAWPTR});
+    }
+
+    // Not 64 Bit Integer -> Pointer
+    if (!type_is_pointer(from) && type_is_pointer(to)) {
+        return from.kind != TYPE_I64;
+    }
+
+    // Pointer -> Not 64 Bit Integer
+    if (!type_is_pointer(to) && type_is_pointer(from)) {
+        return to.kind != TYPE_I64;
+    }
+
+    return false;
+}
+
 static void error_undefined(const Node *n, const char *label) {
     fprintf(stderr, PosFmt "ERROR: Undefined %s '" SVFmt "'\n", PosArg(n->token.pos), label, SVArg(n->token.sv));
     exit(1);
@@ -78,7 +105,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void check_type(Node *n) {
     if (!n) {
         return;
@@ -123,7 +150,7 @@ static void check_type(Node *n) {
 
 static void check_fn(Context *c, Node *n);
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void check_expr(Context *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -206,6 +233,27 @@ static void check_expr(Context *c, Node *n, bool ref) {
         }
 
         n->type = node_fn_return_type(expected);
+    } break;
+
+    case NODE_CAST: {
+        NodeCast *cast = (NodeCast *) n;
+        check_expr(c, cast->from, false);
+        check_type(cast->to);
+
+        const Type from = type_assert_scalar(cast->from);
+        const Type to = type_assert_scalar(cast->to);
+        if (!type_eq(from, to) && is_type_cast_illegal(cast->from, cast->to)) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Cannot cast type '%s' to type '%s'\n",
+                PosArg(n->token.pos),
+                type_to_cstr(from),
+                type_to_cstr(to));
+
+            exit(1);
+        }
+
+        n->type = to;
     } break;
 
     case NODE_UNARY: {
@@ -312,7 +360,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -364,7 +412,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void check_stmt(Context *c, Node *n) {
     if (!n) {
         return;

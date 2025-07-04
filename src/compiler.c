@@ -6,7 +6,7 @@ typedef struct {
     QbeFn *fn;
 } Compiler;
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void compile_type(Type *type) {
     if (!type) {
         return;
@@ -41,7 +41,7 @@ static void compile_type(Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -104,6 +104,12 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         return (QbeNode *) fn_call;
     };
+
+    case NODE_CAST: {
+        NodeCast *cast = (NodeCast *) n;
+        QbeNode  *from = compile_expr(c, cast->from, false);
+        return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, true); // TODO: Signedness
+    }
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
@@ -219,7 +225,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 11, "");
+static_assert(COUNT_NODES == 12, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
