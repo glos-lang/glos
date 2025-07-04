@@ -1,0 +1,7 @@
+fn f() {}
+
+fn main() {
+    var f = f
+    var g = &f
+    g()
+}

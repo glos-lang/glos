@@ -12,6 +12,11 @@ static void compile_type(Type *type) {
         return;
     }
 
+    if (type_is_pointer(*type)) {
+        type->qbe = qbe_type_basic(QBE_TYPE_I64);
+        return;
+    }
+
     switch (type->kind) {
     case TYPE_UNIT:
         type->qbe = qbe_type_basic(QBE_TYPE_I0);
@@ -47,7 +52,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 28, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, n->token.as.integer);
@@ -103,12 +108,23 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 28, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
             return qbe_build_unary(c->qbe, c->fn, QBE_UNARY_NEG, n->type.qbe, operand);
         }
+
+        case TOKEN_MUL: {
+            QbeNode *operand = compile_expr(c, unary->operand, false);
+            if (ref) {
+                return operand;
+            }
+            return qbe_build_load(c->qbe, c->fn, operand, n->type.qbe);
+        }
+
+        case TOKEN_BAND:
+            return compile_expr(c, unary->operand, true);
 
         default:
             unreachable();
@@ -118,7 +134,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 28, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_ADD: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
