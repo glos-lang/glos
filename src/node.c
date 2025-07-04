@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 4, "");
+static_assert(COUNT_TYPES == 5, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -19,6 +19,10 @@ const char *type_to_cstr(Type type) {
 
     case TYPE_I64:
         temp_sprintf("i64");
+        break;
+
+    case TYPE_RAWPTR:
+        temp_sprintf("rawptr");
         break;
 
     case TYPE_FN: {
@@ -52,7 +56,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 4, "");
+static_assert(COUNT_TYPES == 5, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -81,7 +85,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 4, "");
+static_assert(COUNT_TYPES == 5, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
@@ -91,11 +95,7 @@ bool type_is_integer(Type type) {
 }
 
 bool type_is_pointer(Type type) {
-    if (type.ref) {
-        return true;
-    }
-
-    return false;
+    return type.ref != 0 || type.kind == TYPE_RAWPTR;
 }
 
 Type node_fn_return_type(const NodeFn *fn) {

@@ -90,6 +90,8 @@ static void check_type(Node *n) {
             n->type = (Type) {.kind = TYPE_BOOL};
         } else if (sv_match(n->token.sv, "i64")) {
             n->type = (Type) {.kind = TYPE_I64};
+        } else if (sv_match(n->token.sv, "rawptr")) {
+            n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
             error_undefined(n, "type");
         }
@@ -226,6 +228,11 @@ static void check_expr(Context *c, Node *n, bool ref) {
                     PosArg(unary->operand->token.pos),
                     type_to_cstr(unary->operand->type));
 
+                exit(1);
+            }
+
+            if (type_eq(unary->operand->type, (Type) {.kind = TYPE_RAWPTR})) {
+                fprintf(stderr, PosFmt "ERROR: Cannot dereference raw pointer\n", PosArg(unary->operand->token.pos));
                 exit(1);
             }
 

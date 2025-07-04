@@ -15,6 +15,7 @@ typedef enum {
     TYPE_UNIT,
     TYPE_BOOL,
     TYPE_I64,
+    TYPE_RAWPTR,
 
     TYPE_FN,
 

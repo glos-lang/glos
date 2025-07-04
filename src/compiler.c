@@ -12,7 +12,7 @@ static void compile_type(Type *type) {
         return;
     }
 
-    if (type->ref) {
+    if (type_is_pointer(*type)) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
         return;
     }
