@@ -39,6 +39,7 @@ typedef enum {
     NODE_BINARY,
 
     NODE_IF,
+    NODE_FOR,
     NODE_BLOCK,
     NODE_RETURN,
 
@@ -86,6 +87,14 @@ typedef struct {
     Node *consequence;
     Node *antecedence;
 } NodeIf;
+
+typedef struct {
+    Node  node;
+    Node *init;
+    Node *condition;
+    Node *update;
+    Node *body;
+} NodeFor;
 
 typedef struct {
     Node  node;
