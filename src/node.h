@@ -23,6 +23,7 @@ typedef enum {
 
 typedef struct {
     TypeKind kind;
+    size_t   ref;
     Node    *spec;
     QbeType  qbe;
 } Type;
@@ -31,6 +32,7 @@ const char *type_to_cstr(Type type);
 
 bool type_eq(Type a, Type b);
 bool type_is_integer(Type type);
+bool type_is_pointer(Type type);
 
 typedef enum {
     NODE_ATOM,
