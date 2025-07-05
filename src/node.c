@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 5, "");
+static_assert(COUNT_TYPES == 12, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -17,8 +17,36 @@ const char *type_to_cstr(Type type) {
         temp_sprintf("bool");
         break;
 
+    case TYPE_I8:
+        temp_sprintf("i8");
+        break;
+
+    case TYPE_I16:
+        temp_sprintf("i16");
+        break;
+
+    case TYPE_I32:
+        temp_sprintf("i32");
+        break;
+
     case TYPE_I64:
         temp_sprintf("i64");
+        break;
+
+    case TYPE_U8:
+        temp_sprintf("u8");
+        break;
+
+    case TYPE_U16:
+        temp_sprintf("u16");
+        break;
+
+    case TYPE_U32:
+        temp_sprintf("u32");
+        break;
+
+    case TYPE_U64:
+        temp_sprintf("u64");
         break;
 
     case TYPE_RAWPTR:
@@ -56,7 +84,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 5, "");
+static_assert(COUNT_TYPES == 12, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -85,13 +113,45 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 5, "");
+static_assert(COUNT_TYPES == 12, "");
+bool type_is_signed(Type type) {
+    if (type.ref != 0) {
+        return false;
+    }
+
+    switch (type.kind) {
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static_assert(COUNT_TYPES == 12, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
     }
 
-    return type.kind == TYPE_I64;
+    switch (type.kind) {
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+        return true;
+
+    default:
+        return false;
+    }
 }
 
 bool type_is_pointer(Type type) {

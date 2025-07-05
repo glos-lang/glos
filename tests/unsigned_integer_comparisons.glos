@@ -1,0 +1,8 @@
+fn main() {
+    var a = <u64> 1
+    var b = <u64> 0
+    var c = <u64> -1
+
+    print a > b
+    print a > c
+}

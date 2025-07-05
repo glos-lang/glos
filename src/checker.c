@@ -68,12 +68,12 @@ static bool is_type_cast_illegal(Node *from_node, Node *to_node) {
 
     // Not 64 Bit Integer -> Pointer
     if (!type_is_pointer(from) && type_is_pointer(to)) {
-        return from.kind != TYPE_I64;
+        return from.kind != TYPE_I64 && from.kind != TYPE_U64;
     }
 
     // Pointer -> Not 64 Bit Integer
     if (!type_is_pointer(to) && type_is_pointer(from)) {
-        return to.kind != TYPE_I64;
+        return to.kind != TYPE_I64 && to.kind != TYPE_U64;
     }
 
     return false;
@@ -106,7 +106,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
 }
 
 static_assert(COUNT_NODES == 13, "");
-static_assert(COUNT_TYPES == 5, "");
+static_assert(COUNT_TYPES == 12, "");
 static void check_type(Node *n) {
     if (!n) {
         return;
@@ -116,8 +116,22 @@ static void check_type(Node *n) {
     case NODE_ATOM:
         if (sv_match(n->token.sv, "bool")) {
             n->type = (Type) {.kind = TYPE_BOOL};
+        } else if (sv_match(n->token.sv, "i8")) {
+            n->type = (Type) {.kind = TYPE_I8};
+        } else if (sv_match(n->token.sv, "i16")) {
+            n->type = (Type) {.kind = TYPE_I16};
+        } else if (sv_match(n->token.sv, "i32")) {
+            n->type = (Type) {.kind = TYPE_I32};
         } else if (sv_match(n->token.sv, "i64")) {
             n->type = (Type) {.kind = TYPE_I64};
+        } else if (sv_match(n->token.sv, "u8")) {
+            n->type = (Type) {.kind = TYPE_U8};
+        } else if (sv_match(n->token.sv, "u16")) {
+            n->type = (Type) {.kind = TYPE_U16};
+        } else if (sv_match(n->token.sv, "u32")) {
+            n->type = (Type) {.kind = TYPE_U32};
+        } else if (sv_match(n->token.sv, "u64")) {
+            n->type = (Type) {.kind = TYPE_U64};
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
