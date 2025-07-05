@@ -1,5 +1,4 @@
 #include "parser.h"
-#include "node.h"
 
 static void nodes_push(Nodes *ns, Node *n) {
     if (ns->tail) {
@@ -21,7 +20,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_LPAREN:
@@ -51,7 +50,7 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 12, "");
+static_assert(COUNT_NODES == 13, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom),
@@ -59,6 +58,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
         [NODE_BINARY] = sizeof(NodeBinary),
+        [NODE_SIZEOF] = sizeof(NodeSizeof),
 
         [NODE_IF] = sizeof(NodeIf),
         [NODE_FOR] = sizeof(NodeFor),
@@ -86,7 +86,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -99,7 +99,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -150,7 +150,7 @@ static Node *parse_type(Parser *p) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static Node *parse_expr(Parser *p, Power mbp) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -168,6 +168,23 @@ static Node *parse_expr(Parser *p, Power mbp) {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
         unary->operand = parse_expr(p, POWER_PRE);
         node = (Node *) unary;
+    } break;
+
+    case TOKEN_SIZEOF: {
+        NodeSizeof *sizeoff = node_alloc(p, NODE_SIZEOF, token);
+
+        token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LT);
+        if (token.kind == TOKEN_LPAREN) {
+            sizeoff->expr = parse_expr(p, POWER_SET);
+            lexer_expect(&p->lexer, TOKEN_RPAREN);
+        } else if (token.kind == TOKEN_LT) {
+            sizeoff->type = parse_type(p);
+            lexer_expect(&p->lexer, TOKEN_GT);
+        } else {
+            unreachable();
+        }
+
+        node = (Node *) sizeoff;
     } break;
 
     case TOKEN_LT: {
@@ -250,7 +267,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

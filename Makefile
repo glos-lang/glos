@@ -24,4 +24,4 @@ bin:
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(QBELIB):
-	cd src/libqbe && make
+	$(MAKE) -C src/libqbe
