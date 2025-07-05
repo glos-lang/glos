@@ -1,6 +1,6 @@
 EXIT 1
 STDOUT 0
 
-STDERR 117
-error_untyped_integer_literal_auto_cast_too_large.glos:1:12: ERROR: Integer literal '420' is too large for type 'i8'
+STDERR 115
+error_untyped_integer_literal_auto_cast_too_large.glos:1:12: ERROR: Integer value '420' is too large for type 'i8'
 

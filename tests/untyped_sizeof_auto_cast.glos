@@ -1,0 +1,7 @@
+fn foo(x u8) {
+    print x
+}
+
+fn main() {
+    foo(sizeof<rawptr>)
+}

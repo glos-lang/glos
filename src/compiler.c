@@ -1,5 +1,4 @@
 #include "compiler.h"
-#include "qbe.h"
 
 typedef struct {
     Qbe   *qbe;
@@ -8,9 +7,10 @@ typedef struct {
 
 static_assert(COUNT_TYPES == 13, "");
 static void compile_type(Type *type) {
-    if (!type) {
+    if (!type || type->compiled) {
         return;
     }
+    type->compiled = true;
 
     if (type_is_pointer(*type)) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
@@ -54,6 +54,11 @@ static void compile_type(Type *type) {
     default:
         unreachable();
     }
+}
+
+size_t compile_sizeof(Type *type) {
+    compile_type(type);
+    return qbe_sizeof(type->qbe);
 }
 
 static void compile_stmt(Compiler *c, Node *n);

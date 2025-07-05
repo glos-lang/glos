@@ -1,41 +1,45 @@
 #include <stdint.h>
 
 #include "checker.h"
+#include "compiler.h"
+
+static void check_int_limit(Node *n, size_t value) {
+    static_assert(COUNT_TYPES == 13, "");
+    const size_t int_limits[COUNT_TYPES] = {
+        [TYPE_I8] = INT8_MAX,
+        [TYPE_I16] = INT16_MAX,
+        [TYPE_I32] = INT32_MAX,
+        [TYPE_I64] = INT64_MAX,
+
+        [TYPE_U8] = UINT8_MAX,
+        [TYPE_U16] = UINT16_MAX,
+        [TYPE_U32] = UINT32_MAX,
+        [TYPE_U64] = UINT64_MAX,
+
+        [TYPE_INT] = INT64_MAX,
+    };
+
+    if (value > int_limits[n->type.kind]) {
+        fprintf(
+            stderr,
+            PosFmt "ERROR: Integer value '%zu' is too large for type '%s'\n",
+            PosArg(n->token.pos),
+            value,
+            type_to_cstr(n->type));
+
+        exit(1);
+    }
+}
 
 static_assert(COUNT_NODES == 13, "");
 static void cast_untyped_int(Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
         switch (n->token.kind) {
-        case TOKEN_INT: {
+        case TOKEN_INT:
             n->type = expected;
-
-            static_assert(COUNT_TYPES == 13, "");
-            const size_t int_limits[COUNT_TYPES] = {
-                [TYPE_I8] = INT8_MAX,
-                [TYPE_I16] = INT16_MAX,
-                [TYPE_I32] = INT32_MAX,
-                [TYPE_I64] = INT64_MAX,
-
-                [TYPE_U8] = UINT8_MAX,
-                [TYPE_U16] = UINT16_MAX,
-                [TYPE_U32] = UINT32_MAX,
-                [TYPE_U64] = UINT64_MAX,
-
-                [TYPE_INT] = INT64_MAX,
-            };
-
-            if (n->token.as.integer > int_limits[n->type.kind]) {
-                fprintf(
-                    stderr,
-                    PosFmt "ERROR: Integer literal '" SVFmt "' is too large for type '%s'\n",
-                    PosArg(n->token.pos),
-                    SVArg(n->token.sv),
-                    type_to_cstr(n->type));
-
-                exit(1);
-            }
-        } break;
+            check_int_limit(n, n->token.as.integer);
+            break;
 
         default:
             unreachable();
@@ -53,6 +57,20 @@ static void cast_untyped_int(Node *n, Type expected) {
         cast_untyped_int(binary->lhs, expected);
         cast_untyped_int(binary->rhs, expected);
         n->type = expected;
+    } break;
+
+    case NODE_SIZEOF: {
+        NodeSizeof *sizeoff = (NodeSizeof *) n;
+        n->type = expected;
+
+        Type *type = NULL;
+        if (sizeoff->type) {
+            type = &sizeoff->type->type;
+        } else {
+            type = &sizeoff->expr->type;
+        }
+
+        check_int_limit(n, compile_sizeof(type));
     } break;
 
     case NODE_RETURN: {
@@ -460,7 +478,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
         check_type(sizeoff->type);
         check_expr(c, sizeoff->expr, false);
-        n->type = (Type) {.kind = TYPE_I64};
+        n->type = (Type) {.kind = TYPE_INT};
     } break;
 
     case NODE_FN:

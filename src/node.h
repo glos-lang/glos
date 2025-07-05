@@ -37,7 +37,9 @@ typedef struct {
     TypeKind kind;
     size_t   ref;
     Node    *spec;
-    QbeType  qbe;
+
+    bool    compiled;
+    QbeType qbe;
 } Type;
 
 const char *type_to_cstr(Type type);
