@@ -25,6 +25,7 @@ typedef enum {
     TYPE_U32,
     TYPE_U64,
 
+    TYPE_INT,
     TYPE_RAWPTR,
 
     TYPE_FN,
@@ -45,6 +46,8 @@ bool type_eq(Type a, Type b);
 bool type_is_signed(Type type);
 bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
+
+Type type_remove_ref(Type type);
 
 typedef enum {
     NODE_ATOM,

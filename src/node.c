@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -30,6 +30,7 @@ const char *type_to_cstr(Type type) {
         break;
 
     case TYPE_I64:
+    case TYPE_INT:
         temp_sprintf("i64");
         break;
 
@@ -84,7 +85,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -113,7 +114,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -124,6 +125,7 @@ bool type_is_signed(Type type) {
     case TYPE_I16:
     case TYPE_I32:
     case TYPE_I64:
+    case TYPE_INT:
         return true;
 
     default:
@@ -131,7 +133,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
@@ -147,6 +149,8 @@ bool type_is_integer(Type type) {
     case TYPE_U16:
     case TYPE_U32:
     case TYPE_U64:
+
+    case TYPE_INT:
         return true;
 
     default:
@@ -156,6 +160,11 @@ bool type_is_integer(Type type) {
 
 bool type_is_pointer(Type type) {
     return type.ref != 0 || type.kind == TYPE_RAWPTR;
+}
+
+Type type_remove_ref(Type type) {
+    type.ref = 0;
+    return type;
 }
 
 Type node_fn_return_type(const NodeFn *fn) {

@@ -6,7 +6,7 @@ typedef struct {
     QbeFn *fn;
 } Compiler;
 
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 static void compile_type(Type *type) {
     if (!type) {
         return;
@@ -43,6 +43,7 @@ static void compile_type(Type *type) {
 
     case TYPE_I64:
     case TYPE_U64:
+    case TYPE_INT:
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
         break;
 

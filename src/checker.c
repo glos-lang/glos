@@ -1,8 +1,101 @@
+#include <stdint.h>
+
 #include "checker.h"
+
+static_assert(COUNT_NODES == 13, "");
+static void cast_untyped_int(Node *n, Type expected) {
+    switch (n->kind) {
+    case NODE_ATOM:
+        switch (n->token.kind) {
+        case TOKEN_INT: {
+            n->type = expected;
+
+            static_assert(COUNT_TYPES == 13, "");
+            const size_t int_limits[COUNT_TYPES] = {
+                [TYPE_I8] = INT8_MAX,
+                [TYPE_I16] = INT16_MAX,
+                [TYPE_I32] = INT32_MAX,
+                [TYPE_I64] = INT64_MAX,
+
+                [TYPE_U8] = UINT8_MAX,
+                [TYPE_U16] = UINT16_MAX,
+                [TYPE_U32] = UINT32_MAX,
+                [TYPE_U64] = UINT64_MAX,
+
+                [TYPE_INT] = INT64_MAX,
+            };
+
+            if (n->token.as.integer > int_limits[n->type.kind]) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Integer literal '" SVFmt "' is too large for type '%s'\n",
+                    PosArg(n->token.pos),
+                    SVArg(n->token.sv),
+                    type_to_cstr(n->type));
+
+                exit(1);
+            }
+        } break;
+
+        default:
+            unreachable();
+        }
+        break;
+
+    case NODE_UNARY: {
+        NodeUnary *unary = (NodeUnary *) n;
+        cast_untyped_int(unary->operand, expected);
+        n->type = expected;
+    } break;
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+        cast_untyped_int(binary->lhs, expected);
+        cast_untyped_int(binary->rhs, expected);
+        n->type = expected;
+    } break;
+
+    case NODE_RETURN: {
+        NodeReturn *ret = (NodeReturn *) n;
+        cast_untyped_int(ret->value, expected);
+        n->type = ret->value->type;
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
+static bool try_auto_cast_untyped_int(Node *n, Type expected) {
+    // If the types are already equal, consider it a succesful auto cast
+    if (type_eq(n->type, expected)) {
+        return true;
+    }
+
+    // Untyped integer -> Typed integer
+    if (type_is_integer(type_remove_ref(expected)) && n->type.kind == TYPE_INT) {
+        // The indirection level of the typed and untyped integers must match
+        if (expected.ref != n->type.ref) {
+            return false;
+        }
+
+        if (expected.kind != TYPE_INT) {
+            cast_untyped_int(n, expected);
+        }
+
+        return true;
+    }
+
+    return false;
+}
 
 static Type type_assert(Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return n->type;
+    }
+
+    if (try_auto_cast_untyped_int(n, expected)) {
+        return expected;
     }
 
     fprintf(
@@ -18,6 +111,14 @@ static Type type_assert(Node *n, Type expected) {
 static Type type_assert_node(Node *a, Node *b) {
     if (type_eq(a->type, b->type)) {
         return a->type;
+    }
+
+    if (try_auto_cast_untyped_int(b, a->type)) {
+        return a->type;
+    }
+
+    if (try_auto_cast_untyped_int(a, b->type)) {
+        return b->type;
     }
 
     fprintf(
@@ -68,12 +169,12 @@ static bool is_type_cast_illegal(Node *from_node, Node *to_node) {
 
     // Not 64 Bit Integer -> Pointer
     if (!type_is_pointer(from) && type_is_pointer(to)) {
-        return from.kind != TYPE_I64 && from.kind != TYPE_U64;
+        return from.kind != TYPE_I64 && from.kind != TYPE_U64 && from.kind != TYPE_INT;
     }
 
     // Pointer -> Not 64 Bit Integer
     if (!type_is_pointer(to) && type_is_pointer(from)) {
-        return to.kind != TYPE_I64 && to.kind != TYPE_U64;
+        return to.kind != TYPE_I64 && to.kind != TYPE_U64 && to.kind != TYPE_INT;
     }
 
     return false;
@@ -106,7 +207,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
 }
 
 static_assert(COUNT_NODES == 13, "");
-static_assert(COUNT_TYPES == 12, "");
+static_assert(COUNT_TYPES == 13, "");
 static void check_type(Node *n) {
     if (!n) {
         return;
@@ -179,7 +280,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
         static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_INT:
-            n->type = (Type) {.kind = TYPE_I64};
+            n->type = (Type) {.kind = TYPE_INT};
             break;
 
         case TOKEN_BOOL:
@@ -521,6 +622,10 @@ static void check_stmt(Context *c, Node *n) {
             if (var->type) {
                 type_assert(var->expr, var->type->type);
                 n->type = var->expr->type;
+            }
+
+            if (n->type.kind == TYPE_INT) {
+                n->type.kind = TYPE_I64;
             }
         }
 
