@@ -1,0 +1,6 @@
+EXIT 69
+STDOUT 0
+
+STDERR 2
+E
+

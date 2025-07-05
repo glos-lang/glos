@@ -31,7 +31,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static void cast_untyped_int(Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -224,7 +224,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static_assert(COUNT_TYPES == 13, "");
 static void check_type(Node *n) {
     if (!n) {
@@ -284,7 +284,7 @@ static void check_type(Node *n) {
 
 static void check_fn(Context *c, Node *n);
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static void check_expr(Context *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -295,7 +295,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -393,7 +393,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -437,7 +437,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -501,7 +501,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -553,7 +553,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static void check_stmt(Context *c, Node *n) {
     if (!n) {
         return;
@@ -647,11 +647,33 @@ static void check_stmt(Context *c, Node *n) {
             }
         }
 
-        if (var->kind == NODE_VAR_GLOBAL) {
-            da_push(&c->globals, n);
-        } else {
+        switch (var->kind) {
+        case NODE_VAR_ARG:
+            if (!c->in_extern) {
+                da_push(&c->locals, n);
+            }
+            break;
+
+        case NODE_VAR_LOCAL:
             da_push(&c->locals, n);
+            break;
+
+        case NODE_VAR_GLOBAL:
+            da_push(&c->globals, n);
+            break;
+
+        default:
+            unreachable();
         }
+    } break;
+
+    case NODE_EXTERN: {
+        NodeExtern *externn = (NodeExtern *) n;
+        c->in_extern = true;
+        for (Node *it = externn->nodes.head; it; it = it->next) {
+            check_stmt(c, it);
+        }
+        c->in_extern = false;
     } break;
 
     case NODE_PRINT: {
@@ -692,11 +714,13 @@ static void check_fn(Context *c, Node *n) {
     }
 
     check_type(fn->ret);
-    check_stmt(c, fn->body);
 
-    if (fn->ret && !always_returns(fn->body)) {
-        fprintf(stderr, PosFmt "ERROR: Expected return statement\n", PosArg(fn->body->token.pos));
-        exit(1);
+    if (fn->body) {
+        check_stmt(c, fn->body);
+        if (fn->ret && !always_returns(fn->body)) {
+            fprintf(stderr, PosFmt "ERROR: Expected return statement\n", PosArg(fn->body->token.pos));
+            exit(1);
+        }
     }
 
     context_fn_end(c, context_fn_save);
