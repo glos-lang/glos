@@ -1,0 +1,18 @@
+fn main() {
+    var a = <u8> 69
+    var b = <u16> 420
+    var c = <u32> 1337
+    var d = <u64> 80085
+
+    print a
+    print sizeof(a)
+
+    print b
+    print sizeof(b)
+
+    print c
+    print sizeof(c)
+
+    print d
+    print sizeof(d)
+}

@@ -14,7 +14,18 @@ typedef struct {
 typedef enum {
     TYPE_UNIT,
     TYPE_BOOL,
+
+    TYPE_I8,
+    TYPE_I16,
+    TYPE_I32,
     TYPE_I64,
+
+    TYPE_U8,
+    TYPE_U16,
+    TYPE_U32,
+    TYPE_U64,
+
+    TYPE_INT,
     TYPE_RAWPTR,
 
     TYPE_FN,
@@ -26,14 +37,19 @@ typedef struct {
     TypeKind kind;
     size_t   ref;
     Node    *spec;
-    QbeType  qbe;
+
+    bool    compiled;
+    QbeType qbe;
 } Type;
 
 const char *type_to_cstr(Type type);
 
 bool type_eq(Type a, Type b);
+bool type_is_signed(Type type);
 bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
+
+Type type_remove_ref(Type type);
 
 typedef enum {
     NODE_ATOM,

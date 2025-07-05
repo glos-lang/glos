@@ -1,16 +1,16 @@
 #include "compiler.h"
-#include "qbe.h"
 
 typedef struct {
     Qbe   *qbe;
     QbeFn *fn;
 } Compiler;
 
-static_assert(COUNT_TYPES == 5, "");
+static_assert(COUNT_TYPES == 13, "");
 static void compile_type(Type *type) {
-    if (!type) {
+    if (!type || type->compiled) {
         return;
     }
+    type->compiled = true;
 
     if (type_is_pointer(*type)) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
@@ -26,7 +26,24 @@ static void compile_type(Type *type) {
         type->qbe = qbe_type_basic(QBE_TYPE_I8);
         break;
 
+    case TYPE_I8:
+    case TYPE_U8:
+        type->qbe = qbe_type_basic(QBE_TYPE_I8);
+        break;
+
+    case TYPE_I16:
+    case TYPE_U16:
+        type->qbe = qbe_type_basic(QBE_TYPE_I16);
+        break;
+
+    case TYPE_I32:
+    case TYPE_U32:
+        type->qbe = qbe_type_basic(QBE_TYPE_I32);
+        break;
+
     case TYPE_I64:
+    case TYPE_U64:
+    case TYPE_INT:
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
         break;
 
@@ -37,6 +54,11 @@ static void compile_type(Type *type) {
     default:
         unreachable();
     }
+}
+
+size_t compile_sizeof(Type *type) {
+    compile_type(type);
+    return qbe_sizeof(type->qbe);
 }
 
 static void compile_stmt(Compiler *c, Node *n);
@@ -80,7 +102,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     return var->qbe;
                 }
 
-                return qbe_build_load(c->qbe, c->fn, var->qbe, n->type.qbe);
+                return qbe_build_load(c->qbe, c->fn, var->qbe, n->type.qbe, type_is_signed(n->type));
             }
 
             default:
@@ -113,7 +135,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_NE, n->type.qbe, from, zero);
         }
 
-        return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, true); // TODO: Signedness
+        return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, type_is_signed(n->type));
     }
 
     case NODE_UNARY: {
@@ -131,7 +153,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             if (ref) {
                 return operand;
             }
-            return qbe_build_load(c->qbe, c->fn, operand, n->type.qbe);
+            return qbe_build_load(c->qbe, c->fn, operand, n->type.qbe, type_is_signed(n->type));
         }
 
         case TOKEN_BAND:
@@ -168,7 +190,13 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_DIV: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SDIV, n->type.qbe, lhs, rhs);
+            return qbe_build_binary(
+                c->qbe,
+                c->fn,
+                type_is_signed(binary->lhs->type) ? QBE_BINARY_SDIV : QBE_BINARY_UDIV,
+                n->type.qbe,
+                lhs,
+                rhs);
         }
 
         case TOKEN_SET: {
@@ -181,25 +209,49 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_GT: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SGT, n->type.qbe, lhs, rhs);
+            return qbe_build_binary(
+                c->qbe,
+                c->fn,
+                type_is_signed(binary->lhs->type) ? QBE_BINARY_SGT : QBE_BINARY_UGT,
+                n->type.qbe,
+                lhs,
+                rhs);
         }
 
         case TOKEN_GE: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SGE, n->type.qbe, lhs, rhs);
+            return qbe_build_binary(
+                c->qbe,
+                c->fn,
+                type_is_signed(binary->lhs->type) ? QBE_BINARY_SGE : QBE_BINARY_UGE,
+                n->type.qbe,
+                lhs,
+                rhs);
         }
 
         case TOKEN_LT: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLT, n->type.qbe, lhs, rhs);
+            return qbe_build_binary(
+                c->qbe,
+                c->fn,
+                type_is_signed(binary->lhs->type) ? QBE_BINARY_SLT : QBE_BINARY_ULT,
+                n->type.qbe,
+                lhs,
+                rhs);
         }
 
         case TOKEN_LE: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLE, n->type.qbe, lhs, rhs);
+            return qbe_build_binary(
+                c->qbe,
+                c->fn,
+                type_is_signed(binary->lhs->type) ? QBE_BINARY_SLE : QBE_BINARY_ULE,
+                n->type.qbe,
+                lhs,
+                rhs);
         }
 
         case TOKEN_EQ: {
@@ -406,16 +458,20 @@ static void compile_stmt(Compiler *c, Node *n) {
             fn = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("printf"), qbe_type_basic(QBE_TYPE_I64));
         }
 
-        static QbeNode *fmt;
-        if (!fmt) {
-            fmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%ld\n"));
+        static QbeNode *sfmt;
+        if (!sfmt) {
+            sfmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%ld\n"));
         }
 
-        QbeCall *call = qbe_build_call(c->qbe, c->fn, fn, qbe_type_basic(QBE_TYPE_I32));
-        qbe_call_add_arg(c->qbe, call, fmt);
-        qbe_call_start_variadic(c->qbe, call);
+        static QbeNode *ufmt;
+        if (!ufmt) {
+            ufmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%zu\n"));
+        }
 
         QbeNode *operand = compile_expr(c, print->operand, false);
+        QbeCall *call = qbe_build_call(c->qbe, c->fn, fn, qbe_type_basic(QBE_TYPE_I32));
+        qbe_call_add_arg(c->qbe, call, type_is_signed(print->operand->type) ? sfmt : ufmt);
+        qbe_call_start_variadic(c->qbe, call);
         qbe_call_add_arg(c->qbe, call, qbe_build_cast(c->qbe, c->fn, operand, QBE_TYPE_I64, true));
     } break;
 
