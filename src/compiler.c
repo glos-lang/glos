@@ -63,7 +63,7 @@ size_t compile_sizeof(Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -74,7 +74,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, n->token.as.integer);
@@ -141,7 +141,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -167,7 +167,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 31, "");
         switch (n->token.kind) {
         case TOKEN_ADD: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
@@ -296,7 +296,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -387,6 +387,11 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
+        if (!fn->body) {
+            const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
+            fn->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
+            return;
+        }
 
         Type return_type = node_fn_return_type(fn);
         compile_type(&return_type);
@@ -433,7 +438,10 @@ static void compile_stmt(Compiler *c, Node *n) {
         NodeVar *var = (NodeVar *) n;
 
         compile_type(&n->type);
-        if (var->kind == NODE_VAR_GLOBAL) {
+        if (var->is_extern) {
+            const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
+            var->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
+        } else if (var->kind == NODE_VAR_GLOBAL) {
             var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe);
         } else {
             var->qbe = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
@@ -447,6 +455,13 @@ static void compile_stmt(Compiler *c, Node *n) {
                 qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
                 qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I64, qbe_sizeof(n->type.qbe)));
             }
+        }
+    } break;
+
+    case NODE_EXTERN: {
+        NodeExtern *externn = (NodeExtern *) n;
+        for (Node *it = externn->nodes.head; it; it = it->next) {
+            compile_stmt(c, it);
         }
     } break;
 

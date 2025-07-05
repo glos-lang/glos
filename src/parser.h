@@ -9,6 +9,7 @@ typedef struct {
     Lexer  lexer;
 
     bool local;
+    bool in_extern;
     bool dont_consume_eols;
 
     Nodes nodes;

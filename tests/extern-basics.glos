@@ -1,0 +1,10 @@
+fn main() {
+    extern {
+        fn exit(code i32)
+        fn putchar(ch i32) i32
+    }
+
+    putchar(69)
+    putchar(10)
+    exit(69)
+}

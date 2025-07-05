@@ -21,6 +21,8 @@ typedef struct {
     Scope globals;
 
     ContextFn fn;
+
+    bool in_extern;
 } Context;
 
 ContextFn context_fn_begin(Context *c, NodeFn *fn);

@@ -20,7 +20,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_LPAREN:
@@ -50,7 +50,7 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 13, "");
+static_assert(COUNT_NODES == 14, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom),
@@ -68,6 +68,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
 
         [NODE_FN] = sizeof(NodeFn),
         [NODE_VAR] = sizeof(NodeVar),
+        [NODE_EXTERN] = sizeof(NodeExtern),
 
         [NODE_PRINT] = sizeof(NodePrint),
     };
@@ -86,7 +87,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -99,7 +100,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -150,7 +151,7 @@ static Node *parse_type(Parser *p) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 static Node *parse_expr(Parser *p, Power mbp) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -267,7 +268,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -355,13 +356,18 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_VAR: {
         NodeVar *var = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
-        token = lexer_peek(&p->lexer);
-        if (token.kind != TOKEN_SET) {
+        if (p->in_extern) {
             var->type = parse_type(p);
-        }
+            var->is_extern = true;
+        } else {
+            token = lexer_peek(&p->lexer);
+            if (token.kind != TOKEN_SET) {
+                var->type = parse_type(p);
+            }
 
-        if (lexer_read(&p->lexer, TOKEN_SET)) {
-            var->expr = parse_expr(p, POWER_SET);
+            if (lexer_read(&p->lexer, TOKEN_SET)) {
+                var->expr = parse_expr(p, POWER_SET);
+            }
         }
 
         if (p->local) {
@@ -369,7 +375,38 @@ static Node *parse_stmt(Parser *p) {
         } else {
             var->kind = NODE_VAR_GLOBAL;
         }
+
         node = (Node *) var;
+    } break;
+
+    case TOKEN_EXTERN: {
+        assert(!p->in_extern);
+        p->in_extern = true;
+
+        NodeExtern *externn = node_alloc(p, NODE_EXTERN, token);
+
+        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_LBRACE);
+        switch (token.kind) {
+        case TOKEN_FN:
+        case TOKEN_VAR:
+            lexer_buffer(&p->lexer, token);
+            nodes_push(&externn->nodes, parse_stmt(p));
+            break;
+
+        case TOKEN_LBRACE:
+            while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+                token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR);
+                lexer_buffer(&p->lexer, token);
+                nodes_push(&externn->nodes, parse_stmt(p));
+            }
+            break;
+
+        default:
+            unreachable();
+        }
+
+        p->in_extern = false;
+        node = (Node *) externn;
     } break;
 
     case TOKEN_PRINT: {
@@ -419,8 +456,10 @@ static Node *parse_fn(Parser *p, Token token) {
         fn->ret = parse_type(p);
     }
 
-    lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
-    fn->body = parse_stmt(p);
+    if (!p->in_extern) {
+        lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
+        fn->body = parse_stmt(p);
+    }
 
     p->local = local_save;
     return (Node *) fn;

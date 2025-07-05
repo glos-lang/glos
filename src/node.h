@@ -66,6 +66,7 @@ typedef enum {
 
     NODE_FN,
     NODE_VAR,
+    NODE_EXTERN,
 
     NODE_PRINT,
     COUNT_NODES
@@ -155,9 +156,9 @@ typedef struct {
 Type node_fn_return_type(const NodeFn *fn);
 
 typedef enum {
-    NODE_VAR_GLOBAL,
-    NODE_VAR_LOCAL,
     NODE_VAR_ARG,
+    NODE_VAR_LOCAL,
+    NODE_VAR_GLOBAL,
 } NodeVarKind;
 
 typedef struct {
@@ -166,9 +167,16 @@ typedef struct {
     Node *expr;
     Node *type;
 
+    bool        is_extern;
     NodeVarKind kind;
-    QbeNode    *qbe;
+
+    QbeNode *qbe;
 } NodeVar;
+
+typedef struct {
+    Node  node;
+    Nodes nodes;
+} NodeExtern;
 
 typedef struct {
     Node  node;

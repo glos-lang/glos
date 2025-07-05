@@ -101,7 +101,7 @@ static void error_invalid(Pos pos, char ch, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 31, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -172,6 +172,8 @@ Token lexer_next(Lexer *l) {
             token.kind = TOKEN_FN;
         } else if (sv_match(token.sv, "var")) {
             token.kind = TOKEN_VAR;
+        } else if (sv_match(token.sv, "extern")) {
+            token.kind = TOKEN_EXTERN;
         } else if (sv_match(token.sv, "print")) {
             token.kind = TOKEN_PRINT;
         } else {
