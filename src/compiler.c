@@ -527,7 +527,7 @@ static NodeFn *get_main(Context *c) {
     return main_fn;
 }
 
-void compile_nodes(Context *context, const char *output) {
+void compile_nodes(Context *context, const char *output, const char **flags, size_t flags_count) {
     NodeFn *main = get_main(context);
 
     Compiler c = {0};
@@ -561,7 +561,7 @@ void compile_nodes(Context *context, const char *output) {
     exit(0);
 #endif
 
-    const int code = qbe_generate(c.qbe, QBE_TARGET_DEFAULT, output, NULL, 0);
+    const int code = qbe_generate(c.qbe, QBE_TARGET_DEFAULT, output, flags, flags_count);
     qbe_free(c.qbe);
 
     if (code) {

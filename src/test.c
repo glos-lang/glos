@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
         }
 
         da_push(&cmd, runner);
-        da_push(&cmd, "run");
+        da_push(&cmd, "-r");
         da_push(&cmd, it);
 
         Test actual = {0};
