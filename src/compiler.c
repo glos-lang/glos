@@ -448,12 +448,7 @@ static void compile_stmt(Compiler *c, Node *n) {
             if (var->expr) {
                 qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
             } else {
-                // TODO: Move "zero"-ing logic into LibQBE
-                QbeNode *memset = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("memset"), qbe_type_basic(QBE_TYPE_I64));
-                QbeCall *call = qbe_build_call(c->qbe, c->fn, memset, qbe_type_basic(QBE_TYPE_I64));
-                qbe_call_add_arg(c->qbe, call, var->qbe);
-                qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
-                qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I64, qbe_sizeof(n->type.qbe)));
+                qbe_build_bzero(c->qbe, c->fn, var->qbe, n->type.qbe);
             }
         }
     } break;
