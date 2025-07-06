@@ -12,7 +12,7 @@
 
 // String View
 bool sv_eq(SV a, SV b) {
-    return a.count == b.count && memcmp(&a.data[a.count - b.count], b.data, b.count) == 0;
+    return a.count == b.count && memcmp(a.data, b.data, b.count) == 0;
 }
 
 bool sv_match(SV a, const char *b) {
