@@ -6,15 +6,14 @@
 
 static void usage(FILE *file) {
     fprintf(file, "Usage:\n");
-    fprintf(file, "    glos COMMAND [...]\n");
+    fprintf(file, "    glos [FLAGS...] FILE\n");
     fprintf(file, "\n");
-    fprintf(file, "Commands:\n");
-    fprintf(file, "    help                     Show this message\n");
-    fprintf(file, "    run   FILE               Run the program\n");
-    fprintf(file, "    build [FLAGS...] FILE    Compile the program\n");
-    fprintf(file, "\n");
-    fprintf(file, "Build Flags:\n");
-    fprintf(file, "    -o OUTPUT                Set the output path\n");
+    fprintf(file, "Flags:\n");
+    fprintf(file, "    -h           Show this message\n");
+    fprintf(file, "    -r           Run the program\n");
+    fprintf(file, "    -o OUTPUT    Set the output path\n");
+    fprintf(file, "    -L PATH      Add a library path\n");
+    fprintf(file, "    -l NAME      Add a library\n");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -28,31 +27,63 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
     return *(*argv)++;
 }
 
+typedef struct {
+    const char **data;
+    size_t       count;
+    size_t       capacity;
+} Flags;
+
 int main(int argc, char **argv) {
     int   result = 0;
     Arena arena = {0};
-    shift(&argc, &argv, "Program name");
 
     bool        run = false;
+    Flags       flags = {0};
     const char *input = NULL;
     const char *output = NULL;
-    const char *command = shift(&argc, &argv, "Command");
-    if (!strcmp(command, "help")) {
-        usage(stdout);
-        exit(0);
-    } else if (!strcmp(command, "run")) {
-        run = true;
-        input = shift(&argc, &argv, "Input file");
-    } else if (!strcmp(command, "build")) {
-        input = shift(&argc, &argv, "Input file");
-        if (!strcmp(input, "-o")) {
-            output = shift(&argc, &argv, "Output file");
-            input = shift(&argc, &argv, "Input file");
+
+    shift(&argc, &argv, "Program name");
+    while (!input || argc) {
+        const char *arg = shift(&argc, &argv, "Input file");
+        if (arg[0] == '-') {
+            if (!strcmp(arg, "-h")) {
+                usage(stdout);
+                exit(0);
+            } else if (!strcmp(arg, "-r")) {
+                run = true;
+            } else if (!strcmp(arg, "-o")) {
+                output = shift(&argc, &argv, "Output file");
+            } else if (!strcmp(arg, "--")) {
+                break;
+            } else if (arg[1] == 'L') {
+                const char *value = &arg[2];
+                if (*value == '\0') {
+                    value = shift(&argc, &argv, "Library path");
+                }
+
+                da_push(&flags, "-L");
+                da_push(&flags, value);
+            } else if (arg[1] == 'l') {
+                const char *value = &arg[2];
+                if (*value == '\0') {
+                    value = shift(&argc, &argv, "Library name");
+                }
+
+                da_push(&flags, "-l");
+                da_push(&flags, value);
+            } else {
+                fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
+                usage(stderr);
+                exit(1);
+            }
+        } else {
+            if (input) {
+                fprintf(stderr, "ERROR: Multiple input files is not supported yet\n");
+                exit(1);
+            }
+
+            input = arg;
         }
-    } else {
-        fprintf(stderr, "ERROR: Invalid command '%s'\n\n", command);
-        usage(stderr);
-        exit(1);
     }
 
     Lexer l = {0};
@@ -68,33 +99,45 @@ int main(int argc, char **argv) {
     check_nodes(&c, p.nodes);
 
     if (run) {
-        static char output[] = "/tmp/glos_run_XXXXXX";
-
-        const int fd = mkstemp(output);
-        if (fd < 0) {
-            fprintf(stderr, "ERROR: Could not create temporary executable\n");
-            exit(1);
+        const bool remove_after = !output;
+        if (output) {
+            if (!strchr(output, '/')) {
+                output = temp_sprintf("./%s", output);
+            }
         } else {
-            close(fd);
-            remove(output); // TODO: The production compiler need not do this
+            static char buffer[] = "/tmp/glos_run_XXXXXX";
+
+            const int fd = mkstemp(buffer);
+            if (fd < 0) {
+                fprintf(stderr, "ERROR: Could not create temporary executable\n");
+                exit(1);
+            } else {
+                close(fd);
+                remove(buffer); // TODO: The production compiler need not do this
+            }
+
+            output = buffer;
         }
-        compile_nodes(&c, output);
+        compile_nodes(&c, output, flags.data, flags.count);
 
         Cmd cmd = {0};
         da_push(&cmd, output);
         da_push_many(&cmd, argv, argc);
-
         result = cmd_run_sync(&cmd, (CmdStdio) {0});
-        remove(output);
         da_free(&cmd);
+
+        if (remove_after) {
+            remove(output);
+        }
     } else {
         if (!output) {
             output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
         }
-        compile_nodes(&c, output);
+        compile_nodes(&c, output, flags.data, flags.count);
     }
 
     context_free(&c);
     arena_free(&arena);
+    da_free(&flags);
     return result;
 }
