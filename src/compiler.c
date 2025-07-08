@@ -1,10 +1,5 @@
 #include "compiler.h"
 
-typedef struct {
-    Qbe   *qbe;
-    QbeFn *fn;
-} Compiler;
-
 static_assert(COUNT_TYPES == 14, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->compiled) {
@@ -52,8 +47,6 @@ static void compile_type(Compiler *c, Type *type) {
         break;
 
     case TYPE_STRUCT: {
-        assert(c); // TODO: sizeof(struct) is not implemented
-
         NodeStruct *spec = (NodeStruct *) type->spec;
         if (!spec->qbe) {
             spec->qbe = qbe_struct_new(c->qbe, false);
@@ -70,11 +63,6 @@ static void compile_type(Compiler *c, Type *type) {
     default:
         unreachable();
     }
-}
-
-size_t compile_sizeof(Type *type) {
-    compile_type(NULL, type);
-    return qbe_sizeof(type->qbe);
 }
 
 static void compile_stmt(Compiler *c, Node *n);
@@ -542,44 +530,50 @@ static NodeFn *get_main(Context *c) {
     return main_fn;
 }
 
-void compile_nodes(Context *context, const char *output, const char **flags, size_t flags_count) {
-    NodeFn *main = get_main(context);
+void compiler_init(Compiler *c) {
+    c->qbe = qbe_new();
+}
 
-    Compiler c = {0};
-    c.qbe = qbe_new();
-
-    for (size_t i = 0; i < context->globals.count; i++) {
-        compile_stmt(&c, context->globals.data[i]);
+void compiler_run(Compiler *c, const char *output, const char **flags, size_t flags_count) {
+    NodeFn *main = get_main(&c->context);
+    for (size_t i = 0; i < c->context.globals.count; i++) {
+        compile_stmt(c, c->context.globals.data[i]);
     }
 
     // Entry
-    c.fn = qbe_fn_new(c.qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
-    qbe_fn_set_debug(c.qbe, c.fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
+    c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
+    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
 
-    for (size_t i = 0; i < context->globals.count; i++) {
-        Node *it = context->globals.data[i];
+    for (size_t i = 0; i < c->context.globals.count; i++) {
+        Node *it = c->context.globals.data[i];
         if (it->kind == NODE_VAR) {
             NodeVar *var = (NodeVar *) it;
             if (var->expr) {
-                qbe_build_store(c.qbe, c.fn, var->qbe, compile_expr(&c, var->expr, false));
+                qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
             }
         }
     }
 
-    qbe_build_call(c.qbe, c.fn, main->qbe, qbe_type_basic(QBE_TYPE_I0));
-    qbe_build_return(c.qbe, c.fn, qbe_atom_int(c.qbe, QBE_TYPE_I32, 0));
+    qbe_build_call(c->qbe, c->fn, main->qbe, qbe_type_basic(QBE_TYPE_I0));
+    qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
 
 #if 0
-    qbe_compile(c.qbe);
-    QbeSV program = qbe_get_compiled_program(c.qbe);
+    qbe_compile(c->qbe);
+    QbeSV program = qbe_get_compiled_program(c->qbe);
     fwrite(program.data, program.count, 1, stdout);
     exit(0);
 #endif
 
-    const int code = qbe_generate(c.qbe, QBE_TARGET_DEFAULT, output, flags, flags_count);
-    qbe_free(c.qbe);
+    const int code = qbe_generate(c->qbe, QBE_TARGET_DEFAULT, output, flags, flags_count);
+    qbe_free(c->qbe);
+    context_free(&c->context);
 
     if (code) {
         exit(code);
     }
+}
+
+size_t compile_sizeof(Compiler *c, Type *type) {
+    compile_type(c, type);
+    return qbe_sizeof(type->qbe);
 }

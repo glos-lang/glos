@@ -1,8 +1,8 @@
 #ifndef CHECKER_H
 #define CHECKER_H
 
-#include "context.h"
+#include "compiler.h"
 
-void check_nodes(Context *c, Nodes ns);
+void check_nodes(Compiler *c, Nodes ns);
 
 #endif // CHECKER_H

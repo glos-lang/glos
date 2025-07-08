@@ -1,7 +1,6 @@
 #include <stdint.h>
 
 #include "checker.h"
-#include "compiler.h"
 
 static void check_int_limit(Node *n, size_t value) {
     static_assert(COUNT_TYPES == 14, "");
@@ -32,7 +31,7 @@ static void check_int_limit(Node *n, size_t value) {
 }
 
 static_assert(COUNT_NODES == 16, "");
-static void cast_untyped_int(Node *n, Type expected) {
+static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
         switch (n->token.kind) {
@@ -48,14 +47,14 @@ static void cast_untyped_int(Node *n, Type expected) {
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
-        cast_untyped_int(unary->operand, expected);
+        cast_untyped_int(c, unary->operand, expected);
         n->type = expected;
     } break;
 
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
-        cast_untyped_int(binary->lhs, expected);
-        cast_untyped_int(binary->rhs, expected);
+        cast_untyped_int(c, binary->lhs, expected);
+        cast_untyped_int(c, binary->rhs, expected);
         n->type = expected;
     } break;
 
@@ -70,12 +69,12 @@ static void cast_untyped_int(Node *n, Type expected) {
             type = &sizeoff->expr->type;
         }
 
-        check_int_limit(n, compile_sizeof(type));
+        check_int_limit(n, compile_sizeof(c, type));
     } break;
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
-        cast_untyped_int(ret->value, expected);
+        cast_untyped_int(c, ret->value, expected);
         n->type = ret->value->type;
     } break;
 
@@ -84,7 +83,7 @@ static void cast_untyped_int(Node *n, Type expected) {
     }
 }
 
-static bool try_auto_cast_untyped_int(Node *n, Type expected) {
+static bool try_auto_cast_untyped_int(Compiler *c, Node *n, Type expected) {
     // If the types are already equal, consider it a succesful auto cast
     if (type_eq(n->type, expected)) {
         return true;
@@ -98,7 +97,7 @@ static bool try_auto_cast_untyped_int(Node *n, Type expected) {
         }
 
         if (expected.kind != TYPE_INT) {
-            cast_untyped_int(n, expected);
+            cast_untyped_int(c, n, expected);
         }
 
         return true;
@@ -107,12 +106,12 @@ static bool try_auto_cast_untyped_int(Node *n, Type expected) {
     return false;
 }
 
-static Type type_assert(Node *n, Type expected) {
+static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return n->type;
     }
 
-    if (try_auto_cast_untyped_int(n, expected)) {
+    if (try_auto_cast_untyped_int(c, n, expected)) {
         return expected;
     }
 
@@ -126,16 +125,16 @@ static Type type_assert(Node *n, Type expected) {
     exit(1);
 }
 
-static Type type_assert_node(Node *a, Node *b) {
+static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     if (type_eq(a->type, b->type)) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped_int(b, a->type)) {
+    if (try_auto_cast_untyped_int(c, b, a->type)) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped_int(a, b->type)) {
+    if (try_auto_cast_untyped_int(c, a, b->type)) {
         return b->type;
     }
 
@@ -226,7 +225,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
 
 static_assert(COUNT_NODES == 16, "");
 static_assert(COUNT_TYPES == 14, "");
-static void check_type(Context *c, Node *n) {
+static void check_type(Compiler *c, Node *n) {
     if (!n) {
         return;
     }
@@ -254,7 +253,7 @@ static void check_type(Context *c, Node *n) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            Node *definition = scope_find(c->types, n->token.sv);
+            Node *definition = scope_find(c->context.types, n->token.sv);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -286,10 +285,10 @@ static void check_type(Context *c, Node *n) {
     }
 }
 
-static void check_fn(Context *c, Node *n);
+static void check_fn(Compiler *c, Node *n);
 
 static_assert(COUNT_NODES == 16, "");
-static void check_expr(Context *c, Node *n, bool ref) {
+static void check_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return;
     }
@@ -310,7 +309,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
             break;
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(c, n->token.sv);
+            atom->definition = ident_find(&c->context, n->token.sv);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -367,7 +366,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
 
         for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
             check_expr(c, a, false);
-            type_assert_node(a, e);
+            type_assert_node(c, a, e);
         }
 
         n->type = node_fn_return_type(expected);
@@ -450,13 +449,13 @@ static void check_expr(Context *c, Node *n, bool ref) {
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
             type_assert_arith(binary->lhs);
-            n->type = type_assert_node(binary->rhs, binary->lhs);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_SET:
             check_expr(c, binary->lhs, true);
             check_expr(c, binary->rhs, false);
-            type_assert_node(binary->rhs, binary->lhs);
+            type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
@@ -469,7 +468,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
             type_assert_arith(binary->lhs);
-            type_assert_node(binary->rhs, binary->lhs);
+            type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
@@ -558,7 +557,7 @@ static bool always_returns(Node *n) {
 }
 
 static_assert(COUNT_NODES == 16, "");
-static void check_stmt(Context *c, Node *n) {
+static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
     }
@@ -567,7 +566,7 @@ static void check_stmt(Context *c, Node *n) {
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
         check_expr(c, iff->condition, false);
-        type_assert(iff->condition, (Type) {.kind = TYPE_BOOL});
+        type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
         check_stmt(c, iff->consequence);
         check_stmt(c, iff->antecedence);
@@ -579,7 +578,7 @@ static void check_stmt(Context *c, Node *n) {
 
         if (forr->condition) {
             check_expr(c, forr->condition, false);
-            type_assert(forr->condition, (Type) {.kind = TYPE_BOOL});
+            type_assert(c, forr->condition, (Type) {.kind = TYPE_BOOL});
         }
 
         check_expr(c, forr->update, false);
@@ -587,16 +586,16 @@ static void check_stmt(Context *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
-        const size_t types_count_save = c->types.count;
-        const size_t locals_count_save = c->locals.count;
+        const size_t types_count_save = c->context.types.count;
+        const size_t locals_count_save = c->context.locals.count;
 
         NodeBlock *block = (NodeBlock *) n;
         for (Node *it = block->body.head; it; it = it->next) {
             check_stmt(c, it);
         }
 
-        c->types.count = types_count_save;
-        c->locals.count = locals_count_save;
+        c->context.types.count = types_count_save;
+        c->context.locals.count = locals_count_save;
     } break;
 
     case NODE_RETURN: {
@@ -608,7 +607,7 @@ static void check_stmt(Context *c, Node *n) {
             n->type = ret->value->type;
         }
 
-        type_assert(n, node_fn_return_type(c->fn.fn));
+        type_assert(c, n, node_fn_return_type(c->context.fn.fn));
     } break;
 
     case NODE_FN:
@@ -618,7 +617,7 @@ static void check_stmt(Context *c, Node *n) {
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
         if (var->kind == NODE_VAR_GLOBAL) {
-            const Node *previous = scope_find(c->globals, n->token.sv);
+            const Node *previous = scope_find(c->context.globals, n->token.sv);
             if (previous) {
                 error_redefinition(n, previous, "identifier");
             }
@@ -644,7 +643,7 @@ static void check_stmt(Context *c, Node *n) {
             }
 
             if (var->type) {
-                type_assert(var->expr, var->type->type);
+                type_assert(c, var->expr, var->type->type);
                 n->type = var->expr->type;
             }
 
@@ -655,17 +654,17 @@ static void check_stmt(Context *c, Node *n) {
 
         switch (var->kind) {
         case NODE_VAR_ARG:
-            if (!c->in_extern) {
-                da_push(&c->locals, n);
+            if (!c->context.in_extern) {
+                da_push(&c->context.locals, n);
             }
             break;
 
         case NODE_VAR_LOCAL:
-            da_push(&c->locals, n);
+            da_push(&c->context.locals, n);
             break;
 
         case NODE_VAR_GLOBAL:
-            da_push(&c->globals, n);
+            da_push(&c->context.globals, n);
             break;
 
         default:
@@ -692,16 +691,16 @@ static void check_stmt(Context *c, Node *n) {
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec = n};
-        da_push(&c->types, n);
+        da_push(&c->context.types, n);
     } break;
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
-        c->in_extern = true;
+        c->context.in_extern = true;
         for (Node *it = externn->nodes.head; it; it = it->next) {
             check_stmt(c, it);
         }
-        c->in_extern = false;
+        c->context.in_extern = false;
     } break;
 
     case NODE_PRINT: {
@@ -716,20 +715,20 @@ static void check_stmt(Context *c, Node *n) {
     }
 }
 
-static void check_fn(Context *c, Node *n) {
+static void check_fn(Compiler *c, Node *n) {
     NodeFn *fn = (NodeFn *) n;
     if (fn->local) {
-        da_push(&c->locals, n);
+        da_push(&c->context.locals, n);
     } else {
-        const Node *previous = scope_find(c->globals, n->token.sv);
+        const Node *previous = scope_find(c->context.globals, n->token.sv);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
-        da_push(&c->globals, n);
+        da_push(&c->context.globals, n);
     }
     n->type = (Type) {.kind = TYPE_FN, .spec = n};
 
-    const ContextFn context_fn_save = context_fn_begin(c, fn);
+    const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
     for (Node *it = fn->args.head; it; it = it->next) {
         if (it->token.kind == TOKEN_IDENT) {
             const Node *previous = nodes_find(fn->args, it->token.sv, it);
@@ -751,10 +750,10 @@ static void check_fn(Context *c, Node *n) {
         }
     }
 
-    context_fn_end(c, context_fn_save);
+    context_fn_end(&c->context, context_fn_save);
 }
 
-void check_nodes(Context *c, Nodes ns) {
+void check_nodes(Compiler *c, Nodes ns) {
     for (Node *it = ns.head; it; it = it->next) {
         check_stmt(c, it);
     }
