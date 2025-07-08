@@ -4,7 +4,7 @@
 #include "compiler.h"
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 13, "");
+    static_assert(COUNT_TYPES == 14, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -31,7 +31,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static void cast_untyped_int(Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -224,9 +224,9 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 14, "");
-static_assert(COUNT_TYPES == 13, "");
-static void check_type(Node *n) {
+static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_TYPES == 14, "");
+static void check_type(Context *c, Node *n) {
     if (!n) {
         return;
     }
@@ -254,13 +254,17 @@ static void check_type(Node *n) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            error_undefined(n, "type");
+            Node *definition = scope_find(c->types, n->token.sv);
+            if (!definition) {
+                error_undefined(n, "type");
+            }
+            n->type = definition->type;
         }
         break;
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
-        check_type(unary->operand);
+        check_type(c, unary->operand);
         n->type = unary->operand->type;
         n->type.ref++;
     } break;
@@ -269,11 +273,11 @@ static void check_type(Node *n) {
         NodeFn *spec = (NodeFn *) n;
         for (Node *it = spec->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
-            check_type(arg->type);
+            check_type(c, arg->type);
             it->type = arg->type->type;
         }
 
-        check_type(spec->ret);
+        check_type(c, spec->ret);
         n->type = (Type) {.kind = TYPE_FN, .spec = n};
     } break;
 
@@ -284,7 +288,7 @@ static void check_type(Node *n) {
 
 static void check_fn(Context *c, Node *n);
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static void check_expr(Context *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -295,7 +299,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -372,7 +376,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
         check_expr(c, cast->from, false);
-        check_type(cast->to);
+        check_type(c, cast->to);
 
         const Type from = type_assert_scalar(cast->from);
         const Type to = type_assert_scalar(cast->to);
@@ -393,7 +397,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -437,7 +441,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -476,7 +480,7 @@ static void check_expr(Context *c, Node *n, bool ref) {
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
-        check_type(sizeoff->type);
+        check_type(c, sizeoff->type);
         check_expr(c, sizeoff->expr, false);
         n->type = (Type) {.kind = TYPE_INT};
     } break;
@@ -501,7 +505,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -553,7 +557,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static void check_stmt(Context *c, Node *n) {
     if (!n) {
         return;
@@ -583,6 +587,7 @@ static void check_stmt(Context *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
+        const size_t types_count_save = c->types.count;
         const size_t locals_count_save = c->locals.count;
 
         NodeBlock *block = (NodeBlock *) n;
@@ -590,6 +595,7 @@ static void check_stmt(Context *c, Node *n) {
             check_stmt(c, it);
         }
 
+        c->types.count = types_count_save;
         c->locals.count = locals_count_save;
     } break;
 
@@ -619,7 +625,7 @@ static void check_stmt(Context *c, Node *n) {
         }
 
         if (var->type) {
-            check_type(var->type);
+            check_type(c, var->type);
             n->type = var->type->type;
         }
 
@@ -665,6 +671,28 @@ static void check_stmt(Context *c, Node *n) {
         default:
             unreachable();
         }
+    } break;
+
+    case NODE_STRUCT: {
+        NodeStruct *structt = (NodeStruct *) n;
+        for (Node *it = structt->fields.head; it; it = it->next) {
+            NodeField *field = (NodeField *) it;
+            check_type(c, field->type);
+
+            it->type = field->type->type;
+            if (it->type.kind == TYPE_UNIT) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Cannot define field with type '%s'\n",
+                    PosArg(it->token.pos),
+                    type_to_cstr(it->type));
+
+                exit(1);
+            }
+        }
+
+        n->type = (Type) {.kind = TYPE_STRUCT, .spec = n};
+        da_push(&c->types, n);
     } break;
 
     case NODE_EXTERN: {
@@ -713,7 +741,7 @@ static void check_fn(Context *c, Node *n) {
         check_stmt(c, it);
     }
 
-    check_type(fn->ret);
+    check_type(c, fn->ret);
 
     if (fn->body) {
         check_stmt(c, fn->body);

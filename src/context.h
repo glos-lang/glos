@@ -17,6 +17,7 @@ typedef struct {
 } ContextFn;
 
 typedef struct {
+    Scope types;
     Scope locals;
     Scope globals;
 

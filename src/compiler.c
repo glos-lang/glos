@@ -5,8 +5,8 @@ typedef struct {
     QbeFn *fn;
 } Compiler;
 
-static_assert(COUNT_TYPES == 13, "");
-static void compile_type(Type *type) {
+static_assert(COUNT_TYPES == 14, "");
+static void compile_type(Compiler *c, Type *type) {
     if (!type || type->compiled) {
         return;
     }
@@ -51,30 +51,46 @@ static void compile_type(Type *type) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
         break;
 
+    case TYPE_STRUCT: {
+        assert(c); // TODO: sizeof(struct) is not implemented
+
+        NodeStruct *spec = (NodeStruct *) type->spec;
+        if (!spec->qbe) {
+            spec->qbe = qbe_struct_new(c->qbe, false);
+            for (Node *it = spec->fields.head; it; it = it->next) {
+                compile_type(c, &it->type);
+                NodeField *field = (NodeField *) it;
+                field->qbe = qbe_struct_add_field(c->qbe, spec->qbe, it->type.qbe);
+            }
+        }
+
+        type->qbe = qbe_type_struct(spec->qbe);
+    } break;
+
     default:
         unreachable();
     }
 }
 
 size_t compile_sizeof(Type *type) {
-    compile_type(type);
+    compile_type(NULL, type);
     return qbe_sizeof(type->qbe);
 }
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
     }
 
-    compile_type(&n->type);
+    compile_type(c, &n->type);
     switch (n->kind) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, n->token.as.integer);
@@ -141,7 +157,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -167,7 +183,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 31, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_ADD: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
@@ -281,7 +297,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             type = &sizeoff->expr->type;
         }
 
-        compile_type(type);
+        compile_type(c, type);
         return qbe_atom_int(c->qbe, n->type.qbe.kind, qbe_sizeof(type->qbe));
     }
 
@@ -296,7 +312,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -394,7 +410,7 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
 
         Type return_type = node_fn_return_type(fn);
-        compile_type(&return_type);
+        compile_type(c, &return_type);
 
         QbeFn *fn_save = c->fn;
         c->fn = qbe_fn_new(c->qbe, (QbeSV) {0}, return_type.qbe);
@@ -402,7 +418,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         for (Node *it = fn->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
-            compile_type(&it->type);
+            compile_type(c, &it->type);
             arg->qbe = qbe_fn_add_arg(c->qbe, c->fn, it->type.qbe);
             if (arg->kind == NODE_VAR_LOCAL) {
                 QbeNode *var = qbe_fn_add_var(c->qbe, c->fn, it->type.qbe);
@@ -437,7 +453,7 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
 
-        compile_type(&n->type);
+        compile_type(c, &n->type);
         if (var->is_extern) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
             var->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
@@ -452,6 +468,10 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
         }
     } break;
+
+    case NODE_STRUCT:
+        // Pass
+        break;
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;

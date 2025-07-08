@@ -20,7 +20,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 32, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_LPAREN:
@@ -50,7 +50,7 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 14, "");
+static_assert(COUNT_NODES == 16, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom),
@@ -68,6 +68,8 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
 
         [NODE_FN] = sizeof(NodeFn),
         [NODE_VAR] = sizeof(NodeVar),
+        [NODE_FIELD] = sizeof(NodeField),
+        [NODE_STRUCT] = sizeof(NodeStruct),
         [NODE_EXTERN] = sizeof(NodeExtern),
 
         [NODE_PRINT] = sizeof(NodePrint),
@@ -87,7 +89,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 32, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -100,7 +102,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 32, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -151,7 +153,7 @@ static Node *parse_type(Parser *p) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 32, "");
 static Node *parse_expr(Parser *p, Power mbp) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -251,8 +253,8 @@ static Node *parse_expr(Parser *p, Power mbp) {
     return node;
 }
 
-static void consume_eols(Parser *p) {
-    while (lexer_read(&p->lexer, TOKEN_EOL));
+static void consume(Parser *p, TokenKind kind) {
+    while (lexer_read(&p->lexer, kind));
 }
 
 static void local_assert(Parser *p, Token token, bool local) {
@@ -268,7 +270,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 32, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -323,12 +325,12 @@ static Node *parse_stmt(Parser *p) {
         }
 
         if (lexer_read(&p->lexer, TOKEN_EOL)) {
-            consume_eols(p);
+            consume(p, TOKEN_EOL);
             forr->init = forr->condition;
             forr->condition = parse_expr(p, POWER_SET);
 
             if (lexer_read(&p->lexer, TOKEN_EOL)) {
-                consume_eols(p);
+                consume(p, TOKEN_EOL);
                 forr->update = parse_expr(p, POWER_NIL);
             }
         }
@@ -379,6 +381,26 @@ static Node *parse_stmt(Parser *p) {
         node = (Node *) var;
     } break;
 
+    case TOKEN_STRUCT: {
+        NodeStruct *structt = node_alloc(p, NODE_STRUCT, lexer_expect(&p->lexer, TOKEN_IDENT));
+
+        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            NodeField *field = node_alloc(p, NODE_FIELD, lexer_expect(&p->lexer, TOKEN_IDENT));
+            field->type = parse_type(p);
+            consume(p, TOKEN_COMMA);
+            nodes_push(&structt->fields, (Node *) field);
+        }
+
+        if (!structt->fields.head) {
+            assert(p->lexer.buffer.kind == TOKEN_RBRACE);
+            fprintf(stderr, PosFmt "ERROR: Empty structs are not allowed\n", PosArg(p->lexer.buffer.pos));
+            exit(1);
+        }
+
+        node = (Node *) structt;
+    } break;
+
     case TOKEN_EXTERN: {
         assert(!p->in_extern);
         p->in_extern = true;
@@ -424,7 +446,7 @@ static Node *parse_stmt(Parser *p) {
     }
 
     if (!p->dont_consume_eols) {
-        consume_eols(p);
+        consume(p, TOKEN_EOL);
     }
     return node;
 }
@@ -470,7 +492,7 @@ void parse_file(Parser *p, Lexer lexer) {
 
     p->lexer = lexer;
     while (true) {
-        consume_eols(p);
+        consume(p, TOKEN_EOL);
         if (lexer_read(&p->lexer, TOKEN_EOF)) {
             break;
         }

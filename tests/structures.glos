@@ -1,0 +1,8 @@
+struct Vec2 {
+    x i32
+    y i32
+}
+
+fn main() {
+    var pos Vec2
+}

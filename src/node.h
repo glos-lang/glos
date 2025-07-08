@@ -29,6 +29,7 @@ typedef enum {
     TYPE_RAWPTR,
 
     TYPE_FN,
+    TYPE_STRUCT,
 
     COUNT_TYPES
 } TypeKind;
@@ -66,6 +67,8 @@ typedef enum {
 
     NODE_FN,
     NODE_VAR,
+    NODE_FIELD,
+    NODE_STRUCT,
     NODE_EXTERN,
 
     NODE_PRINT,
@@ -172,6 +175,18 @@ typedef struct {
 
     QbeNode *qbe;
 } NodeVar;
+
+typedef struct {
+    Node      node;
+    Node     *type;
+    QbeField *qbe;
+} NodeField;
+
+typedef struct {
+    Node       node;
+    Nodes      fields;
+    QbeStruct *qbe;
+} NodeStruct;
 
 typedef struct {
     Node  node;
