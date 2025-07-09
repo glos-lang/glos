@@ -675,6 +675,11 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
         for (Node *it = structt->fields.head; it; it = it->next) {
+            const Node *previous = nodes_find(structt->fields, it->token.sv, it);
+            if (previous) {
+                error_redefinition(it, previous, "field");
+            }
+
             NodeField *field = (NodeField *) it;
             check_type(c, field->type);
 
