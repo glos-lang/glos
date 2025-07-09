@@ -3,6 +3,29 @@ struct Vec2 {
     y i32
 }
 
+fn foo(v &Vec2) {
+    v.x = 42
+    v.y = 69
+}
+
+fn bar(v Vec2) {
+    print v.x
+    print v.y
+}
+
+fn vec2(x i32, y i32) Vec2 {
+    var v Vec2
+    v.x = x
+    v.y = y
+    return v
+}
+
 fn main() {
     var pos Vec2
+    print sizeof(pos)
+
+    foo(&pos)
+    bar(pos)
+    bar(vec2(420, 1337))
+    print vec2(80085, 69).x
 }

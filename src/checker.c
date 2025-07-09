@@ -30,7 +30,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -223,7 +223,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static_assert(COUNT_TYPES == 14, "");
 static void check_type(Compiler *c, Node *n) {
     if (!n) {
@@ -287,7 +287,7 @@ static void check_type(Compiler *c, Node *n) {
 
 static void check_fn(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static void check_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -298,7 +298,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -396,7 +396,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -440,7 +440,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -477,6 +477,30 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
     } break;
 
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+
+        check_expr(c, member->lhs, false);
+        if (member->lhs->type.kind != TYPE_STRUCT) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Expected structure type, got '%s'\n",
+                PosArg(member->lhs->token.pos),
+                type_to_cstr(member->lhs->type));
+
+            exit(1);
+        }
+        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec;
+
+        member->definition = nodes_find(structt->fields, n->token.sv, NULL);
+        if (!member->definition) {
+            error_undefined(n, "field");
+        }
+
+        allow_ref = true;
+        n->type = member->definition->type;
+    } break;
+
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
         check_type(c, sizeoff->type);
@@ -504,7 +528,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -556,7 +580,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

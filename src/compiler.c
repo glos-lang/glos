@@ -1,14 +1,43 @@
 #include "compiler.h"
 
 static_assert(COUNT_TYPES == 14, "");
+static QbeTypeKind integer_type_kind(TypeKind kind) {
+    switch (kind) {
+    case TYPE_I8:
+    case TYPE_U8:
+        return QBE_TYPE_I8;
+
+    case TYPE_I16:
+    case TYPE_U16:
+        return QBE_TYPE_I16;
+
+    case TYPE_I32:
+    case TYPE_U32:
+        return QBE_TYPE_I32;
+
+    case TYPE_I64:
+    case TYPE_U64:
+    case TYPE_INT:
+        return QBE_TYPE_I64;
+
+    default:
+        unreachable();
+    }
+}
+
+static_assert(COUNT_TYPES == 14, "");
 static void compile_type(Compiler *c, Type *type) {
-    if (!type || type->compiled) {
+    if (!type) {
         return;
     }
-    type->compiled = true;
 
     if (type_is_pointer(*type)) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
+        return;
+    }
+
+    if (type_is_integer(*type)) {
+        type->qbe = qbe_type_basic(integer_type_kind(type->kind));
         return;
     }
 
@@ -19,27 +48,6 @@ static void compile_type(Compiler *c, Type *type) {
 
     case TYPE_BOOL:
         type->qbe = qbe_type_basic(QBE_TYPE_I8);
-        break;
-
-    case TYPE_I8:
-    case TYPE_U8:
-        type->qbe = qbe_type_basic(QBE_TYPE_I8);
-        break;
-
-    case TYPE_I16:
-    case TYPE_U16:
-        type->qbe = qbe_type_basic(QBE_TYPE_I16);
-        break;
-
-    case TYPE_I32:
-    case TYPE_U32:
-        type->qbe = qbe_type_basic(QBE_TYPE_I32);
-        break;
-
-    case TYPE_I64:
-    case TYPE_U64:
-    case TYPE_INT:
-        type->qbe = qbe_type_basic(QBE_TYPE_I64);
         break;
 
     case TYPE_FN:
@@ -67,7 +75,7 @@ static void compile_type(Compiler *c, Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -78,13 +86,13 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_INT:
-            return qbe_atom_int(c->qbe, QBE_TYPE_I64, n->token.as.integer);
+            return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
 
         case TOKEN_BOOL:
-            return qbe_atom_int(c->qbe, QBE_TYPE_I64, n->token.as.boolean);
+            return qbe_atom_int(c->qbe, QBE_TYPE_I8, n->token.as.boolean);
 
         case TOKEN_IDENT:
             switch (atom->definition->kind) {
@@ -145,7 +153,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -171,7 +179,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_ADD: {
             QbeNode *lhs = compile_expr(c, binary->lhs, false);
@@ -275,6 +283,49 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         }
     }
 
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+        QbeNode    *lhs = compile_expr(c, member->lhs, true);
+
+        bool skip_first_deref = false;
+        if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
+            NodeAtom *atom = (NodeAtom *) member->lhs;
+            if (atom->definition->kind == NODE_VAR) {
+                NodeVar *var = (NodeVar *) atom->definition;
+                skip_first_deref = var->kind == NODE_VAR_ARG;
+            }
+        }
+
+        for (size_t i = skip_first_deref; i < member->lhs->type.ref; i++) {
+            lhs = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
+        }
+
+        NodeField *field = (NodeField *) member->definition;
+
+        // Ensure the struct is compiled
+        {
+            Type spec = type_remove_ref(member->lhs->type);
+            compile_type(c, &spec);
+        }
+
+        const size_t offset = qbe_offsetof(field->qbe);
+        if (offset) {
+            lhs = qbe_build_binary(
+                c->qbe,
+                c->fn,
+                QBE_BINARY_ADD,
+                qbe_type_basic(QBE_TYPE_I64),
+                lhs,
+                qbe_atom_int(c->qbe, QBE_TYPE_I64, offset));
+        }
+
+        if (ref) {
+            return lhs;
+        }
+
+        return qbe_build_load(c->qbe, c->fn, lhs, n->type.qbe, type_is_signed(n->type));
+    }
+
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
 
@@ -300,7 +351,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -490,7 +541,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         QbeCall *call = qbe_build_call(c->qbe, c->fn, fn, qbe_type_basic(QBE_TYPE_I32));
         qbe_call_add_arg(c->qbe, call, type_is_signed(print->operand->type) ? sfmt : ufmt);
         qbe_call_start_variadic(c->qbe, call);
-        qbe_call_add_arg(c->qbe, call, qbe_build_cast(c->qbe, c->fn, operand, QBE_TYPE_I64, true));
+        qbe_call_add_arg(
+            c->qbe, call, qbe_build_cast(c->qbe, c->fn, operand, QBE_TYPE_I64, type_is_signed(print->operand->type)));
     } break;
 
     default:

@@ -38,9 +38,7 @@ typedef struct {
     TypeKind kind;
     size_t   ref;
     Node    *spec;
-
-    bool    compiled;
-    QbeType qbe;
+    QbeType  qbe;
 } Type;
 
 const char *type_to_cstr(Type type);
@@ -58,6 +56,7 @@ typedef enum {
     NODE_CAST,
     NODE_UNARY,
     NODE_BINARY,
+    NODE_MEMBER,
     NODE_SIZEOF,
 
     NODE_IF,
@@ -111,6 +110,12 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 } NodeBinary;
+
+typedef struct {
+    Node  node;
+    Node *lhs;
+    Node *definition;
+} NodeMember;
 
 typedef struct {
     Node  node;

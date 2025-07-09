@@ -20,9 +20,10 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
+    case TOKEN_DOT:
     case TOKEN_LPAREN:
         return POWER_DOT;
 
@@ -50,7 +51,7 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 16, "");
+static_assert(COUNT_NODES == 17, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom),
@@ -58,6 +59,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
         [NODE_BINARY] = sizeof(NodeBinary),
+        [NODE_MEMBER] = sizeof(NodeMember),
         [NODE_SIZEOF] = sizeof(NodeSizeof),
 
         [NODE_IF] = sizeof(NodeIf),
@@ -89,7 +91,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -102,7 +104,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -153,7 +155,7 @@ static Node *parse_type(Parser *p) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static Node *parse_expr(Parser *p, Power mbp) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -226,6 +228,12 @@ static Node *parse_expr(Parser *p, Power mbp) {
         lexer_unbuffer(&p->lexer);
 
         switch (token.kind) {
+        case TOKEN_DOT: {
+            NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
+            member->lhs = node;
+            node = (Node *) member;
+        } break;
+
         case TOKEN_LPAREN: {
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
@@ -270,7 +278,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
