@@ -254,6 +254,10 @@ static Node *parse_expr(Parser *p, Power mbp) {
             binary->lhs = node;
             binary->rhs = parse_expr(p, lbp);
             node = (Node *) binary;
+
+            if (lbp == POWER_SET) {
+                return node;
+            }
         } break;
         }
     }
