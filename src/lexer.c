@@ -101,7 +101,7 @@ static void error_invalid(Pos pos, char ch, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 34, "");
+static_assert(COUNT_TOKENS == 46, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -219,23 +219,55 @@ Token lexer_next(Lexer *l) {
         break;
 
     case '+':
-        token.kind = TOKEN_ADD;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_ADD_SET;
+        } else {
+            token.kind = TOKEN_ADD;
+        }
         break;
 
     case '-':
-        token.kind = TOKEN_SUB;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_SUB_SET;
+        } else {
+            token.kind = TOKEN_SUB;
+        }
         break;
 
     case '*':
-        token.kind = TOKEN_MUL;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_MUL_SET;
+        } else {
+            token.kind = TOKEN_MUL;
+        }
         break;
 
     case '/':
-        token.kind = TOKEN_DIV;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_DIV_SET;
+        } else {
+            token.kind = TOKEN_DIV;
+        }
+        break;
+
+    case '|':
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_BOR_SET;
+        } else {
+            token.kind = TOKEN_BOR;
+        }
         break;
 
     case '&':
-        token.kind = TOKEN_BAND;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_BAND_SET;
+        } else {
+            token.kind = TOKEN_BAND;
+        }
+        break;
+
+    case '~':
+        token.kind = TOKEN_BNOT;
         break;
 
     case '!':
@@ -247,7 +279,13 @@ Token lexer_next(Lexer *l) {
         break;
 
     case '>':
-        if (match_char(l, '=')) {
+        if (match_char(l, '>')) {
+            if (match_char(l, '=')) {
+                token.kind = TOKEN_SHR_SET;
+            } else {
+                token.kind = TOKEN_SHR;
+            }
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_GE;
         } else {
             token.kind = TOKEN_GT;
@@ -255,7 +293,13 @@ Token lexer_next(Lexer *l) {
         break;
 
     case '<':
-        if (match_char(l, '=')) {
+        if (match_char(l, '<')) {
+            if (match_char(l, '=')) {
+                token.kind = TOKEN_SHL_SET;
+            } else {
+                token.kind = TOKEN_SHL;
+            }
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_LE;
         } else {
             token.kind = TOKEN_LT;

@@ -86,7 +86,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -154,7 +154,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -172,6 +172,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_BAND:
             return compile_expr(c, unary->operand, true);
 
+        case TOKEN_BNOT: {
+            QbeNode *operand = compile_expr(c, unary->operand, false);
+            return qbe_build_unary(c->qbe, c->fn, QBE_UNARY_BNOT, n->type.qbe, operand);
+        }
+
         default:
             unreachable();
         }
@@ -180,103 +185,80 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        typedef struct {
+            QbeBinaryOp s; // Mandatory
+            QbeBinaryOp u; // Optional
+        } BinaryOp;
+
+        static_assert(COUNT_TOKENS == 46, "");
+        static const BinaryOp direct_ops[COUNT_TOKENS] = {
+            [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
+            [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
+            [TOKEN_MUL] = {.s = QBE_BINARY_MUL},
+            [TOKEN_DIV] = {.s = QBE_BINARY_SDIV, .u = QBE_BINARY_UDIV},
+
+            [TOKEN_SHL] = {.s = QBE_BINARY_SHL},
+            [TOKEN_SHR] = {.s = QBE_BINARY_SSHR, .u = QBE_BINARY_USHR},
+            [TOKEN_BOR] = {.s = QBE_BINARY_OR},
+            [TOKEN_BAND] = {.s = QBE_BINARY_AND},
+
+            [TOKEN_GT] = {.s = QBE_BINARY_SGT, .u = QBE_BINARY_UGT},
+            [TOKEN_GE] = {.s = QBE_BINARY_SGE, .u = QBE_BINARY_UGE},
+            [TOKEN_LT] = {.s = QBE_BINARY_SLT, .u = QBE_BINARY_ULT},
+            [TOKEN_LE] = {.s = QBE_BINARY_SLE, .u = QBE_BINARY_ULE},
+            [TOKEN_EQ] = {.s = QBE_BINARY_EQ},
+            [TOKEN_NE] = {.s = QBE_BINARY_NE},
+        };
+
+        BinaryOp op = direct_ops[n->token.kind];
+        if (op.s) {
+            QbeBinaryOp actual = op.s;
+            if (op.u && !type_is_signed(binary->lhs->type)) {
+                actual = op.u;
+            }
+
+            QbeNode *lhs = compile_expr(c, binary->lhs, false);
+            QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
+        }
+
+        static_assert(COUNT_TOKENS == 46, "");
+        static const BinaryOp assign_ops[COUNT_TOKENS] = {
+            [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
+            [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
+            [TOKEN_MUL_SET] = {.s = QBE_BINARY_MUL},
+            [TOKEN_DIV_SET] = {.s = QBE_BINARY_SDIV, .u = QBE_BINARY_UDIV},
+
+            [TOKEN_SHL_SET] = {.s = QBE_BINARY_SHL},
+            [TOKEN_SHR_SET] = {.s = QBE_BINARY_SSHR, .u = QBE_BINARY_USHR},
+            [TOKEN_BOR_SET] = {.s = QBE_BINARY_OR},
+            [TOKEN_BAND_SET] = {.s = QBE_BINARY_AND},
+        };
+
+        op = assign_ops[n->token.kind];
+        if (op.s) {
+            const bool is_signed = type_is_signed(binary->lhs->type);
+
+            QbeBinaryOp actual = op.s;
+            if (op.u && !is_signed) {
+                actual = op.u;
+            }
+
+            QbeNode *ptr = compile_expr(c, binary->lhs, true);
+            QbeNode *lhs = qbe_build_load(c->qbe, c->fn, ptr, binary->lhs->type.qbe, is_signed);
+            QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            QbeNode *value = qbe_build_binary(c->qbe, c->fn, actual, binary->lhs->type.qbe, lhs, rhs);
+            qbe_build_store(c->qbe, c->fn, ptr, value);
+            return NULL;
+        }
+
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
-        case TOKEN_ADD: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ADD, n->type.qbe, lhs, rhs);
-        }
-
-        case TOKEN_SUB: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SUB, n->type.qbe, lhs, rhs);
-        }
-
-        case TOKEN_MUL: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_MUL, n->type.qbe, lhs, rhs);
-        }
-
-        case TOKEN_DIV: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(
-                c->qbe,
-                c->fn,
-                type_is_signed(binary->lhs->type) ? QBE_BINARY_SDIV : QBE_BINARY_UDIV,
-                n->type.qbe,
-                lhs,
-                rhs);
-        }
-
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
             qbe_build_store(c->qbe, c->fn, lhs, rhs);
             return NULL;
-        }
-
-        case TOKEN_GT: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(
-                c->qbe,
-                c->fn,
-                type_is_signed(binary->lhs->type) ? QBE_BINARY_SGT : QBE_BINARY_UGT,
-                n->type.qbe,
-                lhs,
-                rhs);
-        }
-
-        case TOKEN_GE: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(
-                c->qbe,
-                c->fn,
-                type_is_signed(binary->lhs->type) ? QBE_BINARY_SGE : QBE_BINARY_UGE,
-                n->type.qbe,
-                lhs,
-                rhs);
-        }
-
-        case TOKEN_LT: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(
-                c->qbe,
-                c->fn,
-                type_is_signed(binary->lhs->type) ? QBE_BINARY_SLT : QBE_BINARY_ULT,
-                n->type.qbe,
-                lhs,
-                rhs);
-        }
-
-        case TOKEN_LE: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(
-                c->qbe,
-                c->fn,
-                type_is_signed(binary->lhs->type) ? QBE_BINARY_SLE : QBE_BINARY_ULE,
-                n->type.qbe,
-                lhs,
-                rhs);
-        }
-
-        case TOKEN_EQ: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_EQ, n->type.qbe, lhs, rhs);
-        }
-
-        case TOKEN_NE: {
-            QbeNode *lhs = compile_expr(c, binary->lhs, false);
-            QbeNode *rhs = compile_expr(c, binary->rhs, false);
-            return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_NE, n->type.qbe, lhs, rhs);
         }
 
         default:

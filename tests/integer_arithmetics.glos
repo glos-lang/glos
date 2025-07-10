@@ -1,8 +1,17 @@
 fn main() {
+    // Standard
     print 34 + 35
     print 500 - 80
     print 23 * 3
     print 1260 / 3
     print 17 * 2 - -35
     print 2 * (100 + 110)
+
+    // Bitwise
+    print 276 >> 2
+    print 105 << 2
+    print ~-70
+    print 160 | 260
+    print 77 & 103
+    print ~-419 + 10 & 3
 }

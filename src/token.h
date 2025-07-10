@@ -33,9 +33,21 @@ typedef enum {
     TOKEN_MUL,
     TOKEN_DIV,
 
+    TOKEN_SHL,
+    TOKEN_SHR,
+    TOKEN_BOR,
     TOKEN_BAND,
+    TOKEN_BNOT,
 
     TOKEN_SET,
+    TOKEN_ADD_SET,
+    TOKEN_SUB_SET,
+    TOKEN_MUL_SET,
+    TOKEN_DIV_SET,
+    TOKEN_SHL_SET,
+    TOKEN_SHR_SET,
+    TOKEN_BOR_SET,
+    TOKEN_BAND_SET,
 
     TOKEN_GT,
     TOKEN_GE,

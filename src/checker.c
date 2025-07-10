@@ -148,12 +148,22 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     exit(1);
 }
 
-static Type type_assert_arith(const Node *n) {
-    if (type_is_integer(n->type) || type_is_pointer(n->type)) {
+static Type type_assert_arith(const Node *n, bool pointers_allowed) {
+    if (type_is_integer(n->type)) {
         return n->type;
     }
 
-    fprintf(stderr, PosFmt "ERROR: Expected arithmetic type, got '%s'\n", PosArg(n->token.pos), type_to_cstr(n->type));
+    if (pointers_allowed && type_is_pointer(n->type)) {
+        return n->type;
+    }
+
+    fprintf(
+        stderr,
+        PosFmt "ERROR: Expected %s type, got '%s'\n",
+        PosArg(n->token.pos),
+        pointers_allowed ? "arithmetic" : "integer",
+        type_to_cstr(n->type));
+
     exit(1);
 }
 
@@ -298,7 +308,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -396,11 +406,11 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
-            n->type = type_assert_arith(unary->operand);
+            n->type = type_assert_arith(unary->operand, false);
             break;
 
         case TOKEN_MUL:
@@ -432,6 +442,11 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             n->type.ref++;
             break;
 
+        case TOKEN_BNOT:
+            check_expr(c, unary->operand, false);
+            n->type = type_assert_arith(unary->operand, false);
+            break;
+
         default:
             unreachable();
         }
@@ -440,15 +455,31 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 34, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
+            type_assert_arith(binary->lhs, true);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
         case TOKEN_MUL:
         case TOKEN_DIV:
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
-            type_assert_arith(binary->lhs);
+            type_assert_arith(binary->lhs, false);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
+        case TOKEN_SHL:
+        case TOKEN_SHR:
+        case TOKEN_BOR:
+        case TOKEN_BAND:
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
+            type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -456,6 +487,32 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             check_expr(c, binary->lhs, true);
             check_expr(c, binary->rhs, false);
             type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_ADD_SET:
+        case TOKEN_SUB_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, true));
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_MUL_SET:
+        case TOKEN_DIV_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_SHL_SET:
+        case TOKEN_SHR_SET:
+        case TOKEN_BOR_SET:
+        case TOKEN_BAND_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
@@ -467,7 +524,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_NE:
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
-            type_assert_arith(binary->lhs);
+            type_assert_arith(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
