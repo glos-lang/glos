@@ -30,7 +30,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 17, "");
+static_assert(COUNT_NODES == 18, "");
 static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -223,7 +223,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 17, "");
+static_assert(COUNT_NODES == 18, "");
 static_assert(COUNT_TYPES == 14, "");
 static void check_type(Compiler *c, Node *n) {
     if (!n) {
@@ -287,7 +287,7 @@ static void check_type(Compiler *c, Node *n) {
 
 static void check_fn(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 17, "");
+static_assert(COUNT_NODES == 18, "");
 static void check_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -298,7 +298,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 34, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -396,7 +396,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 34, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -440,7 +440,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 34, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -508,6 +508,42 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         n->type = (Type) {.kind = TYPE_INT};
     } break;
 
+    case NODE_COMPOUND: {
+        NodeCompound *compound = (NodeCompound *) n;
+        check_type(c, compound->type);
+
+        n->type = compound->type->type;
+        if (n->type.kind != TYPE_STRUCT) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Expected structure type, got '%s'\n",
+                PosArg(compound->type->token.pos),
+                type_to_cstr(compound->type->type));
+
+            exit(1);
+        }
+
+        NodeStruct *spec = (NodeStruct *) n->type.spec;
+        for (Node *it = compound->nodes.head; it; it = it->next) {
+            if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
+                NodeBinary *assign = (NodeBinary *) it;
+
+                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
+                NodeAtom *lhs = (NodeAtom *) assign->lhs;
+
+                lhs->definition = nodes_find(spec->fields, lhs->node.token.sv, NULL);
+                if (!lhs->definition) {
+                    error_undefined((Node *) lhs, "field");
+                }
+
+                check_expr(c, assign->rhs, false);
+                type_assert(c, assign->rhs, lhs->definition->type);
+            } else {
+                unreachable();
+            }
+        }
+    } break;
+
     case NODE_FN:
         check_fn(c, n);
         break;
@@ -528,7 +564,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 17, "");
+static_assert(COUNT_NODES == 18, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -580,7 +616,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 17, "");
+static_assert(COUNT_NODES == 18, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
