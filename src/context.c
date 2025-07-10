@@ -31,6 +31,7 @@ Node *context_fn_find(ContextFn f, Scope s, SV name) {
 }
 
 void context_free(Context *c) {
+    da_free(&c->types);
     da_free(&c->locals);
     da_free(&c->globals);
 }

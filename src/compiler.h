@@ -3,8 +3,16 @@
 
 #include "context.h"
 
-size_t compile_sizeof(Type *type);
+typedef struct {
+    Context context;
 
-void compile_nodes(Context *context, const char *output, const char **flags, size_t flags_count);
+    Qbe   *qbe;
+    QbeFn *fn;
+} Compiler;
+
+void compiler_init(Compiler *c);
+void compiler_run(Compiler *c, const char *output, const char **flags, size_t flags_count);
+
+size_t compile_sizeof(Compiler *c, Type *type);
 
 #endif // COMPILER_H

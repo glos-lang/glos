@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 142
+error_structure_field_redefinition.glos:3:5: ERROR: Redefinition of field 'x'
+error_structure_field_redefinition.glos:2:5: NOTE: Defined here
+

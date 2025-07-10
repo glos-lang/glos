@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 13, "");
+static_assert(COUNT_TYPES == 14, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -78,6 +78,10 @@ const char *type_to_cstr(Type type) {
         }
     } break;
 
+    case TYPE_STRUCT:
+        temp_sv_to_cstr(type.spec->token.sv);
+        break;
+
     default:
         unreachable();
     }
@@ -85,7 +89,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 13, "");
+static_assert(COUNT_TYPES == 14, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -109,12 +113,15 @@ bool type_eq(Type a, Type b) {
         return type_eq(node_fn_return_type(a_spec), node_fn_return_type(b_spec));
     } break;
 
+    case TYPE_STRUCT:
+        return a.spec == b.spec;
+
     default:
         return true;
     }
 }
 
-static_assert(COUNT_TYPES == 13, "");
+static_assert(COUNT_TYPES == 14, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -133,7 +140,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 13, "");
+static_assert(COUNT_TYPES == 14, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;

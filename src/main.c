@@ -95,7 +95,8 @@ int main(int argc, char **argv) {
     Parser p = {.arena = &arena};
     parse_file(&p, l);
 
-    Context c = {0};
+    Compiler c = {0};
+    compiler_init(&c);
     check_nodes(&c, p.nodes);
 
     if (run) {
@@ -118,7 +119,7 @@ int main(int argc, char **argv) {
 
             output = buffer;
         }
-        compile_nodes(&c, output, flags.data, flags.count);
+        compiler_run(&c, output, flags.data, flags.count);
 
         Cmd cmd = {0};
         da_push(&cmd, output);
@@ -133,10 +134,9 @@ int main(int argc, char **argv) {
         if (!output) {
             output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
         }
-        compile_nodes(&c, output, flags.data, flags.count);
+        compiler_run(&c, output, flags.data, flags.count);
     }
 
-    context_free(&c);
     arena_free(&arena);
     da_free(&flags);
     return result;

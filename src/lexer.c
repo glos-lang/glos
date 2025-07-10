@@ -101,7 +101,7 @@ static void error_invalid(Pos pos, char ch, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 31, "");
+static_assert(COUNT_TOKENS == 34, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -170,6 +170,8 @@ Token lexer_next(Lexer *l) {
             token.kind = TOKEN_RETURN;
         } else if (sv_match(token.sv, "fn")) {
             token.kind = TOKEN_FN;
+        } else if (sv_match(token.sv, "struct")) {
+            token.kind = TOKEN_STRUCT;
         } else if (sv_match(token.sv, "var")) {
             token.kind = TOKEN_VAR;
         } else if (sv_match(token.sv, "extern")) {
@@ -186,6 +188,14 @@ Token lexer_next(Lexer *l) {
     switch (read_char(l)) {
     case ';':
         token.kind = TOKEN_EOL;
+        break;
+
+    case '.':
+        token.kind = TOKEN_DOT;
+        break;
+
+    case ':':
+        token.kind = TOKEN_COLON;
         break;
 
     case ',':
