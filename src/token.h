@@ -49,6 +49,10 @@ typedef enum {
     TOKEN_BOR_SET,
     TOKEN_BAND_SET,
 
+    TOKEN_LOR,
+    TOKEN_LAND,
+    TOKEN_LNOT,
+
     TOKEN_GT,
     TOKEN_GE,
     TOKEN_LT,
