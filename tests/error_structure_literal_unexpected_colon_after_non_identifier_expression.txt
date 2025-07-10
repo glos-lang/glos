@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 106
+error_structure_literal_unexpected_colon_after_non_identifier_expression.glos:8:15: ERROR: Unexpected ':'
+
