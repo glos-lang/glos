@@ -148,12 +148,22 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     exit(1);
 }
 
-static Type type_assert_arith(const Node *n) {
-    if (type_is_integer(n->type) || type_is_pointer(n->type)) {
+static Type type_assert_arith(const Node *n, bool pointers_allowed) {
+    if (type_is_integer(n->type)) {
         return n->type;
     }
 
-    fprintf(stderr, PosFmt "ERROR: Expected arithmetic type, got '%s'\n", PosArg(n->token.pos), type_to_cstr(n->type));
+    if (pointers_allowed && type_is_pointer(n->type)) {
+        return n->type;
+    }
+
+    fprintf(
+        stderr,
+        PosFmt "ERROR: Expected %s type, got '%s'\n",
+        PosArg(n->token.pos),
+        pointers_allowed ? "arithmetic" : "integer",
+        type_to_cstr(n->type));
+
     exit(1);
 }
 
@@ -400,7 +410,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
-            n->type = type_assert_arith(unary->operand);
+            n->type = type_assert_arith(unary->operand, false);
             break;
 
         case TOKEN_MUL:
@@ -434,7 +444,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_BNOT:
             check_expr(c, unary->operand, false);
-            n->type = type_assert_arith(unary->operand);
+            n->type = type_assert_arith(unary->operand, false);
             break;
 
         default:
@@ -449,11 +459,17 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
+            type_assert_arith(binary->lhs, true);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
         case TOKEN_MUL:
         case TOKEN_DIV:
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
-            type_assert_arith(binary->lhs);
+            type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -463,7 +479,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_BAND:
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
-            type_assert_arith(binary->lhs);
+            type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -482,7 +498,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_NE:
             check_expr(c, binary->lhs, false);
             check_expr(c, binary->rhs, false);
-            type_assert_arith(binary->lhs);
+            type_assert_arith(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
