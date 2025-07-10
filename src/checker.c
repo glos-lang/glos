@@ -308,7 +308,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -406,7 +406,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -455,7 +455,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -487,6 +487,32 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             check_expr(c, binary->lhs, true);
             check_expr(c, binary->rhs, false);
             type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_ADD_SET:
+        case TOKEN_SUB_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, true));
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_MUL_SET:
+        case TOKEN_DIV_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
+            n->type = (Type) {.kind = TYPE_UNIT};
+            break;
+
+        case TOKEN_SHL_SET:
+        case TOKEN_SHR_SET:
+        case TOKEN_BOR_SET:
+        case TOKEN_BAND_SET:
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
