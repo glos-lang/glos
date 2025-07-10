@@ -24,4 +24,6 @@ bool  lexer_read(Lexer *l, TokenKind kind);
 Token lexer_expect_impl(Lexer *l, const TokenKind *kinds);
 #define lexer_expect(l, ...) lexer_expect_impl((l), (const TokenKind[]) {__VA_ARGS__, TOKEN_EOF})
 
+Token lexer_split_token(Lexer *l, Token token);
+
 #endif // LEXER_H

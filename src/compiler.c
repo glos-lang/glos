@@ -86,7 +86,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 49, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -154,7 +154,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 49, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -177,6 +177,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_unary(c->qbe, c->fn, QBE_UNARY_BNOT, n->type.qbe, operand);
         }
 
+        case TOKEN_LNOT: {
+            QbeNode *operand = compile_expr(c, unary->operand, false);
+            return qbe_build_unary(c->qbe, c->fn, QBE_UNARY_LNOT, n->type.qbe, operand);
+        }
+
         default:
             unreachable();
         }
@@ -190,7 +195,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 49, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -222,7 +227,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 49, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -252,13 +257,71 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 49, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
             qbe_build_store(c->qbe, c->fn, lhs, rhs);
             return NULL;
+        }
+
+        case TOKEN_LOR: {
+            QbeNode *lhs = compile_expr(c, binary->lhs, false);
+
+            QbeBlock *lhs_block = qbe_fn_get_current_block(c->fn);
+            QbeBlock *rhs_block = qbe_block_new(c->qbe);
+            QbeBlock *final_block = qbe_block_new(c->qbe);
+            qbe_build_branch(c->qbe, c->fn, lhs, final_block, rhs_block);
+
+            // Rhs
+            qbe_build_block(c->qbe, c->fn, rhs_block);
+            QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            qbe_build_jump(c->qbe, c->fn, final_block);
+
+            // Finally
+            qbe_build_block(c->qbe, c->fn, final_block);
+
+            const QbePhiBranch lhs_phi = {
+                .block = lhs_block,
+                .value = lhs,
+            };
+
+            const QbePhiBranch rhs_phi = {
+                .block = rhs_block,
+                .value = rhs,
+            };
+
+            return qbe_build_phi(c->qbe, c->fn, lhs_phi, rhs_phi);
+        }
+
+        case TOKEN_LAND: {
+            QbeNode *lhs = compile_expr(c, binary->lhs, false);
+
+            QbeBlock *lhs_block = qbe_fn_get_current_block(c->fn);
+            QbeBlock *rhs_block = qbe_block_new(c->qbe);
+            QbeBlock *final_block = qbe_block_new(c->qbe);
+            qbe_build_branch(c->qbe, c->fn, lhs, rhs_block, final_block);
+
+            // Rhs
+            qbe_build_block(c->qbe, c->fn, rhs_block);
+            QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            qbe_build_jump(c->qbe, c->fn, final_block);
+
+            // Finally
+            qbe_build_block(c->qbe, c->fn, final_block);
+
+            const QbePhiBranch lhs_phi = {
+                .block = lhs_block,
+                .value = lhs,
+            };
+
+            const QbePhiBranch rhs_phi = {
+                .block = rhs_block,
+                .value = rhs,
+            };
+
+            return qbe_build_phi(c->qbe, c->fn, lhs_phi, rhs_phi);
         }
 
         default:
