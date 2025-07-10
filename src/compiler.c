@@ -326,6 +326,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         qbe_build_bzero(c->qbe, c->fn, temp, n->type.qbe);
 
         assert(n->type.kind == TYPE_STRUCT);
+        Node *ordered_iota = ((NodeStruct *) n->type.spec)->fields.head;
+
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
@@ -350,7 +352,22 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 QbeNode *rhs = compile_expr(c, assign->rhs, false);
                 qbe_build_store(c->qbe, c->fn, ptr, rhs);
             } else {
-                unreachable();
+                assert(ordered_iota->kind == NODE_FIELD);
+                const size_t offset = qbe_offsetof(((NodeField *) ordered_iota)->qbe);
+
+                QbeNode *ptr = temp;
+                if (offset) {
+                    ptr = qbe_build_binary(
+                        c->qbe,
+                        c->fn,
+                        QBE_BINARY_ADD,
+                        qbe_type_basic(QBE_TYPE_I64),
+                        temp,
+                        qbe_atom_int(c->qbe, QBE_TYPE_I64, offset));
+                }
+
+                qbe_build_store(c->qbe, c->fn, ptr, compile_expr(c, it, false));
+                ordered_iota = ordered_iota->next;
             }
         }
 

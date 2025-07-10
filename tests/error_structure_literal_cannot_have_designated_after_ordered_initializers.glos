@@ -1,0 +1,11 @@
+struct Vec2 {
+    x i32
+    y i32
+}
+
+fn main() {
+    Vec2 {
+        69,
+        y: 420
+    }
+}

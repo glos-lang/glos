@@ -287,14 +287,50 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
             NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
             compound->type = node;
 
-            while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-                token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            typedef enum {
+                COMPOUND_UNKNOWN,
+                COMPOUND_ORDERED,
+                COMPOUND_DESIGNATED,
+            } CompoundKind;
 
-                // TODO: Non designated initialization
-                NodeBinary *assign = node_alloc(p, NODE_BINARY, lexer_expect(&p->lexer, TOKEN_COLON));
-                assign->lhs = node_alloc(p, NODE_ATOM, token);
-                assign->rhs = parse_expr(p, POWER_SET, false);
-                nodes_push(&compound->nodes, (Node *) assign);
+            CompoundKind kind = COMPOUND_UNKNOWN;
+            while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+                Node *expr = parse_expr(p, POWER_SET, false);
+
+                token = lexer_peek(&p->lexer);
+                if (token.kind == TOKEN_COLON) {
+                    if (expr->kind != NODE_ATOM || expr->token.kind != TOKEN_IDENT) {
+                        error_unexpected(token);
+                    }
+                    lexer_unbuffer(&p->lexer);
+
+                    if (kind == COMPOUND_ORDERED) {
+                        fprintf(
+                            stderr,
+                            PosFmt "ERROR: Cannot mix ordered and designated initializers\n",
+                            PosArg(token.pos));
+
+                        exit(1);
+                    }
+                    kind = COMPOUND_DESIGNATED;
+
+                    NodeBinary *assign = node_alloc(p, NODE_BINARY, token);
+                    assign->lhs = expr;
+                    assign->rhs = parse_expr(p, POWER_SET, false);
+                    nodes_push(&compound->nodes, (Node *) assign);
+                } else {
+                    if (kind == COMPOUND_DESIGNATED) {
+                        fprintf(
+                            stderr,
+                            PosFmt "ERROR: Cannot mix ordered and designated initializers\n",
+                            PosArg(expr->token.pos));
+
+                        exit(1);
+                    }
+                    kind = COMPOUND_ORDERED;
+
+                    nodes_push(&compound->nodes, expr);
+                }
 
                 token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACE);
                 if (token.kind != TOKEN_COMMA) {

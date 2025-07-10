@@ -16,7 +16,7 @@ var vec = Vec2 {
 fn main() {
     printVec2(vec)
     printVec2(Vec2 {
-        x: 1337,
-        y: 80085
+        1337,
+        80085
     })
 }

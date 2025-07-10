@@ -581,6 +581,8 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
 
         NodeStruct *spec = (NodeStruct *) n->type.spec;
+
+        Node *ordered_iota = spec->fields.head;
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
@@ -596,7 +598,9 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 check_expr(c, assign->rhs, false);
                 type_assert(c, assign->rhs, lhs->definition->type);
             } else {
-                unreachable();
+                check_expr(c, it, false);
+                type_assert(c, it, ordered_iota->type);
+                ordered_iota = ordered_iota->next;
             }
         }
     } break;
