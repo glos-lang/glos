@@ -30,7 +30,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -233,7 +233,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static_assert(COUNT_TYPES == 14, "");
 static void check_type(Compiler *c, Node *n) {
     if (!n) {
@@ -296,8 +296,76 @@ static void check_type(Compiler *c, Node *n) {
 }
 
 static void check_fn(Compiler *c, Node *n);
+static void check_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
+static bool always_returns(Node *n, bool check_for_yield) {
+    switch (n->kind) {
+    case NODE_BLOCK: {
+        NodeBlock *block = (NodeBlock *) n;
+        for (Node *it = block->body.head; it; it = it->next) {
+            if (always_returns(it, check_for_yield)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case NODE_IF: {
+        NodeIf *iff = (NodeIf *) n;
+        if (!iff->antecedence) {
+            return false;
+        }
+        return always_returns(iff->consequence, check_for_yield) && always_returns(iff->antecedence, check_for_yield);
+    }
+
+    case NODE_FOR: {
+        NodeFor *forr = (NodeFor *) n;
+        if (forr->init && always_returns(forr->init, check_for_yield)) {
+            return true;
+        }
+
+        bool infinite = false;
+        if (!forr->condition) {
+            infinite = true;
+        } else if (
+            forr->condition->kind == NODE_ATOM && forr->condition->token.kind == TOKEN_BOOL &&
+            forr->condition->token.as.boolean) {
+            infinite = true;
+        }
+
+        if (infinite) {
+            // NOTE: Till we get break, an infinite loop "always returns"
+            return true;
+        }
+
+        return false;
+    }
+
+    case NODE_YIELD:
+        return check_for_yield;
+
+    case NODE_RETURN:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static void check_block(Compiler *c, NodeBlock *block) {
+    const size_t types_count_save = c->context.types.count;
+    const size_t locals_count_save = c->context.locals.count;
+
+    for (Node *it = block->body.head; it; it = it->next) {
+        check_stmt(c, it);
+    }
+
+    c->context.types.count = types_count_save;
+    c->context.locals.count = locals_count_save;
+}
+
+static_assert(COUNT_NODES == 19, "");
 static void check_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -617,6 +685,32 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
     } break;
 
+    case NODE_BLOCK: {
+        NodeBlock *block = (NodeBlock *) n;
+
+        ContextYield  yield = {0};
+        ContextYield *context_yield_save = c->context.yield;
+        c->context.yield = &yield;
+        check_block(c, block);
+        c->context.yield = context_yield_save;
+
+        if (!always_returns(n, true)) {
+            fprintf(stderr, PosFmt "ERROR: Expected yield from block\n", PosArg(block->closing_brace));
+            fprintf(
+                stderr,
+                "\n```\n"
+                "var example = {\n"
+                "    // HINT: Block expressions must yield a value\n"
+                "    << 69\n"
+                "}\n"
+                "```\n");
+
+            exit(1);
+        }
+
+        n->type = yield.type;
+    } break;
+
     case NODE_FN:
         check_fn(c, n);
         break;
@@ -637,59 +731,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 18, "");
-static bool always_returns(Node *n) {
-    switch (n->kind) {
-    case NODE_BLOCK: {
-        NodeBlock *block = (NodeBlock *) n;
-        for (Node *it = block->body.head; it; it = it->next) {
-            if (always_returns(it)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    case NODE_IF: {
-        NodeIf *iff = (NodeIf *) n;
-        if (!iff->antecedence) {
-            return false;
-        }
-        return always_returns(iff->consequence) && always_returns(iff->antecedence);
-    }
-
-    case NODE_FOR: {
-        NodeFor *forr = (NodeFor *) n;
-        if (forr->init && always_returns(forr->init)) {
-            return true;
-        }
-
-        bool infinite = false;
-        if (!forr->condition) {
-            infinite = true;
-        } else if (
-            forr->condition->kind == NODE_ATOM && forr->condition->token.kind == TOKEN_BOOL &&
-            forr->condition->token.as.boolean) {
-            infinite = true;
-        }
-
-        if (infinite) {
-            // NOTE: Till we get break, an infinite loop "always returns"
-            return true;
-        }
-
-        return false;
-    }
-
-    case NODE_RETURN:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -719,16 +761,37 @@ static void check_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
-        const size_t types_count_save = c->context.types.count;
-        const size_t locals_count_save = c->context.locals.count;
-
         NodeBlock *block = (NodeBlock *) n;
-        for (Node *it = block->body.head; it; it = it->next) {
-            check_stmt(c, it);
+        if (block->is_expr) {
+            check_expr(c, n, false);
+        } else {
+            check_block(c, block);
         }
+    } break;
 
-        c->context.types.count = types_count_save;
-        c->context.locals.count = locals_count_save;
+    case NODE_YIELD: {
+        NodeYield *yield = (NodeYield *) n;
+        check_expr(c, yield->value, false);
+        n->type = yield->value->type;
+
+        if (c->context.yield->present) {
+            const Type previous = c->context.yield->type;
+            if (!type_eq(n->type, previous) && !try_auto_cast_untyped_int(c, n, previous)) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Expected type '%s', got '%s'\n",
+                    PosArg(n->token.pos),
+                    type_to_cstr(previous),
+                    type_to_cstr(n->type));
+
+                fprintf(stderr, PosFmt "NOTE: Inferred type from first yield here\n", PosArg(c->context.yield->first));
+                exit(1);
+            }
+        } else {
+            c->context.yield->present = true;
+            c->context.yield->first = n->token.pos;
+            c->context.yield->type = n->type;
+        }
     } break;
 
     case NODE_RETURN: {
@@ -882,8 +945,10 @@ static void check_fn(Compiler *c, Node *n) {
 
     if (fn->body) {
         check_stmt(c, fn->body);
-        if (fn->ret && !always_returns(fn->body)) {
-            fprintf(stderr, PosFmt "ERROR: Expected return statement\n", PosArg(fn->body->token.pos));
+        if (fn->ret && !always_returns(fn->body, false)) {
+            assert(fn->body->kind == NODE_BLOCK);
+            NodeBlock *body = (NodeBlock *) fn->body;
+            fprintf(stderr, PosFmt "ERROR: Expected return statement\n", PosArg(body->closing_brace));
             exit(1);
         }
     }

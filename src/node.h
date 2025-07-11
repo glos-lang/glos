@@ -63,6 +63,7 @@ typedef enum {
     NODE_IF,
     NODE_FOR,
     NODE_BLOCK,
+    NODE_YIELD,
     NODE_RETURN,
 
     NODE_FN,
@@ -148,7 +149,15 @@ typedef struct {
 typedef struct {
     Node  node;
     Nodes body;
+
+    bool is_expr;
+    Pos  closing_brace;
 } NodeBlock;
+
+typedef struct {
+    Node  node;
+    Node *value;
+} NodeYield;
 
 typedef struct {
     Node  node;
