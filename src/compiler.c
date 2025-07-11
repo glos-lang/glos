@@ -75,7 +75,15 @@ static void compile_type(Compiler *c, Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 18, "");
+static void compile_block(Compiler *c, NodeBlock *block) {
+    for (Node *it = block->body.head; it; it = it->next) {
+        qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
+        compile_stmt(c, it);
+    }
+    qbe_build_debug_line(c->qbe, c->fn, block->closing_brace.row + 1);
+}
+
+static_assert(COUNT_NODES == 19, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -447,12 +455,25 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         return fn->qbe;
     }
 
+    case NODE_BLOCK: {
+        const CompilerYield yield_save = c->yield;
+        c->yield.var = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
+        c->yield.block = qbe_block_new(c->qbe);
+
+        compile_block(c, (NodeBlock *) n);
+        qbe_build_block(c->qbe, c->fn, c->yield.block);
+
+        QbeNode *result = c->yield.var;
+        c->yield = yield_save;
+        return qbe_build_load(c->qbe, c->fn, result, n->type.qbe, type_is_signed(n->type));
+    }
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -528,11 +549,18 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_BLOCK: {
         NodeBlock *block = (NodeBlock *) n;
-        for (Node *it = block->body.head; it; it = it->next) {
-            qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
-            compile_stmt(c, it);
+        if (block->is_expr) {
+            compile_expr(c, n, false);
+        } else {
+            compile_block(c, block);
         }
-        qbe_build_debug_line(c->qbe, c->fn, n->token.pos.row + 1);
+    } break;
+
+    case NODE_YIELD: {
+        NodeYield *yield = (NodeYield *) n;
+        qbe_build_store(c->qbe, c->fn, c->yield.var, compile_expr(c, yield->value, false));
+        qbe_build_jump(c->qbe, c->fn, c->yield.block);
+        qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
     } break;
 
     case NODE_RETURN: {

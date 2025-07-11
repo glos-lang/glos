@@ -17,11 +17,18 @@ typedef struct {
 } ContextFn;
 
 typedef struct {
+    bool present;
+    Type type;
+    Pos  first;
+} ContextYield;
+
+typedef struct {
     Scope types;
     Scope locals;
     Scope globals;
 
-    ContextFn fn;
+    ContextFn     fn;
+    ContextYield *yield;
 
     bool in_extern;
 } Context;

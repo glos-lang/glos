@@ -1,0 +1,11 @@
+fn main() {
+    print {
+        var a = {
+            var a = 17
+            var b = 2
+            << a * b
+        }
+        var b = 35
+        << a + b
+    }
+}
