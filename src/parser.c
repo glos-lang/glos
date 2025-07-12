@@ -23,7 +23,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 50, "");
+static_assert(COUNT_TOKENS == 51, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -117,7 +117,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 50, "");
+static_assert(COUNT_TOKENS == 51, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -131,7 +131,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 50, "");
+static_assert(COUNT_TOKENS == 51, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -196,7 +196,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 50, "");
+static_assert(COUNT_TOKENS == 51, "");
 static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -388,7 +388,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 50, "");
+static_assert(COUNT_TOKENS == 51, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -562,6 +562,18 @@ static Node *parse_stmt(Parser *p) {
 
         p->in_extern = false;
         node = (Node *) externn;
+    } break;
+
+    case TOKEN_STATIC: {
+        token = lexer_expect(&p->lexer, TOKEN_VAR);
+        lexer_buffer(&p->lexer, token);
+
+        node = parse_stmt(p);
+        if (node->kind == NODE_VAR) {
+            ((NodeVar *) node)->is_static = true;
+        } else {
+            unreachable();
+        }
     } break;
 
     case TOKEN_PRINT: {
