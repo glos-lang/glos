@@ -247,7 +247,9 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 #define const_offset(p) ((ConstValue) {.kind = CONST_VALUE_OFFSET, .as.integer = (p)})
 
     switch (n->kind) {
-    case NODE_ATOM:
+    case NODE_ATOM: {
+        NodeAtom *atom = (NodeAtom *) n;
+
         static_assert(COUNT_TOKENS == 49, "");
         switch (n->token.kind) {
         case TOKEN_INT:
@@ -258,9 +260,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             n->type = (Type) {.kind = TYPE_BOOL};
             return const_bool(n->token.as.boolean);
 
-        case TOKEN_IDENT: {
-            NodeAtom *atom = (NodeAtom *) n;
-
+        case TOKEN_IDENT:
             atom->definition = ident_find(&c->context, n->token.sv);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
@@ -274,12 +274,12 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             fprintf(
                 stderr, PosFmt "ERROR: Can only refer to variables in constant expressions\n", PosArg(n->token.pos));
             exit(1);
-        }
+            break;
 
         default:
             unreachable();
         }
-        break;
+    } break;
 
     case NODE_CALL:
         fprintf(stderr, PosFmt "ERROR: Unexpected call in constant expression\n", PosArg(n->token.pos));
