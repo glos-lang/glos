@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
     Parser p = {.arena = &arena};
     parse_file(&p, l);
 
-    Compiler c = {0};
+    Compiler c = {.context.arena = &arena};
     compiler_init(&c);
     check_nodes(&c, p.nodes);
 

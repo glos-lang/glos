@@ -22,9 +22,8 @@ fn make_mat4(v1 Vec2, v2 Vec2) Mat4 {
     return mat
 }
 
-var x = make_mat4(make_vec2(69, 420), make_vec2(1337, 80085)).v1.x
-
 fn main() {
+    var x = make_mat4(make_vec2(69, 420), make_vec2(1337, 80085)).v1.x
     var y = make_mat4(make_vec2(69, 420), make_vec2(1337, 80085)).v1.y
     print x
     print y

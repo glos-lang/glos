@@ -23,7 +23,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 49, "");
+static_assert(COUNT_TOKENS == 50, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -75,10 +75,10 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
-        [NODE_ATOM] = sizeof(NodeAtom),
+        [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
         [NODE_CALL] = sizeof(NodeCall),
         [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
@@ -95,6 +95,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
 
         [NODE_FN] = sizeof(NodeFn),
         [NODE_VAR] = sizeof(NodeVar),
+        [NODE_CONST] = sizeof(NodeConst),
         [NODE_FIELD] = sizeof(NodeField),
         [NODE_STRUCT] = sizeof(NodeStruct),
         [NODE_EXTERN] = sizeof(NodeExtern),
@@ -116,7 +117,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 49, "");
+static_assert(COUNT_TOKENS == 50, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -130,7 +131,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 49, "");
+static_assert(COUNT_TOKENS == 50, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -195,7 +196,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 49, "");
+static_assert(COUNT_TOKENS == 50, "");
 static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -387,7 +388,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 49, "");
+static_assert(COUNT_TOKENS == 50, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -496,6 +497,21 @@ static Node *parse_stmt(Parser *p) {
         }
 
         node = (Node *) var;
+    } break;
+
+    case TOKEN_CONST: {
+        NodeConst *constt = node_alloc(p, NODE_CONST, lexer_expect(&p->lexer, TOKEN_IDENT));
+
+        if (lexer_read(&p->lexer, TOKEN_SET)) {
+            constt->expr = parse_expr(p, POWER_SET, false);
+        } else {
+            constt->type = parse_type(p);
+            lexer_expect(&p->lexer, TOKEN_SET);
+            constt->expr = parse_expr(p, POWER_SET, false);
+        }
+
+        constt->local = p->local;
+        node = (Node *) constt;
     } break;
 
     case TOKEN_STRUCT: {

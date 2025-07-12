@@ -75,7 +75,7 @@ static void compile_type(Compiler *c, Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -86,7 +86,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 49, "");
+        static_assert(COUNT_TOKENS == 50, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -115,6 +115,23 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 }
 
                 return qbe_build_load(c->qbe, c->fn, var->qbe, n->type.qbe, type_is_signed(n->type));
+            }
+
+            case NODE_CONST: {
+                NodeConst *constt = (NodeConst *) atom->definition;
+                if (constt->value.kind == CONST_VALUE_ATOM) {
+                    if (n->type.kind == TYPE_BOOL) {
+                        return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
+                    }
+
+                    return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
+                }
+
+                if (!constt->qbe) {
+                    compile_stmt(c, atom->definition);
+                }
+
+                return qbe_build_load(c->qbe, c->fn, constt->qbe, n->type.qbe, type_is_signed(n->type));
             }
 
             default:
@@ -154,7 +171,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 49, "");
+        static_assert(COUNT_TOKENS == 50, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -195,7 +212,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 49, "");
+        static_assert(COUNT_TOKENS == 50, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -227,7 +244,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 49, "");
+        static_assert(COUNT_TOKENS == 50, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -257,7 +274,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 49, "");
+        static_assert(COUNT_TOKENS == 50, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -346,6 +363,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         // Ensure the struct is compiled
         {
+            // TODO: Only do this if lhs is a pointer
             Type spec = type_remove_ref(member->lhs->type);
             compile_type(c, &spec);
         }
@@ -386,7 +404,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         NodeCompound *compound = (NodeCompound *) n;
 
         QbeNode *temp = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
-        qbe_build_bzero(c->qbe, c->fn, temp, n->type.qbe);
+        qbe_build_store_zero(c->qbe, c->fn, temp, n->type.qbe);
 
         assert(n->type.kind == TYPE_STRUCT);
         Node *ordered_iota = ((NodeStruct *) n->type.spec)->fields.head;
@@ -452,7 +470,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -598,14 +616,54 @@ static void compile_stmt(Compiler *c, Node *n) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
             var->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
         } else if (var->kind == NODE_VAR_GLOBAL) {
-            var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe);
+            if (var->expr) {
+                const void *src = NULL;
+
+                static_assert(COUNT_CONST_VALUES == 3, "");
+                switch (var->const_value.kind) {
+                case CONST_VALUE_ATOM:
+                    src = &var->const_value.as;
+                    break;
+
+                case CONST_VALUE_MEMORY:
+                    src = var->const_value.as.memory;
+                    break;
+
+                default:
+                    unreachable();
+                }
+
+                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, src);
+            } else {
+                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, NULL);
+            }
         } else {
             var->qbe = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
             if (var->expr) {
                 qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
             } else {
-                qbe_build_bzero(c->qbe, c->fn, var->qbe, n->type.qbe);
+                qbe_build_store_zero(c->qbe, c->fn, var->qbe, n->type.qbe);
             }
+        }
+    } break;
+
+    case NODE_CONST: {
+        NodeConst *constt = (NodeConst *) n;
+
+        static_assert(COUNT_CONST_VALUES == 3, "");
+        switch (constt->value.kind) {
+        case CONST_VALUE_ATOM:
+            // Pass
+            break;
+
+        case CONST_VALUE_MEMORY:
+            if (!constt->qbe) {
+                constt->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, constt->value.as.memory);
+            }
+            break;
+
+        default:
+            unreachable();
         }
     } break;
 
@@ -698,16 +756,7 @@ void compiler_run(Compiler *c, const char *output, const char **flags, size_t fl
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
     qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
 
-    for (size_t i = 0; i < c->context.globals.count; i++) {
-        Node *it = c->context.globals.data[i];
-        if (it->kind == NODE_VAR) {
-            NodeVar *var = (NodeVar *) it;
-            if (var->expr) {
-                qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
-            }
-        }
-    }
-
+    // TODO: Consider inlining this
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, main->qbe, qbe_type_basic(QBE_TYPE_I0)));
     qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
 

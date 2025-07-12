@@ -1,2 +1,4 @@
-var p rawptr
-var _ = *p
+fn main() {
+    var p rawptr
+    var _ = *p
+}
