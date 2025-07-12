@@ -75,10 +75,10 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 18, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
-        [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
+        [NODE_ATOM] = sizeof(NodeAtom),
         [NODE_CALL] = sizeof(NodeCall),
         [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
@@ -91,7 +91,6 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_FOR] = sizeof(NodeFor),
         [NODE_BLOCK] = sizeof(NodeBlock),
 
-        [NODE_YIELD] = sizeof(NodeYield),
         [NODE_RETURN] = sizeof(NodeReturn),
 
         [NODE_FN] = sizeof(NodeFn),
@@ -195,7 +194,6 @@ static bool node_is_compound_literal_type(Node *n) {
 }
 
 static Node *parse_fn(Parser *p, Token name);
-static Node *parse_stmt(Parser *p);
 
 static_assert(COUNT_TOKENS == 49, "");
 static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
@@ -208,18 +206,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     case TOKEN_IDENT:
         node = node_alloc(p, NODE_ATOM, token);
         break;
-
-    case TOKEN_LBRACE: {
-        lexer_buffer(&p->lexer, token);
-
-        const bool yield_usable_save = p->yield_usable;
-        p->yield_usable = true;
-        node = parse_stmt(p);
-        p->yield_usable = yield_usable_save;
-
-        NodeBlock *block = (NodeBlock *) node;
-        block->is_expr = true;
-    } break;
 
     case TOKEN_SUB:
     case TOKEN_MUL:
@@ -415,7 +401,7 @@ static Node *parse_stmt(Parser *p) {
         }
 
         assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-        block->closing_brace = p->lexer.buffer.pos;
+        block->node.token = p->lexer.buffer;
 
         node = (Node *) block;
     } break;
@@ -472,17 +458,6 @@ static Node *parse_stmt(Parser *p) {
         node = (Node *) forr;
     } break;
 
-    case TOKEN_SHL: {
-        if (!p->yield_usable) {
-            error_unexpected(token);
-        }
-
-        NodeYield *yield = node_alloc(p, NODE_YIELD, token);
-        yield->value = parse_expr(p, POWER_SET, false);
-
-        node = (Node *) yield;
-    } break;
-
     case TOKEN_RETURN: {
         NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
 
@@ -510,10 +485,7 @@ static Node *parse_stmt(Parser *p) {
             }
 
             if (lexer_read(&p->lexer, TOKEN_SET)) {
-                const bool local_save = p->local;
-                p->local = true;
                 var->expr = parse_expr(p, POWER_SET, false);
-                p->local = local_save;
             }
         }
 
@@ -625,11 +597,7 @@ static Node *parse_fn(Parser *p, Token token) {
 
     if (!p->in_extern) {
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
-
-        const bool yield_usable_save = p->yield_usable;
-        p->yield_usable = false;
         fn->body = parse_stmt(p);
-        p->yield_usable = yield_usable_save;
     }
 
     p->local = local_save;

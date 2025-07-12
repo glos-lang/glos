@@ -4,17 +4,10 @@
 #include "context.h"
 
 typedef struct {
-    QbeNode  *var;
-    QbeBlock *block;
-} CompilerYield;
-
-typedef struct {
     Context context;
 
     Qbe   *qbe;
     QbeFn *fn;
-
-    CompilerYield yield;
 } Compiler;
 
 void compiler_init(Compiler *c);

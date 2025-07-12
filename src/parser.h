@@ -11,7 +11,6 @@ typedef struct {
     bool local;
     bool in_extern;
     bool dont_consume_eols;
-    bool yield_usable;
 
     Nodes nodes;
 } Parser;

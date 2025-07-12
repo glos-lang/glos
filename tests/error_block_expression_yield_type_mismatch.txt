@@ -1,7 +1,0 @@
-EXIT 1
-STDOUT 0
-
-STDERR 187
-error_block_expression_yield_type_mismatch.glos:4:9: ERROR: Expected type 'i64', got 'bool'
-error_block_expression_yield_type_mismatch.glos:3:9: NOTE: Inferred type from first yield here
-
