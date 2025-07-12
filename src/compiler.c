@@ -346,6 +346,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         // Ensure the struct is compiled
         {
+            // TODO: Only do this if lhs is a pointer
             Type spec = type_remove_ref(member->lhs->type);
             compile_type(c, &spec);
         }
@@ -598,7 +599,27 @@ static void compile_stmt(Compiler *c, Node *n) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
             var->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
         } else if (var->kind == NODE_VAR_GLOBAL) {
-            var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe);
+            if (var->expr) {
+                const void *src = NULL;
+
+                static_assert(COUNT_CONST_VALUES == 3, "");
+                switch (var->const_value.kind) {
+                case CONST_VALUE_ATOM:
+                    src = &var->const_value.as;
+                    break;
+
+                case CONST_VALUE_MEMORY:
+                    src = var->const_value.as.memory;
+                    break;
+
+                default:
+                    unreachable();
+                }
+
+                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, src);
+            } else {
+                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, NULL);
+            }
         } else {
             var->qbe = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
             if (var->expr) {
@@ -698,16 +719,7 @@ void compiler_run(Compiler *c, const char *output, const char **flags, size_t fl
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
     qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
 
-    for (size_t i = 0; i < c->context.globals.count; i++) {
-        Node *it = c->context.globals.data[i];
-        if (it->kind == NODE_VAR) {
-            NodeVar *var = (NodeVar *) it;
-            if (var->expr) {
-                qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
-            }
-        }
-    }
-
+    // TODO: Consider inlining this
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, main->qbe, qbe_type_basic(QBE_TYPE_I0)));
     qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
 

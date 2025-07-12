@@ -51,6 +51,23 @@ bool type_is_pointer(Type type);
 Type type_remove_ref(Type type);
 
 typedef enum {
+    CONST_VALUE_ATOM,
+    CONST_VALUE_OFFSET,
+    CONST_VALUE_MEMORY,
+    COUNT_CONST_VALUES
+} ConstValueKind;
+
+typedef struct {
+    ConstValueKind kind;
+
+    union {
+        bool        boolean;
+        size_t      integer;
+        const void *memory;
+    } as;
+} ConstValue;
+
+typedef enum {
     NODE_ATOM,
     NODE_CALL,
     NODE_CAST,
@@ -184,6 +201,7 @@ typedef struct {
 
     bool        is_extern;
     NodeVarKind kind;
+    ConstValue  const_value;
 
     QbeNode *qbe;
 } NodeVar;

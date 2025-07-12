@@ -233,6 +233,454 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
+static void check_type(Compiler *c, Node *n);
+static void check_expr(Compiler *c, Node *n, bool ref);
+
+static_assert(COUNT_NODES == 18, "");
+static ConstValue eval_const_expr(Compiler *c, Node *n) {
+    if (!n) {
+        return (ConstValue) {0};
+    }
+
+#define const_int(n)    ((ConstValue) {.kind = CONST_VALUE_ATOM, .as.integer = (n)})
+#define const_bool(b)   ((ConstValue) {.kind = CONST_VALUE_ATOM, .as.boolean = (b)})
+#define const_offset(p) ((ConstValue) {.kind = CONST_VALUE_OFFSET, .as.integer = (p)})
+
+    switch (n->kind) {
+    case NODE_ATOM:
+        static_assert(COUNT_TOKENS == 49, "");
+        switch (n->token.kind) {
+        case TOKEN_INT:
+            n->type = (Type) {.kind = TYPE_INT};
+            return const_int(n->token.as.integer);
+
+        case TOKEN_BOOL:
+            n->type = (Type) {.kind = TYPE_BOOL};
+            return const_bool(n->token.as.boolean);
+
+        case TOKEN_IDENT: {
+            NodeAtom *atom = (NodeAtom *) n;
+
+            atom->definition = ident_find(&c->context, n->token.sv);
+            if (!atom->definition) {
+                error_undefined(n, "identifier");
+            }
+            n->type = atom->definition->type;
+
+            if (atom->definition->kind == NODE_VAR) {
+                return ((NodeVar *) atom->definition)->const_value;
+            }
+
+            fprintf(
+                stderr, PosFmt "ERROR: Can only refer to variables in constant expressions\n", PosArg(n->token.pos));
+            exit(1);
+        }
+
+        default:
+            unreachable();
+        }
+        break;
+
+    case NODE_CALL:
+        fprintf(stderr, PosFmt "ERROR: Unexpected call in constant expression\n", PosArg(n->token.pos));
+        exit(1);
+        break;
+
+    case NODE_CAST: {
+        NodeCast  *cast = (NodeCast *) n;
+        ConstValue value = eval_const_expr(c, cast->from);
+        check_type(c, cast->to);
+
+        const Type from = type_assert_scalar(cast->from);
+        const Type to = type_assert_scalar(cast->to);
+        if (!type_eq(from, to) && is_type_cast_illegal(cast->from, cast->to)) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Cannot cast type '%s' to type '%s'\n",
+                PosArg(n->token.pos),
+                type_to_cstr(from),
+                type_to_cstr(to));
+
+            exit(1);
+        }
+
+        n->type = to;
+
+        if (to.kind == TYPE_BOOL && from.kind != TYPE_BOOL) {
+            return const_bool(value.as.integer != 0);
+        }
+        return value;
+    }
+
+    case NODE_UNARY: {
+        NodeUnary *unary = (NodeUnary *) n;
+
+        static_assert(COUNT_TOKENS == 49, "");
+        switch (n->token.kind) {
+        case TOKEN_SUB: {
+            ConstValue value = eval_const_expr(c, unary->operand);
+            n->type = type_assert_arith(unary->operand, false);
+            return const_int(-value.as.integer);
+        }
+
+        case TOKEN_MUL:
+            fprintf(stderr, PosFmt "ERROR: Unexpected dereference in constant expression\n", PosArg(n->token.pos));
+            exit(1);
+            break;
+
+        case TOKEN_BAND:
+            fprintf(stderr, PosFmt "ERROR: Unexpected reference in constant expression\n", PosArg(n->token.pos));
+            exit(1);
+            break;
+
+        case TOKEN_BNOT: {
+            ConstValue value = eval_const_expr(c, unary->operand);
+            n->type = type_assert_arith(unary->operand, false);
+            return const_int(~value.as.integer);
+        }
+
+        case TOKEN_LNOT: {
+            ConstValue value = eval_const_expr(c, unary->operand);
+            n->type = type_assert(c, unary->operand, (Type) {.kind = TYPE_BOOL});
+            return const_bool(!value.as.boolean);
+        }
+
+        default:
+            unreachable();
+        }
+    }
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+
+        ConstValue lhs = {0};
+        ConstValue rhs = {0};
+
+        static_assert(COUNT_TOKENS == 49, "");
+        switch (n->token.kind) {
+        case TOKEN_ADD:
+        case TOKEN_SUB:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            type_assert_arith(binary->lhs, true);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
+        case TOKEN_MUL:
+        case TOKEN_DIV:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            type_assert_arith(binary->lhs, false);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
+        case TOKEN_SHL:
+        case TOKEN_SHR:
+        case TOKEN_BOR:
+        case TOKEN_BAND:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            type_assert_arith(binary->lhs, false);
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
+        case TOKEN_SET:
+        case TOKEN_ADD_SET:
+        case TOKEN_SUB_SET:
+        case TOKEN_MUL_SET:
+        case TOKEN_DIV_SET:
+        case TOKEN_SHL_SET:
+        case TOKEN_SHR_SET:
+        case TOKEN_BOR_SET:
+        case TOKEN_BAND_SET:
+            fprintf(stderr, PosFmt "ERROR: Unexpected assignment in constant expression\n", PosArg(n->token.pos));
+            exit(1);
+            break;
+
+        case TOKEN_LOR:
+        case TOKEN_LAND:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            n->type = type_assert(c, binary->rhs, type_assert(c, binary->lhs, (Type) {.kind = TYPE_BOOL}));
+            break;
+
+        case TOKEN_GT:
+        case TOKEN_GE:
+        case TOKEN_LT:
+        case TOKEN_LE:
+        case TOKEN_EQ:
+        case TOKEN_NE:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            type_assert_arith(binary->lhs, true);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_BOOL};
+            break;
+
+        default:
+            unreachable();
+        }
+
+        static_assert(COUNT_TOKENS == 49, "");
+        switch (n->token.kind) {
+        case TOKEN_ADD:
+            return const_int(lhs.as.integer + rhs.as.integer);
+
+        case TOKEN_SUB:
+            return const_int(lhs.as.integer - rhs.as.integer);
+
+        case TOKEN_MUL:
+            return const_int(lhs.as.integer * rhs.as.integer);
+
+        case TOKEN_DIV:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_int((long) lhs.as.integer / (long) rhs.as.integer);
+            } else {
+                return const_int(lhs.as.integer / rhs.as.integer);
+            }
+
+        case TOKEN_SHL:
+            return const_int(lhs.as.integer << rhs.as.integer);
+
+        case TOKEN_SHR:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_int((long) lhs.as.integer >> (long) rhs.as.integer);
+            } else {
+                return const_int(lhs.as.integer >> rhs.as.integer);
+            }
+
+        case TOKEN_BOR:
+            return const_int(lhs.as.integer | rhs.as.integer);
+
+        case TOKEN_BAND:
+            return const_int(lhs.as.integer & rhs.as.integer);
+
+        case TOKEN_LOR:
+            return const_bool(lhs.as.boolean || rhs.as.boolean);
+
+        case TOKEN_LAND:
+            return const_bool(lhs.as.boolean && rhs.as.boolean);
+
+        case TOKEN_GT:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_bool((long) lhs.as.integer > (long) rhs.as.integer);
+            } else {
+                return const_bool(lhs.as.integer > rhs.as.integer);
+            }
+
+        case TOKEN_GE:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_bool((long) lhs.as.integer >= (long) rhs.as.integer);
+            } else {
+                return const_bool(lhs.as.integer >= rhs.as.integer);
+            }
+
+        case TOKEN_LT:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_bool((long) lhs.as.integer < (long) rhs.as.integer);
+            } else {
+                return const_bool(lhs.as.integer < rhs.as.integer);
+            }
+
+        case TOKEN_LE:
+            if (type_is_signed(binary->lhs->type)) {
+                return const_bool((long) lhs.as.integer <= (long) rhs.as.integer);
+            } else {
+                return const_bool(lhs.as.integer <= rhs.as.integer);
+            }
+
+        case TOKEN_EQ:
+            return const_bool(lhs.as.integer == rhs.as.integer);
+
+        case TOKEN_NE:
+            return const_bool(lhs.as.integer != rhs.as.integer);
+
+        default:
+            unreachable();
+        }
+    }
+
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+
+        ConstValue value = eval_const_expr(c, member->lhs);
+        if (member->lhs->type.kind != TYPE_STRUCT) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Expected structure type, got '%s'\n",
+                PosArg(member->lhs->token.pos),
+                type_to_cstr(member->lhs->type));
+
+            exit(1);
+        }
+
+        if (member->lhs->type.ref) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Cannot access fields of structure pointer in constant expression\n",
+                PosArg(n->token.pos));
+
+            exit(1);
+        }
+
+        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec;
+
+        member->definition = nodes_find(structt->fields, n->token.sv, NULL);
+        if (!member->definition) {
+            error_undefined(n, "field");
+        }
+
+        n->type = member->definition->type;
+
+        assert(member->definition->kind == NODE_FIELD);
+        const size_t size = compile_sizeof(c, &n->type);
+        const size_t offset = qbe_offsetof(((NodeField *) member->definition)->qbe);
+
+        const size_t memory = context_memory_alloc(&c->context, size);
+        const void  *src = NULL;
+
+        static_assert(COUNT_CONST_VALUES == 3, "");
+        switch (value.kind) {
+        case CONST_VALUE_ATOM:
+            unreachable();
+            break;
+
+        case CONST_VALUE_OFFSET:
+            src = context_memory_read(&c->context, value.as.integer);
+            break;
+
+        case CONST_VALUE_MEMORY:
+            src = value.as.memory;
+            break;
+
+        default:
+            unreachable();
+        }
+
+        context_memory_write(&c->context, memory, (const char *) src + offset, size);
+        return const_offset(memory);
+    } break;
+
+    case NODE_SIZEOF: {
+        NodeSizeof *sizeoff = (NodeSizeof *) n;
+        check_type(c, sizeoff->type);
+        check_expr(c, sizeoff->expr, false);
+        n->type = (Type) {.kind = TYPE_INT};
+
+        Type *type = NULL;
+        if (sizeoff->type) {
+            type = &sizeoff->type->type;
+        } else {
+            type = &sizeoff->expr->type;
+        }
+
+        return const_int(compile_sizeof(c, type));
+    }
+
+    case NODE_COMPOUND: {
+        NodeCompound *compound = (NodeCompound *) n;
+        check_type(c, compound->type);
+
+        n->type = compound->type->type;
+        if (n->type.kind != TYPE_STRUCT) {
+            fprintf(
+                stderr,
+                PosFmt "ERROR: Expected structure type, got '%s'\n",
+                PosArg(compound->type->token.pos),
+                type_to_cstr(compound->type->type));
+
+            exit(1);
+        }
+
+        const size_t size = compile_sizeof(c, &n->type);
+        const size_t memory = context_memory_alloc(&c->context, size);
+
+        NodeStruct *spec = (NodeStruct *) n->type.spec;
+
+        Node *ordered_iota = spec->fields.head;
+        for (Node *it = compound->nodes.head; it; it = it->next) {
+            ConstValue value = {0};
+            size_t     size = 0;
+            size_t     offset = 0;
+
+            if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
+                NodeBinary *assign = (NodeBinary *) it;
+
+                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
+                NodeAtom *lhs = (NodeAtom *) assign->lhs;
+
+                lhs->definition = nodes_find(spec->fields, lhs->node.token.sv, NULL);
+                if (!lhs->definition) {
+                    error_undefined((Node *) lhs, "field");
+                }
+
+                value = eval_const_expr(c, assign->rhs);
+                type_assert(c, assign->rhs, lhs->definition->type);
+                size = compile_sizeof(c, &assign->rhs->type);
+
+                assert(lhs->definition->kind == NODE_FIELD);
+                offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
+            } else {
+                value = eval_const_expr(c, it);
+                type_assert(c, it, ordered_iota->type);
+                size = compile_sizeof(c, &it->type);
+
+                assert(ordered_iota->kind == NODE_FIELD);
+                offset = qbe_offsetof(((NodeField *) ordered_iota)->qbe);
+
+                ordered_iota = ordered_iota->next;
+            }
+
+            const void *src = NULL;
+
+            static_assert(COUNT_CONST_VALUES == 3, "");
+            switch (value.kind) {
+            case CONST_VALUE_ATOM:
+                src = &value.as;
+                break;
+
+            case CONST_VALUE_OFFSET:
+                src = context_memory_read(&c->context, value.as.integer);
+                break;
+
+            case CONST_VALUE_MEMORY:
+                src = value.as.memory;
+                break;
+
+            default:
+                unreachable();
+            }
+
+            context_memory_write(&c->context, memory + offset, src, size);
+        }
+
+        return const_offset(memory);
+    }
+
+    case NODE_FN:
+        fprintf(stderr, PosFmt "ERROR: Unexpected function in constant expression\n", PosArg(n->token.pos));
+        exit(1);
+        break;
+
+    case NODE_IF:
+    case NODE_FOR:
+    case NODE_BLOCK:
+    case NODE_RETURN:
+    case NODE_VAR:
+    case NODE_FIELD:
+    case NODE_STRUCT:
+    case NODE_EXTERN:
+    case NODE_PRINT:
+    default:
+        unreachable();
+        break;
+    }
+
+#undef const_int
+#undef const_bool
+#undef const_offset
+}
+
 static_assert(COUNT_NODES == 18, "");
 static_assert(COUNT_TYPES == 14, "");
 static void check_type(Compiler *c, Node *n) {
@@ -762,7 +1210,24 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         if (var->expr) {
-            check_expr(c, var->expr, false);
+            if (var->kind == NODE_VAR_GLOBAL) {
+                const size_t memory_count_save = c->context.memory.count;
+                var->const_value = eval_const_expr(c, var->expr);
+
+                if (var->const_value.kind == CONST_VALUE_OFFSET) {
+                    const size_t size = compile_sizeof(c, &var->expr->type);
+                    const void  *src = context_memory_read(&c->context, var->const_value.as.integer);
+                    void        *dst = arena_alloc(c->context.arena, size);
+
+                    var->const_value.kind = CONST_VALUE_MEMORY;
+                    var->const_value.as.memory = memcpy(dst, src, size);
+                }
+
+                c->context.memory.count = memory_count_save;
+            } else {
+                check_expr(c, var->expr, false);
+            }
+
             n->type = var->expr->type;
 
             if (n->type.kind == TYPE_UNIT) {
@@ -892,6 +1357,7 @@ static void check_fn(Compiler *c, Node *n) {
 }
 
 void check_nodes(Compiler *c, Nodes ns) {
+    assert(c->context.arena);
     for (Node *it = ns.head; it; it = it->next) {
         check_stmt(c, it);
     }
