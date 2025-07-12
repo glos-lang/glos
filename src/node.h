@@ -200,7 +200,9 @@ typedef struct {
     Node *expr;
     Node *type;
 
-    bool        is_extern;
+    bool is_extern;
+    bool is_static;
+
     NodeVarKind kind;
     ConstValue  const_value;
 

@@ -73,6 +73,7 @@ typedef enum {
     TOKEN_CONST,
     TOKEN_STRUCT,
     TOKEN_EXTERN,
+    TOKEN_STATIC,
 
     TOKEN_PRINT,
     COUNT_TOKENS

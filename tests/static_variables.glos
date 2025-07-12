@@ -1,0 +1,13 @@
+fn iota() i64 {
+    static var n i64
+    n += 1
+    return n - 1
+}
+
+fn main() {
+    print iota()
+    print iota()
+    print iota()
+    print iota()
+    print iota()
+}
