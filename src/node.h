@@ -84,6 +84,7 @@ typedef enum {
 
     NODE_FN,
     NODE_VAR,
+    NODE_CONST,
     NODE_FIELD,
     NODE_STRUCT,
     NODE_EXTERN,
@@ -205,6 +206,17 @@ typedef struct {
 
     QbeNode *qbe;
 } NodeVar;
+
+typedef struct {
+    Node node;
+
+    Node *expr;
+    Node *type;
+    bool  local;
+
+    QbeNode   *qbe;
+    ConstValue value;
+} NodeConst;
 
 typedef struct {
     Node      node;
