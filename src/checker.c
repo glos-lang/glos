@@ -1281,6 +1281,13 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_CONST: {
         NodeConst *constt = (NodeConst *) n;
+        if (!constt->local) {
+            const Node *previous = scope_find(c->context.globals, n->token.sv);
+            if (previous) {
+                error_redefinition(n, previous, "identifier");
+            }
+        }
+
         if (constt->type) {
             check_type(c, constt->type);
             n->type = constt->type->type;
