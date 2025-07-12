@@ -355,18 +355,14 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             for (size_t i = 1; i < member->lhs->type.ref; i++) {
                 lhs = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
             }
+
+            Type spec = type_remove_ref(member->lhs->type);
+            compile_type(c, &spec);
         } else {
             lhs = compile_expr(c, member->lhs, true);
         }
 
         NodeField *field = (NodeField *) member->definition;
-
-        // Ensure the struct is compiled
-        {
-            // TODO: Only do this if lhs is a pointer
-            Type spec = type_remove_ref(member->lhs->type);
-            compile_type(c, &spec);
-        }
 
         const size_t offset = qbe_offsetof(field->qbe);
         if (offset) {
