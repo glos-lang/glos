@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 14, "");
+static_assert(COUNT_TYPES == 15, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -55,7 +55,7 @@ const char *type_to_cstr(Type type) {
         break;
 
     case TYPE_FN: {
-        const NodeFn *spec = (const NodeFn *) type.spec;
+        const NodeFn *spec = (const NodeFn *) type.spec_node;
 
         temp_sprintf("fn (");
         for (const Node *it = spec->args.head; it; it = it->next) {
@@ -78,8 +78,15 @@ const char *type_to_cstr(Type type) {
         }
     } break;
 
+    case TYPE_SLICE:
+        temp_sprintf("[]");
+        temp_remove_null();
+        assert(type.spec_type);
+        type_to_cstr(*type.spec_type);
+        break;
+
     case TYPE_STRUCT:
-        temp_sv_to_cstr(type.spec->token.sv);
+        temp_sv_to_cstr(type.spec_node->token.sv);
         break;
 
     default:
@@ -89,7 +96,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 14, "");
+static_assert(COUNT_TYPES == 15, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -97,8 +104,8 @@ bool type_eq(Type a, Type b) {
 
     switch (a.kind) {
     case TYPE_FN: {
-        const NodeFn *a_spec = (const NodeFn *) a.spec;
-        const NodeFn *b_spec = (const NodeFn *) b.spec;
+        const NodeFn *a_spec = (const NodeFn *) a.spec_node;
+        const NodeFn *b_spec = (const NodeFn *) b.spec_node;
 
         if (a_spec->arity != b_spec->arity) {
             return false;
@@ -113,15 +120,20 @@ bool type_eq(Type a, Type b) {
         return type_eq(node_fn_return_type(a_spec), node_fn_return_type(b_spec));
     } break;
 
+    case TYPE_SLICE:
+        assert(a.spec_type);
+        assert(b.spec_type);
+        return type_eq(*a.spec_type, *b.spec_type);
+
     case TYPE_STRUCT:
-        return a.spec == b.spec;
+        return a.spec_node == b.spec_node;
 
     default:
         return true;
     }
 }
 
-static_assert(COUNT_TYPES == 14, "");
+static_assert(COUNT_TYPES == 15, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -140,7 +152,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 14, "");
+static_assert(COUNT_TYPES == 15, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;

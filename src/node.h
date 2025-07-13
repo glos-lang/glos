@@ -29,17 +29,29 @@ typedef enum {
     TYPE_RAWPTR,
 
     TYPE_FN,
+    TYPE_SLICE,
     TYPE_STRUCT,
 
     COUNT_TYPES
 } TypeKind;
 
-typedef struct {
+typedef struct Type Type;
+
+struct Type {
     TypeKind kind;
     size_t   ref;
-    Node    *spec;
-    QbeType  qbe;
-} Type;
+
+    // For:
+    //   TYPE_FN
+    //   TYPE_STRUCT
+    Node *spec_node;
+
+    // For:
+    //   TYPE_SLICE
+    Type *spec_type;
+
+    QbeType qbe;
+};
 
 const char *type_to_cstr(Type type);
 
@@ -72,6 +84,7 @@ typedef enum {
     NODE_CALL,
     NODE_CAST,
     NODE_UNARY,
+    NODE_INDEX,
     NODE_BINARY,
     NODE_MEMBER,
     NODE_SIZEOF,
@@ -125,6 +138,13 @@ typedef struct {
     Node  node;
     Node *operand;
 } NodeUnary;
+
+typedef struct {
+    Node  node;
+    Node *lhs;
+    Node *from;
+    Node *to;
+} NodeIndex;
 
 typedef struct {
     Node  node;

@@ -161,6 +161,10 @@ void *arena_alloc(Arena *a, size_t size) {
     return ptr;
 }
 
+void *arena_clone(Arena *a, const void *data, size_t size) {
+    return memcpy(arena_alloc(a, size), data, size);
+}
+
 char *arena_sprintf(Arena *a, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

@@ -101,7 +101,7 @@ static void error_invalid(Pos pos, char ch, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -199,7 +199,11 @@ Token lexer_next(Lexer *l) {
         break;
 
     case '.':
-        token.kind = TOKEN_DOT;
+        if (match_char(l, '.')) {
+            token.kind = TOKEN_RANGE;
+        } else {
+            token.kind = TOKEN_DOT;
+        }
         break;
 
     case ':':
@@ -224,6 +228,14 @@ Token lexer_next(Lexer *l) {
 
     case '}':
         token.kind = TOKEN_RBRACE;
+        break;
+
+    case '[':
+        token.kind = TOKEN_LBRACKET;
+        break;
+
+    case ']':
+        token.kind = TOKEN_RBRACKET;
         break;
 
     case '+':

@@ -3,7 +3,7 @@
 #include "checker.h"
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 14, "");
+    static_assert(COUNT_TYPES == 15, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -30,7 +30,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -236,7 +236,7 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
 static void check_type(Compiler *c, Node *n);
 static void check_expr(Compiler *c, Node *n, bool ref);
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static ConstValue eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
@@ -250,7 +250,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -319,7 +319,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -354,13 +354,17 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
+    case NODE_INDEX:
+        todo();
+        break;
+
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -425,7 +429,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             return const_int(lhs.as.integer + rhs.as.integer);
@@ -527,7 +531,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             exit(1);
         }
 
-        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec;
+        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
 
         member->definition = nodes_find(structt->fields, n->token.sv, NULL);
         if (!member->definition) {
@@ -599,7 +603,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         const size_t size = compile_sizeof(c, &n->type);
         const size_t memory = context_memory_alloc(&c->context, size);
 
-        NodeStruct *spec = (NodeStruct *) n->type.spec;
+        NodeStruct *spec = (NodeStruct *) n->type.spec_node;
 
         Node *ordered_iota = spec->fields.head;
         for (Node *it = compound->nodes.head; it; it = it->next) {
@@ -685,8 +689,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 #undef const_offset
 }
 
-static_assert(COUNT_NODES == 21, "");
-static_assert(COUNT_TYPES == 14, "");
+static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_TYPES == 15, "");
 static void check_type(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -739,7 +743,7 @@ static void check_type(Compiler *c, Node *n) {
         }
 
         check_type(c, spec->ret);
-        n->type = (Type) {.kind = TYPE_FN, .spec = n};
+        n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
     } break;
 
     default:
@@ -749,7 +753,7 @@ static void check_type(Compiler *c, Node *n) {
 
 static void check_fn(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static void check_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return;
@@ -760,7 +764,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -813,7 +817,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             exit(1);
         }
 
-        const NodeFn *expected = (const NodeFn *) fn_type.spec;
+        const NodeFn *expected = (const NodeFn *) fn_type.spec_node;
         if (call->arity != expected->arity) {
             fprintf(
                 stderr,
@@ -858,7 +862,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -909,10 +913,61 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
     } break;
 
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+        check_expr(c, index->lhs, ref);
+
+        if (index->to) {
+            if (!index->lhs->type.ref) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Expected typed pointer, got '%s'\n",
+                    PosArg(index->lhs->token.pos),
+                    type_to_cstr(index->lhs->type));
+
+                exit(1);
+            }
+        } else {
+            if (type_is_pointer(index->lhs->type) || index->lhs->type.kind != TYPE_SLICE) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Expected slice type, got '%s'\n",
+                    PosArg(index->lhs->token.pos),
+                    type_to_cstr(index->lhs->type));
+
+                exit(1);
+            }
+        }
+
+        check_expr(c, index->from, false);
+        type_assert_arith(index->from, false);
+
+        if (index->to) {
+            check_expr(c, index->to, false);
+            type_assert_arith(index->to, false);
+
+            if (index->lhs->type.ref) {
+                Type element = index->lhs->type;
+                element.ref--;
+
+                n->type = (Type) {
+                    .kind = TYPE_SLICE,
+                    .spec_type = arena_clone(c->context.arena, &element, sizeof(element)),
+                };
+            } else {
+                todo();
+            }
+        } else {
+            assert(index->lhs->type.kind == TYPE_SLICE);
+            n->type = *index->lhs->type.spec_type;
+            allow_ref = true;
+        }
+    } break;
+
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 53, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1011,7 +1066,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
             exit(1);
         }
-        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec;
+        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
 
         member->definition = nodes_find(structt->fields, n->token.sv, NULL);
         if (!member->definition) {
@@ -1044,7 +1099,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             exit(1);
         }
 
-        NodeStruct *spec = (NodeStruct *) n->type.spec;
+        NodeStruct *spec = (NodeStruct *) n->type.spec_node;
 
         Node *ordered_iota = spec->fields.head;
         for (Node *it = compound->nodes.head; it; it = it->next) {
@@ -1089,7 +1144,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -1158,7 +1213,7 @@ static ConstValue eval_const_expr_and_finalize(Compiler *c, Node *n) {
     return value;
 }
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1331,6 +1386,7 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->expr->type;
         }
 
+        // TODO: Consider whether this is really needed
         if (n->type.kind == TYPE_INT) {
             n->type.kind = TYPE_I64;
         }
@@ -1372,7 +1428,7 @@ static void check_stmt(Compiler *c, Node *n) {
             }
         }
 
-        n->type = (Type) {.kind = TYPE_STRUCT, .spec = n};
+        n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
         da_push(&c->context.types, n);
     } break;
 
@@ -1408,7 +1464,7 @@ static void check_fn(Compiler *c, Node *n) {
         }
         da_push(&c->context.globals, n);
     }
-    n->type = (Type) {.kind = TYPE_FN, .spec = n};
+    n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
 
     const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
     for (Node *it = fn->args.head; it; it = it->next) {
