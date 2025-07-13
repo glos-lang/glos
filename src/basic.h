@@ -79,9 +79,11 @@ SV sv_drop(SV *s, size_t count);
 SV sv_split(SV *s, char ch);
 
 // Temporary Allocator
+#define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))
+
 void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
-char *temp_sprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+char *temp_sprintf(const char *fmt, ...) PrintfLike(1);
 char *temp_sv_to_cstr(SV sv);
 void  temp_remove_null(void);
 
@@ -94,6 +96,7 @@ typedef struct {
 
 void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
+char *arena_sprintf(Arena *a, const char *fmt, ...) PrintfLike(2);
 
 // OS
 bool read_file(SV *out, const char *path, Arena *arena);

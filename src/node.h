@@ -75,6 +75,7 @@ typedef enum {
     NODE_BINARY,
     NODE_MEMBER,
     NODE_SIZEOF,
+    NODE_ASSERT,
     NODE_COMPOUND,
 
     NODE_IF,
@@ -141,6 +142,12 @@ typedef struct {
     Node *expr;
     Node *type;
 } NodeSizeof;
+
+typedef struct {
+    Node  node;
+    Node *expr;
+    bool  is_static;
+} NodeAssert;
 
 typedef struct {
     Node  node;

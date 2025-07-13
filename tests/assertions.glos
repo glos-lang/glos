@@ -1,0 +1,9 @@
+fn main() {
+    print 69
+    assert true
+
+    print 420
+    assert !true
+
+    print 1337
+}
