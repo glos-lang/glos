@@ -11,7 +11,7 @@ typedef struct {
 } Compiler;
 
 void compiler_init(Compiler *c);
-void compiler_run(Compiler *c, const char *output, const char **flags, size_t flags_count);
+void compiler_build(Compiler *c, const char *object_file_path);
 
 size_t compile_sizeof(Compiler *c, Type *type);
 

@@ -99,8 +99,9 @@ int main(int argc, char **argv) {
     compiler_init(&c);
     check_nodes(&c, p.nodes);
 
+    Cmd  cmd = {0};
+    bool remove_after = false;
     if (run) {
-        const bool remove_after = !output;
         if (output) {
             if (!strchr(output, '/')) {
                 output = temp_sprintf("./%s", output);
@@ -118,26 +119,40 @@ int main(int argc, char **argv) {
             }
 
             output = buffer;
-        }
-        compiler_run(&c, output, flags.data, flags.count);
-
-        Cmd cmd = {0};
-        da_push(&cmd, output);
-        da_push_many(&cmd, argv, argc);
-        result = cmd_run_sync(&cmd, (CmdStdio) {0});
-        da_free(&cmd);
-
-        if (remove_after) {
-            remove(output);
+            remove_after = true;
         }
     } else {
         if (!output) {
             output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
         }
-        compiler_run(&c, output, flags.data, flags.count);
+    }
+
+    const char *object_file_path = temp_sprintf("%s.o", output);
+    compiler_build(&c, object_file_path);
+
+    da_push(&cmd, "cc");
+    da_push(&cmd, "-o");
+    da_push(&cmd, output);
+    da_push(&cmd, object_file_path);
+    da_push_many(&cmd, flags.data, flags.count);
+    if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
+        fprintf(stderr, "ERROR: Could not generate '%s'\n", output);
+        exit(1);
+    }
+    remove(object_file_path);
+
+    if (run) {
+        da_push(&cmd, output);
+        da_push_many(&cmd, argv, argc);
+        result = cmd_run_sync(&cmd, (CmdStdio) {0});
+
+        if (remove_after) {
+            remove(output);
+        }
     }
 
     arena_free(&arena);
     da_free(&flags);
+    da_free(&cmd);
     return result;
 }

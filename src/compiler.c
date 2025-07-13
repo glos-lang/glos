@@ -778,7 +778,7 @@ void compiler_init(Compiler *c) {
     c->qbe = qbe_new();
 }
 
-void compiler_run(Compiler *c, const char *output, const char **flags, size_t flags_count) {
+void compiler_build(Compiler *c, const char *object_file_path) {
     assert(c->context.arena);
 
     NodeFn *main = get_main(&c->context);
@@ -801,13 +801,13 @@ void compiler_run(Compiler *c, const char *output, const char **flags, size_t fl
     exit(0);
 #endif
 
-    const int code = qbe_generate(c->qbe, QBE_TARGET_DEFAULT, output, flags, flags_count);
+    if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path)) {
+        fprintf(stderr, "ERROR: Could not generate '%s'\n", object_file_path);
+        exit(1);
+    }
+
     qbe_free(c->qbe);
     context_free(&c->context);
-
-    if (code) {
-        exit(code);
-    }
 }
 
 size_t compile_sizeof(Compiler *c, Type *type) {
