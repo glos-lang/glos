@@ -1,8 +1,9 @@
 CC = cc
 CFLAGS = `cat compile_flags.txt` -g
 
-QBEDIR = src/libqbe/lib
-QBELIB = $(QBEDIR)/libqbe.a
+QBE_DIR = thirdparty/libqbe
+LIBQBE_DIR = $(QBE_DIR)/lib
+LIBQBE_PATH = $(LIBQBE_DIR)/libqbe.a
 
 HEADERS = $(wildcard src/*.h)
 SOURCES = $(HEADERS:.h=.c)
@@ -15,12 +16,12 @@ bin/test: src/basic.h src/basic.o src/test.c
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -o $@ src/basic.o src/test.c
 
-bin/glos: $(OBJECTS) $(QBELIB) src/main.c
+bin/glos: $(OBJECTS) $(LIBQBE_PATH) src/main.c
 	@mkdir -p bin
-	$(CC) $(CFLAGS) -o $@ $(OBJECTS) src/main.c -L$(QBEDIR) -lqbe
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS) src/main.c -L$(LIBQBE_DIR) -lqbe
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(QBELIB):
-	$(MAKE) -C src/libqbe
+$(LIBQBE_PATH):
+	$(MAKE) -C $(QBE_DIR)
