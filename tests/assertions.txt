@@ -1,0 +1,8 @@
+EXIT 1
+STDOUT 46
+69
+420
+assertions.glos:6:12: Assertion Failed
+
+STDERR 0
+

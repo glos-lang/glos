@@ -75,7 +75,7 @@ static void compile_type(Compiler *c, Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -86,7 +86,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 51, "");
+        static_assert(COUNT_TOKENS == 52, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -171,7 +171,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 51, "");
+        static_assert(COUNT_TOKENS == 52, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -212,7 +212,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 51, "");
+        static_assert(COUNT_TOKENS == 52, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -244,7 +244,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 51, "");
+        static_assert(COUNT_TOKENS == 52, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -274,7 +274,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 51, "");
+        static_assert(COUNT_TOKENS == 52, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -466,13 +466,49 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case NODE_ASSERT: {
+        NodeAssert *assertt = (NodeAssert *) n;
+        if (!assertt->is_static) {
+            QbeBlock *failed = qbe_block_new(c->qbe);
+            QbeBlock *success = qbe_block_new(c->qbe);
+
+            // Condition
+            QbeNode *condition = compile_expr(c, assertt->expr, false);
+            qbe_build_branch(c->qbe, c->fn, condition, success, failed);
+
+            // Failed
+            qbe_build_block(c->qbe, c->fn, failed);
+
+            {
+                QbeNode *puts = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("puts"), qbe_type_basic(QBE_TYPE_I64));
+                QbeCall *call = qbe_call_new(c->qbe, puts, qbe_type_basic(QBE_TYPE_I32));
+
+                QbeSV message = qbe_sv_from_cstr(
+                    arena_sprintf(c->context.arena, PosFmt "Assertion Failed", PosArg(assertt->expr->token.pos)));
+
+                qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
+                qbe_build_call(c->qbe, c->fn, call);
+            }
+
+            {
+                QbeNode *exit = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("exit"), qbe_type_basic(QBE_TYPE_I64));
+                QbeCall *call = qbe_call_new(c->qbe, exit, qbe_type_basic(QBE_TYPE_I0));
+                qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I32, 1));
+                qbe_build_call(c->qbe, c->fn, call);
+            }
+
+            // Success
+            qbe_build_block(c->qbe, c->fn, success);
+        }
+    } break;
+
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
 
@@ -743,6 +779,8 @@ void compiler_init(Compiler *c) {
 }
 
 void compiler_run(Compiler *c, const char *output, const char **flags, size_t flags_count) {
+    assert(c->context.arena);
+
     NodeFn *main = get_main(&c->context);
     for (size_t i = 0; i < c->context.globals.count; i++) {
         compile_stmt(c, c->context.globals.data[i]);

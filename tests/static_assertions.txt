@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 46
+static_assertions.glos:2:18: Assertion Failed
+
