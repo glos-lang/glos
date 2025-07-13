@@ -1,0 +1,8 @@
+type Foo i64
+type Bar i64
+
+fn main() {
+    var x Foo = 34
+    var y Bar = 35
+    print x + y
+}
