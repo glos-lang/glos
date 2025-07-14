@@ -1,8 +1,8 @@
-EXIT 1
-STDOUT 46
+EXIT 134
+STDOUT 7
 69
 420
-assertions.glos:6:12: Assertion Failed
 
-STDERR 0
+STDERR 39
+assertions.glos:6:12: Assertion Failed
 

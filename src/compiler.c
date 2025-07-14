@@ -1,5 +1,4 @@
 #include "compiler.h"
-#include "qbe.h"
 
 static_assert(COUNT_TYPES == 15, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
@@ -291,9 +290,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 qbe_build_block(c->qbe, c->fn, failure);
 
                 {
-                    // TODO: Standard error
-                    QbeNode *printf = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("printf"), qbe_type_basic(QBE_TYPE_I64));
-                    QbeCall *call = qbe_call_new(c->qbe, printf, qbe_type_basic(QBE_TYPE_I32));
+                    QbeNode *panic = qbe_atom_symbol(
+                        c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
+
+                    QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
 
                     QbeSV message = qbe_sv_from_cstr(arena_sprintf(
                         c->context.arena,
@@ -308,9 +308,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 }
 
                 {
-                    QbeNode *exit = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("exit"), qbe_type_basic(QBE_TYPE_I64));
-                    QbeCall *call = qbe_call_new(c->qbe, exit, qbe_type_basic(QBE_TYPE_I0));
-                    qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I32, 1));
+                    QbeNode *abort = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
+                    QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
                     qbe_build_call(c->qbe, c->fn, call);
                 }
 
@@ -623,20 +622,21 @@ static void compile_stmt(Compiler *c, Node *n) {
 
             {
                 // TODO: Standard error
-                QbeNode *puts = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("puts"), qbe_type_basic(QBE_TYPE_I64));
-                QbeCall *call = qbe_call_new(c->qbe, puts, qbe_type_basic(QBE_TYPE_I32));
+                QbeNode *panic =
+                    qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
+
+                QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
 
                 QbeSV message = qbe_sv_from_cstr(
-                    arena_sprintf(c->context.arena, PosFmt "Assertion Failed", PosArg(assertt->expr->token.pos)));
+                    arena_sprintf(c->context.arena, PosFmt "Assertion Failed\n", PosArg(assertt->expr->token.pos)));
 
                 qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
                 qbe_build_call(c->qbe, c->fn, call);
             }
 
             {
-                QbeNode *exit = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("exit"), qbe_type_basic(QBE_TYPE_I64));
-                QbeCall *call = qbe_call_new(c->qbe, exit, qbe_type_basic(QBE_TYPE_I0));
-                qbe_call_add_arg(c->qbe, call, qbe_atom_int(c->qbe, QBE_TYPE_I32, 1));
+                QbeNode *abort = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
+                QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
                 qbe_build_call(c->qbe, c->fn, call);
             }
 

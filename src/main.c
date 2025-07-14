@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     const char *input = NULL;
     const char *output = NULL;
 
-    shift(&argc, &argv, "Program name");
+    const char *program = shift(&argc, &argv, "Program name");
     while (!input || argc) {
         const char *arg = shift(&argc, &argv, "Input file");
         if (arg[0] == '-') {
@@ -134,7 +134,19 @@ int main(int argc, char **argv) {
     da_push(&cmd, "-o");
     da_push(&cmd, output);
     da_push(&cmd, object_file_path);
+    {
+        SV base = sv_from_cstr(program);
+        for (size_t i = base.count; i; i--) {
+            if (base.data[i - 1] == '/') {
+                base.count = i;
+                break;
+            }
+        }
+
+        da_push(&cmd, temp_sprintf(SVFmt "runtime.o", SVArg(base)));
+    }
     da_push_many(&cmd, flags.data, flags.count);
+
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
         fprintf(stderr, "ERROR: Could not generate '%s'\n", output);
         exit(1);
