@@ -362,9 +362,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
         case TOKEN_LBRACKET: {
             NodeIndex *index = node_alloc(p, NODE_INDEX, token);
             index->lhs = node;
-            index->from = parse_expr(p, lbp, false);
+            index->from = parse_expr(p, POWER_SET, false);
             if (lexer_read(&p->lexer, TOKEN_RANGE)) {
-                index->to = parse_expr(p, lbp, false);
+                index->to = parse_expr(p, POWER_SET, false);
             }
 
             lexer_expect(&p->lexer, TOKEN_RBRACKET);

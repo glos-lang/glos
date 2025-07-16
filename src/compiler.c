@@ -224,8 +224,72 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeNode *slice_data = NULL;
             if (index->lhs->type.ref) {
                 slice_data = lhs;
+            } else if (index->lhs->type.kind == TYPE_SLICE) {
+                // Bounds Check
+                {
+                    QbeNode *count = qbe_build_load(
+                        c->qbe,
+                        c->fn,
+                        qbe_build_binary(
+                            c->qbe,
+                            c->fn,
+                            QBE_BINARY_ADD,
+                            qbe_type_basic(QBE_TYPE_I64),
+                            lhs,
+                            qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
+                        qbe_type_basic(QBE_TYPE_I64),
+                        true);
+
+                    QbeBlock *failure = qbe_block_new(c->qbe);
+                    QbeBlock *success = qbe_block_new(c->qbe);
+
+                    QbeNode *bounds_check_from =
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLE, qbe_type_basic(QBE_TYPE_I8), from, count);
+
+                    QbeNode *bounds_check_to =
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLE, qbe_type_basic(QBE_TYPE_I8), to, count);
+
+                    QbeNode *bounds_check = qbe_build_binary(
+                        c->qbe, c->fn, QBE_BINARY_AND, qbe_type_basic(QBE_TYPE_I8), bounds_check_from, bounds_check_to);
+
+                    qbe_build_branch(c->qbe, c->fn, bounds_check, success, failure);
+
+                    // Out of Bounds
+                    qbe_build_block(c->qbe, c->fn, failure);
+
+                    {
+                        QbeNode *panic = qbe_atom_symbol(
+                            c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
+
+                        QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
+
+                        QbeSV message = qbe_sv_from_cstr(arena_sprintf(
+                            c->context.arena,
+                            PosFmt "Range (%%ld..%%ld) is out of bounds in slice of length %%ld\n",
+                            PosArg(n->token.pos)));
+
+                        qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
+                        qbe_call_start_variadic(c->qbe, call);
+                        qbe_call_add_arg(c->qbe, call, from);
+                        qbe_call_add_arg(c->qbe, call, to);
+                        qbe_call_add_arg(c->qbe, call, count);
+                        qbe_build_call(c->qbe, c->fn, call);
+                    }
+
+                    {
+                        QbeNode *abort =
+                            qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
+                        QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
+                        qbe_build_call(c->qbe, c->fn, call);
+                    }
+
+                    // Success
+                    qbe_build_block(c->qbe, c->fn, success);
+                }
+
+                slice_data = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
             } else {
-                todo();
+                unreachable();
             }
 
             QbeNode *offset = qbe_build_binary(
@@ -282,7 +346,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 QbeBlock *success = qbe_block_new(c->qbe);
 
                 QbeNode *bounds_check =
-                    qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLT, qbe_type_basic(QBE_TYPE_I64), from, count);
+                    qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLT, qbe_type_basic(QBE_TYPE_I8), from, count);
 
                 qbe_build_branch(c->qbe, c->fn, bounds_check, success, failure);
 

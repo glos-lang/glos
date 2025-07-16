@@ -918,10 +918,10 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         check_expr(c, index->lhs, ref);
 
         if (index->to) {
-            if (!index->lhs->type.ref) {
+            if (!index->lhs->type.ref && index->lhs->type.kind != TYPE_SLICE) {
                 fprintf(
                     stderr,
-                    PosFmt "ERROR: Expected typed pointer, got '%s'\n",
+                    PosFmt "ERROR: Expected typed pointer or slice, got '%s'\n",
                     PosArg(index->lhs->token.pos),
                     type_to_cstr(index->lhs->type));
 
@@ -954,8 +954,10 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                     .kind = TYPE_SLICE,
                     .spec_type = arena_clone(c->context.arena, &element, sizeof(element)),
                 };
+            } else if (index->lhs->type.kind == TYPE_SLICE) {
+                n->type = index->lhs->type;
             } else {
-                todo();
+                unreachable();
             }
         } else {
             assert(index->lhs->type.kind == TYPE_SLICE);
