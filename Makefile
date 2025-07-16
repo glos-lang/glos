@@ -21,6 +21,7 @@ bin/glos: $(OBJECTS) $(LIBQBE_PATH) src/main.c
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) src/main.c -L$(LIBQBE_DIR) -lqbe
 
 bin/runtime.o: src/runtime.c
+	@mkdir -p bin
 	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.c $(HEADERS)
