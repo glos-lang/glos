@@ -671,6 +671,33 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
+static void compile_fn_body(Compiler *c, NodeFn *fn) {
+    assert(fn->body->kind == NODE_BLOCK);
+    NodeBlock *fn_block = (NodeBlock *) fn->body;
+
+    size_t fn_row = 0;
+    if (fn_block->body.head) {
+        fn_row = fn_block->body.head->token.pos.row;
+
+        compile_stmt(c, fn_block->body.head);
+        for (Node *it = fn_block->body.head->next; it; it = it->next) {
+            qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
+            compile_stmt(c, it);
+        }
+    } else {
+        fn_row = fn_block->node.token.pos.row;
+    }
+
+    qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
+    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
+
+    if (c->is_inlining_main) {
+        qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
+    } else {
+        qbe_build_return(c->qbe, c->fn, NULL);
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -692,7 +719,6 @@ static void compile_stmt(Compiler *c, Node *n) {
             qbe_build_block(c->qbe, c->fn, failure);
 
             {
-                // TODO: Standard error
                 QbeNode *panic =
                     qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
 
@@ -800,7 +826,11 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
-        qbe_build_return(c->qbe, c->fn, compile_expr(c, ret->value, false));
+        if (c->is_inlining_main) {
+            qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
+        } else {
+            qbe_build_return(c->qbe, c->fn, compile_expr(c, ret->value, false));
+        }
         qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
     } break;
 
@@ -815,8 +845,12 @@ static void compile_stmt(Compiler *c, Node *n) {
         Type return_type = node_fn_return_type(fn);
         compile_type(c, &return_type);
 
-        QbeFn *fn_save = c->fn;
+        QbeFn     *fn_save = c->fn;
+        const bool is_inlining_main_save = c->is_inlining_main;
+
         c->fn = qbe_fn_new(c->qbe, (QbeSV) {0}, return_type.qbe);
+        c->is_inlining_main = false;
+
         fn->qbe = (QbeNode *) c->fn;
 
         for (Node *it = fn->args.head; it; it = it->next) {
@@ -830,27 +864,10 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
         }
 
-        assert(fn->body->kind == NODE_BLOCK);
-        NodeBlock *fn_block = (NodeBlock *) fn->body;
-
-        size_t fn_row = 0;
-        if (fn_block->body.head) {
-            fn_row = fn_block->body.head->token.pos.row;
-
-            compile_stmt(c, fn_block->body.head);
-            for (Node *it = fn_block->body.head->next; it; it = it->next) {
-                qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
-                compile_stmt(c, it);
-            }
-        } else {
-            fn_row = fn_block->node.token.pos.row;
-        }
-
-        qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
-        qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(n->token.pos.path), fn_row + 1);
-        qbe_build_return(c->qbe, c->fn, NULL);
+        compile_fn_body(c, fn);
 
         c->fn = fn_save;
+        c->is_inlining_main = is_inlining_main_save;
     } break;
 
     case NODE_VAR: {
@@ -996,11 +1013,9 @@ void compiler_build(Compiler *c, const char *object_file_path) {
 
     // Entry
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
-    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
-
-    // TODO: Consider inlining this
-    qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, main->qbe, qbe_type_basic(QBE_TYPE_I0)));
-    qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
+    c->is_inlining_main = true;
+    compile_fn_body(c, main);
+    c->is_inlining_main = false;
 
 #if 0
     qbe_compile(c->qbe);
