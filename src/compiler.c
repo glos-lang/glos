@@ -244,10 +244,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     QbeBlock *success = qbe_block_new(c->qbe);
 
                     QbeNode *bounds_check_from =
-                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLE, qbe_type_basic(QBE_TYPE_I8), from, count);
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), from, count);
 
                     QbeNode *bounds_check_to =
-                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLE, qbe_type_basic(QBE_TYPE_I8), to, count);
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), to, count);
 
                     QbeNode *bounds_check = qbe_build_binary(
                         c->qbe, c->fn, QBE_BINARY_AND, qbe_type_basic(QBE_TYPE_I8), bounds_check_from, bounds_check_to);
@@ -346,7 +346,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 QbeBlock *success = qbe_block_new(c->qbe);
 
                 QbeNode *bounds_check =
-                    qbe_build_binary(c->qbe, c->fn, QBE_BINARY_SLT, qbe_type_basic(QBE_TYPE_I8), from, count);
+                    qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULT, qbe_type_basic(QBE_TYPE_I8), from, count);
 
                 qbe_build_branch(c->qbe, c->fn, bounds_check, success, failure);
 

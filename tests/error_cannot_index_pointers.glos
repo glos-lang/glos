@@ -1,0 +1,4 @@
+fn main() {
+    var p &i64
+    p[0]
+}

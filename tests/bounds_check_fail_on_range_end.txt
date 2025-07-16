@@ -1,0 +1,9 @@
+EXIT 134
+STDOUT 6
+2
+4
+6
+
+STDERR 94
+bounds_check_fail_on_range_end.glos:20:18: Range (1..6) is out of bounds in slice of length 5
+
