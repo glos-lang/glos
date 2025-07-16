@@ -23,12 +23,13 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
     case TOKEN_LPAREN:
     case TOKEN_LBRACE:
+    case TOKEN_LBRACKET:
         return POWER_DOT;
 
     case TOKEN_ADD:
@@ -75,13 +76,14 @@ static Power token_kind_to_power(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_NODES == 21, "");
+static_assert(COUNT_NODES == 22, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
         [NODE_CALL] = sizeof(NodeCall),
         [NODE_CAST] = sizeof(NodeCast),
         [NODE_UNARY] = sizeof(NodeUnary),
+        [NODE_INDEX] = sizeof(NodeIndex),
         [NODE_BINARY] = sizeof(NodeBinary),
         [NODE_MEMBER] = sizeof(NodeMember),
         [NODE_SIZEOF] = sizeof(NodeSizeof),
@@ -119,10 +121,11 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
+    case TOKEN_LBRACKET:
     case TOKEN_BAND:
     case TOKEN_LAND:
     case TOKEN_FN:
@@ -133,7 +136,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -142,6 +145,13 @@ static Node *parse_type(Parser *p) {
     case TOKEN_IDENT:
         node = node_alloc(p, NODE_ATOM, token);
         break;
+
+    case TOKEN_LBRACKET: {
+        NodeIndex *index = node_alloc(p, NODE_INDEX, token);
+        lexer_expect(&p->lexer, TOKEN_RBRACKET);
+        index->base = parse_type(p);
+        node = (Node *) index;
+    } break;
 
     case TOKEN_BAND: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
@@ -198,7 +208,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -357,6 +367,18 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
             node = (Node *) compound;
         } break;
 
+        case TOKEN_LBRACKET: {
+            NodeIndex *index = node_alloc(p, NODE_INDEX, token);
+            index->base = node;
+            index->from = parse_expr(p, POWER_SET, false);
+            if (lexer_read(&p->lexer, TOKEN_RANGE)) {
+                index->to = parse_expr(p, POWER_SET, false);
+            }
+
+            lexer_expect(&p->lexer, TOKEN_RBRACKET);
+            node = (Node *) index;
+        } break;
+
         default: {
             NodeBinary *binary = node_alloc(p, NODE_BINARY, token);
             binary->lhs = node;
@@ -390,7 +412,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 53, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

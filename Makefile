@@ -10,7 +10,7 @@ SOURCES = $(HEADERS:.h=.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 .PHONY: all
-all: bin/test bin/glos
+all: bin/test bin/glos bin/runtime.o
 
 bin/test: src/basic.h src/basic.o src/test.c
 	@mkdir -p bin
@@ -19,6 +19,10 @@ bin/test: src/basic.h src/basic.o src/test.c
 bin/glos: $(OBJECTS) $(LIBQBE_PATH) src/main.c
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) src/main.c -L$(LIBQBE_DIR) -lqbe
+
+bin/runtime.o: src/runtime.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@

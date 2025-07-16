@@ -18,6 +18,7 @@ typedef enum {
     TOKEN_DOT,
     TOKEN_COLON,
     TOKEN_COMMA,
+    TOKEN_RANGE,
 
     TOKEN_INT,
     TOKEN_BOOL,
@@ -27,6 +28,8 @@ typedef enum {
     TOKEN_RPAREN,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
+    TOKEN_LBRACKET,
+    TOKEN_RBRACKET,
 
     TOKEN_ADD,
     TOKEN_SUB,

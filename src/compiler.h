@@ -8,6 +8,12 @@ typedef struct {
 
     Qbe   *qbe;
     QbeFn *fn;
+
+    QbeNode *print_fn;
+    QbeNode *print_sfmt;
+    QbeNode *print_ufmt;
+
+    QbeType slice_type;
 } Compiler;
 
 void compiler_init(Compiler *c);

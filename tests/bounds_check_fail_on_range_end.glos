@@ -1,0 +1,21 @@
+fn alloc_i64s(n i64) []i64 {
+    extern fn malloc(size u64) rawptr
+    var ptr = <&i64> malloc(<u64> n * sizeof<i64>)
+    return ptr[0..n]
+}
+
+fn print_i64s(xs []i64) {
+    for var i = 0; i < xs.count; i += 1 {
+        print xs[i]
+    }
+}
+
+fn main() {
+    var xs = alloc_i64s(5)
+    for var i = 0; i < xs.count; i += 1 {
+        xs[i] = i * 2
+    }
+
+    print_i64s(xs[1..4])
+    print_i64s(xs[1..6])
+}
