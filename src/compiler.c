@@ -554,15 +554,22 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 lhs = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
             }
 
-            Type spec = type_remove_ref(member->lhs->type);
-            compile_type(c, &spec);
+            if (member->lhs->type.kind == TYPE_STRUCT) {
+                Type spec = type_remove_ref(member->lhs->type);
+                compile_type(c, &spec);
+            }
         } else {
             lhs = compile_expr(c, member->lhs, true);
         }
 
-        NodeField *field = (NodeField *) member->definition;
+        size_t offset = 0;
+        if (member->lhs->type.kind == TYPE_STRUCT) {
+            NodeField *field = (NodeField *) member->definition;
+            offset = qbe_offsetof(field->qbe);
+        } else {
+            offset = n->token.as.integer;
+        }
 
-        const size_t offset = qbe_offsetof(field->qbe);
         if (offset) {
             lhs = qbe_build_binary(
                 c->qbe,

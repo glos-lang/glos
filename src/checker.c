@@ -1059,24 +1059,40 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         NodeMember *member = (NodeMember *) n;
 
         check_expr(c, member->lhs, ref);
-        if (member->lhs->type.kind != TYPE_STRUCT) {
-            fprintf(
-                stderr,
-                PosFmt "ERROR: Expected structure type, got '%s'\n",
-                PosArg(member->lhs->token.pos),
-                type_to_cstr(member->lhs->type));
+        if (member->lhs->type.kind == TYPE_STRUCT) {
+            NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
 
-            exit(1);
+            member->definition = nodes_find(structt->fields, n->token.sv, NULL);
+            if (!member->definition) {
+                error_undefined(n, "field");
+            }
+
+            allow_ref = ref;
+            n->type = member->definition->type;
+        } else if (member->lhs->type.kind == TYPE_SLICE) {
+            if (sv_match(n->token.sv, "data")) {
+                n->type = *member->lhs->type.spec_type;
+                n->type.ref++;
+                n->token.as.integer = 0;
+            } else if (sv_match(n->token.sv, "count")) {
+                n->type = (Type) {.kind = TYPE_I64};
+                n->token.as.integer = 8;
+            } else {
+                error_undefined(n, "field");
+            }
+
+            allow_ref = ref;
+        } else {
+            if (member->lhs->type.kind != TYPE_STRUCT && member->lhs->type.kind != TYPE_SLICE) {
+                fprintf(
+                    stderr,
+                    PosFmt "ERROR: Expected structure or slice type, got '%s'\n",
+                    PosArg(member->lhs->token.pos),
+                    type_to_cstr(member->lhs->type));
+
+                exit(1);
+            }
         }
-        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
-
-        member->definition = nodes_find(structt->fields, n->token.sv, NULL);
-        if (!member->definition) {
-            error_undefined(n, "field");
-        }
-
-        allow_ref = true;
-        n->type = member->definition->type;
     } break;
 
     case NODE_SIZEOF: {
