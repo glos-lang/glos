@@ -125,6 +125,7 @@ static_assert(COUNT_TOKENS == 56, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
+    case TOKEN_LBRACKET:
     case TOKEN_BAND:
     case TOKEN_LAND:
     case TOKEN_FN:
@@ -144,6 +145,13 @@ static Node *parse_type(Parser *p) {
     case TOKEN_IDENT:
         node = node_alloc(p, NODE_ATOM, token);
         break;
+
+    case TOKEN_LBRACKET: {
+        NodeIndex *index = node_alloc(p, NODE_INDEX, token);
+        lexer_expect(&p->lexer, TOKEN_RBRACKET);
+        index->base = parse_type(p);
+        node = (Node *) index;
+    } break;
 
     case TOKEN_BAND: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
@@ -361,7 +369,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
 
         case TOKEN_LBRACKET: {
             NodeIndex *index = node_alloc(p, NODE_INDEX, token);
-            index->lhs = node;
+            index->base = node;
             index->from = parse_expr(p, POWER_SET, false);
             if (lexer_read(&p->lexer, TOKEN_RANGE)) {
                 index->to = parse_expr(p, POWER_SET, false);

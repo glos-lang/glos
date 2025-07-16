@@ -746,6 +746,15 @@ static void check_type(Compiler *c, Node *n) {
         n->type.ref++;
     } break;
 
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+        check_type(c, index->base);
+        n->type = (Type) {
+            .kind = TYPE_SLICE,
+            .spec_type = &index->base->type,
+        };
+    } break;
+
     case NODE_FN: {
         NodeFn *spec = (NodeFn *) n;
         for (Node *it = spec->args.head; it; it = it->next) {
@@ -927,25 +936,25 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
-        check_expr(c, index->lhs, ref);
+        check_expr(c, index->base, ref);
 
         if (index->to) {
-            if (!index->lhs->type.ref && index->lhs->type.kind != TYPE_SLICE) {
+            if (!index->base->type.ref && index->base->type.kind != TYPE_SLICE) {
                 fprintf(
                     stderr,
                     PosFmt "ERROR: Expected typed pointer or slice, got '%s'\n",
-                    PosArg(index->lhs->token.pos),
-                    type_to_cstr(index->lhs->type));
+                    PosArg(index->base->token.pos),
+                    type_to_cstr(index->base->type));
 
                 exit(1);
             }
         } else {
-            if (type_is_pointer(index->lhs->type) || index->lhs->type.kind != TYPE_SLICE) {
+            if (type_is_pointer(index->base->type) || index->base->type.kind != TYPE_SLICE) {
                 fprintf(
                     stderr,
                     PosFmt "ERROR: Expected slice type, got '%s'\n",
-                    PosArg(index->lhs->token.pos),
-                    type_to_cstr(index->lhs->type));
+                    PosArg(index->base->token.pos),
+                    type_to_cstr(index->base->type));
 
                 exit(1);
             }
@@ -958,22 +967,22 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             check_expr(c, index->to, false);
             type_assert_arith(index->to, false);
 
-            if (index->lhs->type.ref) {
-                Type element = index->lhs->type;
+            if (index->base->type.ref) {
+                Type element = index->base->type;
                 element.ref--;
 
                 n->type = (Type) {
                     .kind = TYPE_SLICE,
                     .spec_type = arena_clone(c->context.arena, &element, sizeof(element)),
                 };
-            } else if (index->lhs->type.kind == TYPE_SLICE) {
-                n->type = index->lhs->type;
+            } else if (index->base->type.kind == TYPE_SLICE) {
+                n->type = index->base->type;
             } else {
                 unreachable();
             }
         } else {
-            assert(index->lhs->type.kind == TYPE_SLICE);
-            n->type = *index->lhs->type.spec_type;
+            assert(index->base->type.kind == TYPE_SLICE);
+            n->type = *index->base->type.spec_type;
             allow_ref = true;
         }
     } break;

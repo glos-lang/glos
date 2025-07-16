@@ -141,7 +141,7 @@ typedef struct {
 
 typedef struct {
     Node  node;
-    Node *lhs;
+    Node *base;
     Node *from;
     Node *to;
 } NodeIndex;

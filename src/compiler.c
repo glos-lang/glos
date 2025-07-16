@@ -211,7 +211,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
 
-        QbeNode *lhs = compile_expr(c, index->lhs, false);
+        QbeNode *base = compile_expr(c, index->base, false);
         QbeNode *from = compile_expr(c, index->from, false);
 
         if (index->to) {
@@ -222,9 +222,9 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             to = qbe_build_cast(c->qbe, c->fn, to, QBE_TYPE_I64, false);
 
             QbeNode *slice_data = NULL;
-            if (index->lhs->type.ref) {
-                slice_data = lhs;
-            } else if (index->lhs->type.kind == TYPE_SLICE) {
+            if (index->base->type.ref) {
+                slice_data = base;
+            } else if (index->base->type.kind == TYPE_SLICE) {
                 // Bounds Check
                 {
                     QbeNode *count = qbe_build_load(
@@ -235,7 +235,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                             c->fn,
                             QBE_BINARY_ADD,
                             qbe_type_basic(QBE_TYPE_I64),
-                            lhs,
+                            base,
                             qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
                         qbe_type_basic(QBE_TYPE_I64),
                         true);
@@ -287,7 +287,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     qbe_build_block(c->qbe, c->fn, success);
                 }
 
-                slice_data = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
+                slice_data = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
             } else {
                 unreachable();
             }
@@ -322,8 +322,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
             return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
         } else {
-            assert(index->lhs->type.kind == TYPE_SLICE);
-            const size_t element_size = compile_sizeof(c, index->lhs->type.spec_type);
+            assert(index->base->type.kind == TYPE_SLICE);
+            const size_t element_size = compile_sizeof(c, index->base->type.spec_type);
 
             from = qbe_build_cast(c->qbe, c->fn, from, QBE_TYPE_I64, false);
 
@@ -337,7 +337,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         c->fn,
                         QBE_BINARY_ADD,
                         qbe_type_basic(QBE_TYPE_I64),
-                        lhs,
+                        base,
                         qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
                     qbe_type_basic(QBE_TYPE_I64),
                     true);
@@ -381,7 +381,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 qbe_build_block(c->qbe, c->fn, success);
             }
 
-            QbeNode *ptr = qbe_build_load(c->qbe, c->fn, lhs, qbe_type_basic(QBE_TYPE_I64), false);
+            QbeNode *ptr = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
 
             QbeNode *offset = qbe_build_binary(
                 c->qbe,
