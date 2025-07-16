@@ -40,6 +40,18 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
             check_int_limit(n, n->token.as.integer);
             break;
 
+        case TOKEN_IDENT: {
+            NodeAtom *atom = (NodeAtom *) n;
+
+            // Only constants can be defined as untyped int
+            assert(atom->definition->kind == NODE_CONST);
+            NodeConst *definition = (NodeConst *) atom->definition;
+
+            assert(definition->value.kind == CONST_VALUE_ATOM);
+            n->type = expected;
+            check_int_limit(n, definition->value.as.integer);
+        } break;
+
         default:
             unreachable();
         }
@@ -1402,11 +1414,6 @@ static void check_stmt(Compiler *c, Node *n) {
         if (constt->type) {
             type_assert(c, constt->expr, constt->type->type);
             n->type = constt->expr->type;
-        }
-
-        // TODO: Consider whether this is really needed
-        if (n->type.kind == TYPE_INT) {
-            n->type.kind = TYPE_I64;
         }
 
         if (constt->local) {
