@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 96
+error_cannot_infer_range_end_of_pointer.glos:3:5: ERROR: Cannot infer range end of pointer type
+

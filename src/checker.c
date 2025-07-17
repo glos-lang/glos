@@ -938,13 +938,20 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         NodeIndex *index = (NodeIndex *) n;
         check_expr(c, index->base, ref);
 
-        if (index->to) {
+        if (index->ranged) {
             if (!index->base->type.ref && index->base->type.kind != TYPE_SLICE) {
                 fprintf(
                     stderr,
                     PosFmt "ERROR: Expected typed pointer or slice, got '%s'\n",
                     PosArg(index->base->token.pos),
                     type_to_cstr(index->base->type));
+
+                exit(1);
+            }
+
+            if (index->base->type.ref && !index->to) {
+                fprintf(
+                    stderr, PosFmt "ERROR: Cannot infer range end of pointer type\n", PosArg(index->base->token.pos));
 
                 exit(1);
             }
@@ -960,12 +967,16 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        check_expr(c, index->from, false);
-        type_assert_arith(index->from, false);
+        if (index->from) {
+            check_expr(c, index->from, false);
+            type_assert_arith(index->from, false);
+        }
 
-        if (index->to) {
-            check_expr(c, index->to, false);
-            type_assert_arith(index->to, false);
+        if (index->ranged) {
+            if (index->to) {
+                check_expr(c, index->to, false);
+                type_assert_arith(index->to, false);
+            }
 
             if (index->base->type.ref) {
                 Type element = index->base->type;

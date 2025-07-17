@@ -144,6 +144,7 @@ typedef struct {
     Node *base;
     Node *from;
     Node *to;
+    bool  ranged;
 } NodeIndex;
 
 typedef struct {
