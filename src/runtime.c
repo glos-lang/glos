@@ -3,6 +3,7 @@
 
 void glos_show_panic_message(const char *fmt, ...);
 
+// TODO: Switch to 'panic'
 void glos_show_panic_message(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
