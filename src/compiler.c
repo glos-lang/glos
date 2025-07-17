@@ -264,9 +264,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     // Out of Bounds
                     qbe_build_block(c->qbe, c->fn, failure);
 
+                    // Panic
                     {
-                        QbeNode *panic = qbe_atom_symbol(
-                            c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
+                        QbeNode *panic =
+                            qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
 
                         QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
 
@@ -280,13 +281,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         qbe_call_add_arg(c->qbe, call, from);
                         qbe_call_add_arg(c->qbe, call, to);
                         qbe_call_add_arg(c->qbe, call, slice_count);
-                        qbe_build_call(c->qbe, c->fn, call);
-                    }
-
-                    {
-                        QbeNode *abort =
-                            qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
-                        QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
                         qbe_build_call(c->qbe, c->fn, call);
                     }
 
@@ -362,9 +356,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 // Out of Bounds
                 qbe_build_block(c->qbe, c->fn, failure);
 
+                // Panic
                 {
-                    QbeNode *panic = qbe_atom_symbol(
-                        c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
+                    QbeNode *panic =
+                        qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
 
                     QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
 
@@ -377,12 +372,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     qbe_call_start_variadic(c->qbe, call);
                     qbe_call_add_arg(c->qbe, call, from);
                     qbe_call_add_arg(c->qbe, call, count);
-                    qbe_build_call(c->qbe, c->fn, call);
-                }
-
-                {
-                    QbeNode *abort = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
-                    QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
                     qbe_build_call(c->qbe, c->fn, call);
                 }
 
@@ -728,21 +717,13 @@ static void compile_stmt(Compiler *c, Node *n) {
             qbe_build_block(c->qbe, c->fn, failure);
 
             {
-                QbeNode *panic =
-                    qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_show_panic_message"), qbe_type_basic(QBE_TYPE_I64));
-
+                QbeNode *panic = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
                 QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
 
                 QbeSV message = qbe_sv_from_cstr(
                     arena_sprintf(c->context.arena, PosFmt "Assertion Failed\n", PosArg(assertt->expr->token.pos)));
 
                 qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
-                qbe_build_call(c->qbe, c->fn, call);
-            }
-
-            {
-                QbeNode *abort = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("abort"), qbe_type_basic(QBE_TYPE_I64));
-                QbeCall *call = qbe_call_new(c->qbe, abort, qbe_type_basic(QBE_TYPE_I0));
                 qbe_build_call(c->qbe, c->fn, call);
             }
 

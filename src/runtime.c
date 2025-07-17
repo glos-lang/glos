@@ -1,10 +1,10 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-void glos_show_panic_message(const char *fmt, ...);
+void glos_panic(const char *fmt, ...);
 
-// TODO: Switch to 'panic'
-void glos_show_panic_message(const char *fmt, ...) {
+void glos_panic(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
@@ -12,4 +12,5 @@ void glos_show_panic_message(const char *fmt, ...) {
 
     fflush(stderr);
     fflush(stdout);
+    abort();
 }
