@@ -79,6 +79,52 @@ static void compile_type(Compiler *c, Type *type) {
 
 static void compile_stmt(Compiler *c, Node *n);
 
+static QbeCall *compile_panic_begin(Compiler *c) {
+    const char *stderr_name = "stderr";
+    {
+        QbeTarget target = qbe_target_default();
+        if (target == QBE_TARGET_ARM64_MACOS || target == QBE_TARGET_X86_64_MACOS) {
+            stderr_name = "__stderrp";
+        }
+    }
+
+    QbeNode *stderr_symbol = qbe_atom_extern(c->qbe, qbe_sv_from_cstr(stderr_name), qbe_type_basic(QBE_TYPE_I64));
+    QbeNode *fprintf_symbol = qbe_atom_extern_fn(c->qbe, qbe_sv_from_cstr("fprintf"));
+
+    QbeCall *call = qbe_call_new(c->qbe, fprintf_symbol, qbe_type_basic(QBE_TYPE_I32));
+    qbe_call_add_arg(c->qbe, call, qbe_build_load(c->qbe, c->fn, stderr_symbol, qbe_type_basic(QBE_TYPE_I64), false));
+    return call;
+}
+
+static void compile_panic_end(Compiler *c, QbeCall *call) {
+    qbe_build_call(c->qbe, c->fn, call);
+
+    const char *stdout_name = "stdout";
+    const char *stderr_name = "stderr";
+    {
+        QbeTarget target = qbe_target_default();
+        if (target == QBE_TARGET_ARM64_MACOS || target == QBE_TARGET_X86_64_MACOS) {
+            stdout_name = "__stdoutp";
+            stderr_name = "__stderrp";
+        }
+    }
+
+    QbeNode *abort_symbol = qbe_atom_extern_fn(c->qbe, qbe_sv_from_cstr("abort"));
+    QbeNode *fflush_symbol = qbe_atom_extern_fn(c->qbe, qbe_sv_from_cstr("fflush"));
+    QbeNode *stdout_symbol = qbe_atom_extern(c->qbe, qbe_sv_from_cstr(stdout_name), qbe_type_basic(QBE_TYPE_I64));
+    QbeNode *stderr_symbol = qbe_atom_extern(c->qbe, qbe_sv_from_cstr(stderr_name), qbe_type_basic(QBE_TYPE_I64));
+
+    call = qbe_call_new(c->qbe, fflush_symbol, qbe_type_basic(QBE_TYPE_I32));
+    qbe_call_add_arg(c->qbe, call, qbe_build_load(c->qbe, c->fn, stdout_symbol, qbe_type_basic(QBE_TYPE_I64), false));
+    qbe_build_call(c->qbe, c->fn, call);
+
+    call = qbe_call_new(c->qbe, fflush_symbol, qbe_type_basic(QBE_TYPE_I32));
+    qbe_call_add_arg(c->qbe, call, qbe_build_load(c->qbe, c->fn, stderr_symbol, qbe_type_basic(QBE_TYPE_I64), false));
+    qbe_build_call(c->qbe, c->fn, call);
+
+    qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, abort_symbol, qbe_type_basic(QBE_TYPE_I0)));
+}
+
 static_assert(COUNT_NODES == 22, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -266,10 +312,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
                     // Panic
                     {
-                        QbeNode *panic =
-                            qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
-
-                        QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
+                        QbeCall *call = compile_panic_begin(c);
 
                         QbeSV message = qbe_sv_from_cstr(arena_sprintf(
                             c->context.arena,
@@ -281,7 +324,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         qbe_call_add_arg(c->qbe, call, from);
                         qbe_call_add_arg(c->qbe, call, to);
                         qbe_call_add_arg(c->qbe, call, slice_count);
-                        qbe_build_call(c->qbe, c->fn, call);
+                        compile_panic_end(c, call);
                     }
 
                     // Success
@@ -358,10 +401,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
                 // Panic
                 {
-                    QbeNode *panic =
-                        qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
-
-                    QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
+                    QbeCall *call = compile_panic_begin(c);
 
                     QbeSV message = qbe_sv_from_cstr(arena_sprintf(
                         c->context.arena,
@@ -372,7 +412,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     qbe_call_start_variadic(c->qbe, call);
                     qbe_call_add_arg(c->qbe, call, from);
                     qbe_call_add_arg(c->qbe, call, count);
-                    qbe_build_call(c->qbe, c->fn, call);
+                    compile_panic_end(c, call);
                 }
 
                 // Success
@@ -717,14 +757,13 @@ static void compile_stmt(Compiler *c, Node *n) {
             qbe_build_block(c->qbe, c->fn, failure);
 
             {
-                QbeNode *panic = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("glos_panic"), qbe_type_basic(QBE_TYPE_I64));
-                QbeCall *call = qbe_call_new(c->qbe, panic, qbe_type_basic(QBE_TYPE_I32));
+                QbeCall *call = compile_panic_begin(c);
 
                 QbeSV message = qbe_sv_from_cstr(
                     arena_sprintf(c->context.arena, PosFmt "Assertion Failed\n", PosArg(assertt->expr->token.pos)));
 
                 qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
-                qbe_build_call(c->qbe, c->fn, call);
+                compile_panic_end(c, call);
             }
 
             // Success
@@ -828,7 +867,7 @@ static void compile_stmt(Compiler *c, Node *n) {
         NodeFn *fn = (NodeFn *) n;
         if (!fn->body) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
-            fn->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
+            fn->qbe = qbe_atom_extern_fn(c->qbe, name);
             return;
         }
 
@@ -866,7 +905,7 @@ static void compile_stmt(Compiler *c, Node *n) {
         compile_type(c, &n->type);
         if (var->is_extern) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
-            var->qbe = qbe_atom_symbol(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
+            var->qbe = qbe_atom_extern(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
         } else if (var->kind == NODE_VAR_GLOBAL || var->is_static) {
             if (var->expr) {
                 const void *src = NULL;
@@ -983,7 +1022,7 @@ static NodeFn *get_main(Context *c) {
 void compiler_init(Compiler *c) {
     c->qbe = qbe_new();
 
-    c->print_fn = qbe_atom_symbol(c->qbe, qbe_sv_from_cstr("printf"), qbe_type_basic(QBE_TYPE_I64));
+    c->print_fn = qbe_atom_extern_fn(c->qbe, qbe_sv_from_cstr("printf"));
     c->print_sfmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%ld\n"));
     c->print_ufmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%zu\n"));
 
