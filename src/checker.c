@@ -46,6 +46,7 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
             // Only constants can be defined as untyped int
             assert(atom->definition->kind == NODE_CONST);
             NodeConst *definition = (NodeConst *) atom->definition;
+            assert(definition->check_status != CHECK_STATUS_DOING);
 
             assert(definition->value.kind == CONST_VALUE_ATOM);
             n->type = expected;
@@ -245,8 +246,9 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
-static void check_type(Compiler *c, Node *n);
+static void check_type(Compiler *c, Node *n, bool need_full_definition);
 static void check_expr(Compiler *c, Node *n, bool ref);
+static void check_stmt(Compiler *c, Node *n);
 
 static_assert(COUNT_NODES == 22, "");
 static ConstValue eval_const_expr(Compiler *c, Node *n) {
@@ -280,11 +282,21 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             n->type = atom->definition->type;
 
             if (atom->definition->kind == NODE_VAR) {
-                return ((NodeVar *) atom->definition)->const_value;
+                NodeVar *var = (NodeVar *) atom->definition;
+                if (var->check_status != CHECK_STATUS_DONE) {
+                    check_stmt(c, atom->definition);
+                    n->type = atom->definition->type;
+                }
+                return var->const_value;
             }
 
             if (atom->definition->kind == NODE_CONST) {
-                return ((NodeConst *) atom->definition)->value;
+                NodeConst *constt = (NodeConst *) atom->definition;
+                if (constt->check_status != CHECK_STATUS_DONE) {
+                    check_stmt(c, atom->definition);
+                    n->type = atom->definition->type;
+                }
+                return constt->value;
             }
 
             fprintf(
@@ -305,7 +317,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_CAST: {
         NodeCast  *cast = (NodeCast *) n;
         ConstValue value = eval_const_expr(c, cast->from);
-        check_type(c, cast->to);
+        check_type(c, cast->to, true);
 
         const Type from = type_assert_scalar(cast->from);
         const Type to = type_assert_scalar(cast->to);
@@ -583,7 +595,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
-        check_type(c, sizeoff->type);
+        check_type(c, sizeoff->type, true);
         check_expr(c, sizeoff->expr, false);
         n->type = (Type) {.kind = TYPE_INT};
 
@@ -599,7 +611,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_COMPOUND: {
         NodeCompound *compound = (NodeCompound *) n;
-        check_type(c, compound->type);
+        check_type(c, compound->type, true);
 
         n->type = compound->type->type;
         if (n->type.kind != TYPE_STRUCT) {
@@ -703,7 +715,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
 static_assert(COUNT_NODES == 22, "");
 static_assert(COUNT_TYPES == 15, "");
-static void check_type(Compiler *c, Node *n) {
+static void check_type(Compiler *c, Node *n, bool need_full_definition) {
     if (!n) {
         return;
     }
@@ -735,20 +747,40 @@ static void check_type(Compiler *c, Node *n) {
             if (!definition) {
                 error_undefined(n, "type");
             }
+
+            switch (definition->kind) {
+            case NODE_TYPE: {
+                NodeType *type = (NodeType *) definition;
+                if (type->check_status != CHECK_STATUS_DONE) {
+                    check_stmt(c, definition);
+                }
+            } break;
+
+            case NODE_STRUCT: {
+                NodeStruct *structt = (NodeStruct *) definition;
+                if (structt->check_status != CHECK_STATUS_DONE && need_full_definition) {
+                    check_stmt(c, definition);
+                }
+            } break;
+
+            default:
+                unreachable();
+            }
+
             n->type = definition->type;
         }
         break;
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
-        check_type(c, unary->operand);
+        check_type(c, unary->operand, false);
         n->type = unary->operand->type;
         n->type.ref++;
     } break;
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
-        check_type(c, index->base);
+        check_type(c, index->base, true);
         n->type = (Type) {
             .kind = TYPE_SLICE,
             .spec_type = &index->base->type,
@@ -759,11 +791,11 @@ static void check_type(Compiler *c, Node *n) {
         NodeFn *spec = (NodeFn *) n;
         for (Node *it = spec->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
-            check_type(c, arg->type);
+            check_type(c, arg->type, true);
             it->type = arg->type->type;
         }
 
-        check_type(c, spec->ret);
+        check_type(c, spec->ret, true);
         n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
     } break;
 
@@ -862,7 +894,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
         check_expr(c, cast->from, false);
-        check_type(c, cast->to);
+        check_type(c, cast->to, true);
 
         const Type from = type_assert_scalar(cast->from);
         const Type to = type_assert_scalar(cast->to);
@@ -1129,14 +1161,14 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
-        check_type(c, sizeoff->type);
+        check_type(c, sizeoff->type, true);
         check_expr(c, sizeoff->expr, false);
         n->type = (Type) {.kind = TYPE_INT};
     } break;
 
     case NODE_COMPOUND: {
         NodeCompound *compound = (NodeCompound *) n;
-        check_type(c, compound->type);
+        check_type(c, compound->type, true);
 
         n->type = compound->type->type;
         if (n->type.kind != TYPE_STRUCT) {
@@ -1340,14 +1372,16 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
         if (var->kind == NODE_VAR_GLOBAL) {
-            const Node *previous = scope_find(c->context.globals, n->token.sv);
-            if (previous) {
-                error_redefinition(n, previous, "identifier");
+            if (var->check_status == CHECK_STATUS_DOING) {
+                fprintf(stderr, PosFmt "ERROR: Reference loop\n", PosArg(n->token.pos));
+                exit(1);
             }
+
+            var->check_status = CHECK_STATUS_DOING;
         }
 
         if (var->type) {
-            check_type(c, var->type);
+            check_type(c, var->type, true);
             n->type = var->type->type;
         }
 
@@ -1380,6 +1414,8 @@ static void check_stmt(Compiler *c, Node *n) {
             }
         }
 
+        var->check_status = CHECK_STATUS_DONE;
+
         switch (var->kind) {
         case NODE_VAR_ARG:
             if (!c->context.in_extern) {
@@ -1392,7 +1428,7 @@ static void check_stmt(Compiler *c, Node *n) {
             break;
 
         case NODE_VAR_GLOBAL:
-            da_push(&c->context.globals, n);
+            // Pass
             break;
 
         default:
@@ -1403,28 +1439,36 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_TYPE: {
         NodeType *type = (NodeType *) n;
         if (!type->local) {
-            const Node *previous = scope_find(c->context.types, n->token.sv);
-            if (previous) {
-                error_redefinition(n, previous, "type");
+            if (type->check_status == CHECK_STATUS_DOING) {
+                fprintf(stderr, PosFmt "ERROR: Reference loop\n", PosArg(n->token.pos));
+                exit(1);
             }
+
+            type->check_status = CHECK_STATUS_DOING;
         }
 
-        check_type(c, type->definition);
+        check_type(c, type->definition, true);
         n->type = type->definition->type;
-        da_push(&c->context.types, n);
+
+        type->check_status = CHECK_STATUS_DONE;
+        if (type->local) {
+            da_push(&c->context.types, n);
+        }
     } break;
 
     case NODE_CONST: {
         NodeConst *constt = (NodeConst *) n;
         if (!constt->local) {
-            const Node *previous = scope_find(c->context.globals, n->token.sv);
-            if (previous) {
-                error_redefinition(n, previous, "identifier");
+            if (constt->check_status == CHECK_STATUS_DOING) {
+                fprintf(stderr, PosFmt "ERROR: Reference loop\n", PosArg(n->token.pos));
+                exit(1);
             }
+
+            constt->check_status = CHECK_STATUS_DOING;
         }
 
         if (constt->type) {
-            check_type(c, constt->type);
+            check_type(c, constt->type, true);
             n->type = constt->type->type;
         }
 
@@ -1436,20 +1480,21 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->expr->type;
         }
 
+        constt->check_status = CHECK_STATUS_DONE;
         if (constt->local) {
             da_push(&c->context.locals, n);
-        } else {
-            da_push(&c->context.globals, n);
         }
     } break;
 
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
         if (!structt->local) {
-            const Node *previous = scope_find(c->context.types, n->token.sv);
-            if (previous) {
-                error_redefinition(n, previous, "type");
+            if (structt->check_status == CHECK_STATUS_DOING) {
+                fprintf(stderr, PosFmt "ERROR: Reference loop\n", PosArg(n->token.pos));
+                exit(1);
             }
+
+            structt->check_status = CHECK_STATUS_DOING;
         }
 
         for (Node *it = structt->fields.head; it; it = it->next) {
@@ -1459,7 +1504,7 @@ static void check_stmt(Compiler *c, Node *n) {
             }
 
             NodeField *field = (NodeField *) it;
-            check_type(c, field->type);
+            check_type(c, field->type, true);
 
             it->type = field->type->type;
             if (it->type.kind == TYPE_UNIT) {
@@ -1474,7 +1519,11 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
-        da_push(&c->context.types, n);
+
+        structt->check_status = CHECK_STATUS_DONE;
+        if (structt->local) {
+            da_push(&c->context.types, n);
+        }
     } break;
 
     case NODE_EXTERN: {
@@ -1502,18 +1551,12 @@ static void check_fn(Compiler *c, Node *n) {
     NodeFn *fn = (NodeFn *) n;
     if (fn->local) {
         da_push(&c->context.locals, n);
-    } else {
-        const Node *previous = scope_find(c->context.globals, n->token.sv);
-        if (previous) {
-            error_redefinition(n, previous, "identifier");
-        }
-        da_push(&c->context.globals, n);
     }
     n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
 
     const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
     for (Node *it = fn->args.head; it; it = it->next) {
-        if (it->token.kind == TOKEN_IDENT) {
+        if (fn->local && it->token.kind == TOKEN_IDENT) {
             const Node *previous = nodes_find(fn->args, it->token.sv, it);
             if (previous) {
                 error_redefinition(it, previous, "argument");
@@ -1523,7 +1566,9 @@ static void check_fn(Compiler *c, Node *n) {
         check_stmt(c, it);
     }
 
-    check_type(c, fn->ret);
+    if (fn->local) {
+        check_type(c, fn->ret, true);
+    }
 
     if (fn->body) {
         check_stmt(c, fn->body);
@@ -1536,8 +1581,110 @@ static void check_fn(Compiler *c, Node *n) {
     context_fn_end(&c->context, context_fn_save);
 }
 
+static_assert(COUNT_NODES == 22, "");
+static void pre_register_top_level_stmt(Compiler *c, Node *n) {
+    switch (n->kind) {
+    case NODE_FN:
+    case NODE_VAR:
+    case NODE_CONST: {
+        const Node *previous = scope_find(c->context.globals, n->token.sv);
+        if (previous) {
+            error_redefinition(n, previous, "identifier");
+        }
+
+        da_push(&c->context.globals, n);
+    } break;
+
+    case NODE_TYPE: {
+        const Node *previous = scope_find(c->context.types, n->token.sv);
+        if (previous) {
+            error_redefinition(n, previous, "type");
+        }
+
+        da_push(&c->context.types, n);
+    } break;
+
+    case NODE_STRUCT: {
+        const Node *previous = scope_find(c->context.types, n->token.sv);
+        if (previous) {
+            error_redefinition(n, previous, "type");
+        }
+
+        n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
+        da_push(&c->context.types, n);
+    } break;
+
+    case NODE_EXTERN: {
+        NodeExtern *externn = (NodeExtern *) n;
+        for (Node *it = externn->nodes.head; it; it = it->next) {
+            pre_register_top_level_stmt(c, it);
+        }
+    } break;
+
+    case NODE_ASSERT:
+        // Pass
+        break;
+
+    default:
+        unreachable();
+    }
+}
+
+static_assert(COUNT_NODES == 22, "");
+static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
+    switch (n->kind) {
+    case NODE_FN: {
+        NodeFn *fn = (NodeFn *) n;
+        if (fn->check_status == CHECK_STATUS_DOING) {
+            fprintf(stderr, PosFmt "ERROR: Reference loop\n", PosArg(n->token.pos));
+            exit(1);
+        }
+
+        fn->check_status = CHECK_STATUS_DOING;
+
+        n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
+
+        for (Node *it = fn->args.head; it; it = it->next) {
+            if (it->token.kind == TOKEN_IDENT) {
+                const Node *previous = nodes_find(fn->args, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "argument");
+                }
+            }
+
+            NodeVar *var = (NodeVar *) it;
+            assert(var->type);
+            check_type(c, var->type, true);
+            it->type = var->type->type;
+        }
+
+        check_type(c, fn->ret, true);
+        fn->check_status = CHECK_STATUS_DONE;
+    } break;
+
+    case NODE_EXTERN: {
+        NodeExtern *externn = (NodeExtern *) n;
+        for (Node *it = externn->nodes.head; it; it = it->next) {
+            pre_typecheck_top_level_stmt(c, it);
+        }
+    } break;
+
+    default:
+        check_stmt(c, n);
+        break;
+    }
+}
+
 void check_nodes(Compiler *c, Nodes ns) {
     assert(c->context.arena);
+    for (Node *it = ns.head; it; it = it->next) {
+        pre_register_top_level_stmt(c, it);
+    }
+
+    for (Node *it = ns.head; it; it = it->next) {
+        pre_typecheck_top_level_stmt(c, it);
+    }
+
     for (Node *it = ns.head; it; it = it->next) {
         check_stmt(c, it);
     }

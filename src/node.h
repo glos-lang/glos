@@ -63,6 +63,12 @@ bool type_is_pointer(Type type);
 Type type_remove_ref(Type type);
 
 typedef enum {
+    CHECK_STATUS_TODO,
+    CHECK_STATUS_DOING,
+    CHECK_STATUS_DONE,
+} CheckStatus;
+
+typedef enum {
     CONST_VALUE_ATOM,
     CONST_VALUE_OFFSET,
     CONST_VALUE_MEMORY,
@@ -212,6 +218,8 @@ typedef struct {
     Node *body;
     bool  local;
 
+    CheckStatus check_status;
+
     QbeNode *qbe;
 } NodeFn;
 
@@ -234,6 +242,7 @@ typedef struct {
 
     NodeVarKind kind;
     ConstValue  const_value;
+    CheckStatus check_status;
 
     QbeNode *qbe;
 } NodeVar;
@@ -242,6 +251,8 @@ typedef struct {
     Node  node;
     Node *definition;
     bool  local;
+
+    CheckStatus check_status;
 } NodeType;
 
 typedef struct {
@@ -251,8 +262,10 @@ typedef struct {
     Node *type;
     bool  local;
 
-    QbeNode   *qbe;
-    ConstValue value;
+    ConstValue  value;
+    CheckStatus check_status;
+
+    QbeNode *qbe;
 } NodeConst;
 
 typedef struct {
@@ -265,6 +278,8 @@ typedef struct {
     Node  node;
     Nodes fields;
     bool  local;
+
+    CheckStatus check_status;
 
     QbeStruct *qbe;
 } NodeStruct;
