@@ -1,0 +1,3 @@
+struct Vec2 {
+    v Vec2
+}
