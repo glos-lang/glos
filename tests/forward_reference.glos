@@ -1,0 +1,21 @@
+fn foo(x bool) {
+    if x {
+        print 1337
+    } else {
+        print 69
+    }
+    bar(x)
+}
+
+fn bar(x bool) {
+    if x {
+        print 80085
+    } else {
+        print 420
+        foo(true)
+    }
+}
+
+fn main() {
+    foo(false)
+}
