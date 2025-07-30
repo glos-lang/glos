@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 103
+STDERR 152
 error_undefined_identifier_outside_scope_despite_same_depth.glos:6:15: ERROR: Undefined identifier 'x'
+
+    6 |         print x
+      |               ^
 

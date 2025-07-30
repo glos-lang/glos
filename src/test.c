@@ -275,19 +275,6 @@ static void usage(FILE *f) {
 }
 
 int main(int argc, char **argv) {
-    const char *runner = NULL;
-    {
-        SV program = sv_from_cstr(argv[0]);
-        for (size_t i = program.count; i; i--) {
-            if (program.data[i - 1] == '/') {
-                program.count = i;
-                break;
-            }
-        }
-
-        runner = temp_sprintf(SVFmt "glos", SVArg(program));
-    }
-
     bool check = false;
     if (argc > 1) {
         const char *command = argv[1];
@@ -347,7 +334,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Recording '%s' ... ", it);
         }
 
-        da_push(&cmd, runner);
+        da_push(&cmd, "../glos");
         da_push(&cmd, "-r");
         da_push(&cmd, it);
 

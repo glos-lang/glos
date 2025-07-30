@@ -27,4 +27,4 @@ jobs:
       - name: Tests
         run: |
           cd tests
-          ../bin/test check
+          ./test check

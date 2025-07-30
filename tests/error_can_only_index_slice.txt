@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 75
+STDERR 110
 error_can_only_index_slice.glos:2:5: ERROR: Expected slice type, got 'i64'
+
+    2 |     69[420]
+      |     ^
 

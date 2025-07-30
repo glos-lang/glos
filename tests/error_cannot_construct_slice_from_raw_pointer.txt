@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 110
+STDERR 171
 error_cannot_construct_slice_from_raw_pointer.glos:3:17: ERROR: Expected typed pointer or slice, got 'rawptr'
+
+    3 |     var slice = xs[0..10]
+      |                 ^
 

@@ -2,6 +2,7 @@
 
 #include "checker.h"
 #include "compiler.h"
+#include "message.h"
 #include "parser.h"
 
 static void usage(FILE *file) {
@@ -18,7 +19,7 @@ static void usage(FILE *file) {
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
     if (*argc <= 0) {
-        fprintf(stderr, "ERROR: %s not provided\n\n", expected);
+        message_standalone(MESSAGE_ERROR, "%s not provided\n", expected);
         usage(stderr);
         exit(1);
     }
@@ -72,13 +73,13 @@ int main(int argc, char **argv) {
                 da_push(&flags, "-l");
                 da_push(&flags, value);
             } else {
-                fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
+                message_standalone(MESSAGE_ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
                 exit(1);
             }
         } else {
             if (input) {
-                fprintf(stderr, "ERROR: Multiple input files is not supported yet\n");
+                message_standalone(MESSAGE_ERROR, "Multiple input files is not supported yet");
                 exit(1);
             }
 
@@ -88,7 +89,7 @@ int main(int argc, char **argv) {
 
     Lexer l = {0};
     if (!lexer_open(&l, input, &arena)) {
-        fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
+        message_standalone(MESSAGE_ERROR, "Could not read file '%s'", input);
         exit(1);
     }
 
@@ -111,7 +112,7 @@ int main(int argc, char **argv) {
 
             const int fd = mkstemp(buffer);
             if (fd < 0) {
-                fprintf(stderr, "ERROR: Could not create temporary executable\n");
+                message_standalone(MESSAGE_ERROR, "Could not create temporary executable");
                 exit(1);
             } else {
                 close(fd);
@@ -137,7 +138,7 @@ int main(int argc, char **argv) {
     da_push_many(&cmd, flags.data, flags.count);
 
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
-        fprintf(stderr, "ERROR: Could not generate '%s'\n", output);
+        message_standalone(MESSAGE_ERROR, "Could not generate '%s'", output);
         exit(1);
     }
     remove(object_file_path);
