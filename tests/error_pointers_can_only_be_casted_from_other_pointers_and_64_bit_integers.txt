@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 130
+STDERR 177
 error_pointers_can_only_be_casted_from_other_pointers_and_64_bit_integers.glos:3:9: ERROR: Cannot cast type 'bool' to type '&i64'
+
+    3 | var c = <&i64> true
+      |         ^
 

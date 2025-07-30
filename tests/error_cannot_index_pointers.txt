@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 77
+STDERR 109
 error_cannot_index_pointers.glos:3:5: ERROR: Expected slice type, got '&i64'
+
+    3 |     p[0]
+      |     ^
 

@@ -2,6 +2,7 @@
 #include <errno.h>
 
 #include "lexer.h"
+#include "message.h"
 
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
     if (!read_file(&l->sv, path, arena)) {
@@ -91,11 +92,11 @@ static void skip_whitespace(Lexer *l) {
     }
 }
 
-static void error_invalid(Pos pos, char ch, const char *label) {
-    if (isprint(ch)) {
-        fprintf(stderr, PosFmt "ERROR: Invalid %s '%c'\n", PosArg(pos), label, ch);
+static void error_invalid(Pos pos, SV sv, const char *label) {
+    if (isprint(*sv.data)) {
+        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s '%c'", label, *sv.data);
     } else {
-        fprintf(stderr, PosFmt "ERROR: Invalid %s (%d)\n", PosArg(pos), label, ch);
+        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s (%d)", label, *sv.data);
     }
 
     exit(1);
@@ -127,7 +128,7 @@ Token lexer_next(Lexer *l) {
         token.sv.count -= l->sv.count;
 
         if (l->sv.count && isident(*l->sv.data)) {
-            error_invalid(l->pos, *l->sv.data, "digit");
+            error_invalid(l->pos, l->sv, "digit");
         }
 
         char buffer[32] = {0};
@@ -142,7 +143,7 @@ Token lexer_next(Lexer *l) {
             }
         }
 
-        fprintf(stderr, PosFmt "ERROR: Integer literal '" SVFmt "' is too large\n", PosArg(token.pos), SVArg(token.sv));
+        message_full(MESSAGE_ERROR, token.pos, token.sv, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
     }
 
@@ -339,7 +340,7 @@ Token lexer_next(Lexer *l) {
         break;
 
     default:
-        error_invalid(token.pos, *token.sv.data, "character");
+        error_invalid(token.pos, token.sv, "character");
         break;
     }
 
@@ -368,7 +369,8 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
         }
     }
 
-    fprintf(stderr, PosFmt "ERROR: Expected ", PosArg(token.pos));
+    message_begin(MESSAGE_ERROR, token.pos);
+    fprintf(stderr, "Expected ");
     for (const TokenKind *it = kinds; *it != TOKEN_EOF; it++) {
         if (it != kinds) {
             fprintf(stderr, " or ");
@@ -377,7 +379,8 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
         fprintf(stderr, "%s", token_kind_to_cstr(*it));
     }
 
-    fprintf(stderr, ", got %s\n", token_kind_to_cstr(token.kind));
+    fprintf(stderr, ", got %s", token_kind_to_cstr(token.kind));
+    message_end(token.pos, token.sv);
     exit(1);
 }
 

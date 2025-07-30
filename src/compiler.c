@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "message.h"
 
 static_assert(COUNT_TYPES == 15, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
@@ -991,29 +992,33 @@ static void compile_stmt(Compiler *c, Node *n) {
 static NodeFn *get_main(Context *c) {
     Node *main = scope_find(c->globals, sv_from_cstr("main"));
     if (!main) {
-        fprintf(stderr, "ERROR: Function 'main' is not defined\n");
-        fprintf(stderr, "\n");
-        fprintf(stderr, "```\n");
-        fprintf(stderr, "fn main() {\n");
-        fprintf(stderr, "    // HINT: Define this\n");
-        fprintf(stderr, "}\n");
-        fprintf(stderr, "```\n");
+        message_full(
+            MESSAGE_ERROR,
+            (Pos) {0},
+            (SV) {0},
+            "Function 'main' is not defined\n"
+            "\n"
+            "```\n"
+            "fn main() {\n"
+            "    // Define this\n"
+            "}\n"
+            "```");
         exit(1);
     }
 
     if (main->kind != NODE_FN) {
-        fprintf(stderr, PosFmt "ERROR: Function 'main' must be a function literal\n", PosArg(main->token.pos));
+        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' must be a function literal");
         exit(1);
     }
 
     NodeFn *main_fn = (NodeFn *) main;
     if (main_fn->arity) {
-        fprintf(stderr, PosFmt "ERROR: Function 'main' cannot take any arguments\n", PosArg(main->token.pos));
+        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' cannot take any arguments");
         exit(1);
     }
 
     if (main_fn->ret) {
-        fprintf(stderr, PosFmt "ERROR: Function 'main' cannot return anything\n", PosArg(main->token.pos));
+        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' cannot return anything");
         exit(1);
     }
     return main_fn;
@@ -1054,7 +1059,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
 #endif
 
     if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path)) {
-        fprintf(stderr, "ERROR: Could not generate '%s'\n", object_file_path);
+        message_full(MESSAGE_ERROR, (Pos) {0}, (SV) {0}, "Could not generate '%s'", object_file_path);
         exit(1);
     }
 

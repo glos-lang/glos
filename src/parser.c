@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "message.h"
 
 static void nodes_push(Nodes *ns, Node *n) {
     if (ns->tail) {
@@ -117,7 +118,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
 }
 
 static void error_unexpected(Token token) {
-    fprintf(stderr, PosFmt "ERROR: Unexpected %s\n", PosArg(token.pos), token_kind_to_cstr(token.kind));
+    message_full(MESSAGE_ERROR, token.pos, token.sv, "Unexpected %s", token_kind_to_cstr(token.kind));
     exit(1);
 }
 
@@ -331,11 +332,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
                     lexer_unbuffer(&p->lexer);
 
                     if (kind == COMPOUND_ORDERED) {
-                        fprintf(
-                            stderr,
-                            PosFmt "ERROR: Cannot mix ordered and designated initializers\n",
-                            PosArg(token.pos));
-
+                        message_full(
+                            MESSAGE_ERROR, token.pos, token.sv, "Cannot mix ordered and designated initializers");
                         exit(1);
                     }
                     kind = COMPOUND_DESIGNATED;
@@ -346,10 +344,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
                     nodes_push(&compound->nodes, (Node *) assign);
                 } else {
                     if (kind == COMPOUND_DESIGNATED) {
-                        fprintf(
-                            stderr,
-                            PosFmt "ERROR: Cannot mix ordered and designated initializers\n",
-                            PosArg(expr->token.pos));
+                        message_full(
+                            MESSAGE_ERROR,
+                            expr->token.pos,
+                            expr->token.sv,
+                            "Cannot mix ordered and designated initializers");
 
                         exit(1);
                     }
@@ -408,10 +407,11 @@ static void consume(Parser *p, TokenKind kind) {
 
 static void local_assert(Parser *p, Token token, bool local) {
     if (p->local != local) {
-        fprintf(
-            stderr,
-            PosFmt "ERROR: Unexpected %s in %s scope\n",
-            PosArg(token.pos),
+        message_full(
+            MESSAGE_ERROR,
+            token.pos,
+            token.sv,
+            "Unexpected %s in %s scope",
             token_kind_to_cstr(token.kind),
             p->local ? "local" : "global");
 
@@ -575,7 +575,7 @@ static Node *parse_stmt(Parser *p) {
 
         if (!structt->fields.head) {
             assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-            fprintf(stderr, PosFmt "ERROR: Empty structs are not allowed\n", PosArg(p->lexer.buffer.pos));
+            message_full(MESSAGE_ERROR, p->lexer.buffer.pos, p->lexer.buffer.sv, "Empty structs are not allowed");
             exit(1);
         }
 

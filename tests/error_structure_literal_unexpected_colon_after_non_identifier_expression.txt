@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 106
+STDERR 159
 error_structure_literal_unexpected_colon_after_non_identifier_expression.glos:8:15: ERROR: Unexpected ':'
+
+    8 |         x + 10: 69,
+      |               ^
 

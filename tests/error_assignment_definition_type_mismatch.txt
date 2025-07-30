@@ -1,6 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 92
+STDERR 140
 error_assignment_definition_type_mismatch.glos:1:13: ERROR: Expected type 'i64', got 'bool'
+
+    1 | var x i64 = true
+      |             ^
 
