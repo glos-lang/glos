@@ -13,7 +13,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        arch: [x86_64, arm64]
 
     steps:
       - name: Checkout repository
