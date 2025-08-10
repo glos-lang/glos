@@ -12,8 +12,15 @@
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
 
-#define todo()        (fprintf(stderr, "%s:%d: TODO\n", __FILE__, __LINE__), abort())
-#define unreachable() (fprintf(stderr, "%s:%d: Unreachable\n", __FILE__, __LINE__), abort())
+#define panic(...) (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+
+// Some systems define unreachable() in stddef.h
+#ifdef unreachable
+#undef unreachable
+#endif
+
+#define todo()        (panic("%s:%d: TODO\n", __FILE__, __LINE__))
+#define unreachable() (panic("%s:%d: Unreachable\n", __FILE__, __LINE__))
 
 // Dynamic Array
 #define DA_INIT_CAP 128
