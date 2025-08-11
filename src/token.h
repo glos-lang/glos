@@ -22,6 +22,7 @@ typedef enum {
 
     TOKEN_INT,
     TOKEN_BOOL,
+    TOKEN_CHAR,
     TOKEN_IDENT,
 
     TOKEN_LPAREN,

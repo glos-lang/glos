@@ -102,7 +102,67 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 56, "");
+static void error_unterminated(Pos pos, SV sv, const char *label) {
+    message_full(MESSAGE_ERROR, pos, sv, "Unterminated %s", label);
+    exit(1);
+}
+
+static char parse_char(Lexer *l, const char *label) {
+    if (!l->sv.count) {
+        error_unterminated(l->pos, l->sv, label);
+    }
+
+    char ch = read_char(l);
+    if (ch != '\\') {
+        return ch;
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, l->sv, label);
+    }
+
+    switch (*l->sv.data) {
+    case 'e':
+        ch = '\033';
+        break;
+
+    case 'n':
+        ch = '\n';
+        break;
+
+    case 'r':
+        ch = '\r';
+        break;
+
+    case 't':
+        ch = '\t';
+        break;
+
+    case '0':
+        ch = '\0';
+        break;
+
+    case '\'':
+        ch = '\'';
+        break;
+
+    case '"':
+        ch = '\"';
+        break;
+
+    case '\\':
+        ch = '\\';
+        break;
+
+    default:
+        error_invalid(l->pos, l->sv, "escape character");
+    }
+
+    next_char(l);
+    return ch;
+}
+
+static_assert(COUNT_TOKENS == 57, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -213,6 +273,14 @@ Token lexer_next(Lexer *l) {
 
     case ',':
         token.kind = TOKEN_COMMA;
+        break;
+
+    case '\'':
+        token.kind = TOKEN_CHAR;
+        token.as.integer = parse_char(l, "character");
+        if (!match_char(l, '\'')) {
+            error_unterminated(l->pos, l->sv, "character");
+        }
         break;
 
     case '(':
