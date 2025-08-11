@@ -389,7 +389,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     }
 
     case NODE_INDEX:
-        todo();
+        message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected index in constant expression");
+        exit(1);
         break;
 
     case NODE_BINARY: {
