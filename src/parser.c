@@ -118,7 +118,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
 }
 
 static void error_unexpected(Token token) {
-    message_full(MESSAGE_ERROR, token.pos, token.sv, "Unexpected %s", token_kind_to_cstr(token.kind));
+    message_full(MESSAGE_ERROR, token.pos, "Unexpected %s", token_kind_to_cstr(token.kind));
     exit(1);
 }
 
@@ -335,8 +335,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
                     lexer_unbuffer(&p->lexer);
 
                     if (kind == COMPOUND_ORDERED) {
-                        message_full(
-                            MESSAGE_ERROR, token.pos, token.sv, "Cannot mix ordered and designated initializers");
+                        message_full(MESSAGE_ERROR, token.pos, "Cannot mix ordered and designated initializers");
                         exit(1);
                     }
                     kind = COMPOUND_DESIGNATED;
@@ -347,11 +346,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
                     nodes_push(&compound->nodes, (Node *) assign);
                 } else {
                     if (kind == COMPOUND_DESIGNATED) {
-                        message_full(
-                            MESSAGE_ERROR,
-                            expr->token.pos,
-                            expr->token.sv,
-                            "Cannot mix ordered and designated initializers");
+                        message_full(MESSAGE_ERROR, expr->token.pos, "Cannot mix ordered and designated initializers");
 
                         exit(1);
                     }
@@ -413,7 +408,6 @@ static void local_assert(Parser *p, Token token, bool local) {
         message_full(
             MESSAGE_ERROR,
             token.pos,
-            token.sv,
             "Unexpected %s in %s scope",
             token_kind_to_cstr(token.kind),
             p->local ? "local" : "global");
@@ -578,7 +572,7 @@ static Node *parse_stmt(Parser *p) {
 
         if (!structt->fields.head) {
             assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-            message_full(MESSAGE_ERROR, p->lexer.buffer.pos, p->lexer.buffer.sv, "Empty structs are not allowed");
+            message_full(MESSAGE_ERROR, p->lexer.buffer.pos, "Empty structs are not allowed");
             exit(1);
         }
 

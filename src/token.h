@@ -7,6 +7,8 @@ typedef struct {
     const char *path;
     size_t      row;
     size_t      col;
+
+    SV line;
 } Pos;
 
 #define PosFmt    "%s:%zu:%zu: "

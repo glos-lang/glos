@@ -1050,7 +1050,6 @@ static NodeFn *get_main(Context *c) {
         message_full(
             MESSAGE_ERROR,
             (Pos) {0},
-            (SV) {0},
             "Function 'main' is not defined\n"
             "\n"
             "```\n"
@@ -1062,18 +1061,18 @@ static NodeFn *get_main(Context *c) {
     }
 
     if (main->kind != NODE_FN) {
-        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' must be a function literal");
+        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' must be a function literal");
         exit(1);
     }
 
     NodeFn *main_fn = (NodeFn *) main;
     if (main_fn->arity) {
-        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' cannot take any arguments");
+        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' cannot take any arguments");
         exit(1);
     }
 
     if (main_fn->ret) {
-        message_full(MESSAGE_ERROR, main->token.pos, main->token.sv, "Function 'main' cannot return anything");
+        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' cannot return anything");
         exit(1);
     }
     return main_fn;
@@ -1114,7 +1113,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
 #endif
 
     if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path)) {
-        message_full(MESSAGE_ERROR, (Pos) {0}, (SV) {0}, "Could not generate '%s'", object_file_path);
+        message_full(MESSAGE_ERROR, (Pos) {0}, "Could not generate '%s'", object_file_path);
         exit(1);
     }
 

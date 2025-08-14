@@ -4,12 +4,19 @@
 #include "lexer.h"
 #include "message.h"
 
+static SV first_line(SV sv) {
+    const char *p = memchr(sv.data, '\n', sv.count);
+    sv.count = p ? (size_t) (p - sv.data) : sv.count;
+    return sv;
+}
+
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
     if (!read_file(&l->sv, path, arena)) {
         return false;
     }
 
     l->pos.path = path;
+    l->pos.line = first_line(l->sv);
     return true;
 }
 
@@ -31,6 +38,12 @@ static void next_char(Lexer *l) {
         if (l->sv.count > 1) {
             l->pos.row++;
             l->pos.col = 0;
+
+            l->sv.data++;
+            l->sv.count--;
+
+            l->pos.line = first_line(l->sv);
+            return;
         }
     } else {
         l->pos.col++;
@@ -94,22 +107,22 @@ static void skip_whitespace(Lexer *l) {
 
 static void error_invalid(Pos pos, SV sv, const char *label) {
     if (isprint(*sv.data)) {
-        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s '%c'", label, *sv.data);
+        message_full(MESSAGE_ERROR, pos, "Invalid %s '%c'", label, *sv.data);
     } else {
-        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s (%d)", label, *sv.data);
+        message_full(MESSAGE_ERROR, pos, "Invalid %s (%d)", label, *sv.data);
     }
 
     exit(1);
 }
 
-static void error_unterminated(Pos pos, SV sv, const char *label) {
-    message_full(MESSAGE_ERROR, pos, sv, "Unterminated %s", label);
+static void error_unterminated(Pos pos, const char *label) {
+    message_full(MESSAGE_ERROR, pos, "Unterminated %s", label);
     exit(1);
 }
 
 static char parse_char(Lexer *l, const char *label) {
     if (!l->sv.count) {
-        error_unterminated(l->pos, l->sv, label);
+        error_unterminated(l->pos, label);
     }
 
     char ch = read_char(l);
@@ -118,7 +131,7 @@ static char parse_char(Lexer *l, const char *label) {
     }
 
     if (!l->sv.count) {
-        error_unterminated(l->pos, l->sv, label);
+        error_unterminated(l->pos, label);
     }
 
     ch = *l->sv.data;
@@ -141,7 +154,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     }
 
     if (!l->sv.count) {
-        error_unterminated(l->pos, l->sv, label);
+        error_unterminated(l->pos, label);
     }
 
     next_char(l);
@@ -189,7 +202,7 @@ Token lexer_next(Lexer *l) {
             }
         }
 
-        message_full(MESSAGE_ERROR, token.pos, token.sv, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
+        message_full(MESSAGE_ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
     }
 
@@ -275,7 +288,7 @@ Token lexer_next(Lexer *l) {
         token.kind = TOKEN_CHAR;
         token.as.integer = parse_char(l, "character");
         if (!match_char(l, '\'')) {
-            error_unterminated(l->pos, l->sv, "character");
+            error_unterminated(l->pos, "character");
         }
         break;
 
@@ -449,7 +462,7 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
     }
 
     fprintf(stderr, ", got %s", token_kind_to_cstr(token.kind));
-    message_end(token.pos, token.sv);
+    message_end(token.pos);
     exit(1);
 }
 
