@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 85
+error_string_unterminated.glos:1:2: ERROR: Unterminated string
+
+    1 | "
+      |  ^
+
