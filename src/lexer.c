@@ -121,40 +121,8 @@ static char parse_char(Lexer *l, const char *label) {
         error_unterminated(l->pos, l->sv, label);
     }
 
-    switch (*l->sv.data) {
-    case 'e':
-        ch = '\033';
-        break;
-
-    case 'n':
-        ch = '\n';
-        break;
-
-    case 'r':
-        ch = '\r';
-        break;
-
-    case 't':
-        ch = '\t';
-        break;
-
-    case '0':
-        ch = '\0';
-        break;
-
-    case '\'':
-        ch = '\'';
-        break;
-
-    case '"':
-        ch = '\"';
-        break;
-
-    case '\\':
-        ch = '\\';
-        break;
-
-    default:
+    ch = *l->sv.data;
+    if (!resolve_escape_char(&ch)) {
         error_invalid(l->pos, l->sv, "escape character");
     }
 
@@ -162,7 +130,25 @@ static char parse_char(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 57, "");
+static size_t parse_str(Lexer *l, const char *label) {
+    size_t n = 0;
+    while (l->sv.count) {
+        if (*l->sv.data == '"') {
+            break;
+        }
+        parse_char(l, label);
+        n++;
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, l->sv, label);
+    }
+
+    next_char(l);
+    return n;
+}
+
+static_assert(COUNT_TOKENS == 59, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -205,6 +191,16 @@ Token lexer_next(Lexer *l) {
 
         message_full(MESSAGE_ERROR, token.pos, token.sv, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
+    }
+
+    if (*l->sv.data == 'c' && peek_char(l, 1) == '"') {
+        next_char(l);
+        next_char(l);
+
+        token.kind = TOKEN_CSTR;
+        token.sv.count -= l->sv.count;
+        token.as.integer = parse_str(l, "C string");
+        return token;
     }
 
     if (isident(*l->sv.data)) {
@@ -281,6 +277,11 @@ Token lexer_next(Lexer *l) {
         if (!match_char(l, '\'')) {
             error_unterminated(l->pos, l->sv, "character");
         }
+        break;
+
+    case '"':
+        token.kind = TOKEN_STR;
+        token.as.integer = parse_str(l, "string");
         break;
 
     case '(':

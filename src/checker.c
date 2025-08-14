@@ -269,11 +269,19 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
+
+        case TOKEN_STR:
+            todo();
+            break;
+
+        case TOKEN_CSTR:
+            todo();
+            break;
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -353,7 +361,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -399,7 +407,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -464,7 +472,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             return const_int(lhs.as.integer + rhs.as.integer);
@@ -831,10 +839,18 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
+            break;
+
+        case TOKEN_STR:
+            n->type = c->context.str_type;
+            break;
+
+        case TOKEN_CSTR:
+            n->type = (Type) {.kind = TYPE_I8, .ref = 1};
             break;
 
         case TOKEN_BOOL:
@@ -936,7 +952,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -1065,7 +1081,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1714,6 +1730,15 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
 
 void check_nodes(Compiler *c, Nodes ns) {
     assert(c->context.arena);
+
+    if (c->context.str_type.kind != TYPE_SLICE) {
+        Type u8_type = {.kind = TYPE_U8};
+        c->context.str_type = (Type) {
+            .kind = TYPE_SLICE,
+            .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
+        };
+    }
+
     for (Node *it = ns.head; it; it = it->next) {
         pre_register_top_level_stmt(c, it);
     }

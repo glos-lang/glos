@@ -126,6 +126,23 @@ static void compile_panic_end(Compiler *c, QbeCall *call) {
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, abort_symbol, qbe_type_basic(QBE_TYPE_I0)));
 }
 
+static const char *encode_sv(Arena *a, SV sv) {
+    char *str = arena_alloc(a, sv.count);
+    char *p = str;
+
+    size_t i = 0;
+    while (i < sv.count) {
+        char ch = sv.data[i++];
+        if (ch == '\\') {
+            ch = sv.data[i++];
+            resolve_escape_char(&ch);
+        }
+        *p++ = ch;
+    }
+
+    return str;
+}
+
 static_assert(COUNT_NODES == 22, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -137,10 +154,45 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
+
+        case TOKEN_STR: {
+            SV sv = n->token.sv;
+            sv.data += 1;
+            sv.count = n->token.as.integer;
+            const char *str = encode_sv(c->context.arena, sv);
+
+            QbeNode *slice_data = qbe_str_new(c->qbe, (QbeSV) {.data = str, .count = sv.count});
+            QbeNode *slice_count = qbe_atom_int(c->qbe, QBE_TYPE_I64, sv.count);
+
+            QbeNode *slice_struct = qbe_fn_add_var(c->qbe, c->fn, c->slice_type);
+            qbe_build_store(c->qbe, c->fn, slice_struct, slice_data);
+            qbe_build_store(
+                c->qbe,
+                c->fn,
+                qbe_build_binary(
+                    c->qbe,
+                    c->fn,
+                    QBE_BINARY_ADD,
+                    qbe_type_basic(QBE_TYPE_I64),
+                    slice_struct,
+                    qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
+                slice_count);
+
+            return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
+        } break;
+
+        case TOKEN_CSTR: {
+            SV sv = n->token.sv;
+            sv.data += 2;
+            sv.count = n->token.as.integer;
+
+            const char *str = encode_sv(c->context.arena, sv);
+            return qbe_str_new(c->qbe, (QbeSV) {.data = str, .count = sv.count});
+        } break;
 
         case TOKEN_BOOL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I8, n->token.as.boolean);
@@ -225,7 +277,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -452,7 +504,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -484,7 +536,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -514,7 +566,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);

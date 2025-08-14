@@ -33,6 +33,8 @@ typedef struct {
     ContextMem memory;
 
     bool in_extern;
+
+    Type str_type;
 } Context;
 
 ContextFn context_fn_begin(Context *c, NodeFn *fn);

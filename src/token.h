@@ -21,6 +21,8 @@ typedef enum {
     TOKEN_RANGE,
 
     TOKEN_INT,
+    TOKEN_STR,
+    TOKEN_CSTR,
     TOKEN_BOOL,
     TOKEN_CHAR,
     TOKEN_IDENT,

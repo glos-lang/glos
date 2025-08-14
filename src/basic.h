@@ -16,7 +16,7 @@
 
 // Some systems define unreachable() in stddef.h
 #ifdef unreachable
-#undef unreachable
+#    undef unreachable
 #endif
 
 #define todo()        (panic("%s:%d: TODO\n", __FILE__, __LINE__))
@@ -84,6 +84,9 @@ SV sv_strip_suffix(SV a, SV b);
 SV sv_trim(SV s, char ch);
 SV sv_drop(SV *s, size_t count);
 SV sv_split(SV *s, char ch);
+
+// Characters
+bool resolve_escape_char(char *ch);
 
 // Temporary Allocator
 #define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))
