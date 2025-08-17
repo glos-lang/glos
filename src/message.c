@@ -43,7 +43,7 @@ void message_begin(MessageKind kind, Pos pos) {
     }
 }
 
-void message_end(Pos pos, SV sv) {
+void message_end(Pos pos) {
     fprintf(stderr, "\n");
     if (pos.path) {
         check_is_terminal();
@@ -53,15 +53,7 @@ void message_end(Pos pos, SV sv) {
         fprintf(stderr, "%zu | ", pos.row + 1);
         if (is_terminal) fprintf(stderr, "\033[0m");
 
-        sv.data -= pos.col;
-        for (size_t i = 0;; i++) {
-            if (sv.data[i] == '\n' || sv.data[i] == '\0') {
-                sv.count = i;
-                break;
-            }
-        }
-
-        fprintf(stderr, SVFmt "\n", SVArg(sv));
+        fprintf(stderr, SVFmt "\n", SVArg(pos.line));
 
         const int count = snprintf(NULL, 0, "    %zu", pos.row + 1);
         assert(count >= 0);
@@ -72,7 +64,7 @@ void message_end(Pos pos, SV sv) {
         if (is_terminal) fprintf(stderr, "\033[0m");
 
         for (size_t i = 0; i < pos.col; i++) {
-            fputc(sv.data[i] == '\t' ? '\t' : ' ', stderr);
+            fputc(pos.line.data[i] == '\t' ? '\t' : ' ', stderr);
         }
 
         if (is_terminal) fprintf(stderr, "\033[1;35m");
@@ -81,7 +73,7 @@ void message_end(Pos pos, SV sv) {
     }
 }
 
-void message_full(MessageKind kind, Pos pos, SV sv, const char *fmt, ...) {
+void message_full(MessageKind kind, Pos pos, const char *fmt, ...) {
     message_begin(kind, pos);
 
     va_list args;
@@ -89,7 +81,7 @@ void message_full(MessageKind kind, Pos pos, SV sv, const char *fmt, ...) {
     vfprintf(stderr, fmt, args);
     va_end(args);
 
-    message_end(pos, sv);
+    message_end(pos);
 }
 
 void message_standalone(MessageKind kind, const char *fmt, ...) {

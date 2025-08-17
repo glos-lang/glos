@@ -23,7 +23,6 @@ static void check_int_limit(Node *n, size_t value) {
         message_full(
             MESSAGE_ERROR,
             n->token.pos,
-            n->token.sv,
             "Integer value '%zu' is too large for type '%s'",
             value,
             type_to_cstr(n->type));
@@ -131,12 +130,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
     }
 
     message_full(
-        MESSAGE_ERROR,
-        n->token.pos,
-        n->token.sv,
-        "Expected type '%s', got '%s'",
-        type_to_cstr(expected),
-        type_to_cstr(n->type));
+        MESSAGE_ERROR, n->token.pos, "Expected type '%s', got '%s'", type_to_cstr(expected), type_to_cstr(n->type));
 
     exit(1);
 }
@@ -155,12 +149,7 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     }
 
     message_full(
-        MESSAGE_ERROR,
-        a->token.pos,
-        a->token.sv,
-        "Expected type '%s', got '%s'",
-        type_to_cstr(b->type),
-        type_to_cstr(a->type));
+        MESSAGE_ERROR, a->token.pos, "Expected type '%s', got '%s'", type_to_cstr(b->type), type_to_cstr(a->type));
 
     exit(1);
 }
@@ -177,7 +166,6 @@ static Type type_assert_arith(const Node *n, bool pointers_allowed) {
     message_full(
         MESSAGE_ERROR,
         n->token.pos,
-        n->token.sv,
         "Expected %s type, got '%s'",
         pointers_allowed ? "arithmetic" : "integer",
         type_to_cstr(n->type));
@@ -194,7 +182,7 @@ static Type type_assert_scalar(const Node *n) {
         return n->type;
     }
 
-    message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Expected scalar type, got '%s'", type_to_cstr(n->type));
+    message_full(MESSAGE_ERROR, n->token.pos, "Expected scalar type, got '%s'", type_to_cstr(n->type));
     exit(1);
 }
 
@@ -226,7 +214,7 @@ static bool is_type_cast_illegal(Node *from_node, Node *to_node) {
 }
 
 static void error_undefined(const Node *n, const char *label) {
-    message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Undefined %s '" SVFmt "'", label, SVArg(n->token.sv));
+    message_full(MESSAGE_ERROR, n->token.pos, "Undefined %s '" SVFmt "'", label, SVArg(n->token.sv));
     exit(1);
 }
 
@@ -269,11 +257,17 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
+
+        case TOKEN_STR:
+        case TOKEN_CSTR:
+            message_full(MESSAGE_ERROR, n->token.pos, "Strings are not implemented in constant expressions YET");
+            exit(1);
+            break;
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -308,8 +302,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
                 return constt->value;
             }
 
-            message_full(
-                MESSAGE_ERROR, n->token.pos, n->token.sv, "Can only refer to variables in constant expressions");
+            message_full(MESSAGE_ERROR, n->token.pos, "Can only refer to variables in constant expressions");
             exit(1);
             break;
 
@@ -319,7 +312,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     } break;
 
     case NODE_CALL:
-        message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected call in constant expression");
+        message_full(MESSAGE_ERROR, n->token.pos, "Unexpected call in constant expression");
         exit(1);
         break;
 
@@ -334,7 +327,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             message_full(
                 MESSAGE_ERROR,
                 n->token.pos,
-                n->token.sv,
                 "Cannot cast type '%s' to type '%s'",
                 type_to_cstr(from),
                 type_to_cstr(to));
@@ -353,7 +345,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -362,12 +354,12 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
 
         case TOKEN_MUL:
-            message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected dereference in constant expression");
+            message_full(MESSAGE_ERROR, n->token.pos, "Unexpected dereference in constant expression");
             exit(1);
             break;
 
         case TOKEN_BAND:
-            message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected reference in constant expression");
+            message_full(MESSAGE_ERROR, n->token.pos, "Unexpected reference in constant expression");
             exit(1);
             break;
 
@@ -389,7 +381,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     }
 
     case NODE_INDEX:
-        message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected index in constant expression");
+        message_full(MESSAGE_ERROR, n->token.pos, "Unexpected index in constant expression");
         exit(1);
         break;
 
@@ -399,7 +391,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -436,7 +428,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_SHR_SET:
         case TOKEN_BOR_SET:
         case TOKEN_BAND_SET:
-            message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected assignment in constant expression");
+            message_full(MESSAGE_ERROR, n->token.pos, "Unexpected assignment in constant expression");
             exit(1);
             break;
 
@@ -464,7 +456,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             return const_int(lhs.as.integer + rhs.as.integer);
@@ -551,7 +543,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             message_full(
                 MESSAGE_ERROR,
                 member->lhs->token.pos,
-                member->lhs->token.sv,
                 "Expected structure type, got '%s'",
                 type_to_cstr(member->lhs->type));
 
@@ -560,10 +551,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
         if (member->lhs->type.ref) {
             message_full(
-                MESSAGE_ERROR,
-                n->token.pos,
-                n->token.sv,
-                "Cannot access fields of structure pointer in constant expression");
+                MESSAGE_ERROR, n->token.pos, "Cannot access fields of structure pointer in constant expression");
 
             exit(1);
         }
@@ -631,7 +619,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             message_full(
                 MESSAGE_ERROR,
                 compound->type->token.pos,
-                compound->type->token.sv,
                 "Expected structure type, got '%s'",
                 type_to_cstr(compound->type->type));
 
@@ -667,6 +654,11 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
                 assert(lhs->definition->kind == NODE_FIELD);
                 offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
             } else {
+                if (!ordered_iota) {
+                    message_full(MESSAGE_ERROR, it->token.pos, "Too many ordered initializers");
+                    exit(1);
+                }
+
                 value = eval_const_expr(c, it);
                 type_assert(c, it, ordered_iota->type);
                 size = compile_sizeof(c, &it->type);
@@ -704,7 +696,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     }
 
     case NODE_FN:
-        message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Unexpected function in constant expression");
+        message_full(MESSAGE_ERROR, n->token.pos, "Unexpected function in constant expression");
         exit(1);
         break;
 
@@ -831,10 +823,18 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
+            break;
+
+        case TOKEN_STR:
+            n->type = c->context.str_type;
+            break;
+
+        case TOKEN_CSTR:
+            n->type = (Type) {.kind = TYPE_I8, .ref = 1};
             break;
 
         case TOKEN_BOOL:
@@ -873,8 +873,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
         const Type fn_type = call->fn->type;
         if (fn_type.kind != TYPE_FN) {
-            message_full(
-                MESSAGE_ERROR, call->fn->token.pos, call->fn->token.sv, "Cannot call type '%s'", type_to_cstr(fn_type));
+            message_full(MESSAGE_ERROR, call->fn->token.pos, "Cannot call type '%s'", type_to_cstr(fn_type));
             exit(1);
         }
 
@@ -882,7 +881,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             message_full(
                 MESSAGE_ERROR,
                 call->fn->token.pos,
-                call->fn->token.sv,
                 "Cannot call type '%s' without dereferencing it first",
                 type_to_cstr(call->fn->type));
 
@@ -894,7 +892,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             message_full(
                 MESSAGE_ERROR,
                 n->token.pos,
-                n->token.sv,
                 "Expected %zu argument%s, got %zu",
                 expected->arity,
                 expected->arity == 1 ? "" : "s",
@@ -922,7 +919,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             message_full(
                 MESSAGE_ERROR,
                 n->token.pos,
-                n->token.sv,
                 "Cannot cast type '%s' to type '%s'",
                 type_to_cstr(from),
                 type_to_cstr(to));
@@ -936,7 +932,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -950,7 +946,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 message_full(
                     MESSAGE_ERROR,
                     unary->operand->token.pos,
-                    unary->operand->token.sv,
                     "Expected pointer type, got '%s'",
                     type_to_cstr(unary->operand->type));
 
@@ -958,11 +953,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             }
 
             if (type_eq(unary->operand->type, (Type) {.kind = TYPE_RAWPTR})) {
-                message_full(
-                    MESSAGE_ERROR,
-                    unary->operand->token.pos,
-                    unary->operand->token.sv,
-                    "Cannot dereference raw pointer");
+                message_full(MESSAGE_ERROR, unary->operand->token.pos, "Cannot dereference raw pointer");
 
                 exit(1);
             }
@@ -1002,7 +993,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 message_full(
                     MESSAGE_ERROR,
                     index->base->token.pos,
-                    index->base->token.sv,
                     "Expected typed pointer or slice, got '%s'",
                     type_to_cstr(index->base->type));
 
@@ -1010,11 +1000,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             }
 
             if (index->base->type.ref && !index->to) {
-                message_full(
-                    MESSAGE_ERROR,
-                    index->base->token.pos,
-                    index->base->token.sv,
-                    "Cannot infer range end of pointer type");
+                message_full(MESSAGE_ERROR, index->base->token.pos, "Cannot infer range end of pointer type");
 
                 exit(1);
             }
@@ -1023,7 +1009,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 message_full(
                     MESSAGE_ERROR,
                     index->base->token.pos,
-                    index->base->token.sv,
                     "Expected slice type, got '%s'",
                     type_to_cstr(index->base->type));
 
@@ -1065,7 +1050,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 57, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1183,7 +1168,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 message_full(
                     MESSAGE_ERROR,
                     member->lhs->token.pos,
-                    member->lhs->token.sv,
                     "Expected structure or slice type, got '%s'",
                     type_to_cstr(member->lhs->type));
 
@@ -1208,7 +1192,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             message_full(
                 MESSAGE_ERROR,
                 compound->type->token.pos,
-                compound->type->token.sv,
                 "Expected structure type, got '%s'",
                 type_to_cstr(compound->type->type));
 
@@ -1233,6 +1216,11 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 check_expr(c, assign->rhs, false);
                 type_assert(c, assign->rhs, lhs->definition->type);
             } else {
+                if (!ordered_iota) {
+                    message_full(MESSAGE_ERROR, it->token.pos, "Too many ordered initializers");
+                    exit(1);
+                }
+
                 check_expr(c, it, false);
                 type_assert(c, it, ordered_iota->type);
                 ordered_iota = ordered_iota->next;
@@ -1249,15 +1237,15 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     }
 
     if (!allow_ref && ref) {
-        message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Cannot take reference to value not in memory");
+        message_full(MESSAGE_ERROR, n->token.pos, "Cannot take reference to value not in memory");
         exit(1);
     }
 }
 
 static void error_redefinition(const Node *n, const Node *previous, const char *label) {
-    message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Redefinition of %s '" SVFmt "'", label, SVArg(n->token.sv));
+    message_full(MESSAGE_ERROR, n->token.pos, "Redefinition of %s '" SVFmt "'", label, SVArg(n->token.sv));
     fprintf(stderr, "\n");
-    message_full(MESSAGE_NOTE, previous->token.pos, previous->token.sv, "Defined here");
+    message_full(MESSAGE_NOTE, previous->token.pos, "Defined here");
     exit(1);
 }
 
@@ -1408,7 +1396,7 @@ static void check_stmt(Compiler *c, Node *n) {
         NodeVar *var = (NodeVar *) n;
         if (var->kind == NODE_VAR_GLOBAL) {
             if (var->check_status == CHECK_STATUS_DOING) {
-                message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Reference loop");
+                message_full(MESSAGE_ERROR, n->token.pos, "Reference loop");
                 exit(1);
             }
 
@@ -1431,11 +1419,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
             if (n->type.kind == TYPE_UNIT) {
                 message_full(
-                    MESSAGE_ERROR,
-                    n->token.pos,
-                    n->token.sv,
-                    "Cannot define variable with type '%s'",
-                    type_to_cstr(n->type));
+                    MESSAGE_ERROR, n->token.pos, "Cannot define variable with type '%s'", type_to_cstr(n->type));
 
                 exit(1);
             }
@@ -1476,7 +1460,7 @@ static void check_stmt(Compiler *c, Node *n) {
         NodeType *type = (NodeType *) n;
         if (!type->local) {
             if (type->check_status == CHECK_STATUS_DOING) {
-                message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Reference loop");
+                message_full(MESSAGE_ERROR, n->token.pos, "Reference loop");
                 exit(1);
             }
 
@@ -1496,7 +1480,7 @@ static void check_stmt(Compiler *c, Node *n) {
         NodeConst *constt = (NodeConst *) n;
         if (!constt->local) {
             if (constt->check_status == CHECK_STATUS_DOING) {
-                message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Reference loop");
+                message_full(MESSAGE_ERROR, n->token.pos, "Reference loop");
                 exit(1);
             }
 
@@ -1526,7 +1510,7 @@ static void check_stmt(Compiler *c, Node *n) {
         NodeStruct *structt = (NodeStruct *) n;
         if (!structt->local) {
             if (structt->check_status == CHECK_STATUS_DOING) {
-                message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Reference loop");
+                message_full(MESSAGE_ERROR, n->token.pos, "Reference loop");
                 exit(1);
             }
 
@@ -1545,11 +1529,7 @@ static void check_stmt(Compiler *c, Node *n) {
             it->type = field->type->type;
             if (it->type.kind == TYPE_UNIT) {
                 message_full(
-                    MESSAGE_ERROR,
-                    it->token.pos,
-                    it->token.sv,
-                    "Cannot define field with type '%s'",
-                    type_to_cstr(it->type));
+                    MESSAGE_ERROR, it->token.pos, "Cannot define field with type '%s'", type_to_cstr(it->type));
 
                 exit(1);
             }
@@ -1610,7 +1590,7 @@ static void check_fn(Compiler *c, Node *n) {
     if (fn->body) {
         check_stmt(c, fn->body);
         if (fn->ret && !always_returns(fn->body)) {
-            message_full(MESSAGE_ERROR, fn->body->token.pos, fn->body->token.sv, "Expected return statement");
+            message_full(MESSAGE_ERROR, fn->body->token.pos, "Expected return statement");
             exit(1);
         }
     }
@@ -1673,7 +1653,7 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
         if (fn->check_status == CHECK_STATUS_DOING) {
-            message_full(MESSAGE_ERROR, n->token.pos, n->token.sv, "Reference loop");
+            message_full(MESSAGE_ERROR, n->token.pos, "Reference loop");
             exit(1);
         }
 
@@ -1714,6 +1694,15 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
 
 void check_nodes(Compiler *c, Nodes ns) {
     assert(c->context.arena);
+
+    if (c->context.str_type.kind != TYPE_SLICE) {
+        Type u8_type = {.kind = TYPE_U8};
+        c->context.str_type = (Type) {
+            .kind = TYPE_SLICE,
+            .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
+        };
+    }
+
     for (Node *it = ns.head; it; it = it->next) {
         pre_register_top_level_stmt(c, it);
     }

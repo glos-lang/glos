@@ -69,6 +69,48 @@ SV sv_split(SV *s, char ch) {
     return result;
 }
 
+// Characters
+bool resolve_escape_char(char *ch) {
+    switch (*ch) {
+    case 'e':
+        *ch = '\033';
+        break;
+
+    case 'n':
+        *ch = '\n';
+        break;
+
+    case 'r':
+        *ch = '\r';
+        break;
+
+    case 't':
+        *ch = '\t';
+        break;
+
+    case '0':
+        *ch = '\0';
+        break;
+
+    case '\'':
+        *ch = '\'';
+        break;
+
+    case '"':
+        *ch = '\"';
+        break;
+
+    case '\\':
+        *ch = '\\';
+        break;
+
+    default:
+        return false;
+    }
+
+    return true;
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;

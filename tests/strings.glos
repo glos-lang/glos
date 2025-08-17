@@ -1,0 +1,19 @@
+fn println_str(s []u8) {
+    extern fn putchar(ch i32) i32
+
+    for var i = 0; i < s.count; i += 1 {
+        putchar(<i32> s[i])
+    }
+
+    putchar(<i32> '\n')
+}
+
+fn println_cstr(s &i8) {
+    extern fn puts(s &i8) i32
+    puts(s)
+}
+
+fn main() {
+    println_str("Hello, world!")
+    println_cstr(c"Foo, Bar!")
+}

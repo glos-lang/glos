@@ -7,6 +7,8 @@ typedef struct {
     const char *path;
     size_t      row;
     size_t      col;
+
+    SV line;
 } Pos;
 
 #define PosFmt    "%s:%zu:%zu: "
@@ -21,6 +23,8 @@ typedef enum {
     TOKEN_RANGE,
 
     TOKEN_INT,
+    TOKEN_STR,
+    TOKEN_CSTR,
     TOKEN_BOOL,
     TOKEN_CHAR,
     TOKEN_IDENT,

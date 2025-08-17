@@ -4,12 +4,19 @@
 #include "lexer.h"
 #include "message.h"
 
+static SV first_line(SV sv) {
+    const char *p = memchr(sv.data, '\n', sv.count);
+    sv.count = p ? (size_t) (p - sv.data) : sv.count;
+    return sv;
+}
+
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
     if (!read_file(&l->sv, path, arena)) {
         return false;
     }
 
     l->pos.path = path;
+    l->pos.line = first_line(l->sv);
     return true;
 }
 
@@ -31,6 +38,12 @@ static void next_char(Lexer *l) {
         if (l->sv.count > 1) {
             l->pos.row++;
             l->pos.col = 0;
+
+            l->sv.data++;
+            l->sv.count--;
+
+            l->pos.line = first_line(l->sv);
+            return;
         }
     } else {
         l->pos.col++;
@@ -94,22 +107,22 @@ static void skip_whitespace(Lexer *l) {
 
 static void error_invalid(Pos pos, SV sv, const char *label) {
     if (isprint(*sv.data)) {
-        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s '%c'", label, *sv.data);
+        message_full(MESSAGE_ERROR, pos, "Invalid %s '%c'", label, *sv.data);
     } else {
-        message_full(MESSAGE_ERROR, pos, sv, "Invalid %s (%d)", label, *sv.data);
+        message_full(MESSAGE_ERROR, pos, "Invalid %s (%d)", label, *sv.data);
     }
 
     exit(1);
 }
 
-static void error_unterminated(Pos pos, SV sv, const char *label) {
-    message_full(MESSAGE_ERROR, pos, sv, "Unterminated %s", label);
+static void error_unterminated(Pos pos, const char *label) {
+    message_full(MESSAGE_ERROR, pos, "Unterminated %s", label);
     exit(1);
 }
 
 static char parse_char(Lexer *l, const char *label) {
     if (!l->sv.count) {
-        error_unterminated(l->pos, l->sv, label);
+        error_unterminated(l->pos, label);
     }
 
     char ch = read_char(l);
@@ -118,43 +131,11 @@ static char parse_char(Lexer *l, const char *label) {
     }
 
     if (!l->sv.count) {
-        error_unterminated(l->pos, l->sv, label);
+        error_unterminated(l->pos, label);
     }
 
-    switch (*l->sv.data) {
-    case 'e':
-        ch = '\033';
-        break;
-
-    case 'n':
-        ch = '\n';
-        break;
-
-    case 'r':
-        ch = '\r';
-        break;
-
-    case 't':
-        ch = '\t';
-        break;
-
-    case '0':
-        ch = '\0';
-        break;
-
-    case '\'':
-        ch = '\'';
-        break;
-
-    case '"':
-        ch = '\"';
-        break;
-
-    case '\\':
-        ch = '\\';
-        break;
-
-    default:
+    ch = *l->sv.data;
+    if (!resolve_escape_char(&ch)) {
         error_invalid(l->pos, l->sv, "escape character");
     }
 
@@ -162,7 +143,25 @@ static char parse_char(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 57, "");
+static size_t parse_str(Lexer *l, const char *label) {
+    size_t n = 0;
+    while (l->sv.count) {
+        if (*l->sv.data == '"') {
+            break;
+        }
+        parse_char(l, label);
+        n++;
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, label);
+    }
+
+    next_char(l);
+    return n;
+}
+
+static_assert(COUNT_TOKENS == 59, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -203,8 +202,18 @@ Token lexer_next(Lexer *l) {
             }
         }
 
-        message_full(MESSAGE_ERROR, token.pos, token.sv, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
+        message_full(MESSAGE_ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
+    }
+
+    if (*l->sv.data == 'c' && peek_char(l, 1) == '"') {
+        next_char(l);
+        next_char(l);
+
+        token.kind = TOKEN_CSTR;
+        token.sv.count -= l->sv.count;
+        token.as.integer = parse_str(l, "C string");
+        return token;
     }
 
     if (isident(*l->sv.data)) {
@@ -279,8 +288,13 @@ Token lexer_next(Lexer *l) {
         token.kind = TOKEN_CHAR;
         token.as.integer = parse_char(l, "character");
         if (!match_char(l, '\'')) {
-            error_unterminated(l->pos, l->sv, "character");
+            error_unterminated(l->pos, "character");
         }
+        break;
+
+    case '"':
+        token.kind = TOKEN_STR;
+        token.as.integer = parse_str(l, "string");
         break;
 
     case '(':
@@ -448,7 +462,7 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
     }
 
     fprintf(stderr, ", got %s", token_kind_to_cstr(token.kind));
-    message_end(token.pos, token.sv);
+    message_end(token.pos);
     exit(1);
 }
 
