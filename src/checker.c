@@ -656,6 +656,11 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
                 assert(lhs->definition->kind == NODE_FIELD);
                 offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
             } else {
+                if (!ordered_iota) {
+                    message_full(MESSAGE_ERROR, it->token.pos, "Too many ordered initializers");
+                    exit(1);
+                }
+
                 value = eval_const_expr(c, it);
                 type_assert(c, it, ordered_iota->type);
                 size = compile_sizeof(c, &it->type);
@@ -1213,6 +1218,11 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                 check_expr(c, assign->rhs, false);
                 type_assert(c, assign->rhs, lhs->definition->type);
             } else {
+                if (!ordered_iota) {
+                    message_full(MESSAGE_ERROR, it->token.pos, "Too many ordered initializers");
+                    exit(1);
+                }
+
                 check_expr(c, it, false);
                 type_assert(c, it, ordered_iota->type);
                 ordered_iota = ordered_iota->next;
