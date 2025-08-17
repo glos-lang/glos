@@ -3,89 +3,130 @@
 
 #include "message.h"
 
-static bool is_terminal;
-static bool is_terminal_checked;
-
-static void check_is_terminal(void) {
-    if (is_terminal_checked) {
-        return;
+void write_message(FILE *f, MessageAttrib attrib, const char *fmt, ...) {
+    static bool is_emacs;
+    static bool is_emacs_checked;
+    if (!is_emacs_checked) {
+        is_emacs = getenv("INSIDE_EMACS");
+        is_emacs_checked = true;
     }
 
-    is_terminal = isatty(STDERR_FILENO);
-    if (getenv("INSIDE_EMACS")) {
-        is_terminal = false;
+    bool is_terminal = is_emacs ? false : isatty(fileno(f));
+    if (is_terminal) {
+        fprintf(f, "\033[0");
+
+        if (attrib & MESSAGE_ATTRIB_BOLD) {
+            fprintf(f, ";1");
+        }
+
+        if (attrib & MESSAGE_ATTRIB_ITALIC) {
+            fprintf(f, ";3");
+        }
+
+        if (attrib & MESSAGE_ATTRIB_UNDERLINE) {
+            fprintf(f, ";4");
+        }
+
+        switch (attrib & MESSAGE_FG_MASK) {
+        case MESSAGE_FG_RED:
+            fprintf(f, ";31");
+            break;
+
+        case MESSAGE_FG_GREEN:
+            fprintf(f, ";32");
+            break;
+
+        case MESSAGE_FG_YELLOW:
+            fprintf(f, ";33");
+            break;
+
+        case MESSAGE_FG_BLUE:
+            fprintf(f, ";34");
+            break;
+
+        case MESSAGE_FG_MAGENTA:
+            fprintf(f, ";35");
+            break;
+
+        case MESSAGE_FG_CYAN:
+            fprintf(f, ";36");
+            break;
+
+        case MESSAGE_FG_WHITE:
+            fprintf(f, ";37");
+            break;
+
+        case MESSAGE_FG_DEFAULT:
+            break;
+
+        default:
+            unreachable();
+        }
+
+        fprintf(f, "m");
     }
-    is_terminal_checked = true;
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(f, fmt, args);
+    va_end(args);
+
+    if (is_terminal) {
+        fprintf(f, "\033[0m");
+    }
 }
 
-void message_begin(MessageKind kind, Pos pos) {
-    check_is_terminal();
-
+void error_begin(ErrorKind kind, Pos pos) {
     if (pos.path) {
-        if (is_terminal) fprintf(stderr, "\033[1;4m");
-        fprintf(stderr, "%s:%zu:%zu:", pos.path, pos.row + 1, pos.col + 1);
-        if (is_terminal) fprintf(stderr, "\033[0m");
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_ATTRIB_UNDERLINE, PosFmt, PosArg(pos));
         fprintf(stderr, " ");
     }
 
     switch (kind) {
-    case MESSAGE_NOTE:
-        if (is_terminal) fprintf(stderr, "\033[1;33m");
-        fprintf(stderr, "NOTE: ");
-        if (is_terminal) fprintf(stderr, "\033[0m");
+    case NOTE:
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_YELLOW, "NOTE: ");
         break;
 
-    case MESSAGE_ERROR:
-        if (is_terminal) fprintf(stderr, "\033[1;31m");
-        fprintf(stderr, "ERROR: ");
-        if (is_terminal) fprintf(stderr, "\033[0m");
+    case ERROR:
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_RED, "ERROR: ");
         break;
     }
 }
 
-void message_end(Pos pos) {
+void error_end(Pos pos) {
     fprintf(stderr, "\n");
     if (pos.path) {
-        check_is_terminal();
         fprintf(stderr, "\n    ");
 
-        if (is_terminal) fprintf(stderr, "\033[1;36m");
-        fprintf(stderr, "%zu | ", pos.row + 1);
-        if (is_terminal) fprintf(stderr, "\033[0m");
-
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "%zu | ", pos.row + 1);
         fprintf(stderr, SVFmt "\n", SVArg(pos.line));
 
         const int count = snprintf(NULL, 0, "    %zu", pos.row + 1);
         assert(count >= 0);
         fprintf(stderr, "%*s", count, "");
 
-        if (is_terminal) fprintf(stderr, "\033[1;36m");
-        fprintf(stderr, " | ");
-        if (is_terminal) fprintf(stderr, "\033[0m");
-
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, " | ");
         for (size_t i = 0; i < pos.col; i++) {
             fputc(pos.line.data[i] == '\t' ? '\t' : ' ', stderr);
         }
 
-        if (is_terminal) fprintf(stderr, "\033[1;35m");
-        fprintf(stderr, "^\n");
-        if (is_terminal) fprintf(stderr, "\033[0m");
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_MAGENTA, "^\n");
     }
 }
 
-void message_full(MessageKind kind, Pos pos, const char *fmt, ...) {
-    message_begin(kind, pos);
+void error_full(ErrorKind kind, Pos pos, const char *fmt, ...) {
+    error_begin(kind, pos);
 
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
 
-    message_end(pos);
+    error_end(pos);
 }
 
-void message_standalone(MessageKind kind, const char *fmt, ...) {
-    message_begin(kind, (Pos) {0});
+void error_standalone(ErrorKind kind, const char *fmt, ...) {
+    error_begin(kind, (Pos) {0});
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);

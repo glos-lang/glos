@@ -107,16 +107,16 @@ static void skip_whitespace(Lexer *l) {
 
 static void error_invalid(Pos pos, SV sv, const char *label) {
     if (isprint(*sv.data)) {
-        message_full(MESSAGE_ERROR, pos, "Invalid %s '%c'", label, *sv.data);
+        error_full(ERROR, pos, "Invalid %s '%c'", label, *sv.data);
     } else {
-        message_full(MESSAGE_ERROR, pos, "Invalid %s (%d)", label, *sv.data);
+        error_full(ERROR, pos, "Invalid %s (%d)", label, *sv.data);
     }
 
     exit(1);
 }
 
 static void error_unterminated(Pos pos, const char *label) {
-    message_full(MESSAGE_ERROR, pos, "Unterminated %s", label);
+    error_full(ERROR, pos, "Unterminated %s", label);
     exit(1);
 }
 
@@ -202,7 +202,7 @@ Token lexer_next(Lexer *l) {
             }
         }
 
-        message_full(MESSAGE_ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
+        error_full(ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
     }
 
@@ -451,7 +451,7 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
         }
     }
 
-    message_begin(MESSAGE_ERROR, token.pos);
+    error_begin(ERROR, token.pos);
     fprintf(stderr, "Expected ");
     for (const TokenKind *it = kinds; *it != TOKEN_EOF; it++) {
         if (it != kinds) {
@@ -462,7 +462,7 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
     }
 
     fprintf(stderr, ", got %s", token_kind_to_cstr(token.kind));
-    message_end(token.pos);
+    error_end(token.pos);
     exit(1);
 }
 

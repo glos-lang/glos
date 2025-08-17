@@ -372,7 +372,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
                         QbeSV message = qbe_sv_from_cstr(arena_sprintf(
                             c->context.arena,
-                            PosFmt "Range (%%ld..%%ld) is out of bounds in slice of length %%ld\n",
+                            PosFmt " Range (%%ld..%%ld) is out of bounds in slice of length %%ld\n",
                             PosArg(n->token.pos)));
 
                         qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
@@ -461,7 +461,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
                     QbeSV message = qbe_sv_from_cstr(arena_sprintf(
                         c->context.arena,
-                        PosFmt "Index %%ld is out of bounds in slice of length %%ld\n",
+                        PosFmt " Index %%ld is out of bounds in slice of length %%ld\n",
                         PosArg(n->token.pos)));
 
                     qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
@@ -816,7 +816,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 QbeCall *call = compile_panic_begin(c);
 
                 QbeSV message = qbe_sv_from_cstr(
-                    arena_sprintf(c->context.arena, PosFmt "Assertion Failed\n", PosArg(assertt->expr->token.pos)));
+                    arena_sprintf(c->context.arena, PosFmt " Assertion Failed\n", PosArg(assertt->expr->token.pos)));
 
                 qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
                 compile_panic_end(c, call);
@@ -1047,8 +1047,8 @@ static void compile_stmt(Compiler *c, Node *n) {
 static NodeFn *get_main(Context *c) {
     Node *main = scope_find(c->globals, sv_from_cstr("main"));
     if (!main) {
-        message_full(
-            MESSAGE_ERROR,
+        error_full(
+            ERROR,
             (Pos) {0},
             "Function 'main' is not defined\n"
             "\n"
@@ -1061,18 +1061,18 @@ static NodeFn *get_main(Context *c) {
     }
 
     if (main->kind != NODE_FN) {
-        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' must be a function literal");
+        error_full(ERROR, main->token.pos, "Function 'main' must be a function literal");
         exit(1);
     }
 
     NodeFn *main_fn = (NodeFn *) main;
     if (main_fn->arity) {
-        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' cannot take any arguments");
+        error_full(ERROR, main->token.pos, "Function 'main' cannot take any arguments");
         exit(1);
     }
 
     if (main_fn->ret) {
-        message_full(MESSAGE_ERROR, main->token.pos, "Function 'main' cannot return anything");
+        error_full(ERROR, main->token.pos, "Function 'main' cannot return anything");
         exit(1);
     }
     return main_fn;
@@ -1113,7 +1113,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
 #endif
 
     if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path)) {
-        message_full(MESSAGE_ERROR, (Pos) {0}, "Could not generate '%s'", object_file_path);
+        error_standalone(ERROR, "Could not generate '%s'", object_file_path);
         exit(1);
     }
 

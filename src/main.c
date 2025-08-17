@@ -5,21 +5,28 @@
 #include "message.h"
 #include "parser.h"
 
+static void usage_flag(FILE *file, const char *flag, const char *rest) {
+    write_message(file, MESSAGE_FG_MAGENTA, "    -%s", flag);
+    fprintf(file, " %s\n", rest);
+}
+
 static void usage(FILE *file) {
-    fprintf(file, "Usage:\n");
-    fprintf(file, "    glos [FLAGS...] FILE\n");
-    fprintf(file, "\n");
-    fprintf(file, "Flags:\n");
-    fprintf(file, "    -h           Show this message\n");
-    fprintf(file, "    -r           Run the program\n");
-    fprintf(file, "    -o OUTPUT    Set the output path\n");
-    fprintf(file, "    -L PATH      Add a library path\n");
-    fprintf(file, "    -l NAME      Add a library\n");
+    write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Usage:\n");
+
+    write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_GREEN, "    glos");
+    fprintf(file, " [FLAGS...] FILE\n\n");
+
+    write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
+    usage_flag(file, "h", "          Show this message");
+    usage_flag(file, "r", "          Run the program");
+    usage_flag(file, "o", "OUTPUT    Set the output path");
+    usage_flag(file, "L", "PATH      Add a library path");
+    usage_flag(file, "l", "NAME      Add a library");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
     if (*argc <= 0) {
-        message_standalone(MESSAGE_ERROR, "%s not provided\n", expected);
+        error_standalone(ERROR, "%s not provided\n", expected);
         usage(stderr);
         exit(1);
     }
@@ -73,13 +80,13 @@ int main(int argc, char **argv) {
                 da_push(&flags, "-l");
                 da_push(&flags, value);
             } else {
-                message_standalone(MESSAGE_ERROR, "Invalid flag '%s'\n", arg);
+                error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
                 exit(1);
             }
         } else {
             if (input) {
-                message_standalone(MESSAGE_ERROR, "Multiple input files is not supported yet");
+                error_standalone(ERROR, "Multiple input files is not supported yet");
                 exit(1);
             }
 
@@ -89,7 +96,7 @@ int main(int argc, char **argv) {
 
     Lexer l = {0};
     if (!lexer_open(&l, input, &arena)) {
-        message_standalone(MESSAGE_ERROR, "Could not read file '%s'", input);
+        error_standalone(ERROR, "Could not read file '%s'", input);
         exit(1);
     }
 
@@ -112,7 +119,7 @@ int main(int argc, char **argv) {
 
             const int fd = mkstemp(buffer);
             if (fd < 0) {
-                message_standalone(MESSAGE_ERROR, "Could not create temporary executable");
+                error_standalone(ERROR, "Could not create temporary executable");
                 exit(1);
             } else {
                 close(fd);
@@ -138,7 +145,7 @@ int main(int argc, char **argv) {
     da_push_many(&cmd, flags.data, flags.count);
 
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
-        message_standalone(MESSAGE_ERROR, "Could not generate '%s'", output);
+        error_standalone(ERROR, "Could not generate '%s'", output);
         exit(1);
     }
     remove(object_file_path);

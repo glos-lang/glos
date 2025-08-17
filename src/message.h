@@ -4,14 +4,35 @@
 #include "token.h"
 
 typedef enum {
-    MESSAGE_NOTE,
-    MESSAGE_ERROR,
-} MessageKind;
+    MESSAGE_FG_DEFAULT,
+    MESSAGE_FG_RED,
+    MESSAGE_FG_GREEN,
+    MESSAGE_FG_YELLOW,
+    MESSAGE_FG_BLUE,
+    MESSAGE_FG_MAGENTA,
+    MESSAGE_FG_CYAN,
+    MESSAGE_FG_WHITE,
+    MESSAGE_FG_MASK = 0xFF,
 
-void message_begin(MessageKind kind, Pos pos);
-void message_end(Pos pos);
+    MESSAGE_ATTRIB_BOLD = 1 << 8,
+    MESSAGE_ATTRIB_ITALIC = 1 << 9,
+    MESSAGE_ATTRIB_UNDERLINE = 1 << 10,
+} MessageAttrib;
 
-void message_full(MessageKind kind, Pos pos, const char *fmt, ...) PrintfLike(3);
-void message_standalone(MessageKind kind, const char *fmt, ...) PrintfLike(2);
+void write_message(FILE *f, MessageAttrib attrib, const char *fmt, ...) PrintfLike(3);
+
+#define print_message(...)  write_message(stdout, __VA_ARGS__)
+#define eprint_message(...) write_message(stderr, __VA_ARGS__)
+
+typedef enum {
+    NOTE,
+    ERROR,
+} ErrorKind;
+
+void error_begin(ErrorKind kind, Pos pos);
+void error_end(Pos pos);
+
+void error_full(ErrorKind kind, Pos pos, const char *fmt, ...) PrintfLike(3);
+void error_standalone(ErrorKind kind, const char *fmt, ...) PrintfLike(2);
 
 #endif // MESSAGE_H
