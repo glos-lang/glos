@@ -35,6 +35,7 @@ typedef struct {
     bool in_extern;
 
     Type str_type;
+    Type cstr_type;
 } Context;
 
 ContextFn context_fn_begin(Context *c, NodeFn *fn);
