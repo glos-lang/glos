@@ -264,11 +264,9 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_STR:
-            todo();
-            break;
-
         case TOKEN_CSTR:
-            todo();
+            message_full(MESSAGE_ERROR, n->token.pos, "Strings are not implemented in constant expressions YET");
+            exit(1);
             break;
 
         case TOKEN_BOOL:
