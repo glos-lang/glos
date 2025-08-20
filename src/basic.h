@@ -85,8 +85,9 @@ SV sv_trim(SV s, char ch);
 SV sv_drop(SV *s, size_t count);
 SV sv_split(SV *s, char ch);
 
-// Characters
+// Encoding
 bool resolve_escape_char(char *ch);
+void resolve_escape_chars(char *buffer, SV *sv);
 
 // Temporary Allocator
 #define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))

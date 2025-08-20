@@ -211,8 +211,9 @@ Token lexer_next(Lexer *l) {
         next_char(l);
 
         token.kind = TOKEN_CSTR;
-        token.sv.count -= l->sv.count;
         token.as.integer = parse_str(l, "C string");
+
+        token.sv.count -= l->sv.count;
         return token;
     }
 

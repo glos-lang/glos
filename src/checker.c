@@ -240,6 +240,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
 #define const_int(n)  ((ConstValue) {.as.integer = (n)})
 #define const_bool(b) ((ConstValue) {.as.boolean = (b)})
+#define const_str(s)  ((ConstValue) {.as.sv = (s), .is_string = true})
 
     switch (n->kind) {
     case NODE_ATOM: {
@@ -251,11 +252,25 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
 
-        case TOKEN_STR:
-        case TOKEN_CSTR:
-            error_full(ERROR, n->token.pos, "Strings are not implemented in constant expressions YET");
-            exit(1);
-            break;
+        case TOKEN_STR: {
+            SV sv = n->token.sv;
+            sv.data += 1;
+            sv.count -= 2;
+            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
+
+            n->type = c->context.str_type;
+            return const_str(sv);
+        }
+
+        case TOKEN_CSTR: {
+            SV sv = n->token.sv;
+            sv.data += 2;
+            sv.count -= 3;
+            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
+
+            n->type = c->context.cstr_type;
+            return const_str(sv);
+        }
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};

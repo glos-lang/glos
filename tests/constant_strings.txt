@@ -1,0 +1,7 @@
+EXIT 0
+STDOUT 24
+Hello, world!
+Foo, Bar!
+
+STDERR 0
+

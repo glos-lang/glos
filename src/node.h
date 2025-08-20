@@ -72,9 +72,11 @@ typedef enum {
 } CheckStatus;
 
 typedef struct {
+    bool is_string;
     union {
         bool   boolean;
         size_t integer;
+        SV     sv;
     } as;
 } ConstValue;
 

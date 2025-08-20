@@ -126,21 +126,25 @@ static void compile_panic_end(Compiler *c, QbeCall *call) {
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, abort_symbol, qbe_type_basic(QBE_TYPE_I0)));
 }
 
-static const char *encode_sv(Arena *a, SV sv) {
-    char *str = arena_alloc(a, sv.count);
-    char *p = str;
+static QbeNode *compile_str(Compiler *c, SV sv) {
+    QbeNode *slice_data = qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
+    QbeNode *slice_count = qbe_atom_int(c->qbe, QBE_TYPE_I64, sv.count);
 
-    size_t i = 0;
-    while (i < sv.count) {
-        char ch = sv.data[i++];
-        if (ch == '\\') {
-            ch = sv.data[i++];
-            resolve_escape_char(&ch);
-        }
-        *p++ = ch;
-    }
+    QbeNode *slice_struct = qbe_fn_add_var(c->qbe, c->fn, c->slice_type);
+    qbe_build_store(c->qbe, c->fn, slice_struct, slice_data);
+    qbe_build_store(
+        c->qbe,
+        c->fn,
+        qbe_build_binary(
+            c->qbe,
+            c->fn,
+            QBE_BINARY_ADD,
+            qbe_type_basic(QBE_TYPE_I64),
+            slice_struct,
+            qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
+        slice_count);
 
-    return str;
+    return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -162,36 +166,17 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_STR: {
             SV sv = n->token.sv;
             sv.data += 1;
-            sv.count = n->token.as.integer;
-            const char *str = encode_sv(c->context.arena, sv);
-
-            QbeNode *slice_data = qbe_str_new(c->qbe, (QbeSV) {.data = str, .count = sv.count});
-            QbeNode *slice_count = qbe_atom_int(c->qbe, QBE_TYPE_I64, sv.count);
-
-            QbeNode *slice_struct = qbe_fn_add_var(c->qbe, c->fn, c->slice_type);
-            qbe_build_store(c->qbe, c->fn, slice_struct, slice_data);
-            qbe_build_store(
-                c->qbe,
-                c->fn,
-                qbe_build_binary(
-                    c->qbe,
-                    c->fn,
-                    QBE_BINARY_ADD,
-                    qbe_type_basic(QBE_TYPE_I64),
-                    slice_struct,
-                    qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
-                slice_count);
-
-            return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
+            sv.count -= 2;
+            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
+            return compile_str(c, sv);
         } break;
 
         case TOKEN_CSTR: {
             SV sv = n->token.sv;
             sv.data += 2;
-            sv.count = n->token.as.integer;
-
-            const char *str = encode_sv(c->context.arena, sv);
-            return qbe_str_new(c->qbe, (QbeSV) {.data = str, .count = sv.count});
+            sv.count -= 3;
+            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
+            return qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
         } break;
 
         case TOKEN_BOOL:
@@ -225,15 +210,22 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
             case NODE_CONST: {
                 NodeConst *constt = (NodeConst *) atom->definition;
+                if (constt->value.is_string) {
+                    if (n->type.ref) {
+                        // C string
+                        const SV sv = constt->value.as.sv;
+                        return qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
+                    } else {
+                        // String
+                        return compile_str(c, constt->value.as.sv);
+                    }
+                }
+
                 if (n->type.kind == TYPE_BOOL) {
                     return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
                 }
 
-                if (type_is_integer(n->type)) {
-                    return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
-                }
-
-                unreachable();
+                return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
             }
 
             default:
