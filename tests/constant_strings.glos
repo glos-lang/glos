@@ -11,9 +11,13 @@ fn println(s str) {
 const A = "Hello, world!"
 const B = "Foo " + "Bar"
 const C = ("Foo " + "Bar").count
+const D = "Foo Bar Baz"[4..7]
+const E = "HEHE"[1]
 
 fn main() {
     println(A)
     println(B)
     print C
+    println(D)
+    print E
 }

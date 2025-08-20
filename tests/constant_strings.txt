@@ -1,8 +1,10 @@
 EXIT 0
-STDOUT 24
+STDOUT 31
 Hello, world!
 Foo Bar
 7
+Bar
+69
 
 STDERR 0
 

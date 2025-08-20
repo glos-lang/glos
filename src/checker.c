@@ -357,10 +357,60 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_INDEX: // TODO: Indexing and Slicing strings
-        error_full(ERROR, n->token.pos, "Unexpected index in constant expression");
-        exit(1);
-        break;
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+
+        ConstValue lhs = eval_const_expr(c, index->base);
+        if (!lhs.is_string) {
+            error_full(ERROR, n->token.pos, "Can only index strings in constant expressions");
+            exit(1);
+        }
+
+        ConstValue from = {0};
+        if (index->from) {
+            from = eval_const_expr(c, index->from);
+            type_assert_arith(index->from, false);
+        }
+
+        ConstValue to = {0};
+        if (index->to) {
+            to = eval_const_expr(c, index->to);
+            type_assert_arith(index->to, false);
+        }
+
+        if (index->ranged) {
+            if (from.as.integer >= lhs.as.sv.count || to.as.integer >= lhs.as.sv.count) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Range (%ld..%ld) is out of bounds in slice of length %ld",
+                    from.as.integer,
+                    to.as.integer,
+                    lhs.as.sv.count);
+
+                exit(1);
+            }
+
+            lhs.as.sv.data += from.as.integer;
+            lhs.as.sv.count = to.as.integer - from.as.integer;
+            n->type = index->base->type;
+            return lhs;
+        } else {
+            if (from.as.integer >= lhs.as.sv.count) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Index %ld is out of bounds in string of length %ld",
+                    from.as.integer,
+                    lhs.as.sv.count);
+
+                exit(1);
+            }
+
+            n->type = (Type) {.kind = TYPE_U8};
+            return const_int(lhs.as.sv.data[from.as.integer]);
+        }
+    }
 
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
