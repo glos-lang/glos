@@ -8,15 +8,8 @@ fn println_str(s str) {
     putchar(<i32> '\n')
 }
 
-fn println_cstr(s cstr) {
-    extern fn puts(s cstr) i32
-    puts(s)
-}
-
 const STRING = "Hello, world!"
-const CSTRING = c"Foo, Bar!"
 
 fn main() {
     println_str(STRING)
-    println_cstr(CSTRING)
 }

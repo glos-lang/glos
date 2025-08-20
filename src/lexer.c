@@ -161,7 +161,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -204,17 +204,6 @@ Token lexer_next(Lexer *l) {
 
         error_full(ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
-    }
-
-    if (*l->sv.data == 'c' && peek_char(l, 1) == '"') {
-        next_char(l);
-        next_char(l);
-
-        token.kind = TOKEN_CSTR;
-        token.as.integer = parse_str(l, "C string");
-
-        token.sv.count -= l->sv.count;
-        return token;
     }
 
     if (isident(*l->sv.data)) {

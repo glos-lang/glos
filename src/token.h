@@ -24,7 +24,6 @@ typedef enum {
 
     TOKEN_INT,
     TOKEN_STR,
-    TOKEN_CSTR, // TODO: Unify into single string
     TOKEN_BOOL,
     TOKEN_CHAR,
     TOKEN_IDENT,

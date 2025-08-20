@@ -158,7 +158,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -169,14 +169,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             sv.count -= 2;
             resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
             return compile_str(c, sv);
-        } break;
-
-        case TOKEN_CSTR: {
-            SV sv = n->token.sv;
-            sv.data += 2;
-            sv.count -= 3;
-            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
-            return qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
         } break;
 
         case TOKEN_BOOL:
@@ -265,7 +257,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -492,7 +484,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -524,7 +516,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -554,7 +546,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);

@@ -246,7 +246,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -259,16 +259,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
 
             n->type = c->context.str_type;
-            return const_str(sv);
-        }
-
-        case TOKEN_CSTR: {
-            SV sv = n->token.sv;
-            sv.data += 2;
-            sv.count -= 3;
-            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
-
-            n->type = c->context.cstr_type;
             return const_str(sv);
         }
 
@@ -332,7 +322,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -378,7 +368,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD: // TODO: Addition of strings
         case TOKEN_SUB:
@@ -443,7 +433,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             return const_int(lhs.as.integer + rhs.as.integer);
@@ -614,8 +604,6 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else if (sv_match(n->token.sv, "str")) {
             n->type = c->context.str_type;
-        } else if (sv_match(n->token.sv, "cstr")) {
-            n->type = c->context.cstr_type;
         } else {
             Node *definition = scope_find(c->context.types, n->token.sv);
             if (!definition) {
@@ -695,7 +683,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -703,10 +691,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_STR:
             n->type = c->context.str_type;
-            break;
-
-        case TOKEN_CSTR:
-            n->type = (Type) {.kind = TYPE_I8, .ref = 1};
             break;
 
         case TOKEN_BOOL:
@@ -798,7 +782,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -911,7 +895,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1548,10 +1532,6 @@ void check_nodes(Compiler *c, Nodes ns) {
         };
 
         c->context.str_type = alias_type(c->context.arena, sv_from_cstr("str"), u8_slice_type);
-    }
-
-    if (!c->context.cstr_type.alias) {
-        c->context.cstr_type = alias_type(c->context.arena, sv_from_cstr("cstr"), (Type) {.kind = TYPE_I8, .ref = 1});
     }
 
     for (Node *it = ns.head; it; it = it->next) {
