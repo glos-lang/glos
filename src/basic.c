@@ -133,8 +133,12 @@ static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;
 
 void temp_reset(const void *p) {
-    assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
-    temp_count = (const char *) p - temp_data;
+    if (p == temp_data) {
+        temp_count = 0;
+    } else {
+        assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
+        temp_count = (const char *) p - temp_data;
+    }
 }
 
 void *temp_alloc(size_t n) {

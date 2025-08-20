@@ -571,6 +571,18 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 #undef const_bool
 }
 
+static ConstValue eval_const_expr_final(Compiler *c, Node *n) {
+    const char *save = temp_alloc(0);
+
+    ConstValue value = eval_const_expr(c, n);
+    if (value.is_string) {
+        value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
+    }
+
+    temp_reset(save);
+    return value;
+}
+
 static_assert(COUNT_NODES == 22, "");
 static_assert(COUNT_TYPES == 15, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition) {
@@ -1160,7 +1172,7 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_ASSERT: {
         NodeAssert *assertt = (NodeAssert *) n;
         if (assertt->is_static) {
-            ConstValue value = eval_const_expr(c, assertt->expr);
+            ConstValue value = eval_const_expr_final(c, assertt->expr);
             type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
 
             if (!value.as.boolean) {
@@ -1317,7 +1329,7 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->type->type;
         }
 
-        constt->value = eval_const_expr(c, constt->expr);
+        constt->value = eval_const_expr_final(c, constt->expr);
         n->type = constt->expr->type;
 
         if (constt->type) {
