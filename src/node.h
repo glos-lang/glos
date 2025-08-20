@@ -51,8 +51,6 @@ struct Type {
     //   TYPE_SLICE
     Type *spec_type;
 
-    NodeType *alias; // TODO: Remove this
-
     QbeType qbe;
 };
 

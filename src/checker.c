@@ -683,8 +683,6 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
             n->type = (Type) {.kind = TYPE_U64};
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
-        } else if (sv_match(n->token.sv, "str")) {
-            n->type = c->context.str_type;
         } else {
             Node *definition = scope_find(c->context.types, n->token.sv);
             if (!definition) {
@@ -699,7 +697,6 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
                 }
 
                 n->type = definition->type;
-                n->type.alias = type;
                 type->ref = n->type.ref;
             } break;
 
@@ -1592,27 +1589,15 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
     }
 }
 
-static Type alias_type(Arena *a, SV name, Type type) {
-    NodeType *alias = arena_alloc(a, sizeof(NodeType));
-    alias->node.token.sv = name;
-    alias->node.type = type;
-    alias->node.type.alias = alias;
-    alias->ref = type.ref;
-    alias->check_status = CHECK_STATUS_DONE;
-    return alias->node.type;
-}
-
 void check_nodes(Compiler *c, Nodes ns) {
     assert(c->context.arena);
 
-    if (!c->context.str_type.alias) {
+    if (c->context.str_type.kind != TYPE_SLICE) {
         const Type u8_type = {.kind = TYPE_U8};
-        const Type u8_slice_type = (Type) {
+        c->context.str_type = (Type) {
             .kind = TYPE_SLICE,
             .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
         };
-
-        c->context.str_type = alias_type(c->context.arena, sv_from_cstr("str"), u8_slice_type);
     }
 
     for (Node *it = ns.head; it; it = it->next) {

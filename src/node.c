@@ -4,16 +4,6 @@ static_assert(COUNT_TYPES == 15, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
-    if (type.alias && type.ref >= type.alias->ref) {
-        for (size_t i = type.alias->ref; i < type.ref; i++) {
-            temp_sprintf("&");
-            temp_remove_null();
-        }
-
-        temp_sv_to_cstr(type.alias->node.token.sv);
-        return s;
-    }
-
     for (size_t i = 0; i < type.ref; i++) {
         temp_sprintf("&");
         temp_remove_null();

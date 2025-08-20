@@ -1,4 +1,4 @@
-fn println(s str) {
+fn println(s []u8) {
     extern fn putchar(ch i32) i32
 
     for var i = 0; i < s.count; i += 1 {
