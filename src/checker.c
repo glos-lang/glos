@@ -240,22 +240,27 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
 #define const_int(n)  ((ConstValue) {.as.integer = (n)})
 #define const_bool(b) ((ConstValue) {.as.boolean = (b)})
+#define const_str(s)  ((ConstValue) {.as.sv = (s), .is_string = true})
 
     switch (n->kind) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
 
-        case TOKEN_STR:
-        case TOKEN_CSTR:
-            error_full(ERROR, n->token.pos, "Strings are not implemented in constant expressions YET");
-            exit(1);
-            break;
+        case TOKEN_STR: {
+            SV sv = n->token.sv;
+            sv.data += 1;
+            sv.count -= 2;
+            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
+
+            n->type = c->context.str_type;
+            return const_str(sv);
+        }
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -317,7 +322,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -352,10 +357,60 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_INDEX:
-        error_full(ERROR, n->token.pos, "Unexpected index in constant expression");
-        exit(1);
-        break;
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+
+        ConstValue lhs = eval_const_expr(c, index->base);
+        if (!lhs.is_string) {
+            error_full(ERROR, n->token.pos, "Can only index strings in constant expressions");
+            exit(1);
+        }
+
+        ConstValue from = {0};
+        if (index->from) {
+            from = eval_const_expr(c, index->from);
+            type_assert_arith(index->from, false);
+        }
+
+        ConstValue to = {0};
+        if (index->to) {
+            to = eval_const_expr(c, index->to);
+            type_assert_arith(index->to, false);
+        }
+
+        if (index->ranged) {
+            if (from.as.integer >= lhs.as.sv.count || to.as.integer >= lhs.as.sv.count) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Range (%ld..%ld) is out of bounds in slice of length %ld",
+                    from.as.integer,
+                    to.as.integer,
+                    lhs.as.sv.count);
+
+                exit(1);
+            }
+
+            lhs.as.sv.data += from.as.integer;
+            lhs.as.sv.count = to.as.integer - from.as.integer;
+            n->type = index->base->type;
+            return lhs;
+        } else {
+            if (from.as.integer >= lhs.as.sv.count) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Index %ld is out of bounds in string of length %ld",
+                    from.as.integer,
+                    lhs.as.sv.count);
+
+                exit(1);
+            }
+
+            n->type = (Type) {.kind = TYPE_U8};
+            return const_int(lhs.as.sv.data[from.as.integer]);
+        }
+    }
 
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
@@ -363,9 +418,19 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+
+            if (!lhs.is_string) {
+                type_assert_arith(binary->lhs, true);
+            }
+
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
         case TOKEN_SUB:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
@@ -428,9 +493,17 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
+            if (lhs.is_string) {
+                char *s = temp_alloc(lhs.as.sv.count + rhs.as.sv.count);
+                memcpy(s, lhs.as.sv.data, lhs.as.sv.count);
+                memcpy(s + lhs.as.sv.count, rhs.as.sv.data, rhs.as.sv.count);
+                const SV sv = {.data = s, .count = lhs.as.sv.count + rhs.as.sv.count};
+                return const_str(sv);
+            }
+
             return const_int(lhs.as.integer + rhs.as.integer);
 
         case TOKEN_SUB:
@@ -507,10 +580,23 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_MEMBER:
-        error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+
+        ConstValue lhs = eval_const_expr(c, member->lhs);
+        if (!lhs.is_string) {
+            error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
+            exit(1);
+        }
+
+        if (sv_match(n->token.sv, "count")) {
+            n->type = (Type) {.kind = TYPE_I64};
+            return const_int(lhs.as.sv.count);
+        }
+
+        error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
         exit(1);
-        break;
+    } break;
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
@@ -556,6 +642,18 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 #undef const_bool
 }
 
+static ConstValue eval_const_expr_final(Compiler *c, Node *n) {
+    const char *save = temp_alloc(0);
+
+    ConstValue value = eval_const_expr(c, n);
+    if (value.is_string) {
+        value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
+    }
+
+    temp_reset(save);
+    return value;
+}
+
 static_assert(COUNT_NODES == 22, "");
 static_assert(COUNT_TYPES == 15, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition) {
@@ -587,8 +685,6 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else if (sv_match(n->token.sv, "str")) {
             n->type = c->context.str_type;
-        } else if (sv_match(n->token.sv, "cstr")) {
-            n->type = c->context.cstr_type;
         } else {
             Node *definition = scope_find(c->context.types, n->token.sv);
             if (!definition) {
@@ -668,7 +764,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -676,10 +772,6 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_STR:
             n->type = c->context.str_type;
-            break;
-
-        case TOKEN_CSTR:
-            n->type = (Type) {.kind = TYPE_I8, .ref = 1};
             break;
 
         case TOKEN_BOOL:
@@ -771,7 +863,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, false);
@@ -884,7 +976,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1145,7 +1237,7 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_ASSERT: {
         NodeAssert *assertt = (NodeAssert *) n;
         if (assertt->is_static) {
-            ConstValue value = eval_const_expr(c, assertt->expr);
+            ConstValue value = eval_const_expr_final(c, assertt->expr);
             type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
 
             if (!value.as.boolean) {
@@ -1302,7 +1394,7 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->type->type;
         }
 
-        constt->value = eval_const_expr(c, constt->expr);
+        constt->value = eval_const_expr_final(c, constt->expr);
         n->type = constt->expr->type;
 
         if (constt->type) {
@@ -1521,10 +1613,6 @@ void check_nodes(Compiler *c, Nodes ns) {
         };
 
         c->context.str_type = alias_type(c->context.arena, sv_from_cstr("str"), u8_slice_type);
-    }
-
-    if (!c->context.cstr_type.alias) {
-        c->context.cstr_type = alias_type(c->context.arena, sv_from_cstr("cstr"), (Type) {.kind = TYPE_I8, .ref = 1});
     }
 
     for (Node *it = ns.head; it; it = it->next) {

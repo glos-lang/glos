@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -122,7 +122,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -137,7 +137,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -209,7 +209,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -217,7 +217,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool no_struct) {
     switch (token.kind) {
     case TOKEN_INT:
     case TOKEN_STR:
-    case TOKEN_CSTR:
     case TOKEN_BOOL:
     case TOKEN_CHAR:
     case TOKEN_IDENT:
@@ -415,7 +414,7 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

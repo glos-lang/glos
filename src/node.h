@@ -51,7 +51,7 @@ struct Type {
     //   TYPE_SLICE
     Type *spec_type;
 
-    NodeType *alias;
+    NodeType *alias; // TODO: Remove this
 
     QbeType qbe;
 };
@@ -72,9 +72,11 @@ typedef enum {
 } CheckStatus;
 
 typedef struct {
+    bool is_string;
     union {
         bool   boolean;
         size_t integer;
+        SV     sv;
     } as;
 } ConstValue;
 

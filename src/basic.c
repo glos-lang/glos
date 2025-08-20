@@ -111,13 +111,34 @@ bool resolve_escape_char(char *ch) {
     return true;
 }
 
+void resolve_escape_chars(char *buffer, SV *sv) {
+    char *p = buffer;
+
+    size_t i = 0;
+    while (i < sv->count) {
+        char ch = sv->data[i++];
+        if (ch == '\\') {
+            ch = sv->data[i++];
+            resolve_escape_char(&ch);
+        }
+        *p++ = ch;
+    }
+
+    sv->data = buffer;
+    sv->count = p - buffer;
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;
 
 void temp_reset(const void *p) {
-    assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
-    temp_count = (const char *) p - temp_data;
+    if (p == temp_data) {
+        temp_count = 0;
+    } else {
+        assert((const char *) p >= temp_data && (const char *) p < temp_data + temp_count);
+        temp_count = (const char *) p - temp_data;
+    }
 }
 
 void *temp_alloc(size_t n) {
