@@ -367,7 +367,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_INDEX:
+    case NODE_INDEX: // TODO: Indexing and Slicing strings
         error_full(ERROR, n->token.pos, "Unexpected index in constant expression");
         exit(1);
         break;
@@ -380,7 +380,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
         static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
-        case TOKEN_ADD:
+        case TOKEN_ADD: // TODO: Addition of strings
         case TOKEN_SUB:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
@@ -522,7 +522,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_MEMBER:
+    case NODE_MEMBER: // TODO: Accessing members of strings
         error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
         exit(1);
         break;
