@@ -9,11 +9,11 @@ fn print_vec2(v Vec2) {
 }
 
 const X = 34 + 35
-var   Y = X * 4
+const Y = X * 4
 const Z = Y + 144
 
 fn main() {
-    const v = Vec2 {
+    var v = Vec2 {
         X,
         Z
     }

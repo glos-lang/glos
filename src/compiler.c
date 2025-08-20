@@ -225,19 +225,15 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
             case NODE_CONST: {
                 NodeConst *constt = (NodeConst *) atom->definition;
-                if (constt->value.kind == CONST_VALUE_ATOM) {
-                    if (n->type.kind == TYPE_BOOL) {
-                        return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
-                    }
+                if (n->type.kind == TYPE_BOOL) {
+                    return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
+                }
 
+                if (type_is_integer(n->type)) {
                     return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
                 }
 
-                if (!constt->qbe) {
-                    compile_stmt(c, atom->definition);
-                }
-
-                return qbe_build_load(c->qbe, c->fn, constt->qbe, n->type.qbe, type_is_signed(n->type));
+                unreachable();
             }
 
             default:
@@ -765,33 +761,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static void compile_fn_body(Compiler *c, NodeFn *fn) {
-    assert(fn->body->kind == NODE_BLOCK);
-    NodeBlock *fn_block = (NodeBlock *) fn->body;
-
-    size_t fn_row = 0;
-    if (fn_block->body.head) {
-        fn_row = fn_block->body.head->token.pos.row;
-
-        compile_stmt(c, fn_block->body.head);
-        for (Node *it = fn_block->body.head->next; it; it = it->next) {
-            qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
-            compile_stmt(c, it);
-        }
-    } else {
-        fn_row = fn_block->node.token.pos.row;
-    }
-
-    qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
-    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
-
-    if (c->is_inlining_main) {
-        qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
-    } else {
-        qbe_build_return(c->qbe, c->fn, NULL);
-    }
-}
-
 static_assert(COUNT_NODES == 22, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -911,16 +880,16 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
-        if (c->is_inlining_main) {
-            qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
-        } else {
-            qbe_build_return(c->qbe, c->fn, compile_expr(c, ret->value, false));
-        }
+        qbe_build_return(c->qbe, c->fn, compile_expr(c, ret->value, false));
         qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
     } break;
 
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
+        if (fn->qbe) {
+            return;
+        }
+
         if (!fn->body) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
             fn->qbe = qbe_atom_extern_fn(c->qbe, name);
@@ -930,12 +899,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         Type return_type = node_fn_return_type(fn);
         compile_type(c, &return_type);
 
-        QbeFn     *fn_save = c->fn;
-        const bool is_inlining_main_save = c->is_inlining_main;
-
+        QbeFn *fn_save = c->fn;
         c->fn = qbe_fn_new(c->qbe, (QbeSV) {0}, return_type.qbe);
-        c->is_inlining_main = false;
-
         fn->qbe = (QbeNode *) c->fn;
 
         for (Node *it = fn->args.head; it; it = it->next) {
@@ -949,40 +914,43 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
         }
 
-        compile_fn_body(c, fn);
+        assert(fn->body->kind == NODE_BLOCK);
+        NodeBlock *fn_block = (NodeBlock *) fn->body;
+
+        size_t fn_row = 0;
+        if (fn_block->body.head) {
+            fn_row = fn_block->body.head->token.pos.row;
+
+            compile_stmt(c, fn_block->body.head);
+            for (Node *it = fn_block->body.head->next; it; it = it->next) {
+                qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
+                compile_stmt(c, it);
+            }
+        } else {
+            fn_row = fn_block->node.token.pos.row;
+        }
+
+        qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
+        qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
+        qbe_build_return(c->qbe, c->fn, NULL);
 
         c->fn = fn_save;
-        c->is_inlining_main = is_inlining_main_save;
     } break;
 
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
+        if (var->qbe) {
+            return;
+        }
 
         compile_type(c, &n->type);
         if (var->is_extern) {
             const QbeSV name = {.data = n->token.sv.data, .count = n->token.sv.count};
             var->qbe = qbe_atom_extern(c->qbe, name, qbe_type_basic(QBE_TYPE_I64));
         } else if (var->kind == NODE_VAR_GLOBAL || var->is_static) {
-            if (var->expr) {
-                const void *src = NULL;
-
-                static_assert(COUNT_CONST_VALUES == 3, "");
-                switch (var->const_value.kind) {
-                case CONST_VALUE_ATOM:
-                    src = &var->const_value.as;
-                    break;
-
-                case CONST_VALUE_MEMORY:
-                    src = var->const_value.as.memory;
-                    break;
-
-                default:
-                    unreachable();
-                }
-
-                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, src);
-            } else {
-                var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, NULL);
+            var->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, NULL);
+            if (var->kind != NODE_VAR_GLOBAL) {
+                da_push(&c->context.globals, n);
             }
         } else {
             var->qbe = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
@@ -994,27 +962,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
     } break;
 
-    case NODE_CONST: {
-        NodeConst *constt = (NodeConst *) n;
-
-        static_assert(COUNT_CONST_VALUES == 3, "");
-        switch (constt->value.kind) {
-        case CONST_VALUE_ATOM:
-            // Pass
-            break;
-
-        case CONST_VALUE_MEMORY:
-            if (!constt->qbe) {
-                constt->qbe = qbe_var_new(c->qbe, (QbeSV) {0}, n->type.qbe, constt->value.as.memory);
-            }
-            break;
-
-        default:
-            unreachable();
-        }
-    } break;
-
     case NODE_TYPE:
+    case NODE_CONST:
     case NODE_STRUCT:
         // Pass
         break;
@@ -1101,9 +1050,20 @@ void compiler_build(Compiler *c, const char *object_file_path) {
 
     // Entry
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
-    c->is_inlining_main = true;
-    compile_fn_body(c, main);
-    c->is_inlining_main = false;
+    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
+
+    for (size_t i = 0; i < c->context.globals.count; i++) {
+        Node *it = c->context.globals.data[i];
+        if (it->kind == NODE_VAR) {
+            NodeVar *var = (NodeVar *) it;
+            if (var->expr) {
+                qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
+            }
+        }
+    }
+
+    qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, main->qbe, qbe_type_basic(QBE_TYPE_I32)));
+    qbe_build_return(c->qbe, c->fn, qbe_atom_int(c->qbe, QBE_TYPE_I32, 0));
 
 #if 0
     qbe_compile(c->qbe);

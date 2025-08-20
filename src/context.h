@@ -17,20 +17,13 @@ typedef struct {
 } ContextFn;
 
 typedef struct {
-    char  *data;
-    size_t count;
-    size_t capacity;
-} ContextMem;
-
-typedef struct {
     Arena *arena;
 
     Scope types;
     Scope locals;
     Scope globals;
 
-    ContextFn  fn;
-    ContextMem memory;
+    ContextFn fn;
 
     bool in_extern;
 
@@ -41,10 +34,6 @@ typedef struct {
 ContextFn context_fn_begin(Context *c, NodeFn *fn);
 void      context_fn_end(Context *c, ContextFn save);
 Node     *context_fn_find(ContextFn f, Scope s, SV name);
-
-size_t context_memory_alloc(Context *c, size_t size);
-void  *context_memory_read(Context *c, size_t offset);
-void   context_memory_write(Context *c, size_t offset, const void *src, size_t size);
 
 void context_free(Context *c);
 

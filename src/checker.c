@@ -43,7 +43,6 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
             NodeConst *definition = (NodeConst *) atom->definition;
             assert(definition->check_status != CHECK_STATUS_DOING);
 
-            assert(definition->value.kind == CONST_VALUE_ATOM);
             n->type = expected;
             check_int_limit(n, definition->value.as.integer);
         } break;
@@ -239,9 +238,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         return (ConstValue) {0};
     }
 
-#define const_int(n)    ((ConstValue) {.kind = CONST_VALUE_ATOM, .as.integer = (n)})
-#define const_bool(b)   ((ConstValue) {.kind = CONST_VALUE_ATOM, .as.boolean = (b)})
-#define const_offset(p) ((ConstValue) {.kind = CONST_VALUE_OFFSET, .as.integer = (p)})
+#define const_int(n)  ((ConstValue) {.as.integer = (n)})
+#define const_bool(b) ((ConstValue) {.as.boolean = (b)})
 
     switch (n->kind) {
     case NODE_ATOM: {
@@ -272,29 +270,19 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
+
+            if (atom->definition->kind != NODE_CONST) {
+                error_full(ERROR, n->token.pos, "Can only refer to constants in constant expressions");
+                exit(1);
+            }
+
+            NodeConst *constt = (NodeConst *) atom->definition;
+            if (constt->check_status != CHECK_STATUS_DONE) {
+                check_stmt(c, atom->definition);
+            }
+
             n->type = atom->definition->type;
-
-            if (atom->definition->kind == NODE_VAR) {
-                NodeVar *var = (NodeVar *) atom->definition;
-                if (var->check_status != CHECK_STATUS_DONE) {
-                    check_stmt(c, atom->definition);
-                    n->type = atom->definition->type;
-                }
-                return var->const_value;
-            }
-
-            if (atom->definition->kind == NODE_CONST) {
-                NodeConst *constt = (NodeConst *) atom->definition;
-                if (constt->check_status != CHECK_STATUS_DONE) {
-                    check_stmt(c, atom->definition);
-                    n->type = atom->definition->type;
-                }
-                return constt->value;
-            }
-
-            error_full(ERROR, n->token.pos, "Can only refer to variables in constant expressions");
-            exit(1);
-            break;
+            return constt->value;
 
         default:
             unreachable();
@@ -519,59 +507,10 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_MEMBER: {
-        NodeMember *member = (NodeMember *) n;
-
-        ConstValue value = eval_const_expr(c, member->lhs);
-        if (member->lhs->type.kind != TYPE_STRUCT) {
-            error_full(
-                ERROR, member->lhs->token.pos, "Expected structure type, got '%s'", type_to_cstr(member->lhs->type));
-
-            exit(1);
-        }
-
-        if (member->lhs->type.ref) {
-            error_full(ERROR, n->token.pos, "Cannot access fields of structure pointer in constant expression");
-            exit(1);
-        }
-
-        NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
-
-        member->definition = nodes_find(structt->fields, n->token.sv, NULL);
-        if (!member->definition) {
-            error_undefined(n, "field");
-        }
-
-        n->type = member->definition->type;
-
-        assert(member->definition->kind == NODE_FIELD);
-        const size_t size = compile_sizeof(c, &n->type);
-        const size_t offset = qbe_offsetof(((NodeField *) member->definition)->qbe);
-
-        const size_t memory = context_memory_alloc(&c->context, size);
-        const void  *src = NULL;
-
-        static_assert(COUNT_CONST_VALUES == 3, "");
-        switch (value.kind) {
-        case CONST_VALUE_ATOM:
-            unreachable();
-            break;
-
-        case CONST_VALUE_OFFSET:
-            src = context_memory_read(&c->context, value.as.integer);
-            break;
-
-        case CONST_VALUE_MEMORY:
-            src = value.as.memory;
-            break;
-
-        default:
-            unreachable();
-        }
-
-        context_memory_write(&c->context, memory, (const char *) src + offset, size);
-        return const_offset(memory);
-    } break;
+    case NODE_MEMBER:
+        error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
+        exit(1);
+        break;
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
@@ -589,90 +528,10 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         return const_int(compile_sizeof(c, type));
     }
 
-    case NODE_COMPOUND: {
-        NodeCompound *compound = (NodeCompound *) n;
-        check_type(c, compound->type, true);
-
-        n->type = compound->type->type;
-        if (n->type.kind != TYPE_STRUCT) {
-            error_full(
-                ERROR,
-                compound->type->token.pos,
-                "Expected structure type, got '%s'",
-                type_to_cstr(compound->type->type));
-
-            exit(1);
-        }
-
-        const size_t size = compile_sizeof(c, &n->type);
-        const size_t memory = context_memory_alloc(&c->context, size);
-
-        NodeStruct *spec = (NodeStruct *) n->type.spec_node;
-
-        Node *ordered_iota = spec->fields.head;
-        for (Node *it = compound->nodes.head; it; it = it->next) {
-            ConstValue value = {0};
-            size_t     size = 0;
-            size_t     offset = 0;
-
-            if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
-                NodeBinary *assign = (NodeBinary *) it;
-
-                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
-                NodeAtom *lhs = (NodeAtom *) assign->lhs;
-
-                lhs->definition = nodes_find(spec->fields, lhs->node.token.sv, NULL);
-                if (!lhs->definition) {
-                    error_undefined((Node *) lhs, "field");
-                }
-
-                value = eval_const_expr(c, assign->rhs);
-                type_assert(c, assign->rhs, lhs->definition->type);
-                size = compile_sizeof(c, &assign->rhs->type);
-
-                assert(lhs->definition->kind == NODE_FIELD);
-                offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
-            } else {
-                if (!ordered_iota) {
-                    error_full(ERROR, it->token.pos, "Too many ordered initializers");
-                    exit(1);
-                }
-
-                value = eval_const_expr(c, it);
-                type_assert(c, it, ordered_iota->type);
-                size = compile_sizeof(c, &it->type);
-
-                assert(ordered_iota->kind == NODE_FIELD);
-                offset = qbe_offsetof(((NodeField *) ordered_iota)->qbe);
-
-                ordered_iota = ordered_iota->next;
-            }
-
-            const void *src = NULL;
-
-            static_assert(COUNT_CONST_VALUES == 3, "");
-            switch (value.kind) {
-            case CONST_VALUE_ATOM:
-                src = &value.as;
-                break;
-
-            case CONST_VALUE_OFFSET:
-                src = context_memory_read(&c->context, value.as.integer);
-                break;
-
-            case CONST_VALUE_MEMORY:
-                src = value.as.memory;
-                break;
-
-            default:
-                unreachable();
-            }
-
-            context_memory_write(&c->context, memory + offset, src, size);
-        }
-
-        return const_offset(memory);
-    }
+    case NODE_COMPOUND:
+        error_full(ERROR, n->token.pos, "Unexpected compound literal in constant expression");
+        exit(1);
+        break;
 
     case NODE_FN:
         error_full(ERROR, n->token.pos, "Unexpected function in constant expression");
@@ -695,7 +554,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
 #undef const_int
 #undef const_bool
-#undef const_offset
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -1277,23 +1135,6 @@ static bool always_returns(Node *n) {
     }
 }
 
-static ConstValue eval_const_expr_and_finalize(Compiler *c, Node *n) {
-    const size_t memory_count_save = c->context.memory.count;
-
-    ConstValue value = eval_const_expr(c, n);
-    if (value.kind == CONST_VALUE_OFFSET) {
-        const size_t size = compile_sizeof(c, &n->type);
-        const void  *src = context_memory_read(&c->context, value.as.integer);
-        void        *dst = arena_alloc(c->context.arena, size);
-
-        value.kind = CONST_VALUE_MEMORY;
-        value.as.memory = memcpy(dst, src, size);
-    }
-
-    c->context.memory.count = memory_count_save;
-    return value;
-}
-
 static_assert(COUNT_NODES == 22, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -1385,12 +1226,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         if (var->expr) {
-            if (var->kind == NODE_VAR_GLOBAL || var->is_static) {
-                var->const_value = eval_const_expr_and_finalize(c, var->expr);
-            } else {
-                check_expr(c, var->expr, false);
-            }
-
+            check_expr(c, var->expr, false);
             n->type = var->expr->type;
 
             if (n->type.kind == TYPE_UNIT) {
@@ -1466,7 +1302,7 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->type->type;
         }
 
-        constt->value = eval_const_expr_and_finalize(c, constt->expr);
+        constt->value = eval_const_expr(c, constt->expr);
         n->type = constt->expr->type;
 
         if (constt->type) {

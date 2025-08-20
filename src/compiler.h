@@ -8,7 +8,6 @@ typedef struct {
 
     Qbe   *qbe;
     QbeFn *fn;
-    bool   is_inlining_main; // TODO: We don't have inlining support in LibQBE yet
 
     QbeNode *print_fn;
     QbeNode *print_sfmt;
