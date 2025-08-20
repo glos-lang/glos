@@ -71,20 +71,10 @@ typedef enum {
     CHECK_STATUS_DONE,
 } CheckStatus;
 
-typedef enum {
-    CONST_VALUE_ATOM,
-    CONST_VALUE_OFFSET,
-    CONST_VALUE_MEMORY,
-    COUNT_CONST_VALUES
-} ConstValueKind;
-
 typedef struct {
-    ConstValueKind kind;
-
     union {
-        bool        boolean;
-        size_t      integer;
-        const void *memory;
+        bool   boolean;
+        size_t integer;
     } as;
 } ConstValue;
 
@@ -244,7 +234,6 @@ typedef struct {
     bool is_static;
 
     NodeVarKind kind;
-    ConstValue  const_value;
     CheckStatus check_status;
 
     QbeNode *qbe;
