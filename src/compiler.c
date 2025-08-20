@@ -203,14 +203,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             case NODE_CONST: {
                 NodeConst *constt = (NodeConst *) atom->definition;
                 if (constt->value.is_string) {
-                    if (n->type.ref) {
-                        // C string
-                        const SV sv = constt->value.as.sv;
-                        return qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
-                    } else {
-                        // String
-                        return compile_str(c, constt->value.as.sv);
-                    }
+                    return compile_str(c, constt->value.as.sv);
                 }
 
                 if (n->type.kind == TYPE_BOOL) {

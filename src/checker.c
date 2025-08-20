@@ -530,10 +530,23 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
-    case NODE_MEMBER: // TODO: Accessing members of strings
-        error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+
+        ConstValue lhs = eval_const_expr(c, member->lhs);
+        if (!lhs.is_string) {
+            error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
+            exit(1);
+        }
+
+        if (sv_match(n->token.sv, "count")) {
+            n->type = (Type) {.kind = TYPE_I64};
+            return const_int(lhs.as.sv.count);
+        }
+
+        error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
         exit(1);
-        break;
+    } break;
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
