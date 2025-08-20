@@ -1,4 +1,4 @@
-fn println_str(s str) {
+fn println(s str) {
     extern fn putchar(ch i32) i32
 
     for var i = 0; i < s.count; i += 1 {
@@ -9,5 +9,5 @@ fn println_str(s str) {
 }
 
 fn main() {
-    println_str("Hello, world!")
+    println("Hello, world!")
 }

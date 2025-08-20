@@ -370,7 +370,17 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
         static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
-        case TOKEN_ADD: // TODO: Addition of strings
+        case TOKEN_ADD:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+
+            if (!lhs.is_string) {
+                type_assert_arith(binary->lhs, true);
+            }
+
+            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            break;
+
         case TOKEN_SUB:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
@@ -436,6 +446,14 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
+            if (lhs.is_string) {
+                char *s = temp_alloc(lhs.as.sv.count + rhs.as.sv.count);
+                memcpy(s, lhs.as.sv.data, lhs.as.sv.count);
+                memcpy(s + lhs.as.sv.count, rhs.as.sv.data, rhs.as.sv.count);
+                const SV sv = {.data = s, .count = lhs.as.sv.count + rhs.as.sv.count};
+                return const_str(sv);
+            }
+
             return const_int(lhs.as.integer + rhs.as.integer);
 
         case TOKEN_SUB:

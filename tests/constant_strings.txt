@@ -1,6 +1,7 @@
 EXIT 0
-STDOUT 14
+STDOUT 22
 Hello, world!
+Foo Bar
 
 STDERR 0
 
