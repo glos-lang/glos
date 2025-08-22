@@ -454,6 +454,16 @@ static void local_assert(Parser *p, Token token, bool local) {
     }
 }
 
+static NodeAssert *parse_assert(Parser *p, Token token) {
+    NodeAssert *assertt = node_alloc(p, NODE_ASSERT, token);
+    assertt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
+
+    if (lexer_read(&p->lexer, TOKEN_COMMA)) {
+        assertt->message = node_alloc(p, NODE_ATOM, lexer_expect(&p->lexer, TOKEN_STR));
+    }
+    return assertt;
+}
+
 static_assert(COUNT_TOKENS == 58, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
@@ -473,14 +483,10 @@ static Node *parse_stmt(Parser *p) {
         node = (Node *) block;
     } break;
 
-    case TOKEN_ASSERT: {
+    case TOKEN_ASSERT:
         local_assert(p, token, true);
-
-        NodeAssert *assertt = node_alloc(p, NODE_ASSERT, token);
-        assertt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
-
-        node = (Node *) assertt;
-    } break;
+        node = (Node *) parse_assert(p, token);
+        break;
 
     case TOKEN_IF: {
         local_assert(p, token, true);
@@ -652,8 +658,7 @@ static Node *parse_stmt(Parser *p) {
             node = parse_stmt(p);
             ((NodeVar *) node)->is_static = true;
         } else if (token.kind == TOKEN_ASSERT) {
-            NodeAssert *assertt = node_alloc(p, NODE_ASSERT, token);
-            assertt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
+            NodeAssert *assertt = parse_assert(p, token);
             assertt->is_static = true;
             node = (Node *) assertt;
         } else {

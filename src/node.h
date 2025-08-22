@@ -167,6 +167,7 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *expr;
+    Node *message;
     bool  is_static;
 } NodeAssert;
 

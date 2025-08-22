@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 89
+static_assertions_custom_message.glos:2:18: Assertion Failed: Custom message for testing
+

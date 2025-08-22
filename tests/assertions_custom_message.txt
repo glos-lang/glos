@@ -1,0 +1,8 @@
+EXIT 134
+STDOUT 7
+69
+420
+
+STDERR 82
+assertions_custom_message.glos:6:12: Assertion Failed: Custom message for testing
+

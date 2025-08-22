@@ -761,8 +761,28 @@ static void compile_stmt(Compiler *c, Node *n) {
             {
                 QbeCall *call = compile_panic_begin(c);
 
-                QbeSV message = qbe_sv_from_cstr(
-                    arena_sprintf(c->context.arena, PosFmt " Assertion Failed\n", PosArg(assertt->expr->token.pos)));
+                const char *text = NULL;
+                if (assertt->message) {
+                    SV sv = assertt->message->token.sv;
+                    sv.data++;
+                    sv.count -= 2;
+
+                    char *buffer = temp_alloc(assertt->message->token.as.integer);
+                    resolve_escape_chars(buffer, &sv);
+
+                    text = arena_sprintf(
+                        c->context.arena,
+                        PosFmt " Assertion Failed: " SVFmt "\n",
+                        PosArg(assertt->expr->token.pos),
+                        SVArg(sv));
+
+                    temp_reset(buffer);
+                } else {
+                    text =
+                        arena_sprintf(c->context.arena, PosFmt " Assertion Failed\n", PosArg(assertt->expr->token.pos));
+                }
+
+                QbeSV message = qbe_sv_from_cstr(text);
 
                 qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
                 compile_panic_end(c, call);

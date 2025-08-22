@@ -1204,7 +1204,21 @@ static void check_stmt(Compiler *c, Node *n) {
             type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
 
             if (!value.as.boolean) {
-                fprintf(stderr, PosFmt " Assertion Failed\n", PosArg(assertt->expr->token.pos));
+                if (assertt->message) {
+                    SV message = assertt->message->token.sv;
+                    message.data++;
+                    message.count -= 2;
+
+                    resolve_escape_chars(temp_alloc(assertt->message->token.as.integer), &message);
+                    fprintf(
+                        stderr,
+                        PosFmt " Assertion Failed: " SVFmt "\n",
+                        PosArg(assertt->expr->token.pos),
+                        SVArg(message));
+                } else {
+                    fprintf(stderr, PosFmt " Assertion Failed\n", PosArg(assertt->expr->token.pos));
+                }
+
                 exit(1);
             }
         } else {
