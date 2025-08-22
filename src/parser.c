@@ -211,6 +211,7 @@ static Node *parse_fn(Parser *p, Token name);
 
 typedef enum {
     PF_COMPOUND_ALLOWED = 1 << 0,
+    PF_CONSTANT_EXPR = 1 << 1
 } ParseFlags;
 
 static_assert(COUNT_TOKENS == 58, "");
@@ -227,9 +228,29 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         node = node_alloc(p, NODE_ATOM, token);
         break;
 
+    case TOKEN_MUL: {
+        if (flags & PF_CONSTANT_EXPR) {
+            error_full(ERROR, token.pos, "Unexpected dereference in constant expression");
+            exit(1);
+        }
+
+        NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
+        unary->operand = parse_expr(p, POWER_PRE, flags);
+        node = (Node *) unary;
+    } break;
+
+    case TOKEN_BAND: {
+        if (flags & PF_CONSTANT_EXPR) {
+            error_full(ERROR, token.pos, "Unexpected reference in constant expression");
+            exit(1);
+        }
+
+        NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
+        unary->operand = parse_expr(p, POWER_PRE, flags);
+        node = (Node *) unary;
+    } break;
+
     case TOKEN_SUB:
-    case TOKEN_MUL:
-    case TOKEN_BAND:
     case TOKEN_BNOT:
     case TOKEN_LNOT: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
@@ -270,6 +291,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         break;
 
     case TOKEN_FN:
+        if (flags & PF_CONSTANT_EXPR) {
+            error_full(ERROR, token.pos, "Unexpected function in constant expression");
+            exit(1);
+        }
+
         node = parse_fn(p, token);
         break;
 
@@ -297,6 +323,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         } break;
 
         case TOKEN_LPAREN: {
+            if (flags & PF_CONSTANT_EXPR) {
+                error_full(ERROR, token.pos, "Unexpected call in constant expression");
+                exit(1);
+            }
+
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
@@ -315,6 +346,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             if (!(flags & PF_COMPOUND_ALLOWED) || !node_is_compound_literal_type(node)) {
                 lexer_buffer(&p->lexer, token);
                 return node;
+            }
+
+            if (flags & PF_CONSTANT_EXPR) {
+                error_full(ERROR, token.pos, "Unexpected compound literal in constant expression");
+                exit(1);
             }
 
             NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
@@ -548,14 +584,12 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_CONST: {
         NodeConst *constt = node_alloc(p, NODE_CONST, lexer_expect(&p->lexer, TOKEN_IDENT));
 
-        if (lexer_read(&p->lexer, TOKEN_SET)) {
-            constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
-        } else {
+        if (!lexer_read(&p->lexer, TOKEN_SET)) {
             constt->type = parse_type(p);
             lexer_expect(&p->lexer, TOKEN_SET);
-            constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
         }
 
+        constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED | PF_CONSTANT_EXPR);
         constt->local = p->local;
         node = (Node *) constt;
     } break;

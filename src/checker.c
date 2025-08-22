@@ -294,11 +294,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         }
     } break;
 
-    case NODE_CALL:
-        error_full(ERROR, n->token.pos, "Unexpected call in constant expression");
-        exit(1);
-        break;
-
     case NODE_CAST: {
         NodeCast  *cast = (NodeCast *) n;
         ConstValue value = eval_const_expr(c, cast->from);
@@ -329,16 +324,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             n->type = type_assert_arith(unary->operand, false);
             return const_int(-value.as.integer);
         }
-
-        case TOKEN_MUL:
-            error_full(ERROR, n->token.pos, "Unexpected dereference in constant expression");
-            exit(1);
-            break;
-
-        case TOKEN_BAND:
-            error_full(ERROR, n->token.pos, "Unexpected reference in constant expression");
-            exit(1);
-            break;
 
         case TOKEN_BNOT: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -454,19 +439,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             rhs = eval_const_expr(c, binary->rhs);
             type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
-            break;
-
-        case TOKEN_SET:
-        case TOKEN_ADD_SET:
-        case TOKEN_SUB_SET:
-        case TOKEN_MUL_SET:
-        case TOKEN_DIV_SET:
-        case TOKEN_SHL_SET:
-        case TOKEN_SHR_SET:
-        case TOKEN_BOR_SET:
-        case TOKEN_BAND_SET:
-            error_full(ERROR, n->token.pos, "Unexpected assignment in constant expression");
-            exit(1);
             break;
 
         case TOKEN_LOR:
@@ -614,25 +586,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         return const_int(compile_sizeof(c, type));
     }
 
-    case NODE_COMPOUND:
-        error_full(ERROR, n->token.pos, "Unexpected compound literal in constant expression");
-        exit(1);
-        break;
-
-    case NODE_FN:
-        error_full(ERROR, n->token.pos, "Unexpected function in constant expression");
-        exit(1);
-        break;
-
-    case NODE_IF:
-    case NODE_FOR:
-    case NODE_BLOCK:
-    case NODE_RETURN:
-    case NODE_VAR:
-    case NODE_FIELD:
-    case NODE_STRUCT:
-    case NODE_EXTERN:
-    case NODE_PRINT:
     default:
         unreachable();
         break;
