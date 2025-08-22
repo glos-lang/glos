@@ -161,7 +161,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -218,6 +218,8 @@ Token lexer_next(Lexer *l) {
         } else if (sv_match(token.sv, "false")) {
             token.kind = TOKEN_BOOL;
             token.as.boolean = 0;
+        } else if (sv_match(token.sv, "len")) {
+            token.kind = TOKEN_LEN;
         } else if (sv_match(token.sv, "sizeof")) {
             token.kind = TOKEN_SIZEOF;
         } else if (sv_match(token.sv, "assert")) {

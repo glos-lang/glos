@@ -252,7 +252,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -323,7 +323,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr(c, unary->operand);
@@ -343,6 +343,22 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             return const_bool(!value.as.boolean);
         }
 
+        case TOKEN_LEN: {
+            ConstValue value = eval_const_expr(c, unary->operand);
+            if (!value.is_string) {
+                error_full(
+                    ERROR,
+                    unary->operand->token.pos,
+                    "Expected type '[u8]', got '%s'",
+                    type_to_cstr(unary->operand->type));
+
+                exit(1);
+            }
+
+            n->type = (Type) {.kind = TYPE_I64};
+            return const_int(value.as.sv.count);
+        }
+
         default:
             unreachable();
         }
@@ -353,7 +369,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
         ConstValue lhs = eval_const_expr(c, index->base);
         if (!lhs.is_string) {
-            error_full(ERROR, n->token.pos, "Can only index strings in constant expressions");
+            error_full(
+                ERROR, index->base->token.pos, "Expected type '[u8]', got '%s'", type_to_cstr(index->base->type));
             exit(1);
         }
 
@@ -409,7 +426,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -471,7 +488,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -557,24 +574,6 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
     }
-
-    case NODE_MEMBER: {
-        NodeMember *member = (NodeMember *) n;
-
-        ConstValue lhs = eval_const_expr(c, member->lhs);
-        if (!lhs.is_string) {
-            error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
-            exit(1);
-        }
-
-        if (sv_match(n->token.sv, "count")) {
-            n->type = (Type) {.kind = TYPE_I64};
-            return const_int(lhs.as.sv.count);
-        }
-
-        error_full(ERROR, n->token.pos, "Can only access member 'count' of strings in constant expressions");
-        exit(1);
-    } break;
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
@@ -720,7 +719,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -826,7 +825,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -870,6 +869,21 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_LNOT:
             check_expr(c, unary->operand, REF_NONE);
             n->type = type_assert(c, unary->operand, (Type) {.kind = TYPE_BOOL});
+            break;
+
+        case TOKEN_LEN:
+            check_expr(c, unary->operand, REF_NONE);
+            if (type_is_pointer(unary->operand->type) || unary->operand->type.kind != TYPE_SLICE) {
+                error_full(
+                    ERROR,
+                    unary->operand->token.pos,
+                    "Expected slice type, got '%s'",
+                    type_to_cstr(unary->operand->type));
+
+                exit(1);
+            }
+
+            n->type = (Type) {.kind = TYPE_I64};
             break;
 
         default:
@@ -939,7 +953,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1039,25 +1053,12 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             allow_ref = ref;
             n->type = member->definition->type;
-        } else if (member->lhs->type.kind == TYPE_SLICE) {
-            if (sv_match(n->token.sv, "data")) {
-                n->type = *member->lhs->type.spec_type;
-                n->type.ref++;
-                n->token.as.integer = 0;
-            } else if (sv_match(n->token.sv, "count")) {
-                n->type = (Type) {.kind = TYPE_I64};
-                n->token.as.integer = 8;
-            } else {
-                error_undefined(n, "field");
-            }
-
-            allow_ref = ref;
         } else {
-            if (member->lhs->type.kind != TYPE_STRUCT && member->lhs->type.kind != TYPE_SLICE) {
+            if (member->lhs->type.kind != TYPE_STRUCT) {
                 error_full(
                     ERROR,
                     member->lhs->token.pos,
-                    "Expected structure or slice type, got '%s'",
+                    "Expected structure type, got '%s'",
                     type_to_cstr(member->lhs->type));
 
                 exit(1);
