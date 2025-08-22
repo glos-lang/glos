@@ -228,8 +228,14 @@ static Node *nodes_find(Nodes ns, SV name, Node *until) {
     return NULL;
 }
 
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_MUTATE,
+} RefKind;
+
 static void check_type(Compiler *c, Node *n, bool need_full_definition);
-static void check_expr(Compiler *c, Node *n, bool ref);
+static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
 static_assert(COUNT_NODES == 22, "");
@@ -704,7 +710,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
 static void check_fn(Compiler *c, Node *n);
 
 static_assert(COUNT_NODES == 22, "");
-static void check_expr(Compiler *c, Node *n, bool ref) {
+static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
     }
@@ -739,10 +745,17 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             }
 
             allow_ref = atom->definition->kind == NODE_VAR;
-            if (allow_ref && ref) {
-                NodeVar *var = (NodeVar *) atom->definition;
-                if (var->kind == NODE_VAR_ARG) {
-                    var->kind = NODE_VAR_LOCAL;
+            if (ref) {
+                if (atom->definition->kind == NODE_CONST && ref == REF_MUTATE) {
+                    error_full(ERROR, n->token.pos, "Cannot mutate constant value");
+                    exit(1);
+                }
+
+                if (allow_ref) {
+                    NodeVar *var = (NodeVar *) atom->definition;
+                    if (var->kind == NODE_VAR_ARG) {
+                        var->kind = NODE_VAR_LOCAL;
+                    }
                 }
             }
 
@@ -756,7 +769,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_CALL: {
         NodeCall *call = (NodeCall *) n;
-        check_expr(c, call->fn, false);
+        check_expr(c, call->fn, REF_NONE);
 
         const Type fn_type = call->fn->type;
         if (fn_type.kind != TYPE_FN) {
@@ -788,7 +801,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
 
         for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-            check_expr(c, a, false);
+            check_expr(c, a, REF_NONE);
             type_assert_node(c, a, e);
         }
 
@@ -797,7 +810,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
-        check_expr(c, cast->from, false);
+        check_expr(c, cast->from, REF_NONE);
         check_type(c, cast->to, true);
 
         const Type from = type_assert_scalar(cast->from);
@@ -816,12 +829,12 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
-            check_expr(c, unary->operand, false);
+            check_expr(c, unary->operand, REF_NONE);
             n->type = type_assert_arith(unary->operand, false);
             break;
 
         case TOKEN_MUL:
-            check_expr(c, unary->operand, false);
+            check_expr(c, unary->operand, REF_NONE);
 
             if (!type_is_pointer(unary->operand->type)) {
                 error_full(
@@ -844,18 +857,18 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
             break;
 
         case TOKEN_BAND:
-            check_expr(c, unary->operand, true);
+            check_expr(c, unary->operand, REF_ADDR);
             n->type = unary->operand->type;
             n->type.ref++;
             break;
 
         case TOKEN_BNOT:
-            check_expr(c, unary->operand, false);
+            check_expr(c, unary->operand, REF_NONE);
             n->type = type_assert_arith(unary->operand, false);
             break;
 
         case TOKEN_LNOT:
-            check_expr(c, unary->operand, false);
+            check_expr(c, unary->operand, REF_NONE);
             n->type = type_assert(c, unary->operand, (Type) {.kind = TYPE_BOOL});
             break;
 
@@ -893,13 +906,13 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         }
 
         if (index->from) {
-            check_expr(c, index->from, false);
+            check_expr(c, index->from, REF_NONE);
             type_assert_arith(index->from, false);
         }
 
         if (index->ranged) {
             if (index->to) {
-                check_expr(c, index->to, false);
+                check_expr(c, index->to, REF_NONE);
                 type_assert_arith(index->to, false);
             }
 
@@ -930,16 +943,16 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
-            check_expr(c, binary->lhs, false);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert_arith(binary->lhs, true);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_MUL:
         case TOKEN_DIV:
-            check_expr(c, binary->lhs, false);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
@@ -948,31 +961,31 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_SHR:
         case TOKEN_BOR:
         case TOKEN_BAND:
-            check_expr(c, binary->lhs, false);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_SET:
-            check_expr(c, binary->lhs, true);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_MUTATE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
         case TOKEN_ADD_SET:
         case TOKEN_SUB_SET:
-            check_expr(c, binary->lhs, true);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_MUTATE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert(c, binary->rhs, type_assert_arith(binary->lhs, true));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
         case TOKEN_MUL_SET:
         case TOKEN_DIV_SET:
-            check_expr(c, binary->lhs, true);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_MUTATE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
@@ -981,16 +994,16 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_SHR_SET:
         case TOKEN_BOR_SET:
         case TOKEN_BAND_SET:
-            check_expr(c, binary->lhs, true);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_MUTATE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
         case TOKEN_LOR:
         case TOKEN_LAND:
-            check_expr(c, binary->lhs, false);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
             n->type = type_assert(c, binary->rhs, type_assert(c, binary->lhs, (Type) {.kind = TYPE_BOOL}));
             break;
 
@@ -1000,8 +1013,8 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_LE:
         case TOKEN_EQ:
         case TOKEN_NE:
-            check_expr(c, binary->lhs, false);
-            check_expr(c, binary->rhs, false);
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
             type_assert_arith(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -1055,7 +1068,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
         check_type(c, sizeoff->type, true);
-        check_expr(c, sizeoff->expr, false);
+        check_expr(c, sizeoff->expr, REF_NONE);
         n->type = (Type) {.kind = TYPE_INT};
     } break;
 
@@ -1089,7 +1102,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                     error_undefined((Node *) lhs, "field");
                 }
 
-                check_expr(c, assign->rhs, false);
+                check_expr(c, assign->rhs, REF_NONE);
                 type_assert(c, assign->rhs, lhs->definition->type);
             } else {
                 if (!ordered_iota) {
@@ -1097,7 +1110,7 @@ static void check_expr(Compiler *c, Node *n, bool ref) {
                     exit(1);
                 }
 
-                check_expr(c, it, false);
+                check_expr(c, it, REF_NONE);
                 type_assert(c, it, ordered_iota->type);
                 ordered_iota = ordered_iota->next;
             }
@@ -1195,14 +1208,14 @@ static void check_stmt(Compiler *c, Node *n) {
                 exit(1);
             }
         } else {
-            check_expr(c, assertt->expr, false);
+            check_expr(c, assertt->expr, REF_NONE);
             type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
         }
     } break;
 
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
-        check_expr(c, iff->condition, false);
+        check_expr(c, iff->condition, REF_NONE);
         type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
         check_stmt(c, iff->consequence);
@@ -1214,11 +1227,11 @@ static void check_stmt(Compiler *c, Node *n) {
         check_stmt(c, forr->init);
 
         if (forr->condition) {
-            check_expr(c, forr->condition, false);
+            check_expr(c, forr->condition, REF_NONE);
             type_assert(c, forr->condition, (Type) {.kind = TYPE_BOOL});
         }
 
-        check_expr(c, forr->update, false);
+        check_expr(c, forr->update, REF_NONE);
         check_stmt(c, forr->body);
     } break;
 
@@ -1240,7 +1253,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
         n->type = (Type) {.kind = TYPE_UNIT};
         if (ret->value) {
-            check_expr(c, ret->value, false);
+            check_expr(c, ret->value, REF_NONE);
             n->type = ret->value->type;
         }
 
@@ -1268,7 +1281,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         if (var->expr) {
-            check_expr(c, var->expr, false);
+            check_expr(c, var->expr, REF_NONE);
             n->type = var->expr->type;
 
             if (n->type.kind == TYPE_UNIT) {
@@ -1404,12 +1417,12 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_PRINT: {
         NodePrint *print = (NodePrint *) n;
-        check_expr(c, print->operand, false);
+        check_expr(c, print->operand, REF_NONE);
         type_assert_scalar(print->operand);
     } break;
 
     default:
-        check_expr(c, n, false);
+        check_expr(c, n, REF_NONE);
         break;
     }
 }
