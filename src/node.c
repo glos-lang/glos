@@ -80,10 +80,11 @@ const char *type_to_cstr(Type type) {
     } break;
 
     case TYPE_SLICE:
-        temp_sprintf("[]");
+        temp_sprintf("[");
         temp_remove_null();
-        assert(type.spec_type);
         type_to_cstr(*type.spec_type);
+        temp_remove_null();
+        temp_sprintf("]");
         break;
 
     case TYPE_STRUCT:
