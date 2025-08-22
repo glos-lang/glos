@@ -267,24 +267,45 @@ static bool compare_tests(Test expected, Test actual) {
 
 static void usage(FILE *f) {
     fprintf(f, "Usage:\n");
-    fprintf(f, "    test [COMMAND]\n");
+    fprintf(f, "    test [FLAGS...]\n");
     fprintf(f, "\n");
     fprintf(f, "Commands:\n");
-    fprintf(f, "    help     Show this message\n");
-    fprintf(f, "    check    Only check the programs, don't prompt for error recording\n");
+    fprintf(f, "    -h             Show this message\n");
+    fprintf(f, "    -check         Only check the programs, don't prompt for error recording\n");
+    fprintf(f, "    -cc COMMAND    Set the command used for linking\n");
+}
+
+static const char *shift(int *argc, char ***argv, const char *expected) {
+    if (*argc <= 0) {
+        fprintf(stderr, "ERROR: %s not provided\n", expected);
+        usage(stderr);
+        exit(1);
+    }
+
+    (*argc)--;
+    return *(*argv)++;
 }
 
 int main(int argc, char **argv) {
-    bool check = false;
-    if (argc > 1) {
-        const char *command = argv[1];
-        if (!strcmp(command, "help")) {
+    bool        check = false;
+    const char *cc = NULL;
+
+    shift(&argc, &argv, "Program name");
+    while (argc) {
+        const char *arg = shift(&argc, &argv, "Argument");
+        if (arg[0] != '-') {
+            break;
+        }
+
+        if (!strcmp(arg, "-h")) {
             usage(stdout);
             exit(0);
-        } else if (!strcmp(command, "check")) {
+        } else if (!strcmp(arg, "-check")) {
             check = true;
+        } else if (!strcmp(arg, "-cc")) {
+            cc = shift(&argc, &argv, "Command");
         } else {
-            fprintf(stderr, "ERROR: Invalid command '%s'\n", command);
+            fprintf(stderr, "ERROR: Invalid flag '%s'\n", arg);
             fprintf(stderr, "\n");
             usage(stderr);
             exit(1);
@@ -335,6 +356,12 @@ int main(int argc, char **argv) {
         }
 
         da_push(&cmd, "../glos");
+
+        if (cc) {
+            da_push(&cmd, "-cc");
+            da_push(&cmd, cc);
+        }
+
         da_push(&cmd, "-r");
         da_push(&cmd, it);
 

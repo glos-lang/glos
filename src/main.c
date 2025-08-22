@@ -17,11 +17,12 @@ static void usage(FILE *file) {
     fprintf(file, " [FLAGS...] FILE\n\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
-    usage_flag(file, "h", "          Show this message");
-    usage_flag(file, "r", "          Run the program");
-    usage_flag(file, "o", "OUTPUT    Set the output path");
-    usage_flag(file, "L", "PATH      Add a library path");
-    usage_flag(file, "l", "NAME      Add a library");
+    usage_flag(file, "h ", "           Show this message");
+    usage_flag(file, "r ", "           Run the program");
+    usage_flag(file, "o ", "OUTPUT     Set the output path");
+    usage_flag(file, "L ", "PATH       Add a library path");
+    usage_flag(file, "l ", "NAME       Add a library");
+    usage_flag(file, "cc", "COMMAND    Set the command used for linking");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -46,9 +47,11 @@ int main(int argc, char **argv) {
     Arena arena = {0};
 
     bool        run = false;
-    Flags       flags = {0};
     const char *input = NULL;
     const char *output = NULL;
+
+    const char *cc = "cc";
+    Flags       cc_flags = {0};
 
     shift(&argc, &argv, "Program name");
     while (!input || argc) {
@@ -61,6 +64,8 @@ int main(int argc, char **argv) {
                 run = true;
             } else if (!strcmp(arg, "-o")) {
                 output = shift(&argc, &argv, "Output file");
+            } else if (!strcmp(arg, "-cc")) {
+                cc = shift(&argc, &argv, "Command");
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'L') {
@@ -69,16 +74,16 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, "Library path");
                 }
 
-                da_push(&flags, "-L");
-                da_push(&flags, value);
+                da_push(&cc_flags, "-L");
+                da_push(&cc_flags, value);
             } else if (arg[1] == 'l') {
                 const char *value = &arg[2];
                 if (*value == '\0') {
                     value = shift(&argc, &argv, "Library name");
                 }
 
-                da_push(&flags, "-l");
-                da_push(&flags, value);
+                da_push(&cc_flags, "-l");
+                da_push(&cc_flags, value);
             } else {
                 error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
@@ -138,11 +143,11 @@ int main(int argc, char **argv) {
     const char *object_file_path = temp_sprintf("%s.o", output);
     compiler_build(&c, object_file_path);
 
-    da_push(&cmd, "cc");
+    da_push(&cmd, cc);
     da_push(&cmd, "-o");
     da_push(&cmd, output);
     da_push(&cmd, object_file_path);
-    da_push_many(&cmd, flags.data, flags.count);
+    da_push_many(&cmd, cc_flags.data, cc_flags.count);
 
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
         error_standalone(ERROR, "Could not generate '%s'", output);
@@ -161,7 +166,7 @@ int main(int argc, char **argv) {
     }
 
     arena_free(&arena);
-    da_free(&flags);
+    da_free(&cc_flags);
     da_free(&cmd);
     return result;
 }
