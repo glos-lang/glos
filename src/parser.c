@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -122,7 +122,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -137,7 +137,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -214,7 +214,7 @@ typedef enum {
     PF_CONSTANT_EXPR = 1 << 1
 } ParseFlags;
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -255,6 +255,14 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_LNOT: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
         unary->operand = parse_expr(p, POWER_PRE, flags);
+        node = (Node *) unary;
+    } break;
+
+    case TOKEN_LEN: {
+        NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
+        lexer_expect(&p->lexer, TOKEN_LPAREN);
+        unary->operand = parse_expr(p, POWER_SET, flags);
+        lexer_expect(&p->lexer, TOKEN_RPAREN);
         node = (Node *) unary;
     } break;
 
@@ -317,6 +325,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
         switch (token.kind) {
         case TOKEN_DOT: {
+            if (flags & PF_CONSTANT_EXPR) {
+                error_full(ERROR, token.pos, "Unexpected member access in constant expression");
+                exit(1);
+            }
+
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
             node = (Node *) member;
@@ -464,7 +477,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static_assert(COUNT_TOKENS == 58, "");
+static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
