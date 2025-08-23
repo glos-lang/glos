@@ -392,6 +392,39 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     // Success
                     qbe_build_block(c->qbe, c->fn, success);
                 }
+
+                // Check if bounds are ascending
+                {
+                    QbeBlock *failure = qbe_block_new(c->qbe);
+                    QbeBlock *success = qbe_block_new(c->qbe);
+
+                    QbeNode *check =
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), from, to);
+
+                    qbe_build_branch(c->qbe, c->fn, check, success, failure);
+
+                    // Out of Bounds
+                    qbe_build_block(c->qbe, c->fn, failure);
+
+                    // Panic
+                    {
+                        QbeCall *call = compile_panic_begin(c);
+
+                        QbeSV message = qbe_sv_from_cstr(arena_sprintf(
+                            c->context.arena,
+                            PosFmt " Range (%%ld..%%ld) is invalid: Start of range is more than end\n",
+                            PosArg(n->token.pos)));
+
+                        qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
+                        qbe_call_start_variadic(c->qbe, call);
+                        qbe_call_add_arg(c->qbe, call, from);
+                        qbe_call_add_arg(c->qbe, call, to);
+                        compile_panic_end(c, call);
+                    }
+
+                    // Success
+                    qbe_build_block(c->qbe, c->fn, success);
+                }
             } else {
                 unreachable();
             }
