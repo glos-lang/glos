@@ -1,8 +1,8 @@
 EXIT 1
 STDOUT 0
 
-STDERR 158
-error_can_only_construct_slice_from_pointer_or_slicelike.glos:2:5: ERROR: Expected typed pointer or slice, got 'i64'
+STDERR 167
+error_can_only_construct_slice_from_pointer_or_slicelike.glos:2:5: ERROR: Expected typed pointer or slice or array, got 'i64'
 
     2 |     69[420..1337]
       |     ^

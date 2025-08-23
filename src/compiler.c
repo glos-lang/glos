@@ -1,7 +1,7 @@
 #include "compiler.h"
 #include "message.h"
 
-static_assert(COUNT_TYPES == 15, "");
+static_assert(COUNT_TYPES == 16, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
     switch (kind) {
     case TYPE_I8:
@@ -26,7 +26,7 @@ static QbeTypeKind integer_type_kind(TypeKind kind) {
     }
 }
 
-static_assert(COUNT_TYPES == 15, "");
+static_assert(COUNT_TYPES == 16, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type) {
         return;
@@ -57,6 +57,11 @@ static void compile_type(Compiler *c, Type *type) {
 
     case TYPE_SLICE:
         type->qbe = c->slice_type;
+        break;
+
+    case TYPE_ARRAY:
+        compile_type(c, type->spec_type);
+        type->qbe = qbe_type_array(c->qbe, type->spec_type->qbe, type->spec_count);
         break;
 
     case TYPE_STRUCT: {
@@ -279,8 +284,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         case TOKEN_LEN: {
-            QbeNode *operand = compile_expr(c, unary->operand, true);
+            if (unary->operand->type.kind == TYPE_ARRAY) {
+                return qbe_atom_int(c->qbe, n->type.qbe.kind, unary->operand->type.spec_count);
+            }
 
+            QbeNode *operand = compile_expr(c, unary->operand, true);
             operand = qbe_build_binary(
                 c->qbe,
                 c->fn,
@@ -300,7 +308,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
 
-        QbeNode *base = compile_expr(c, index->base, false);
+        QbeNode *base = compile_expr(c, index->base, index->base->type.kind == TYPE_ARRAY && !index->base->type.ref);
         QbeNode *from = compile_expr(c, index->from, false);
 
         if (index->ranged) {
@@ -320,30 +328,41 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeNode *slice_data = NULL;
             if (index->base->type.ref) {
                 slice_data = base;
-            } else if (index->base->type.kind == TYPE_SLICE) {
-                QbeNode *slice_count = qbe_build_load(
-                    c->qbe,
-                    c->fn,
-                    qbe_build_binary(
+            } else if (index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_ARRAY) {
+                QbeNode *count = NULL;
+                if (index->base->type.kind == TYPE_SLICE) {
+                    slice_data = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
+                    count = qbe_build_load(
                         c->qbe,
                         c->fn,
-                        QBE_BINARY_ADD,
+                        qbe_build_binary(
+                            c->qbe,
+                            c->fn,
+                            QBE_BINARY_ADD,
+                            qbe_type_basic(QBE_TYPE_I64),
+                            base,
+                            qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
                         qbe_type_basic(QBE_TYPE_I64),
-                        base,
-                        qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
-                    qbe_type_basic(QBE_TYPE_I64),
-                    true);
+                        true);
+                } else {
+                    slice_data = base;
+                    count = qbe_atom_int(c->qbe, QBE_TYPE_I64, index->base->type.spec_count);
+                }
 
-                if (to) {
-                    // Bounds Check
+                if (!to) {
+                    to = count;
+                }
+
+                // Bounds Check
+                {
                     QbeBlock *failure = qbe_block_new(c->qbe);
                     QbeBlock *success = qbe_block_new(c->qbe);
 
                     QbeNode *bounds_check_from =
-                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), from, slice_count);
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), from, count);
 
                     QbeNode *bounds_check_to =
-                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), to, slice_count);
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), to, count);
 
                     QbeNode *bounds_check = qbe_build_binary(
                         c->qbe, c->fn, QBE_BINARY_AND, qbe_type_basic(QBE_TYPE_I8), bounds_check_from, bounds_check_to);
@@ -366,17 +385,46 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         qbe_call_start_variadic(c->qbe, call);
                         qbe_call_add_arg(c->qbe, call, from);
                         qbe_call_add_arg(c->qbe, call, to);
-                        qbe_call_add_arg(c->qbe, call, slice_count);
+                        qbe_call_add_arg(c->qbe, call, count);
                         compile_panic_end(c, call);
                     }
 
                     // Success
                     qbe_build_block(c->qbe, c->fn, success);
-                } else {
-                    to = slice_count;
                 }
 
-                slice_data = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
+                // Check if bounds are ascending
+                {
+                    QbeBlock *failure = qbe_block_new(c->qbe);
+                    QbeBlock *success = qbe_block_new(c->qbe);
+
+                    QbeNode *check =
+                        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ULE, qbe_type_basic(QBE_TYPE_I8), from, to);
+
+                    qbe_build_branch(c->qbe, c->fn, check, success, failure);
+
+                    // Out of Bounds
+                    qbe_build_block(c->qbe, c->fn, failure);
+
+                    // Panic
+                    {
+                        QbeCall *call = compile_panic_begin(c);
+
+                        QbeSV message = qbe_sv_from_cstr(arena_sprintf(
+                            c->context.arena,
+                            PosFmt " Range (%%ld..%%ld) is invalid: Start of range is more than end\n",
+                            PosArg(n->token.pos)));
+
+                        qbe_call_add_arg(c->qbe, call, qbe_str_new(c->qbe, message));
+                        qbe_call_start_variadic(c->qbe, call);
+                        qbe_call_add_arg(c->qbe, call, from);
+                        qbe_call_add_arg(c->qbe, call, to);
+                        compile_panic_end(c, call);
+                    }
+
+                    // Success
+                    qbe_build_block(c->qbe, c->fn, success);
+                }
             } else {
                 unreachable();
             }
@@ -411,25 +459,31 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
             return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
         } else {
-            assert(index->base->type.kind == TYPE_SLICE);
             const size_t element_size = compile_sizeof(c, index->base->type.spec_type);
 
             from = qbe_build_cast(c->qbe, c->fn, from, QBE_TYPE_I64, false);
 
             // Bounds Check
             {
-                QbeNode *count = qbe_build_load(
-                    c->qbe,
-                    c->fn,
-                    qbe_build_binary(
+                QbeNode *count = NULL;
+                if (index->base->type.kind == TYPE_SLICE) {
+                    count = qbe_build_load(
                         c->qbe,
                         c->fn,
-                        QBE_BINARY_ADD,
+                        qbe_build_binary(
+                            c->qbe,
+                            c->fn,
+                            QBE_BINARY_ADD,
+                            qbe_type_basic(QBE_TYPE_I64),
+                            base,
+                            qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
                         qbe_type_basic(QBE_TYPE_I64),
-                        base,
-                        qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
-                    qbe_type_basic(QBE_TYPE_I64),
-                    true);
+                        true);
+                } else if (index->base->type.kind == TYPE_ARRAY) {
+                    count = qbe_atom_int(c->qbe, QBE_TYPE_I64, index->base->type.spec_count);
+                } else {
+                    unreachable();
+                }
 
                 QbeBlock *failure = qbe_block_new(c->qbe);
                 QbeBlock *success = qbe_block_new(c->qbe);
@@ -462,7 +516,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 qbe_build_block(c->qbe, c->fn, success);
             }
 
-            QbeNode *ptr = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
+            QbeNode *ptr = base;
+            if (index->base->type.kind == TYPE_SLICE) {
+                ptr = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
+            }
 
             QbeNode *offset = qbe_build_binary(
                 c->qbe,
@@ -683,18 +740,31 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         QbeNode *temp = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
         qbe_build_store_zero(c->qbe, c->fn, temp, n->type.qbe);
 
-        assert(n->type.kind == TYPE_STRUCT);
-        Node *ordered_iota = ((NodeStruct *) n->type.spec_node)->fields.head;
+        // For array literal
+        size_t array_item_size = 0;
+        size_t array_items_count = 0;
+
+        Node *struct_fields_iota = NULL; // For structure literal
+        if (n->type.kind == TYPE_STRUCT) {
+            struct_fields_iota = ((NodeStruct *) n->type.spec_node)->fields.head;
+        } else {
+            array_item_size = compile_sizeof(c, n->type.spec_type);
+        }
 
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
 
-                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
-                NodeAtom *lhs = (NodeAtom *) assign->lhs;
+                size_t offset = 0;
+                if (n->type.kind == TYPE_STRUCT) {
+                    assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
+                    NodeAtom *lhs = (NodeAtom *) assign->lhs;
 
-                assert(lhs->definition->kind == NODE_FIELD);
-                const size_t offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
+                    assert(lhs->definition->kind == NODE_FIELD);
+                    offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
+                } else {
+                    offset = assign->lhs->token.as.integer * array_item_size;
+                }
 
                 QbeNode *ptr = temp;
                 if (offset) {
@@ -710,8 +780,14 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 QbeNode *rhs = compile_expr(c, assign->rhs, false);
                 qbe_build_store(c->qbe, c->fn, ptr, rhs);
             } else {
-                assert(ordered_iota->kind == NODE_FIELD);
-                const size_t offset = qbe_offsetof(((NodeField *) ordered_iota)->qbe);
+                size_t offset = 0;
+                if (n->type.kind == TYPE_STRUCT) {
+                    assert(struct_fields_iota->kind == NODE_FIELD);
+                    offset = qbe_offsetof(((NodeField *) struct_fields_iota)->qbe);
+                    struct_fields_iota = struct_fields_iota->next;
+                } else {
+                    offset = array_items_count++ * array_item_size;
+                }
 
                 QbeNode *ptr = temp;
                 if (offset) {
@@ -725,7 +801,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 }
 
                 qbe_build_store(c->qbe, c->fn, ptr, compile_expr(c, it, false));
-                ordered_iota = ordered_iota->next;
             }
         }
 

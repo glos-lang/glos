@@ -9,6 +9,9 @@
 #include <string.h>
 
 // Helper Macros
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
 

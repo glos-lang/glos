@@ -137,6 +137,13 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
+typedef enum {
+    PF_COMPOUND_ALLOWED = 1 << 0,
+    PF_CONSTANT_EXPR = 1 << 1
+} ParseFlags;
+
+static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
+
 static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
@@ -150,7 +157,13 @@ static Node *parse_type(Parser *p) {
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
         index->base = parse_type(p);
-        lexer_expect(&p->lexer, TOKEN_RBRACKET);
+
+        token = lexer_expect(&p->lexer, TOKEN_EOL, TOKEN_RBRACKET);
+        if (token.kind == TOKEN_EOL) {
+            index->from = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+            lexer_expect(&p->lexer, TOKEN_RBRACKET);
+        }
+
         node = (Node *) index;
     } break;
 
@@ -209,10 +222,124 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-typedef enum {
-    PF_COMPOUND_ALLOWED = 1 << 0,
-    PF_CONSTANT_EXPR = 1 << 1
-} ParseFlags;
+static_assert(COUNT_NODES == 22, "");
+static void ensure_const_expr(Node *n) {
+    if (!n) {
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_CALL:
+        error_full(ERROR, n->token.pos, "Unexpected call in constant expression");
+        exit(1);
+        break;
+
+    case NODE_CAST: {
+        NodeCast *cast = (NodeCast *) n;
+        ensure_const_expr(cast->from);
+    } break;
+
+    case NODE_UNARY: {
+        if (n->token.kind == TOKEN_MUL) {
+            error_full(ERROR, n->token.pos, "Unexpected dereference in constant expression");
+            exit(1);
+        }
+
+        if (n->token.kind == TOKEN_BAND) {
+            error_full(ERROR, n->token.pos, "Unexpected reference in constant expression");
+            exit(1);
+        }
+
+        NodeUnary *unary = (NodeUnary *) n;
+        ensure_const_expr(unary->operand);
+    } break;
+
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+        ensure_const_expr(index->base);
+        ensure_const_expr(index->from);
+        ensure_const_expr(index->to);
+    } break;
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+        ensure_const_expr(binary->lhs);
+        ensure_const_expr(binary->rhs);
+    } break;
+
+    case NODE_MEMBER:
+        error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
+        exit(1);
+        break;
+
+    case NODE_SIZEOF: {
+        NodeSizeof *sizeoff = (NodeSizeof *) n;
+        ensure_const_expr(sizeoff->expr);
+    } break;
+
+    case NODE_COMPOUND:
+        error_full(ERROR, n->token.pos, "Unexpected compound literal in constant expression");
+        exit(1);
+        break;
+
+    case NODE_FN:
+        error_full(ERROR, n->token.pos, "Unexpected function in constant expression");
+        exit(1);
+        break;
+
+    default:
+        break;
+    }
+}
+
+static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFlags flags) {
+    NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
+    compound->type = node;
+
+    typedef enum {
+        COMPOUND_UNKNOWN,
+        COMPOUND_ORDERED,
+        COMPOUND_DESIGNATED,
+    } CompoundKind;
+
+    CompoundKind kind = COMPOUND_UNKNOWN;
+    while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+        Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+
+        token = lexer_peek(&p->lexer);
+        if (token.kind == TOKEN_COLON) {
+            lexer_unbuffer(&p->lexer);
+
+            if (kind == COMPOUND_ORDERED) {
+                error_full(ERROR, token.pos, "Cannot mix ordered and designated initializers");
+                exit(1);
+            }
+            kind = COMPOUND_DESIGNATED;
+
+            ensure_const_expr(expr);
+
+            NodeBinary *assign = node_alloc(p, NODE_BINARY, token);
+            assign->lhs = expr;
+            assign->rhs = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+            nodes_push(&compound->nodes, (Node *) assign);
+        } else {
+            if (kind == COMPOUND_DESIGNATED) {
+                error_full(ERROR, expr->token.pos, "Cannot mix ordered and designated initializers");
+                exit(1);
+            }
+            kind = COMPOUND_ORDERED;
+
+            nodes_push(&compound->nodes, expr);
+        }
+
+        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACE);
+        if (token.kind != TOKEN_COMMA) {
+            break;
+        }
+    }
+
+    return compound;
+}
 
 static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
@@ -298,6 +425,28 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         lexer_expect(&p->lexer, TOKEN_RPAREN);
         break;
 
+    case TOKEN_LBRACKET:
+        if (flags & PF_COMPOUND_ALLOWED) {
+            if (flags & PF_CONSTANT_EXPR) {
+                error_full(ERROR, token.pos, "Unexpected compound literal in constant expression");
+                exit(1);
+            }
+
+            lexer_buffer(&p->lexer, token);
+
+            node = parse_type(p);
+            token = lexer_expect(&p->lexer, TOKEN_LBRACE);
+            if (token.newline) {
+                error_full(ERROR, token.pos, "Expected '{' on same line as type");
+                exit(1);
+            }
+
+            node = (Node *) parse_compound(p, node, token, flags);
+        } else {
+            error_unexpected(token);
+        }
+        break;
+
     case TOKEN_FN:
         if (flags & PF_CONSTANT_EXPR) {
             error_full(ERROR, token.pos, "Unexpected function in constant expression");
@@ -355,7 +504,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             node = (Node *) call;
         } break;
 
-        case TOKEN_LBRACE: {
+        case TOKEN_LBRACE:
             if (!(flags & PF_COMPOUND_ALLOWED) || !node_is_compound_literal_type(node)) {
                 lexer_buffer(&p->lexer, token);
                 return node;
@@ -366,54 +515,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 exit(1);
             }
 
-            NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
-            compound->type = node;
-
-            typedef enum {
-                COMPOUND_UNKNOWN,
-                COMPOUND_ORDERED,
-                COMPOUND_DESIGNATED,
-            } CompoundKind;
-
-            CompoundKind kind = COMPOUND_UNKNOWN;
-            while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-                Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
-
-                token = lexer_peek(&p->lexer);
-                if (token.kind == TOKEN_COLON) {
-                    if (expr->kind != NODE_ATOM || expr->token.kind != TOKEN_IDENT) {
-                        error_unexpected(token);
-                    }
-                    lexer_unbuffer(&p->lexer);
-
-                    if (kind == COMPOUND_ORDERED) {
-                        error_full(ERROR, token.pos, "Cannot mix ordered and designated initializers");
-                        exit(1);
-                    }
-                    kind = COMPOUND_DESIGNATED;
-
-                    NodeBinary *assign = node_alloc(p, NODE_BINARY, token);
-                    assign->lhs = expr;
-                    assign->rhs = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
-                    nodes_push(&compound->nodes, (Node *) assign);
-                } else {
-                    if (kind == COMPOUND_DESIGNATED) {
-                        error_full(ERROR, expr->token.pos, "Cannot mix ordered and designated initializers");
-                        exit(1);
-                    }
-                    kind = COMPOUND_ORDERED;
-
-                    nodes_push(&compound->nodes, expr);
-                }
-
-                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACE);
-                if (token.kind != TOKEN_COMMA) {
-                    break;
-                }
-            }
-
-            node = (Node *) compound;
-        } break;
+            node = (Node *) parse_compound(p, node, token, flags);
+            break;
 
         case TOKEN_LBRACKET: {
             NodeIndex *index = node_alloc(p, NODE_INDEX, token);
