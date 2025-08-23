@@ -688,7 +688,11 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
             ConstValue count = eval_const_expr(c, index->from);
             type_assert_arith(index->from, false);
 
-            // TODO: Prevent 0 length arrays
+            if (!count.as.integer) {
+                error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
+                exit(1);
+            }
+
             n->type = (Type) {
                 .kind = TYPE_ARRAY,
                 .spec_type = &index->base->type,
@@ -1112,6 +1116,12 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         // For array literal
         size_t array_items_count = 0;
+
+        if (n->type.kind == TYPE_SLICE && !compound->nodes.head) {
+            error_full(ERROR, n->token.pos, "Array cannot have zero items");
+            exit(1);
+        }
+
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;

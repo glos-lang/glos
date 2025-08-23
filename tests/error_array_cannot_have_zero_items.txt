@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 138
+error_array_cannot_have_zero_items.glos:2:18: ERROR: Array cannot have zero items
+
+    2 |     var xs [i64; 0]
+      |                  ^
+
