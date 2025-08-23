@@ -1,0 +1,6 @@
+EXIT 134
+STDOUT 0
+
+STDERR 104
+arrays_bounds_check_fail_on_range_begin.glos:3:7: Range (11..10) is out of bounds in slice of length 10
+

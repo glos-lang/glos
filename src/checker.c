@@ -4,7 +4,7 @@
 #include "message.h"
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 15, "");
+    static_assert(COUNT_TYPES == 16, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -239,7 +239,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
 static_assert(COUNT_NODES == 22, "");
-static ConstValue eval_const_expr(Compiler *c, Node *n) {
+static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
     }
@@ -302,7 +302,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_CAST: {
         NodeCast  *cast = (NodeCast *) n;
-        ConstValue value = eval_const_expr(c, cast->from);
+        ConstValue value = eval_const_expr_impl(c, cast->from);
         check_type(c, cast->to, true);
 
         const Type from = type_assert_scalar(cast->from);
@@ -326,25 +326,25 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
-            ConstValue value = eval_const_expr(c, unary->operand);
+            ConstValue value = eval_const_expr_impl(c, unary->operand);
             n->type = type_assert_arith(unary->operand, false);
             return const_int(-value.as.integer);
         }
 
         case TOKEN_BNOT: {
-            ConstValue value = eval_const_expr(c, unary->operand);
+            ConstValue value = eval_const_expr_impl(c, unary->operand);
             n->type = type_assert_arith(unary->operand, false);
             return const_int(~value.as.integer);
         }
 
         case TOKEN_LNOT: {
-            ConstValue value = eval_const_expr(c, unary->operand);
+            ConstValue value = eval_const_expr_impl(c, unary->operand);
             n->type = type_assert(c, unary->operand, (Type) {.kind = TYPE_BOOL});
             return const_bool(!value.as.boolean);
         }
 
         case TOKEN_LEN: {
-            ConstValue value = eval_const_expr(c, unary->operand);
+            ConstValue value = eval_const_expr_impl(c, unary->operand);
             if (!value.is_string) {
                 error_full(
                     ERROR,
@@ -367,7 +367,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
 
-        ConstValue lhs = eval_const_expr(c, index->base);
+        ConstValue lhs = eval_const_expr_impl(c, index->base);
         if (!lhs.is_string) {
             error_full(
                 ERROR, index->base->token.pos, "Expected type '[u8]', got '%s'", type_to_cstr(index->base->type));
@@ -376,13 +376,13 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
         ConstValue from = {0};
         if (index->from) {
-            from = eval_const_expr(c, index->from);
+            from = eval_const_expr_impl(c, index->from);
             type_assert_arith(index->from, false);
         }
 
         ConstValue to = {0};
         if (index->to) {
-            to = eval_const_expr(c, index->to);
+            to = eval_const_expr_impl(c, index->to);
             type_assert_arith(index->to, false);
         }
 
@@ -429,8 +429,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
 
             if (!lhs.is_string) {
                 type_assert_arith(binary->lhs, true);
@@ -440,16 +440,16 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
             break;
 
         case TOKEN_SUB:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
             type_assert_arith(binary->lhs, true);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_MUL:
         case TOKEN_DIV:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
             type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
@@ -458,16 +458,16 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_SHR:
         case TOKEN_BOR:
         case TOKEN_BAND:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
             type_assert_arith(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_LOR:
         case TOKEN_LAND:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
             n->type = type_assert(c, binary->rhs, type_assert(c, binary->lhs, (Type) {.kind = TYPE_BOOL}));
             break;
 
@@ -477,8 +477,8 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_LE:
         case TOKEN_EQ:
         case TOKEN_NE:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
             type_assert_arith(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -600,10 +600,10 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 #undef const_bool
 }
 
-static ConstValue eval_const_expr_final(Compiler *c, Node *n) {
+static ConstValue eval_const_expr(Compiler *c, Node *n) {
     const char *save = temp_alloc(0);
 
-    ConstValue value = eval_const_expr(c, n);
+    ConstValue value = eval_const_expr_impl(c, n);
     if (value.is_string) {
         value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
     }
@@ -613,7 +613,7 @@ static ConstValue eval_const_expr_final(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static_assert(COUNT_TYPES == 15, "");
+static_assert(COUNT_TYPES == 16, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition) {
     if (!n) {
         return;
@@ -683,10 +683,22 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
         check_type(c, index->base, true);
-        n->type = (Type) {
-            .kind = TYPE_SLICE,
-            .spec_type = &index->base->type,
-        };
+
+        if (index->from) {
+            ConstValue count = eval_const_expr(c, index->from);
+            type_assert_arith(index->from, false);
+
+            n->type = (Type) {
+                .kind = TYPE_ARRAY,
+                .spec_type = &index->base->type,
+                .spec_count = count.as.integer,
+            };
+        } else {
+            n->type = (Type) {
+                .kind = TYPE_SLICE,
+                .spec_type = &index->base->type,
+            };
+        }
     } break;
 
     case NODE_FN: {
@@ -871,20 +883,18 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             n->type = type_assert(c, unary->operand, (Type) {.kind = TYPE_BOOL});
             break;
 
-        case TOKEN_LEN:
+        case TOKEN_LEN: {
             check_expr(c, unary->operand, REF_NONE);
-            if (type_is_pointer(unary->operand->type) || unary->operand->type.kind != TYPE_SLICE) {
-                error_full(
-                    ERROR,
-                    unary->operand->token.pos,
-                    "Expected slice type, got '%s'",
-                    type_to_cstr(unary->operand->type));
 
+            const Type operand = unary->operand->type;
+            if (type_is_pointer(operand) || (operand.kind != TYPE_SLICE && operand.kind != TYPE_ARRAY)) {
+                error_full(
+                    ERROR, unary->operand->token.pos, "Expected slice or array type, got '%s'", type_to_cstr(operand));
                 exit(1);
             }
 
             n->type = (Type) {.kind = TYPE_I64};
-            break;
+        } break;
 
         default:
             unreachable();
@@ -895,26 +905,25 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         NodeIndex *index = (NodeIndex *) n;
         check_expr(c, index->base, ref);
 
+        const Type base = index->base->type;
         if (index->ranged) {
-            if (!index->base->type.ref && index->base->type.kind != TYPE_SLICE) {
+            if (!base.ref && base.kind != TYPE_SLICE && base.kind != TYPE_ARRAY) {
                 error_full(
                     ERROR,
                     index->base->token.pos,
-                    "Expected typed pointer or slice, got '%s'",
-                    type_to_cstr(index->base->type));
+                    "Expected typed pointer or slice or array, got '%s'",
+                    type_to_cstr(base));
 
                 exit(1);
             }
 
-            if (index->base->type.ref && !index->to) {
+            if (base.ref && !index->to) {
                 error_full(ERROR, index->base->token.pos, "Cannot infer range end of pointer type");
                 exit(1);
             }
         } else {
-            if (type_is_pointer(index->base->type) || index->base->type.kind != TYPE_SLICE) {
-                error_full(
-                    ERROR, index->base->token.pos, "Expected slice type, got '%s'", type_to_cstr(index->base->type));
-
+            if (type_is_pointer(base) || (base.kind != TYPE_SLICE && base.kind != TYPE_ARRAY)) {
+                error_full(ERROR, index->base->token.pos, "Expected slice or array type, got '%s'", type_to_cstr(base));
                 exit(1);
             }
         }
@@ -931,21 +940,25 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             if (index->base->type.ref) {
-                Type element = index->base->type;
+                Type element = base;
                 element.ref--;
 
                 n->type = (Type) {
                     .kind = TYPE_SLICE,
                     .spec_type = arena_clone(c->context.arena, &element, sizeof(element)),
                 };
-            } else if (index->base->type.kind == TYPE_SLICE) {
-                n->type = index->base->type;
+            } else if (base.kind == TYPE_SLICE) {
+                n->type = base;
+            } else if (base.kind == TYPE_ARRAY) {
+                n->type = (Type) {
+                    .kind = TYPE_SLICE,
+                    .spec_type = base.spec_type,
+                };
             } else {
                 unreachable();
             }
         } else {
-            assert(index->base->type.kind == TYPE_SLICE);
-            n->type = *index->base->type.spec_type;
+            n->type = *base.spec_type;
             allow_ref = true;
         }
     } break;
@@ -1201,7 +1214,7 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_ASSERT: {
         NodeAssert *assertt = (NodeAssert *) n;
         if (assertt->is_static) {
-            ConstValue value = eval_const_expr_final(c, assertt->expr);
+            ConstValue value = eval_const_expr(c, assertt->expr);
             type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
 
             if (!value.as.boolean) {
@@ -1372,7 +1385,7 @@ static void check_stmt(Compiler *c, Node *n) {
             n->type = constt->type->type;
         }
 
-        constt->value = eval_const_expr_final(c, constt->expr);
+        constt->value = eval_const_expr(c, constt->expr);
         n->type = constt->expr->type;
 
         if (constt->type) {

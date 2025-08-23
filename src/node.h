@@ -4,8 +4,7 @@
 #include "qbe.h"
 #include "token.h"
 
-typedef struct Node     Node;
-typedef struct NodeType NodeType;
+typedef struct Node Node;
 
 typedef struct {
     Node *head;
@@ -31,6 +30,7 @@ typedef enum {
 
     TYPE_FN,
     TYPE_SLICE,
+    TYPE_ARRAY,
     TYPE_STRUCT,
 
     COUNT_TYPES
@@ -49,7 +49,12 @@ struct Type {
 
     // For:
     //   TYPE_SLICE
+    //   TYPE_ARRAY
     Type *spec_type;
+
+    // For:
+    //   TYPE_ARRAY
+    size_t spec_count;
 
     QbeType qbe;
 };
@@ -240,7 +245,7 @@ typedef struct {
     QbeNode *qbe;
 } NodeVar;
 
-struct NodeType {
+typedef struct {
     Node node;
 
     size_t ref;
@@ -249,7 +254,7 @@ struct NodeType {
     bool local;
 
     CheckStatus check_status;
-};
+} NodeType;
 
 typedef struct {
     Node node;

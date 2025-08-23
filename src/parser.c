@@ -137,6 +137,13 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
+typedef enum {
+    PF_COMPOUND_ALLOWED = 1 << 0,
+    PF_CONSTANT_EXPR = 1 << 1
+} ParseFlags;
+
+static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
+
 static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
@@ -150,7 +157,13 @@ static Node *parse_type(Parser *p) {
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
         index->base = parse_type(p);
-        lexer_expect(&p->lexer, TOKEN_RBRACKET);
+
+        token = lexer_expect(&p->lexer, TOKEN_EOL, TOKEN_RBRACKET);
+        if (token.kind == TOKEN_EOL) {
+            index->from = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+            lexer_expect(&p->lexer, TOKEN_RBRACKET);
+        }
+
         node = (Node *) index;
     } break;
 
@@ -208,11 +221,6 @@ static bool node_is_compound_literal_type(Node *n) {
 }
 
 static Node *parse_fn(Parser *p, Token name);
-
-typedef enum {
-    PF_COMPOUND_ALLOWED = 1 << 0,
-    PF_CONSTANT_EXPR = 1 << 1
-} ParseFlags;
 
 static_assert(COUNT_TOKENS == 59, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
