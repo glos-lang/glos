@@ -688,6 +688,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
             ConstValue count = eval_const_expr(c, index->from);
             type_assert_arith(index->from, false);
 
+            // TODO: Prevent 0 length arrays
             n->type = (Type) {
                 .kind = TYPE_ARRAY,
                 .spec_type = &index->base->type,
@@ -1091,43 +1092,93 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         check_type(c, compound->type, true);
 
         n->type = compound->type->type;
-        if (n->type.kind != TYPE_STRUCT) {
+        if (n->type.ref || (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE)) {
             error_full(
                 ERROR,
                 compound->type->token.pos,
-                "Expected structure type, got '%s'",
+                "Expected structure or array type, got '%s'",
                 type_to_cstr(compound->type->type));
 
             exit(1);
         }
 
-        NodeStruct *spec = (NodeStruct *) n->type.spec_node;
+        // For structure literal
+        NodeStruct *struct_spec = NULL;
+        Node       *struct_fields_iota = NULL;
+        if (n->type.kind == TYPE_STRUCT) {
+            struct_spec = (NodeStruct *) n->type.spec_node;
+            struct_fields_iota = struct_spec->fields.head;
+        }
 
-        Node *ordered_iota = spec->fields.head;
+        // For array literal
+        size_t array_items_count = 0;
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
 
-                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
-                NodeAtom *lhs = (NodeAtom *) assign->lhs;
+                Type expected = {0};
+                if (n->type.kind == TYPE_STRUCT) {
+                    if (assign->lhs->kind != NODE_ATOM || assign->lhs->token.kind != TOKEN_IDENT) {
+                        error_full(ERROR, assign->lhs->token.pos, "Expected designated initializer to be field name");
+                        exit(1);
+                    }
 
-                lhs->definition = nodes_find(spec->fields, lhs->node.token.sv, NULL);
-                if (!lhs->definition) {
-                    error_undefined((Node *) lhs, "field");
+                    NodeAtom *lhs = (NodeAtom *) assign->lhs;
+                    lhs->definition = nodes_find(struct_spec->fields, lhs->node.token.sv, NULL);
+                    if (!lhs->definition) {
+                        error_undefined((Node *) lhs, "field");
+                    }
+
+                    expected = lhs->definition->type;
+                } else {
+                    const ConstValue index = eval_const_expr(c, assign->lhs);
+                    type_assert_arith(assign->lhs, false);
+
+                    if (n->type.kind == TYPE_ARRAY && index.as.integer >= n->type.spec_count) {
+                        error_full(
+                            ERROR,
+                            assign->lhs->token.pos,
+                            "Cannot assign to index %zu in array of length %zu",
+                            index.as.integer,
+                            n->type.spec_count);
+
+                        exit(1);
+                    } else {
+                        array_items_count = max(array_items_count, index.as.integer + 1);
+                    }
+
+                    assign->lhs->token.as.integer = index.as.integer;
+                    expected = *n->type.spec_type;
                 }
 
                 check_expr(c, assign->rhs, REF_NONE);
-                type_assert(c, assign->rhs, lhs->definition->type);
+                type_assert(c, assign->rhs, expected);
             } else {
-                if (!ordered_iota) {
-                    error_full(ERROR, it->token.pos, "Too many ordered initializers");
-                    exit(1);
-                }
+                if (n->type.kind == TYPE_STRUCT) {
+                    if (!struct_fields_iota) {
+                        error_full(ERROR, it->token.pos, "Too many ordered initializers");
+                        exit(1);
+                    }
 
-                check_expr(c, it, REF_NONE);
-                type_assert(c, it, ordered_iota->type);
-                ordered_iota = ordered_iota->next;
+                    check_expr(c, it, REF_NONE);
+                    type_assert(c, it, struct_fields_iota->type);
+                    struct_fields_iota = struct_fields_iota->next;
+                } else {
+                    if (n->type.kind == TYPE_ARRAY && array_items_count >= n->type.spec_count) {
+                        error_full(ERROR, it->token.pos, "Too many ordered initializers");
+                        exit(1);
+                    }
+
+                    array_items_count++;
+                    check_expr(c, it, REF_NONE);
+                    type_assert(c, it, *n->type.spec_type);
+                }
             }
+        }
+
+        if (n->type.kind == TYPE_SLICE) {
+            n->type.kind = TYPE_ARRAY;
+            n->type.spec_count = array_items_count;
         }
     } break;
 

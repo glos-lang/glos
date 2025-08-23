@@ -740,18 +740,31 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         QbeNode *temp = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
         qbe_build_store_zero(c->qbe, c->fn, temp, n->type.qbe);
 
-        assert(n->type.kind == TYPE_STRUCT);
-        Node *ordered_iota = ((NodeStruct *) n->type.spec_node)->fields.head;
+        // For array literal
+        size_t array_item_size = 0;
+        size_t array_items_count = 0;
+
+        Node *struct_fields_iota = NULL; // For structure literal
+        if (n->type.kind == TYPE_STRUCT) {
+            struct_fields_iota = ((NodeStruct *) n->type.spec_node)->fields.head;
+        } else {
+            array_item_size = compile_sizeof(c, n->type.spec_type);
+        }
 
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
 
-                assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
-                NodeAtom *lhs = (NodeAtom *) assign->lhs;
+                size_t offset = 0;
+                if (n->type.kind == TYPE_STRUCT) {
+                    assert(assign->lhs->kind == NODE_ATOM && assign->lhs->token.kind == TOKEN_IDENT);
+                    NodeAtom *lhs = (NodeAtom *) assign->lhs;
 
-                assert(lhs->definition->kind == NODE_FIELD);
-                const size_t offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
+                    assert(lhs->definition->kind == NODE_FIELD);
+                    offset = qbe_offsetof(((NodeField *) lhs->definition)->qbe);
+                } else {
+                    offset = assign->lhs->token.as.integer * array_item_size;
+                }
 
                 QbeNode *ptr = temp;
                 if (offset) {
@@ -767,8 +780,14 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 QbeNode *rhs = compile_expr(c, assign->rhs, false);
                 qbe_build_store(c->qbe, c->fn, ptr, rhs);
             } else {
-                assert(ordered_iota->kind == NODE_FIELD);
-                const size_t offset = qbe_offsetof(((NodeField *) ordered_iota)->qbe);
+                size_t offset = 0;
+                if (n->type.kind == TYPE_STRUCT) {
+                    assert(struct_fields_iota->kind == NODE_FIELD);
+                    offset = qbe_offsetof(((NodeField *) struct_fields_iota)->qbe);
+                    struct_fields_iota = struct_fields_iota->next;
+                } else {
+                    offset = array_items_count++ * array_item_size;
+                }
 
                 QbeNode *ptr = temp;
                 if (offset) {
@@ -782,7 +801,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 }
 
                 qbe_build_store(c->qbe, c->fn, ptr, compile_expr(c, it, false));
-                ordered_iota = ordered_iota->next;
             }
         }
 

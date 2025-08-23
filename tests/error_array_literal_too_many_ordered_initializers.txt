@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 158
+error_array_literal_too_many_ordered_initializers.glos:2:19: ERROR: Too many ordered initializers
+
+    2 |     [i64; 1] {69, 420}
+      |                   ^
+
