@@ -4,6 +4,12 @@
 #include "context.h"
 
 typedef struct {
+    const char **data;
+    size_t       count;
+    size_t       capacity;
+} LinkFlags;
+
+typedef struct {
     Context context;
 
     Qbe   *qbe;
@@ -14,6 +20,8 @@ typedef struct {
     QbeNode *print_ufmt;
 
     QbeType slice_type;
+
+    LinkFlags link_flags;
 } Compiler;
 
 void compiler_init(Compiler *c);

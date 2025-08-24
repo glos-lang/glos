@@ -1,6 +1,9 @@
 fn main() {
     fn putc(c u8) {
-        extern fn putchar(ch i32) i32
+        extern {
+            fn putchar(ch i32) i32
+        }
+
         putchar(<i32> c)
     }
 

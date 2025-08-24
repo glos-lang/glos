@@ -161,7 +161,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -287,6 +287,20 @@ Token lexer_next(Lexer *l) {
     case '"':
         token.kind = TOKEN_STR;
         token.as.integer = parse_str(l, "string");
+        break;
+
+    case '#':
+        while (l->sv.count > 0 && isident(*l->sv.data)) {
+            next_char(l);
+        }
+        token.sv.count -= l->sv.count;
+
+        if (sv_match(token.sv, "#link")) {
+            token.kind = TOKEN_LINK;
+        } else {
+            error_full(ERROR, token.pos, "Invalid property '" SVFmt "'", SVArg(token.sv));
+            exit(1);
+        }
         break;
 
     case '(':

@@ -36,22 +36,15 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
     return *(*argv)++;
 }
 
-typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-} Flags;
-
 int main(int argc, char **argv) {
-    int   result = 0;
-    Arena arena = {0};
+    int      result = 0;
+    Arena    arena = {0};
+    Compiler c = {.context.arena = &arena};
 
     bool        run = false;
+    const char *cc = "cc";
     const char *input = NULL;
     const char *output = NULL;
-
-    const char *cc = "cc";
-    Flags       cc_flags = {0};
 
     shift(&argc, &argv, "Program name");
     while (!input || argc) {
@@ -74,16 +67,16 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, "Library path");
                 }
 
-                da_push(&cc_flags, "-L");
-                da_push(&cc_flags, value);
+                da_push(&c.link_flags, "-L");
+                da_push(&c.link_flags, value);
             } else if (arg[1] == 'l') {
                 const char *value = &arg[2];
                 if (*value == '\0') {
                     value = shift(&argc, &argv, "Library name");
                 }
 
-                da_push(&cc_flags, "-l");
-                da_push(&cc_flags, value);
+                da_push(&c.link_flags, "-l");
+                da_push(&c.link_flags, value);
             } else {
                 error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
@@ -108,7 +101,6 @@ int main(int argc, char **argv) {
     Parser p = {.arena = &arena};
     parse_file(&p, l);
 
-    Compiler c = {.context.arena = &arena};
     compiler_init(&c);
     check_nodes(&c, p.nodes);
 
@@ -141,14 +133,14 @@ int main(int argc, char **argv) {
     }
 
     const char *object_file_path = temp_sprintf("%s.o", output);
-    compiler_build(&c, object_file_path);
 
     da_push(&cmd, cc);
     da_push(&cmd, "-o");
     da_push(&cmd, output);
     da_push(&cmd, object_file_path);
-    da_push_many(&cmd, cc_flags.data, cc_flags.count);
+    da_push_many(&cmd, c.link_flags.data, c.link_flags.count);
 
+    compiler_build(&c, object_file_path);
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
         error_standalone(ERROR, "Could not generate '%s'", output);
         exit(1);
@@ -166,7 +158,6 @@ int main(int argc, char **argv) {
     }
 
     arena_free(&arena);
-    da_free(&cc_flags);
     da_free(&cmd);
     return result;
 }

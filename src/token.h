@@ -85,6 +85,7 @@ typedef enum {
     TOKEN_EXTERN,
     TOKEN_STATIC,
 
+    TOKEN_LINK,
     TOKEN_PRINT,
     COUNT_TOKENS
 } TokenKind;
