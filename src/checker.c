@@ -605,7 +605,9 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     ConstValue value = eval_const_expr_impl(c, n);
     if (value.is_string) {
-        value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
+        char *buffer = arena_alloc(c->context.arena, value.as.sv.count + 1);
+        memcpy(buffer, value.as.sv.data, value.as.sv.count);
+        value.as.sv.data = buffer;
     }
 
     temp_reset(save);
@@ -1505,15 +1507,11 @@ static void check_stmt(Compiler *c, Node *n) {
         c->context.in_extern = false;
 
         for (Node *it = externn->libraries.head; it; it = it->next) {
-            SV sv = it->token.sv;
-            sv.data += 1;
-            sv.count -= 2;
-
-            char *library = arena_alloc(c->context.arena, it->token.as.integer + 1);
-            resolve_escape_chars(library, &sv);
+            const ConstValue library = eval_const_expr(c, it);
+            type_assert(c, it, c->context.str_type);
 
             da_push(&c->link_flags, "-l");
-            da_push(&c->link_flags, library);
+            da_push(&c->link_flags, library.as.sv.data);
         }
     } break;
 
