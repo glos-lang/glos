@@ -219,6 +219,9 @@ typedef struct {
 
     CheckStatus check_status;
 
+    Node *link;
+    SV    link_as;
+
     QbeNode *qbe;
 } NodeFn;
 
@@ -241,6 +244,9 @@ typedef struct {
 
     NodeVarKind kind;
     CheckStatus check_status;
+
+    Node *link;
+    SV    link_as;
 
     QbeNode *qbe;
 } NodeVar;

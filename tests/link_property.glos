@@ -1,0 +1,9 @@
+fn main() {
+    extern {
+        #link "putchar"
+        fn write(ch i32) i32
+    }
+
+    write(69)
+    write(10)
+}

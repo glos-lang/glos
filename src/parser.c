@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -122,7 +122,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -144,7 +144,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -341,7 +341,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -580,7 +580,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static_assert(COUNT_TOKENS == 59, "");
+static_assert(COUNT_TOKENS == 60, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -751,7 +751,7 @@ static Node *parse_stmt(Parser *p) {
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR);
+            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_LINK);
             lexer_buffer(&p->lexer, token);
             nodes_push(&externn->definitions, parse_stmt(p));
         }
@@ -770,6 +770,24 @@ static Node *parse_stmt(Parser *p) {
             NodeAssert *assertt = parse_assert(p, token);
             assertt->is_static = true;
             node = (Node *) assertt;
+        } else {
+            unreachable();
+        }
+    } break;
+
+    case TOKEN_LINK: {
+        if (!p->in_extern) {
+            local_assert(p, token, false);
+        }
+
+        Node *link = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+        lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR));
+
+        node = parse_stmt(p);
+        if (node->kind == NODE_FN) {
+            ((NodeFn *) node)->link = link;
+        } else if (node->kind == NODE_VAR) {
+            ((NodeVar *) node)->link = link;
         } else {
             unreachable();
         }
