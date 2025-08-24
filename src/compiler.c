@@ -131,7 +131,7 @@ static void compile_panic_end(Compiler *c, QbeCall *call) {
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, abort_symbol, qbe_type_basic(QBE_TYPE_I0)));
 }
 
-static QbeNode *compile_str(Compiler *c, SV sv) {
+static QbeNode *compile_str(Compiler *c, SV sv, bool ref) {
     QbeNode *slice_data = qbe_str_new(c->qbe, (QbeSV) {.data = sv.data, .count = sv.count});
     QbeNode *slice_count = qbe_atom_int(c->qbe, QBE_TYPE_I64, sv.count);
 
@@ -148,6 +148,10 @@ static QbeNode *compile_str(Compiler *c, SV sv) {
             slice_struct,
             qbe_atom_int(c->qbe, QBE_TYPE_I64, 8)),
         slice_count);
+
+    if (ref) {
+        return slice_struct;
+    }
 
     return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
 }
@@ -173,7 +177,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             sv.data += 1;
             sv.count -= 2;
             resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
-            return compile_str(c, sv);
+            return compile_str(c, sv, ref);
         } break;
 
         case TOKEN_BOOL:
@@ -208,7 +212,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             case NODE_CONST: {
                 NodeConst *constt = (NodeConst *) atom->definition;
                 if (constt->value.is_string) {
-                    return compile_str(c, constt->value.as.sv);
+                    return compile_str(c, constt->value.as.sv, false);
                 }
 
                 if (n->type.kind == TYPE_BOOL) {
@@ -1051,7 +1055,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
-        for (Node *it = externn->nodes.head; it; it = it->next) {
+        for (Node *it = externn->definitions.head; it; it = it->next) {
             compile_stmt(c, it);
         }
     } break;
@@ -1159,6 +1163,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
     }
 
     qbe_free(c->qbe);
+    da_free(&c->link_flags);
     context_free(&c->context);
 }
 

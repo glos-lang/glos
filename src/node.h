@@ -287,7 +287,8 @@ typedef struct {
 
 typedef struct {
     Node  node;
-    Nodes nodes;
+    Nodes libraries;
+    Nodes definitions;
 } NodeExtern;
 
 typedef struct {

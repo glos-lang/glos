@@ -744,6 +744,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         case TOKEN_STR:
             n->type = c->context.str_type;
+            allow_ref = true;
             break;
 
         case TOKEN_BOOL:
@@ -1498,10 +1499,22 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         c->context.in_extern = true;
-        for (Node *it = externn->nodes.head; it; it = it->next) {
+        for (Node *it = externn->definitions.head; it; it = it->next) {
             check_stmt(c, it);
         }
         c->context.in_extern = false;
+
+        for (Node *it = externn->libraries.head; it; it = it->next) {
+            SV sv = it->token.sv;
+            sv.data += 1;
+            sv.count -= 2;
+
+            char *library = arena_alloc(c->context.arena, it->token.as.integer + 1);
+            resolve_escape_chars(library, &sv);
+
+            da_push(&c->link_flags, "-l");
+            da_push(&c->link_flags, library);
+        }
     } break;
 
     case NODE_PRINT: {
@@ -1585,7 +1598,7 @@ static void pre_register_top_level_stmt(Compiler *c, Node *n) {
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
-        for (Node *it = externn->nodes.head; it; it = it->next) {
+        for (Node *it = externn->definitions.head; it; it = it->next) {
             pre_register_top_level_stmt(c, it);
         }
     } break;
@@ -1633,7 +1646,7 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
-        for (Node *it = externn->nodes.head; it; it = it->next) {
+        for (Node *it = externn->definitions.head; it; it = it->next) {
             pre_typecheck_top_level_stmt(c, it);
         }
     } break;

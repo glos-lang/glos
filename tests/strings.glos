@@ -1,5 +1,7 @@
 fn println(s [u8]) {
-    extern fn putchar(ch i32) i32
+    extern {
+        fn putchar(ch i32) i32
+    }
 
     for var i = 0; i < len(s); i += 1 {
         putchar(<i32> s[i])

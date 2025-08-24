@@ -743,24 +743,22 @@ static Node *parse_stmt(Parser *p) {
 
         NodeExtern *externn = node_alloc(p, NODE_EXTERN, token);
 
-        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_LBRACE);
-        switch (token.kind) {
-        case TOKEN_FN:
-        case TOKEN_VAR:
-            lexer_buffer(&p->lexer, token);
-            nodes_push(&externn->nodes, parse_stmt(p));
-            break;
+        token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_LBRACE);
+        while (token.kind == TOKEN_STR) {
+            nodes_push(&externn->libraries, node_alloc(p, NODE_ATOM, token));
 
-        case TOKEN_LBRACE:
-            while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-                token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR);
-                lexer_buffer(&p->lexer, token);
-                nodes_push(&externn->nodes, parse_stmt(p));
+            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_LBRACE);
+            if (token.kind == TOKEN_LBRACE) {
+                break;
             }
-            break;
 
-        default:
-            unreachable();
+            token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_LBRACE);
+        }
+
+        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR);
+            lexer_buffer(&p->lexer, token);
+            nodes_push(&externn->definitions, parse_stmt(p));
         }
 
         p->in_extern = false;
