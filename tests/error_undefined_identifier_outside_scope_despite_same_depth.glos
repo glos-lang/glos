@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     if true {
         var x = 69

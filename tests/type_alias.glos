@@ -1,3 +1,5 @@
+package main
+
 type Foo i64
 type Bar i64
 

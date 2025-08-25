@@ -252,7 +252,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -323,7 +323,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -426,7 +426,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -488,7 +488,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -738,7 +738,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -845,7 +845,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -974,7 +974,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

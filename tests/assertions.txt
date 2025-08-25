@@ -4,5 +4,5 @@ STDOUT 7
 420
 
 STDERR 39
-assertions.glos:6:12: Assertion Failed
+assertions.glos:8:12: Assertion Failed
 

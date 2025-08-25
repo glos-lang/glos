@@ -1,2 +1,4 @@
+package main
+
 static assert true
 static assert 69 == 420, "Custom message for testing"

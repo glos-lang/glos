@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 160
-error_untyped_integer_literal_auto_cast_too_large.glos:1:12: ERROR: Integer value '420' is too large for type 'i8'
+error_untyped_integer_literal_auto_cast_too_large.glos:3:12: ERROR: Integer value '420' is too large for type 'i8'
 
-    1 | var x i8 = 420
+    3 | var x i8 = 420
       |            ^
 

@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     const N = 69
     N = 420

@@ -2,13 +2,13 @@ EXIT 1
 STDOUT 0
 
 STDERR 209
-error_structure_field_redefinition.glos:3:5: ERROR: Redefinition of field 'x'
+error_structure_field_redefinition.glos:5:5: ERROR: Redefinition of field 'x'
 
-    3 |     x i64
+    5 |     x i64
       |     ^
 
-error_structure_field_redefinition.glos:2:5: NOTE: Defined here
+error_structure_field_redefinition.glos:4:5: NOTE: Defined here
 
-    2 |     x i64
+    4 |     x i64
       |     ^
 

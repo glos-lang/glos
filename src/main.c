@@ -14,7 +14,7 @@ static void usage(FILE *file) {
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Usage:\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_GREEN, "    glos");
-    fprintf(file, " [FLAGS...] FILE\n\n");
+    fprintf(file, " [FLAGS...] [FILE|DIR]\n\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
     usage_flag(file, "h ", "           Show this message");
@@ -36,6 +36,14 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
     return *(*argv)++;
 }
 
+static const char *path_last(const char *path) {
+    const char *last = path + strlen(path) - 1;
+    while (last > path && last[-1] != '/') {
+        last--;
+    }
+    return last;
+}
+
 int main(int argc, char **argv) {
     int      result = 0;
     Arena    arena = {0};
@@ -47,7 +55,7 @@ int main(int argc, char **argv) {
     const char *output = NULL;
 
     shift(&argc, &argv, "Program name");
-    while (!input || argc) {
+    while (argc) {
         const char *arg = shift(&argc, &argv, "Input file");
         if (arg[0] == '-') {
             if (!strcmp(arg, "-h")) {
@@ -92,14 +100,17 @@ int main(int argc, char **argv) {
         }
     }
 
-    Lexer l = {0};
-    if (!lexer_open(&l, input, &arena)) {
-        error_standalone(ERROR, "Could not read file '%s'", input);
-        exit(1);
+    if (input) {
+        input = get_relative_path(input, &arena);
+    } else {
+        input = ".";
     }
 
-    Parser p = {.arena = &arena};
-    parse_file(&p, l);
+    Parser p = {.arena = &arena, .package.sv = sv_from_cstr("main")};
+    if (!parse_dir(&p, input) && !parse_file(&p, input)) {
+        error_standalone(ERROR, "Could not read '%s'", input);
+        exit(1);
+    }
 
     compiler_init(&c);
     check_nodes(&c, p.nodes);
@@ -128,8 +139,17 @@ int main(int argc, char **argv) {
         }
     } else {
         if (!output) {
-            output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+            if (is_dir(input)) {
+                output = path_last(get_absolute_path(input, &arena));
+            } else {
+                output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(path_last(input)), sv_from_cstr(".glos")));
+            }
         }
+    }
+
+    if (is_dir(output)) {
+        error_standalone(ERROR, "The output path '%s' exists and is a directory", output);
+        exit(1);
     }
 
     const char *object_file_path = temp_sprintf("%s.o", output);
@@ -142,6 +162,7 @@ int main(int argc, char **argv) {
 
     compiler_build(&c, object_file_path);
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
+        remove(object_file_path);
         error_standalone(ERROR, "Could not generate '%s'", output);
         exit(1);
     }
@@ -157,6 +178,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    parser_free(&p);
     arena_free(&arena);
     da_free(&cmd);
     return result;

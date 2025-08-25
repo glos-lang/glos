@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     print 2 > 1
     print 1 > 1

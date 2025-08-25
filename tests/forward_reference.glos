@@ -1,3 +1,5 @@
+package main
+
 fn foo(x bool) {
     if x {
         print 1337

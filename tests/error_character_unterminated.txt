@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 101
-error_character_unterminated.glos:2:7: ERROR: Unterminated character
+error_character_unterminated.glos:4:7: ERROR: Unterminated character
 
-    2 |     'f
+    4 |     'f
       |       ^
 

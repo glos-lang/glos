@@ -1,3 +1,5 @@
+package main
+
 fn foo(x i64) {
     print x
     x = 420

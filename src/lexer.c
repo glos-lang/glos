@@ -11,6 +11,7 @@ static SV first_line(SV sv) {
 }
 
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
+    memset(l, 0, sizeof(*l));
     if (!read_file(&l->sv, path, arena)) {
         return false;
     }
@@ -161,7 +162,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -246,6 +247,8 @@ Token lexer_next(Lexer *l) {
             token.kind = TOKEN_EXTERN;
         } else if (sv_match(token.sv, "static")) {
             token.kind = TOKEN_STATIC;
+        } else if (sv_match(token.sv, "package")) {
+            token.kind = TOKEN_PACKAGE;
         } else if (sv_match(token.sv, "print")) {
             token.kind = TOKEN_PRINT;
         } else {

@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -122,7 +122,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -144,7 +144,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -341,7 +341,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -580,7 +580,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -849,10 +849,37 @@ static Node *parse_fn(Parser *p, Token token) {
     return (Node *) fn;
 }
 
-void parse_file(Parser *p, Lexer lexer) {
-    assert(p->arena);
+void parser_free(Parser *p) {
+    da_free(&p->paths);
+}
 
-    p->lexer = lexer;
+bool parse_file(Parser *p, const char *path) {
+    assert(p->arena);
+    if (!lexer_open(&p->lexer, path, p->arena)) {
+        return false;
+    }
+
+    lexer_expect(&p->lexer, TOKEN_PACKAGE);
+    const Token package = lexer_expect(&p->lexer, TOKEN_IDENT);
+    if (!sv_eq(package.sv, p->package.sv)) {
+        if (!p->package.sv.count) {
+            p->package = package;
+        } else {
+            error_full(
+                ERROR,
+                package.pos,
+                "Expected package '" SVFmt "', got '" SVFmt "'",
+                SVArg(p->package.sv),
+                SVArg(package.sv));
+
+            if (p->package.pos.path) {
+                error_full(NOTE, p->package.pos, "Package first set here");
+            }
+
+            exit(1);
+        }
+    }
+
     while (true) {
         consume(p, TOKEN_EOL);
         if (lexer_read(&p->lexer, TOKEN_EOF)) {
@@ -861,4 +888,28 @@ void parse_file(Parser *p, Lexer lexer) {
 
         nodes_push(&p->nodes, parse_stmt(p));
     }
+
+    return true;
+}
+
+bool parse_dir(Parser *p, const char *path) {
+    assert(p->arena);
+
+    const size_t start = p->paths.count;
+    if (!read_dir(&p->paths, path, sv_from_cstr(".glos"), p->arena)) {
+        return false;
+    }
+
+    const Lexer lexer_save = p->lexer;
+    for (size_t i = start; i < p->paths.count; i++) {
+        const char *it = p->paths.data[i];
+        if (!parse_file(p, it)) {
+            error_standalone(ERROR, "Could not read file '%s'", it);
+            exit(1);
+        }
+    }
+
+    p->paths.count = start;
+    p->lexer = lexer_save;
+    return true;
 }

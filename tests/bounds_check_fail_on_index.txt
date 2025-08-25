@@ -3,5 +3,5 @@ STDOUT 2
 4
 
 STDERR 85
-bounds_check_fail_on_index.glos:17:13: Index 5 is out of bounds in slice of length 5
+bounds_check_fail_on_index.glos:19:13: Index 5 is out of bounds in slice of length 5
 

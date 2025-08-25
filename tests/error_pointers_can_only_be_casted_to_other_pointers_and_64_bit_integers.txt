@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 172
-error_pointers_can_only_be_casted_to_other_pointers_and_64_bit_integers.glos:4:9: ERROR: Cannot cast type '&i64' to type 'bool'
+error_pointers_can_only_be_casted_to_other_pointers_and_64_bit_integers.glos:6:9: ERROR: Cannot cast type '&i64' to type 'bool'
 
-    4 | var d = <bool> a
+    6 | var d = <bool> a
       |         ^
 

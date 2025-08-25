@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 189
-error_structure_literal_unexpected_colon_after_non_identifier_expression.glos:8:11: ERROR: Expected designated initializer to be field name
+STDERR 192
+error_structure_literal_unexpected_colon_after_non_identifier_expression.glos:10:11: ERROR: Expected designated initializer to be field name
 
-    8 |         x + 10: 69,
-      |           ^
+    10 |         x + 10: 69,
+       |           ^
 

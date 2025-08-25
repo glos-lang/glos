@@ -1,3 +1,5 @@
+package main
+
 fn add_and_print(x i64, y i64) {
     var z = x + y
     print z

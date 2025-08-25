@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 115
-error_expected_return.glos:1:15: ERROR: Expected return statement
+error_expected_return.glos:3:15: ERROR: Expected return statement
 
-    1 | fn foo() i64 {}
+    3 | fn foo() i64 {}
       |               ^
 

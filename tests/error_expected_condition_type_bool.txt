@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 123
-error_expected_condition_type_bool.glos:2:8: ERROR: Expected type 'bool', got 'i64'
+error_expected_condition_type_bool.glos:4:8: ERROR: Expected type 'bool', got 'i64'
 
-    2 |     if 69 {}
+    4 |     if 69 {}
       |        ^
 

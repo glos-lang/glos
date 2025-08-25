@@ -1,4 +1,7 @@
+#include <dirent.h>
+#include <errno.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -19,7 +22,19 @@ bool sv_match(SV a, const char *b) {
     return a.count == strlen(b) && memcmp(b, a.data, a.count) == 0;
 }
 
+bool sv_has_prefix(SV a, SV b) {
+    if (b.count == 0) {
+        return true;
+    }
+
+    return a.count >= b.count && memcmp(a.data, b.data, b.count) == 0;
+}
+
 bool sv_has_suffix(SV a, SV b) {
+    if (b.count == 0) {
+        return true;
+    }
+
     return a.count >= b.count && memcmp(&a.data[a.count - b.count], b.data, b.count) == 0;
 }
 
@@ -244,7 +259,167 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) {
     return result;
 }
 
-// OS
+// FS
+static const char *get_current_dir(void) {
+    size_t capacity = DA_INIT_CAP;
+    while (true) {
+        char *buffer = temp_alloc(capacity);
+        if (getcwd(buffer, capacity)) {
+            const size_t n = strlen(buffer);
+            if (n > 1) {
+                temp_reset(buffer + n);
+                temp_sprintf("/");
+            } else {
+                temp_reset(buffer + n + 1);
+            }
+            return buffer;
+        }
+        temp_reset(buffer);
+
+        if (errno != ERANGE) {
+            return NULL;
+        }
+
+        capacity *= 2;
+    }
+}
+
+static const char *resolve_fullpath(char *path) {
+    char *dst = path;
+    char *src = path;
+
+    while (*src) {
+        if (*src == '/') {
+            // Collapse consecutive slashes
+            *dst++ = '/';
+            while (*src == '/') {
+                src++;
+            }
+        } else if (src[0] == '.' && (src[1] == '/' || src[1] == '\0')) {
+            // Skip "./"
+            src++;
+            while (*src == '/') {
+                src++;
+            }
+        } else if (src[0] == '.' && src[1] == '.' && (src[2] == '/' || src[2] == '\0')) {
+            // Handle ".." by rewinding dst
+            src += 2;
+            while (*src == '/') {
+                src++;
+            }
+
+            if (dst > path + 1) {
+                dst--;
+                while (dst > path && dst[-1] != '/') {
+                    dst--;
+                }
+            }
+        } else {
+            // Copy normal path component
+            while (*src && *src != '/') {
+                *dst++ = *src++;
+            }
+        }
+    }
+
+    // Remove trailing slash unless root
+    if (dst > path + 1 && dst[-1] == '/') {
+        dst--;
+    }
+
+    *dst = '\0';
+    return path;
+}
+
+static const char *convert_fullpath_to_relative(const char *path, const char *cwd, Arena *arena) {
+    const char *p1 = cwd;
+    const char *p2 = path;
+
+    // Find common prefix
+    while (*p1 && *p2 && *p1 == *p2) {
+        p1++;
+        p2++;
+    }
+
+    if (!strcmp(p1, "/") && *p2 == '\0') {
+        return arena_sprintf(arena, ".");
+    }
+
+    // Rewind to the last directory boundary
+    while (p1 > cwd && p1[-1] != '/') {
+        p1--;
+        p2--;
+    }
+
+    // Count how many directories we need to go up
+    size_t up_count = 0;
+    for (const char *p = p1; *p; p++) {
+        if (*p == '/') {
+            up_count++;
+        }
+    }
+
+    // Build the relative path in arena
+    char *out = arena_alloc(arena, up_count * 3 + strlen(p2) + 2); // "../" * up_count + p2 + null
+    char *dst = out;
+
+    // Add "../" components
+    for (size_t i = 0; i < up_count; i++) {
+        memcpy(dst, "../", 3);
+        dst += 3;
+    }
+
+    // Append remaining portion of p2
+    if (*p2 == '/') {
+        p2++;
+    }
+
+    const size_t p2_len = strlen(p2);
+    memcpy(dst, p2, p2_len);
+    dst += p2_len;
+
+    // Special case: if nothing left, return "."
+    if (dst == out) {
+        *dst++ = '.';
+    }
+
+    *dst = '\0';
+    return out;
+}
+
+const char *get_relative_path(const char *path, Arena *arena) {
+    const char *cwd = get_current_dir();
+    if (!cwd) {
+        return NULL;
+    }
+
+    const char *full = NULL;
+    if (sv_has_prefix(sv_from_cstr(path), sv_from_cstr("/"))) {
+        full = resolve_fullpath(temp_sprintf("%s", path));
+    } else {
+        full = resolve_fullpath(temp_sprintf("%s%s", cwd, path));
+    }
+
+    const char *relative = convert_fullpath_to_relative(full, cwd, arena);
+    temp_reset(cwd);
+    return relative;
+}
+
+const char *get_absolute_path(const char *path, Arena *arena) {
+    char *full = temp_alloc(0);
+    if (!sv_has_prefix(sv_from_cstr(path), sv_from_cstr("/"))) {
+        if (!get_current_dir()) {
+            return NULL;
+        }
+        temp_remove_null();
+    }
+    temp_sprintf("%s", path);
+
+    const char *absolute = arena_sprintf(arena, "%s", resolve_fullpath(full));
+    temp_reset(full);
+    return absolute;
+}
+
 bool read_file(SV *out, const char *path, Arena *arena) {
     char *data = NULL;
     bool  result = true;
@@ -285,6 +460,41 @@ defer:
     return result;
 }
 
+bool is_dir(const char *path) {
+    struct stat statbuf = {0};
+    if (stat(path, &statbuf) != 0) {
+        return false;
+    }
+    return (statbuf.st_mode & S_IFMT) == S_IFDIR;
+}
+
+static int compare_cstrs(const void *a, const void *b) {
+    const char *str1 = *(const char **) a;
+    const char *str2 = *(const char **) b;
+    return strcmp(str1, str2);
+}
+
+bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena) {
+    DIR *d = opendir(path);
+    if (!d) {
+        return false;
+    }
+
+    struct dirent *entry = NULL;
+    while ((entry = readdir(d))) {
+        if (sv_has_suffix(sv_from_cstr(entry->d_name), suffix)) {
+            const char *it = temp_sprintf("%s/%s", path, entry->d_name);
+            da_push(p, get_relative_path(it, arena));
+            temp_reset(it);
+        }
+    }
+
+    closedir(d);
+    qsort(p->data, p->count, sizeof(*p->data), compare_cstrs);
+    return true;
+}
+
+// OS
 Proc cmd_run_async(Cmd *c, CmdStdio stdio) {
     int in[2] = {-1, -1};
     int out[2] = {-1, -1};

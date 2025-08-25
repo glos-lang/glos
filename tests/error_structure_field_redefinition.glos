@@ -1,3 +1,5 @@
+package main
+
 struct Foo {
     x i64
     x i64

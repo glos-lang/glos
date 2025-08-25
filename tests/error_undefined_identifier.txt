@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 115
-error_undefined_identifier.glos:2:11: ERROR: Undefined identifier 'foo'
+error_undefined_identifier.glos:4:11: ERROR: Undefined identifier 'foo'
 
-    2 |     print foo
+    4 |     print foo
       |           ^
 

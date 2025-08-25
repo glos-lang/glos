@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 113
-error_return_type_mismatch.glos:2:5: ERROR: Expected type 'bool', got 'i64'
+error_return_type_mismatch.glos:4:5: ERROR: Expected type 'bool', got 'i64'
 
-    2 |     return 69
+    4 |     return 69
       |     ^
 
