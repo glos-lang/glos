@@ -1514,7 +1514,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
         for (Node *it = externn->libraries.head; it; it = it->next) {
             const ConstValue library = eval_const_expr(c, it);
-            type_assert(c, it, c->context.str_type);
+            assert(library.is_string);
 
             da_push(&c->link_flags, "-l");
             da_push(&c->link_flags, library.as.sv.data);

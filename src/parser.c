@@ -742,12 +742,16 @@ static Node *parse_stmt(Parser *p) {
         p->in_extern = true;
 
         NodeExtern *externn = node_alloc(p, NODE_EXTERN, token);
-        while (!lexer_read(&p->lexer, TOKEN_LBRACE)) {
-            nodes_push(&externn->libraries, parse_expr(p, POWER_SET, PF_CONSTANT_EXPR));
+
+        token = lexer_expect(&p->lexer, TOKEN_LBRACE, TOKEN_STR);
+        while (token.kind == TOKEN_STR) {
+            nodes_push(&externn->libraries, node_alloc(p, NODE_ATOM, token));
             token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_LBRACE);
             if (token.kind != TOKEN_COMMA) {
                 break;
             }
+
+            token = lexer_expect(&p->lexer, TOKEN_LBRACE, TOKEN_STR);
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
@@ -780,7 +784,7 @@ static Node *parse_stmt(Parser *p) {
             local_assert(p, token, false);
         }
 
-        Node *link = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+        Node *link = node_alloc(p, NODE_ATOM, lexer_expect(&p->lexer, TOKEN_STR));
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR));
 
         node = parse_stmt(p);
