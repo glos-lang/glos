@@ -106,14 +106,22 @@ int main(int argc, char **argv) {
         input = ".";
     }
 
-    Parser p = {.arena = &arena, .package.sv = sv_from_cstr("main")};
+    Parser  p = {.arena = &arena};
+    Package package = {
+        .path = sv_from_cstr(input),
+        .name.sv = sv_from_cstr("main"),
+    };
+    packages_push(&p, &package);
+
     if (!parse_dir(&p, input) && !parse_file(&p, input)) {
         error_standalone(ERROR, "Could not read '%s'", input);
         exit(1);
     }
 
     compiler_init(&c);
-    check_nodes(&c, p.nodes);
+    for (Package *it = p.packages.head; it; it = it->next) {
+        check_package(&c, it);
+    }
 
     Cmd  cmd = {0};
     bool remove_after = false;

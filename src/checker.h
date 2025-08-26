@@ -2,7 +2,8 @@
 #define CHECKER_H
 
 #include "compiler.h"
+#include "parser.h"
 
-void check_nodes(Compiler *c, Nodes ns);
+void check_package(Compiler *c, Package *p);
 
 #endif // CHECKER_H

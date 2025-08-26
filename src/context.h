@@ -19,9 +19,9 @@ typedef struct {
 typedef struct {
     Arena *arena;
 
-    Scope types;
+    Scope types; // TODO: Merge into locals+globals
     Scope locals;
-    Scope globals;
+    Scope globals; // TODO: Move into Package
 
     ContextFn fn;
 
