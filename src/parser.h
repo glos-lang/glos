@@ -2,37 +2,7 @@
 #define PARSER_H
 
 #include "lexer.h"
-#include "node.h"
-
-typedef struct Import  Import;
-typedef struct Package Package;
-
-struct Import {
-    SV       as;
-    Package *package;
-
-    Import *next;
-};
-
-typedef struct {
-    Import *head;
-    Import *tail;
-} Imports;
-
-struct Package {
-    SV      path;
-    Token   name;
-    Nodes   nodes;
-    Imports imports;
-
-    Package *next;
-};
-
-typedef struct {
-    Package *head;
-    Package *tail;
-    Package *current;
-} Packages;
+#include "package.h"
 
 typedef struct {
     Arena   *arena;
@@ -48,8 +18,6 @@ typedef struct {
 } Parser;
 
 void parser_free(Parser *p);
-
-void packages_push(Parser *p, Package *package);
 
 bool parse_file(Parser *p, const char *path);
 bool parse_dir(Parser *p, const char *path);

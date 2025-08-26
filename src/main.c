@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
         .path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
-    packages_push(&p, &package);
+    packages_push(&p.packages, &package);
 
     if (!parse_dir(&p, input) && !parse_file(&p, input)) {
         error_standalone(ERROR, "Could not read '%s'", input);

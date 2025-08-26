@@ -15,20 +15,6 @@ static void nodes_push(Nodes *ns, Node *n) {
     }
 }
 
-static void imports_push(Imports *is, Import *i) {
-    if (!i) {
-        return;
-    }
-
-    if (is->tail) {
-        is->tail->next = i;
-        is->tail = i;
-    } else {
-        is->head = i;
-        is->tail = i;
-    }
-}
-
 static Import *imports_find(Imports is, Package *p) {
     for (Import *it = is.head; it; it = it->next) {
         if (it->package == p) {
@@ -61,22 +47,6 @@ static Package *packages_find_by_name(Parser *p, SV name) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
-}
-
-void packages_push(Parser *p, Package *package) {
-    if (!package) {
-        return;
-    }
-
-    if (p->packages.tail) {
-        p->packages.tail->next = package;
-        p->packages.tail = package;
-    } else {
-        p->packages.head = package;
-        p->packages.tail = package;
-    }
-
-    p->packages.current = package;
 }
 
 typedef enum {
@@ -903,7 +873,7 @@ static Node *parse_stmt(Parser *p) {
         import->package = package;
         imports_push(&p->packages.current->imports, import);
 
-        packages_push(p, package);
+        packages_push(&p->packages, package);
         if (!parse_dir(p, path)) {
             error_full(ERROR, token.pos, "Could not import package '%s'", path);
             exit(1);
