@@ -258,15 +258,9 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
 
-        case TOKEN_STR: {
-            SV sv = n->token.sv;
-            sv.data += 1;
-            sv.count -= 2;
-            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
-
+        case TOKEN_STR:
             n->type = c->context.str_type;
-            return const_str(sv);
-        }
+            return const_str(resolve_str_token(n->token, c->context.arena));
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -1503,11 +1497,9 @@ static void check_stmt(Compiler *c, Node *n) {
         c->context.in_extern = false;
 
         for (Node *it = externn->libraries.head; it; it = it->next) {
-            const ConstValue library = eval_const_expr(c, it);
-            assert(library.is_string);
-
+            const SV library = resolve_str_token(it->token, c->context.arena);
             da_push(&c->link_flags, "-l");
-            da_push(&c->link_flags, library.as.sv.data);
+            da_push(&c->link_flags, library.data);
         }
     } break;
 
@@ -1607,7 +1599,7 @@ static void define_toplevel(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void check_toplevel_non_fn(Compiler *c, Node *n) {
+static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
@@ -1641,8 +1633,10 @@ static void check_toplevel_non_fn(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            check_toplevel_non_fn(c, it);
+            check_toplevel(c, it);
         }
+
+        check_stmt(c, n);
     } break;
 
     default:
@@ -1651,28 +1645,30 @@ static void check_toplevel_non_fn(Compiler *c, Node *n) {
     }
 }
 
-void check_package(Compiler *c, Package *p) {
+void check_packages(Compiler *c, Packages ps) {
     assert(c->context.arena);
 
-    if (c->context.str_type.kind != TYPE_SLICE) {
-        const Type u8_type = {.kind = TYPE_U8};
-        c->context.str_type = (Type) {
-            .kind = TYPE_SLICE,
-            .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
-        };
+    const Type u8_type = {.kind = TYPE_U8};
+    c->context.str_type = (Type) {
+        .kind = TYPE_SLICE,
+        .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
+    };
+
+    for (Package *p = ps.head; p; p = p->next) {
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            define_toplevel(c, it);
+        }
+
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            check_toplevel(c, it);
+        }
     }
 
-    for (Node *it = p->nodes.head; it; it = it->next) {
-        define_toplevel(c, it);
-    }
-
-    for (Node *it = p->nodes.head; it; it = it->next) {
-        check_toplevel_non_fn(c, it);
-    }
-
-    for (Node *it = p->nodes.head; it; it = it->next) {
-        if (it->kind == NODE_FN) {
-            check_stmt(c, it);
+    for (Package *p = ps.head; p; p = p->next) {
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            if (it->kind == NODE_FN) {
+                check_stmt(c, it);
+            }
         }
     }
 }

@@ -193,3 +193,11 @@ const char *token_kind_to_cstr(TokenKind kind) {
         unreachable();
     }
 }
+
+SV resolve_str_token(Token token, Arena *a) {
+    SV sv = token.sv;
+    sv.data += 1;
+    sv.count -= 2;
+    resolve_escape_chars(arena_alloc(a, token.as.integer), &sv);
+    return sv;
+}

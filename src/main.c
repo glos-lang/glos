@@ -119,9 +119,7 @@ int main(int argc, char **argv) {
     }
 
     compiler_init(&c);
-    for (Package *it = p.packages.head; it; it = it->next) {
-        check_package(&c, it);
-    }
+    check_packages(&c, p.packages);
 
     Cmd  cmd = {0};
     bool remove_after = false;

@@ -156,14 +156,6 @@ static QbeNode *compile_str(Compiler *c, SV sv, bool ref) {
     return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
 }
 
-static SV resolve_str_token(Token token, Arena *a) {
-    SV sv = token.sv;
-    sv.data += 1;
-    sv.count -= 2;
-    resolve_escape_chars(arena_alloc(a, token.as.integer), &sv);
-    return sv;
-}
-
 static_assert(COUNT_NODES == 22, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {

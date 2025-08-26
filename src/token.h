@@ -108,4 +108,6 @@ typedef struct {
     } as;
 } Token;
 
+SV resolve_str_token(Token token, Arena *a);
+
 #endif // TOKEN_H
