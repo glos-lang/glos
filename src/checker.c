@@ -207,15 +207,15 @@ static void error_undefined(const Node *n, const char *label) {
     exit(1);
 }
 
-static Node *ident_find(Context *c, SV name) {
+static Node *ident_find(const Context *c, SV name, bool is_type) {
     if (c->fn.fn) {
-        Node *n = context_fn_find(c->fn, c->locals, name);
+        Node *n = context_fn_find(c->fn, c->locals, name, is_type);
         if (n) {
             return n;
         }
     }
 
-    return scope_find(c->globals, name);
+    return scope_find(c->globals, name, is_type);
 }
 
 static Node *nodes_find(Nodes ns, SV name, Node *until) {
@@ -277,7 +277,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv);
+            atom->definition = ident_find(&c->context, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -642,7 +642,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            Node *definition = scope_find(c->context.types, n->token.sv);
+            Node *definition = ident_find(&c->context, n->token.sv, true);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -756,7 +756,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             break;
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv);
+            atom->definition = ident_find(&c->context, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -1326,7 +1326,6 @@ static void check_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
-        const size_t types_count_save = c->context.types.count;
         const size_t locals_count_save = c->context.locals.count;
 
         NodeBlock *block = (NodeBlock *) n;
@@ -1334,7 +1333,6 @@ static void check_stmt(Compiler *c, Node *n) {
             check_stmt(c, it);
         }
 
-        c->context.types.count = types_count_save;
         c->context.locals.count = locals_count_save;
     } break;
 
@@ -1427,7 +1425,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
         type->check_status = CHECK_STATUS_DONE;
         if (type->local) {
-            da_push(&c->context.types, n);
+            da_push(&c->context.locals, n);
         }
     } break;
 
@@ -1492,7 +1490,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
         structt->check_status = CHECK_STATUS_DONE;
         if (structt->local) {
-            da_push(&c->context.types, n);
+            da_push(&c->context.locals, n);
         }
     } break;
 
@@ -1565,7 +1563,7 @@ static void define_toplevel(Compiler *c, Node *n) {
     case NODE_FN:
     case NODE_VAR:
     case NODE_CONST: {
-        const Node *previous = scope_find(c->context.globals, n->token.sv);
+        const Node *previous = scope_find(c->context.globals, n->token.sv, false);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
@@ -1574,22 +1572,22 @@ static void define_toplevel(Compiler *c, Node *n) {
     } break;
 
     case NODE_TYPE: {
-        const Node *previous = scope_find(c->context.types, n->token.sv);
+        const Node *previous = scope_find(c->context.globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
-        da_push(&c->context.types, n);
+        da_push(&c->context.globals, n);
     } break;
 
     case NODE_STRUCT: {
-        const Node *previous = scope_find(c->context.types, n->token.sv);
+        const Node *previous = scope_find(c->context.globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
-        da_push(&c->context.types, n);
+        da_push(&c->context.globals, n);
     } break;
 
     case NODE_EXTERN: {

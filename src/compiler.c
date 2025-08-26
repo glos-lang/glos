@@ -1105,7 +1105,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 }
 
 static NodeFn *get_main(Context *c) {
-    Node *main = scope_find(c->globals, sv_from_cstr("main"));
+    Node *main = scope_find(c->globals, sv_from_cstr("main"), false);
     if (!main) {
         error_full(
             ERROR,

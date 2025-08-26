@@ -9,7 +9,7 @@ typedef struct {
     size_t capacity;
 } Scope;
 
-Node *scope_find(Scope s, SV name);
+Node *scope_find(Scope s, SV name, bool is_type);
 
 typedef struct {
     NodeFn *fn;
@@ -19,7 +19,6 @@ typedef struct {
 typedef struct {
     Arena *arena;
 
-    Scope types; // TODO: Merge into locals+globals
     Scope locals;
     Scope globals; // TODO: Move into Package
 
@@ -32,7 +31,7 @@ typedef struct {
 
 ContextFn context_fn_begin(Context *c, NodeFn *fn);
 void      context_fn_end(Context *c, ContextFn save);
-Node     *context_fn_find(ContextFn f, Scope s, SV name);
+Node     *context_fn_find(ContextFn f, Scope s, SV name, bool is_type);
 
 void context_free(Context *c);
 
