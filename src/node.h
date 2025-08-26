@@ -215,12 +215,10 @@ typedef struct {
 
     Node *ret;
     Node *body;
+    Node *link;
     bool  local;
 
     CheckStatus check_status;
-
-    Node *link;
-    SV    link_as;
 
     QbeNode *qbe;
 } NodeFn;
@@ -238,15 +236,13 @@ typedef struct {
 
     Node *expr;
     Node *type;
+    Node *link;
 
     bool is_extern;
     bool is_static;
 
     NodeVarKind kind;
     CheckStatus check_status;
-
-    Node *link;
-    SV    link_as;
 
     QbeNode *qbe;
 } NodeVar;

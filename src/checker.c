@@ -605,9 +605,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     ConstValue value = eval_const_expr_impl(c, n);
     if (value.is_string) {
-        char *buffer = arena_alloc(c->context.arena, value.as.sv.count + 1);
-        memcpy(buffer, value.as.sv.data, value.as.sv.count);
-        value.as.sv.data = buffer;
+        value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
     }
 
     temp_reset(save);
@@ -1367,12 +1365,6 @@ static void check_stmt(Compiler *c, Node *n) {
             var->check_status = CHECK_STATUS_DOING;
         }
 
-        if (var->link) {
-            const ConstValue link_as = eval_const_expr(c, var->link);
-            type_assert(c, var->link, c->context.str_type);
-            var->link_as = link_as.as.sv;
-        }
-
         if (var->type) {
             check_type(c, var->type, true);
             n->type = var->type->type;
@@ -1535,12 +1527,6 @@ static void check_stmt(Compiler *c, Node *n) {
 
 static void check_fn(Compiler *c, Node *n) {
     NodeFn *fn = (NodeFn *) n;
-    if (fn->link) {
-        const ConstValue link = eval_const_expr(c, fn->link);
-        type_assert(c, fn->link, c->context.str_type);
-        fn->link_as = link.as.sv;
-    }
-
     if (fn->local) {
         da_push(&c->context.locals, n);
     }
@@ -1574,7 +1560,7 @@ static void check_fn(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void pre_register_top_level_stmt(Compiler *c, Node *n) {
+static void define_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN:
     case NODE_VAR:
@@ -1609,7 +1595,7 @@ static void pre_register_top_level_stmt(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            pre_register_top_level_stmt(c, it);
+            define_toplevel(c, it);
         }
     } break;
 
@@ -1623,7 +1609,7 @@ static void pre_register_top_level_stmt(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
+static void check_toplevel_non_fn(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
@@ -1657,11 +1643,12 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            pre_typecheck_top_level_stmt(c, it);
+            check_toplevel_non_fn(c, it);
         }
     } break;
 
     default:
+        check_stmt(c, n);
         break;
     }
 }
@@ -1678,14 +1665,16 @@ void check_package(Compiler *c, Package *p) {
     }
 
     for (Node *it = p->nodes.head; it; it = it->next) {
-        pre_register_top_level_stmt(c, it);
+        define_toplevel(c, it);
     }
 
     for (Node *it = p->nodes.head; it; it = it->next) {
-        pre_typecheck_top_level_stmt(c, it);
+        check_toplevel_non_fn(c, it);
     }
 
     for (Node *it = p->nodes.head; it; it = it->next) {
-        check_stmt(c, it);
+        if (it->kind == NODE_FN) {
+            check_stmt(c, it);
+        }
     }
 }
