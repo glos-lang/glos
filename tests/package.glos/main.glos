@@ -2,6 +2,7 @@ package main
 
 import "bar"
 import "baz"
+import lmao "lol"
 
 fn main() {
     foo()
@@ -10,4 +11,5 @@ fn main() {
 
     print bar::bar
     print baz::baz
+    print lmao::lmao
 }

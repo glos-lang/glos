@@ -7,6 +7,7 @@ typedef struct Import Import;
 
 struct Import {
     SV       as;
+    Pos      pos;
     Package *package;
 
     Import *next;

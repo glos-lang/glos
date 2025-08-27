@@ -834,7 +834,13 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_IMPORT: {
         local_assert(p, token, false);
-        token = lexer_expect(&p->lexer, TOKEN_STR);
+        token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT);
+
+        SV as = {0};
+        if (token.kind == TOKEN_IDENT) {
+            as = token.sv;
+            token = lexer_expect(&p->lexer, TOKEN_STR);
+        }
 
         char *path_start = temp_alloc(0);
         if (p->cwd.count) {
@@ -859,12 +865,24 @@ static Node *parse_stmt(Parser *p) {
 
         Package *previous = packages_find_by_path(*p->packages, path_sv);
         if (previous) {
-            if (!imports_find(p->packages->current->imports, previous)) {
-                Import *import = arena_alloc(p->arena, sizeof(*import));
-                import->as = previous->name.sv;
-                import->package = previous;
-                imports_push(&p->packages->current->imports, import);
+            Import *previous_import = imports_find(p->packages->current->imports, previous);
+            if (previous_import) {
+                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(path_sv));
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous_import->pos, "Imported here");
+                exit(1);
             }
+
+            Import *import = arena_alloc(p->arena, sizeof(*import));
+            if (as.count) {
+                import->as = as;
+            } else {
+                import->as = previous->name.sv;
+            }
+
+            import->pos = token.pos;
+            import->package = previous;
+            imports_push(&p->packages->current->imports, import);
 
             return NULL;
         }
@@ -874,6 +892,8 @@ static Node *parse_stmt(Parser *p) {
         package->path = path_sv;
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
+        import->as = as;
+        import->pos = token.pos;
         import->package = package;
         imports_push(&p->packages->current->imports, import);
 
