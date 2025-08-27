@@ -47,6 +47,7 @@ static Package *packages_find_by_name(Parser *p, SV name) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
+    packages_free(&p->packages);
 }
 
 typedef enum {

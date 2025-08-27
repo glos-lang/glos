@@ -14,6 +14,12 @@ void imports_push(Imports *is, Import *i) {
     }
 }
 
+void packages_free(Packages *ps) {
+    for (Package *p = ps->head; p; p = p->next) {
+        da_free(&p->globals);
+    }
+}
+
 void packages_push(Packages *ps, Package *p) {
     if (!p) {
         return;

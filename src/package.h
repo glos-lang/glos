@@ -3,8 +3,7 @@
 
 #include "node.h"
 
-typedef struct Import  Import;
-typedef struct Package Package;
+typedef struct Import Import;
 
 struct Import {
     SV       as;
@@ -20,10 +19,18 @@ typedef struct {
 
 void imports_push(Imports *is, Import *i);
 
+typedef struct {
+    Node **data;
+    size_t count;
+    size_t capacity;
+} Scope;
+
 struct Package {
-    SV      path;
-    Token   name;
+    SV    path;
+    Token name;
+
     Nodes   nodes;
+    Scope   globals;
     Imports imports;
 
     Package *next;
@@ -35,6 +42,7 @@ typedef struct {
     Package *current;
 } Packages;
 
+void packages_free(Packages *ps);
 void packages_push(Packages *ps, Package *p);
 
 #endif // PACKAGE_H

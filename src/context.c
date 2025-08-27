@@ -1,6 +1,6 @@
 #include "context.h"
 
-static Node *scope_find_ex(Scope s, SV name, bool is_type, size_t base) {
+static Node *scope_find_impl(Scope s, SV name, bool is_type, size_t base) {
     assert(base <= s.count);
     for (size_t i = s.count; i > 0; i--) {
         Node *it = s.data[i - 1];
@@ -22,7 +22,7 @@ static Node *scope_find_ex(Scope s, SV name, bool is_type, size_t base) {
 }
 
 Node *scope_find(Scope s, SV name, bool is_type) {
-    return scope_find_ex(s, name, is_type, 0);
+    return scope_find_impl(s, name, is_type, 0);
 }
 
 ContextFn context_fn_begin(Context *c, NodeFn *fn) {
@@ -38,7 +38,7 @@ void context_fn_end(Context *c, ContextFn save) {
 }
 
 Node *context_fn_find(ContextFn f, Scope s, SV name, bool is_type) {
-    return scope_find_ex(s, name, is_type, f.base);
+    return scope_find_impl(s, name, is_type, f.base);
 }
 
 void context_free(Context *c) {

@@ -1,13 +1,7 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#include "node.h"
-
-typedef struct {
-    Node **data;
-    size_t count;
-    size_t capacity;
-} Scope;
+#include "package.h"
 
 Node *scope_find(Scope s, SV name, bool is_type);
 
@@ -25,6 +19,7 @@ typedef struct {
     ContextFn fn;
 
     bool in_extern;
+    bool checking_toplevels;
 
     Type str_type;
 } Context;

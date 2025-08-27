@@ -755,6 +755,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 error_undefined(n, "identifier");
             }
 
+            if (c->context.checking_toplevels) {
+                check_stmt(c, atom->definition);
+            }
+
             allow_ref = atom->definition->kind == NODE_VAR;
             if (ref) {
                 if (atom->definition->kind == NODE_CONST && ref == REF_MUTATE) {
@@ -1260,6 +1264,14 @@ static bool always_returns(Node *n) {
     }
 }
 
+static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
+    for (Node *it = externn->libraries.head; it; it = it->next) {
+        const SV library = resolve_str_token(it->token, c->context.arena);
+        da_push(&c->link_flags, "-l");
+        da_push(&c->link_flags, library.data);
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -1348,6 +1360,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
+        if (var->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (var->kind == NODE_VAR_GLOBAL) {
             if (var->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1357,7 +1373,7 @@ static void check_stmt(Compiler *c, Node *n) {
             var->check_status = CHECK_STATUS_DOING;
         }
 
-        if (var->type) {
+        if (var->type && var->type->type.kind == TYPE_UNIT) {
             check_type(c, var->type, true);
             n->type = var->type->type;
         }
@@ -1405,6 +1421,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_TYPE: {
         NodeType *type = (NodeType *) n;
+        if (type->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!type->local) {
             if (type->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1425,6 +1445,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_CONST: {
         NodeConst *constt = (NodeConst *) n;
+        if (constt->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!constt->local) {
             if (constt->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1455,6 +1479,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
+        if (structt->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!structt->local) {
             if (structt->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1496,11 +1524,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
         c->context.in_extern = false;
 
-        for (Node *it = externn->libraries.head; it; it = it->next) {
-            const SV library = resolve_str_token(it->token, c->context.arena);
-            da_push(&c->link_flags, "-l");
-            da_push(&c->link_flags, library.data);
-        }
+        collect_extern_libraries(c, externn);
     } break;
 
     case NODE_PRINT: {
@@ -1513,40 +1537,6 @@ static void check_stmt(Compiler *c, Node *n) {
         check_expr(c, n, REF_NONE);
         break;
     }
-}
-
-static void check_fn(Compiler *c, Node *n) {
-    NodeFn *fn = (NodeFn *) n;
-    if (fn->local) {
-        da_push(&c->context.locals, n);
-    }
-    n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
-
-    const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
-    for (Node *it = fn->args.head; it; it = it->next) {
-        if (fn->local && it->token.kind == TOKEN_IDENT) {
-            const Node *previous = nodes_find(fn->args, it->token.sv, it);
-            if (previous) {
-                error_redefinition(it, previous, "argument");
-            }
-        }
-
-        check_stmt(c, it);
-    }
-
-    if (fn->local) {
-        check_type(c, fn->ret, true);
-    }
-
-    if (fn->body) {
-        check_stmt(c, fn->body);
-        if (fn->ret && !always_returns(fn->body)) {
-            error_full(ERROR, fn->body->token.pos, "Expected return statement");
-            exit(1);
-        }
-    }
-
-    context_fn_end(&c->context, context_fn_save);
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -1636,13 +1626,52 @@ static void check_toplevel(Compiler *c, Node *n) {
             check_toplevel(c, it);
         }
 
-        check_stmt(c, n);
+        collect_extern_libraries(c, externn);
     } break;
 
     default:
         check_stmt(c, n);
         break;
     }
+}
+
+static void check_fn(Compiler *c, Node *n) {
+    if (c->context.checking_toplevels) {
+        check_toplevel(c, n);
+        return;
+    }
+
+    NodeFn *fn = (NodeFn *) n;
+    if (fn->local) {
+        da_push(&c->context.locals, n);
+    }
+    n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
+
+    const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
+    for (Node *it = fn->args.head; it; it = it->next) {
+        if (fn->local && it->token.kind == TOKEN_IDENT) {
+            const Node *previous = nodes_find(fn->args, it->token.sv, it);
+            if (previous) {
+                error_redefinition(it, previous, "argument");
+            }
+        }
+
+        check_stmt(c, it);
+    }
+
+    if (fn->local) {
+        check_type(c, fn->ret, true);
+    }
+
+    if (fn->body) {
+        check_stmt(c, fn->body);
+        if (fn->ret && !always_returns(fn->body)) {
+            error_full(ERROR, fn->body->token.pos, "Expected return statement");
+            exit(1);
+        }
+    }
+
+    context_fn_end(&c->context, context_fn_save);
 }
 
 void check_packages(Compiler *c, Packages ps) {
@@ -1658,11 +1687,15 @@ void check_packages(Compiler *c, Packages ps) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             define_toplevel(c, it);
         }
+    }
 
+    c->context.checking_toplevels = true;
+    for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             check_toplevel(c, it);
         }
     }
+    c->context.checking_toplevels = false;
 
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {

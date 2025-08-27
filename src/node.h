@@ -4,7 +4,8 @@
 #include "qbe.h"
 #include "token.h"
 
-typedef struct Node Node;
+typedef struct Node    Node;
+typedef struct Package Package;
 
 typedef struct {
     Node *head;
@@ -120,8 +121,9 @@ struct Node {
 };
 
 typedef struct {
-    Node  node;
-    Node *definition;
+    Node     node;
+    Node    *definition;
+    Package *package;
 } NodeAtom;
 
 typedef struct {
