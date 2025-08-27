@@ -123,7 +123,13 @@ int main(int argc, char **argv) {
         parser.cwd = sv_from_cstr(input);
     }
 
-    if (!parse_dir(&parser, input) && !parse_file(&parser, input)) {
+    ParseDirError pde = parse_dir(&parser, input);
+    if (pde == PDE_EMPTY) {
+        error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
+        exit(1);
+    }
+
+    if (pde == PDE_FAILED && !parse_file(&parser, input)) {
         error_standalone(ERROR, "Could not read '%s'", input);
         exit(1);
     }

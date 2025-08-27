@@ -169,7 +169,6 @@ static Node *parse_type(Parser *p) {
 
     switch (token.kind) {
     case TOKEN_IDENT: {
-        // TODO: Packages
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
         node = (Node *) atom;
@@ -879,8 +878,15 @@ static Node *parse_stmt(Parser *p) {
         imports_push(&p->packages->current->imports, import);
 
         packages_push(p->packages, package);
-        if (!parse_dir(p, path)) {
+
+        ParseDirError pde = parse_dir(p, path);
+        if (pde == PDE_FAILED) {
             error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            exit(1);
+        }
+
+        if (pde == PDE_EMPTY) {
+            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
             exit(1);
         }
 
@@ -1002,13 +1008,14 @@ bool parse_file(Parser *p, const char *path) {
     return true;
 }
 
-bool parse_dir(Parser *p, const char *path) {
+ParseDirError parse_dir(Parser *p, const char *path) {
     assert(p->arena);
 
     const size_t start = p->paths.count;
     if (!read_dir(&p->paths, path, sv_from_cstr(".glos"), p->arena)) {
-        return false;
+        return PDE_FAILED;
     }
+    bool empty = true;
 
     const Lexer lexer_save = p->lexer;
     for (size_t i = start; i < p->paths.count; i++) {
@@ -1017,15 +1024,18 @@ bool parse_dir(Parser *p, const char *path) {
             continue;
         }
 
+        empty = false;
         if (!parse_file(p, it)) {
             error_standalone(ERROR, "Could not read file '%s'", it);
             exit(1);
         }
     }
 
-    // TODO: Check if no .glos files in dir
-
     p->paths.count = start;
     p->lexer = lexer_save;
-    return true;
+
+    if (empty) {
+        return PDE_EMPTY;
+    }
+    return PDE_NONE;
 }
