@@ -1052,8 +1052,8 @@ static void compile_stmt(Compiler *c, Node *n) {
             var->qbe = qbe_atom_extern(c->qbe, link_as, qbe_type_basic(QBE_TYPE_I64));
         } else if (var->kind == NODE_VAR_GLOBAL || var->is_static) {
             var->qbe = qbe_var_new(c->qbe, link_as, n->type.qbe, NULL);
-            if (var->kind != NODE_VAR_GLOBAL) {
-                da_push(&c->context.globals, n);
+            if (var->kind != NODE_VAR_GLOBAL && var->expr) {
+                da_push(&c->context.statics, n);
             }
         } else {
             var->qbe = qbe_fn_add_var(c->qbe, c->fn, n->type.qbe);
@@ -1097,7 +1097,10 @@ static void compile_stmt(Compiler *c, Node *n) {
 }
 
 static NodeFn *get_main(Context *c) {
-    Node *main = scope_find(c->globals, sv_from_cstr("main"), false);
+    Package *package = packages_find_by_name(*c->packages, sv_from_cstr("main"));
+    assert(package);
+
+    Node *main = scope_find(package->globals, sv_from_cstr("main"), false);
     if (!main) {
         error_full(
             ERROR,
@@ -1143,26 +1146,37 @@ void compiler_init(Compiler *c) {
     c->slice_type = qbe_type_struct(slice_struct);
 }
 
+static void compile_global_var_assignment(Compiler *c, Node *n) {
+    if (n->kind == NODE_VAR) {
+        NodeVar *var = (NodeVar *) n;
+        if (var->expr) {
+            qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
+        }
+    }
+}
+
 void compiler_build(Compiler *c, const char *object_file_path) {
     assert(c->context.arena);
 
     NodeFn *main = get_main(&c->context);
-    for (size_t i = 0; i < c->context.globals.count; i++) {
-        compile_stmt(c, c->context.globals.data[i]);
+    for (Package *p = c->context.packages->head; p; p = p->next) {
+        for (size_t i = 0; i < p->globals.count; i++) {
+            compile_stmt(c, p->globals.data[i]);
+        }
     }
 
     // Entry
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
     qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
 
-    for (size_t i = 0; i < c->context.globals.count; i++) {
-        Node *it = c->context.globals.data[i];
-        if (it->kind == NODE_VAR) {
-            NodeVar *var = (NodeVar *) it;
-            if (var->expr) {
-                qbe_build_store(c->qbe, c->fn, var->qbe, compile_expr(c, var->expr, false));
-            }
+    for (Package *p = c->context.packages->head; p; p = p->next) {
+        for (size_t i = 0; i < p->globals.count; i++) {
+            compile_global_var_assignment(c, p->globals.data[i]);
         }
+    }
+
+    for (size_t i = 0; i < c->context.statics.count; i++) {
+        compile_global_var_assignment(c, c->context.statics.data[i]);
     }
 
     qbe_build_call(c->qbe, c->fn, qbe_call_new(c->qbe, main->qbe, qbe_type_basic(QBE_TYPE_I32)));

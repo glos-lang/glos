@@ -10,13 +10,14 @@ typedef struct {
     size_t  base;
 } ContextFn;
 
+// TODO: Remove this artificial construct and spill into Compiler
 typedef struct {
-    Arena *arena;
-
-    Scope locals;
-    Scope globals; // TODO: Move into Package
+    Arena    *arena;
+    Packages *packages;
 
     ContextFn fn;
+    Scope     locals;
+    Scope     statics;
 
     bool in_extern;
     bool checking_toplevels;

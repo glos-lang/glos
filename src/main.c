@@ -45,9 +45,14 @@ static const char *path_last(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    int      result = 0;
-    Arena    arena = {0};
-    Compiler c = {.context.arena = &arena};
+    int   result = 0;
+    Arena arena = {0};
+
+    Packages packages = {0};
+    Compiler compiler = {
+        .context.arena = &arena,
+        .context.packages = &packages,
+    };
 
     bool        run = false;
     const char *cc = "cc";
@@ -75,16 +80,16 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, "Library path");
                 }
 
-                da_push(&c.link_flags, "-L");
-                da_push(&c.link_flags, value);
+                da_push(&compiler.link_flags, "-L");
+                da_push(&compiler.link_flags, value);
             } else if (arg[1] == 'l') {
                 const char *value = &arg[2];
                 if (*value == '\0') {
                     value = shift(&argc, &argv, "Library name");
                 }
 
-                da_push(&c.link_flags, "-l");
-                da_push(&c.link_flags, value);
+                da_push(&compiler.link_flags, "-l");
+                da_push(&compiler.link_flags, value);
             } else {
                 error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
@@ -106,20 +111,21 @@ int main(int argc, char **argv) {
         input = ".";
     }
 
-    Parser  p = {.arena = &arena};
     Package package = {
         .path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
-    packages_push(&p.packages, &package);
 
-    if (!parse_dir(&p, input) && !parse_file(&p, input)) {
+    packages_push(&packages, &package);
+
+    Parser parser = {.arena = &arena, .packages = &packages};
+    if (!parse_dir(&parser, input) && !parse_file(&parser, input)) {
         error_standalone(ERROR, "Could not read '%s'", input);
         exit(1);
     }
 
-    compiler_init(&c);
-    check_packages(&c, p.packages);
+    compiler_init(&compiler);
+    check_packages(&compiler, packages);
 
     Cmd  cmd = {0};
     bool remove_after = false;
@@ -164,9 +170,9 @@ int main(int argc, char **argv) {
     da_push(&cmd, "-o");
     da_push(&cmd, output);
     da_push(&cmd, object_file_path);
-    da_push_many(&cmd, c.link_flags.data, c.link_flags.count);
+    da_push_many(&cmd, compiler.link_flags.data, compiler.link_flags.count);
 
-    compiler_build(&c, object_file_path);
+    compiler_build(&compiler, object_file_path);
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
         remove(object_file_path);
         error_standalone(ERROR, "Could not generate '%s'", output);
@@ -184,7 +190,8 @@ int main(int argc, char **argv) {
         }
     }
 
-    parser_free(&p);
+    parser_free(&parser);
+    packages_free(&packages);
     arena_free(&arena);
     da_free(&cmd);
     return result;

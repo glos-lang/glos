@@ -220,6 +220,7 @@ typedef struct {
     Node *link;
     bool  local;
 
+    Package    *package;
     CheckStatus check_status;
 
     QbeNode *qbe;
@@ -243,6 +244,7 @@ typedef struct {
     bool is_extern;
     bool is_static;
 
+    Package    *package;
     NodeVarKind kind;
     CheckStatus check_status;
 
@@ -257,6 +259,7 @@ typedef struct {
 
     bool local;
 
+    Package    *package;
     CheckStatus check_status;
 } NodeType;
 
@@ -267,6 +270,7 @@ typedef struct {
     Node *type;
     bool  local;
 
+    Package    *package;
     ConstValue  value;
     CheckStatus check_status;
 
@@ -284,6 +288,7 @@ typedef struct {
     Nodes fields;
     bool  local;
 
+    Package    *package;
     CheckStatus check_status;
 
     QbeStruct *qbe;

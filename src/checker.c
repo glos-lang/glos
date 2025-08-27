@@ -207,7 +207,7 @@ static void error_undefined(const Node *n, const char *label) {
     exit(1);
 }
 
-static Node *ident_find(const Context *c, SV name, bool is_type) {
+static Node *ident_find(const Context *c, Package *package, SV name, bool is_type) {
     if (c->fn.fn) {
         Node *n = context_fn_find(c->fn, c->locals, name, is_type);
         if (n) {
@@ -215,7 +215,7 @@ static Node *ident_find(const Context *c, SV name, bool is_type) {
         }
     }
 
-    return scope_find(c->globals, name, is_type);
+    return scope_find(package->globals, name, is_type);
 }
 
 static Node *nodes_find(Nodes ns, SV name, Node *until) {
@@ -271,7 +271,9 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv, false);
+            // TODO: We don't support namespaced access in constant expressions yet
+            //       So just check in its own package
+            atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -636,7 +638,10 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            Node *definition = ident_find(&c->context, n->token.sv, true);
+            NodeAtom *atom = (NodeAtom *) n;
+
+            // TODO: Access packages in types
+            Node *definition = ident_find(&c->context, atom->package, n->token.sv, true);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -750,7 +755,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             break;
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv, false);
+            atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -1540,42 +1545,68 @@ static void check_stmt(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void define_toplevel(Compiler *c, Node *n) {
+static void define_toplevel(Node *n) {
     switch (n->kind) {
-    case NODE_FN:
-    case NODE_VAR:
-    case NODE_CONST: {
-        const Node *previous = scope_find(c->context.globals, n->token.sv, false);
+    case NODE_FN: {
+        Package *package = ((NodeFn *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
 
-        da_push(&c->context.globals, n);
+        da_push(&package->globals, n);
+    } break;
+
+    case NODE_VAR: {
+        Package *package = ((NodeVar *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        if (previous) {
+            error_redefinition(n, previous, "identifier");
+        }
+
+        da_push(&package->globals, n);
+    } break;
+
+    case NODE_CONST: {
+        Package *package = ((NodeConst *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        if (previous) {
+            error_redefinition(n, previous, "identifier");
+        }
+
+        da_push(&package->globals, n);
     } break;
 
     case NODE_TYPE: {
-        const Node *previous = scope_find(c->context.globals, n->token.sv, true);
+        Package *package = ((NodeType *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
-        da_push(&c->context.globals, n);
+        da_push(&package->globals, n);
     } break;
 
     case NODE_STRUCT: {
-        const Node *previous = scope_find(c->context.globals, n->token.sv, true);
+        Package *package = ((NodeStruct *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
-        da_push(&c->context.globals, n);
+        da_push(&package->globals, n);
     } break;
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            define_toplevel(c, it);
+            define_toplevel(it);
         }
     } break;
 
@@ -1685,7 +1716,7 @@ void check_packages(Compiler *c, Packages ps) {
 
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
-            define_toplevel(c, it);
+            define_toplevel(it);
         }
     }
 

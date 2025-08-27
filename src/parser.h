@@ -5,8 +5,8 @@
 #include "package.h"
 
 typedef struct {
-    Arena   *arena;
-    Packages packages;
+    Arena    *arena;
+    Packages *packages;
 
     Lexer lexer;
 

@@ -35,3 +35,23 @@ void packages_push(Packages *ps, Package *p) {
 
     ps->current = p;
 }
+
+Package *packages_find_by_name(Packages ps, SV name) {
+    for (Package *it = ps.head; it; it = it->next) {
+        if (sv_eq(it->name.sv, name)) {
+            return it;
+        }
+    }
+
+    return NULL;
+}
+
+Package *packages_find_by_path(Packages ps, SV path) {
+    for (Package *it = ps.head; it; it = it->next) {
+        if (sv_eq(it->path, path)) {
+            return it;
+        }
+    }
+
+    return NULL;
+}

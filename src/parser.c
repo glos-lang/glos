@@ -25,29 +25,8 @@ static Import *imports_find(Imports is, Package *p) {
     return NULL;
 }
 
-static Package *packages_find_by_path(Parser *p, SV path) {
-    for (Package *it = p->packages.head; it; it = it->next) {
-        if (sv_eq(it->path, path)) {
-            return it;
-        }
-    }
-
-    return NULL;
-}
-
-static Package *packages_find_by_name(Parser *p, SV name) {
-    for (Package *it = p->packages.head; it; it = it->next) {
-        if (sv_eq(it->name.sv, name)) {
-            return it;
-        }
-    }
-
-    return NULL;
-}
-
 void parser_free(Parser *p) {
     da_free(&p->paths);
-    packages_free(&p->packages);
 }
 
 typedef enum {
@@ -189,9 +168,11 @@ static Node *parse_type(Parser *p) {
     Token token = lexer_next(&p->lexer);
 
     switch (token.kind) {
-    case TOKEN_IDENT:
-        node = node_alloc(p, NODE_ATOM, token);
-        break;
+    case TOKEN_IDENT: {
+        NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
+        atom->package = p->packages->current;
+        node = (Node *) atom;
+    } break;
 
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
@@ -390,9 +371,14 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_STR:
     case TOKEN_BOOL:
     case TOKEN_CHAR:
-    case TOKEN_IDENT:
         node = node_alloc(p, NODE_ATOM, token);
         break;
+
+    case TOKEN_IDENT: {
+        NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
+        atom->package = p->packages->current;
+        node = (Node *) atom;
+    } break;
 
     case TOKEN_MUL: {
         if (flags & PF_CONSTANT_EXPR) {
@@ -732,6 +718,7 @@ static Node *parse_stmt(Parser *p) {
             var->kind = NODE_VAR_GLOBAL;
         }
 
+        var->package = p->packages->current;
         node = (Node *) var;
     } break;
 
@@ -739,6 +726,7 @@ static Node *parse_stmt(Parser *p) {
         NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
         type->local = p->local;
         type->definition = parse_type(p);
+        type->package = p->packages->current;
         node = (Node *) type;
     } break;
 
@@ -752,6 +740,7 @@ static Node *parse_stmt(Parser *p) {
 
         constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED | PF_CONSTANT_EXPR);
         constt->local = p->local;
+        constt->package = p->packages->current;
         node = (Node *) constt;
     } break;
 
@@ -773,6 +762,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        structt->package = p->packages->current;
         node = (Node *) structt;
     } break;
 
@@ -855,26 +845,26 @@ static Node *parse_stmt(Parser *p) {
         }
         path_sv = sv_from_cstr(path);
 
-        Package *previous = packages_find_by_path(p, path_sv);
+        Package *previous = packages_find_by_path(*p->packages, path_sv);
         if (previous) {
-            if (!imports_find(p->packages.current->imports, previous)) {
+            if (!imports_find(p->packages->current->imports, previous)) {
                 Import *import = arena_alloc(p->arena, sizeof(*import));
                 import->as = previous->name.sv;
                 import->package = previous;
-                imports_push(&p->packages.current->imports, import);
+                imports_push(&p->packages->current->imports, import);
             }
 
             return NULL;
         }
 
-        Package *packages_current_save = p->packages.current;
-        Package *package = arena_alloc(p->arena, sizeof(*p->packages.current));
+        Package *packages_current_save = p->packages->current;
+        Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         import->package = package;
-        imports_push(&p->packages.current->imports, import);
+        imports_push(&p->packages->current->imports, import);
 
-        packages_push(&p->packages, package);
+        packages_push(p->packages, package);
         if (!parse_dir(p, path)) {
             error_full(ERROR, token.pos, "Could not import package '%s'", path);
             exit(1);
@@ -884,7 +874,7 @@ static Node *parse_stmt(Parser *p) {
             import->as = package->name.sv;
         }
 
-        p->packages.current = packages_current_save;
+        p->packages->current = packages_current_save;
     } break;
 
     case TOKEN_PRINT: {
@@ -940,6 +930,7 @@ static Node *parse_fn(Parser *p, Token token) {
     }
 
     p->local = local_save;
+    fn->package = p->packages->current;
     return (Node *) fn;
 }
 
@@ -952,10 +943,10 @@ bool parse_file(Parser *p, const char *path) {
     lexer_expect(&p->lexer, TOKEN_PACKAGE);
     const Token name = lexer_expect(&p->lexer, TOKEN_IDENT);
 
-    Package *package = p->packages.current;
+    Package *package = p->packages->current;
     if (!sv_eq(name.sv, package->name.sv)) {
         if (!package->name.sv.count) {
-            Package *previous = packages_find_by_name(p, name.sv);
+            Package *previous = packages_find_by_name(*p->packages, name.sv);
             if (previous) {
                 error_full(ERROR, name.pos, "Redefinition of package '" SVFmt "'", SVArg(name.sv));
                 fprintf(stderr, "\n");

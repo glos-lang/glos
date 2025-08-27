@@ -45,4 +45,7 @@ typedef struct {
 void packages_free(Packages *ps);
 void packages_push(Packages *ps, Package *p);
 
+Package *packages_find_by_name(Packages ps, SV name);
+Package *packages_find_by_path(Packages ps, SV name);
+
 #endif // PACKAGE_H
