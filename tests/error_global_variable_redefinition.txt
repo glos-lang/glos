@@ -2,13 +2,13 @@ EXIT 1
 STDOUT 0
 
 STDERR 214
-error_global_variable_redefinition.glos:2:5: ERROR: Redefinition of identifier 'x'
+error_global_variable_redefinition.glos:4:5: ERROR: Redefinition of identifier 'x'
 
-    2 | var x i64
+    4 | var x i64
       |     ^
 
-error_global_variable_redefinition.glos:1:5: NOTE: Defined here
+error_global_variable_redefinition.glos:3:5: NOTE: Defined here
 
-    1 | var x i64
+    3 | var x i64
       |     ^
 

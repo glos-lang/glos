@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     var a = <u64> 1
     var b = <u64> 0

@@ -5,5 +5,5 @@ STDOUT 6
 6
 
 STDERR 94
-bounds_check_fail_on_range_end.glos:23:18: Range (1..6) is out of bounds in slice of length 5
+bounds_check_fail_on_range_end.glos:25:18: Range (1..6) is out of bounds in slice of length 5
 

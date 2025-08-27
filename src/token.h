@@ -21,6 +21,7 @@ typedef enum {
     TOKEN_COLON,
     TOKEN_COMMA,
     TOKEN_RANGE,
+    TOKEN_SCOPE,
 
     TOKEN_INT,
     TOKEN_STR,
@@ -85,6 +86,9 @@ typedef enum {
     TOKEN_EXTERN,
     TOKEN_STATIC,
 
+    TOKEN_IMPORT,
+    TOKEN_PACKAGE,
+
     TOKEN_LINK,
     TOKEN_PRINT,
     COUNT_TOKENS
@@ -104,5 +108,7 @@ typedef struct {
         size_t integer;
     } as;
 } Token;
+
+SV resolve_str_token(Token token, Arena *a);
 
 #endif // TOKEN_H

@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     print 69
     assert true

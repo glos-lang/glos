@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 118
-error_cannot_index_pointers.glos:3:5: ERROR: Expected slice or array type, got '&i64'
+error_cannot_index_pointers.glos:5:5: ERROR: Expected slice or array type, got '&i64'
 
-    3 |     p[0]
+    5 |     p[0]
       |     ^
 

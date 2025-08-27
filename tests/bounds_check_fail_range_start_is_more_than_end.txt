@@ -2,5 +2,5 @@ EXIT 134
 STDOUT 0
 
 STDERR 114
-bounds_check_fail_range_start_is_more_than_end.glos:3:7: Range (3..2) is invalid: Start of range is more than end
+bounds_check_fail_range_start_is_more_than_end.glos:5:7: Range (3..2) is invalid: Start of range is more than end
 

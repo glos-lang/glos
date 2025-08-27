@@ -207,15 +207,15 @@ static void error_undefined(const Node *n, const char *label) {
     exit(1);
 }
 
-static Node *ident_find(Context *c, SV name) {
+static Node *ident_find(const Context *c, Package *package, SV name, bool is_type) {
     if (c->fn.fn) {
-        Node *n = context_fn_find(c->fn, c->locals, name);
+        Node *n = context_fn_find(c->fn, c->locals, name, is_type);
         if (n) {
             return n;
         }
     }
 
-    return scope_find(c->globals, name);
+    return scope_find(package->globals, name, is_type);
 }
 
 static Node *nodes_find(Nodes ns, SV name, Node *until) {
@@ -238,6 +238,26 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition);
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
+static void resolve_ident_package(Node *n) {
+    assert(n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT);
+
+    NodeAtom *atom = (NodeAtom *) n;
+    if (atom->scope_resolved || !atom->scope.sv.data) {
+        return;
+    }
+    atom->scope_resolved = true;
+
+    for (Import *i = atom->package->imports.head; i; i = i->next) {
+        if (sv_eq(i->as, atom->scope.sv)) {
+            atom->package = i->package;
+            return;
+        }
+    }
+
+    error_full(ERROR, atom->scope.pos, "Package '" SVFmt "' not imported", SVArg(atom->scope.sv));
+    exit(1);
+}
+
 static_assert(COUNT_NODES == 22, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
@@ -252,21 +272,15 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
 
-        case TOKEN_STR: {
-            SV sv = n->token.sv;
-            sv.data += 1;
-            sv.count -= 2;
-            resolve_escape_chars(arena_alloc(c->context.arena, n->token.as.integer), &sv);
-
+        case TOKEN_STR:
             n->type = c->context.str_type;
-            return const_str(sv);
-        }
+            return const_str(resolve_str_token(n->token, c->context.arena));
 
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -277,7 +291,9 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv);
+            resolve_ident_package(n);
+
+            atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -323,7 +339,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -426,7 +442,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -488,7 +504,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -605,9 +621,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 
     ConstValue value = eval_const_expr_impl(c, n);
     if (value.is_string) {
-        char *buffer = arena_alloc(c->context.arena, value.as.sv.count + 1);
-        memcpy(buffer, value.as.sv.data, value.as.sv.count);
-        value.as.sv.data = buffer;
+        value.as.sv.data = arena_clone(c->context.arena, value.as.sv.data, value.as.sv.count);
     }
 
     temp_reset(save);
@@ -644,7 +658,10 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            Node *definition = scope_find(c->context.types, n->token.sv);
+            resolve_ident_package(n);
+
+            NodeAtom *atom = (NodeAtom *) n;
+            Node     *definition = ident_find(&c->context, atom->package, n->token.sv, true);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -736,9 +753,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     bool allow_ref = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        NodeAtom *atom = (NodeAtom *) n;
-
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -757,10 +772,17 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             n->type = (Type) {.kind = TYPE_U8};
             break;
 
-        case TOKEN_IDENT:
-            atom->definition = ident_find(&c->context, n->token.sv);
+        case TOKEN_IDENT: {
+            resolve_ident_package(n);
+
+            NodeAtom *atom = (NodeAtom *) n;
+            atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
+            }
+
+            if (c->context.checking_toplevels) {
+                check_stmt(c, atom->definition);
             }
 
             allow_ref = atom->definition->kind == NODE_VAR;
@@ -779,7 +801,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             n->type = atom->definition->type;
-            break;
+        } break;
 
         default:
             unreachable();
@@ -845,7 +867,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -974,7 +996,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1268,6 +1290,14 @@ static bool always_returns(Node *n) {
     }
 }
 
+static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
+    for (Node *it = externn->libraries.head; it; it = it->next) {
+        const SV library = resolve_str_token(it->token, c->context.arena);
+        da_push(&c->link_flags, "-l");
+        da_push(&c->link_flags, library.data);
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -1328,7 +1358,6 @@ static void check_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
-        const size_t types_count_save = c->context.types.count;
         const size_t locals_count_save = c->context.locals.count;
 
         NodeBlock *block = (NodeBlock *) n;
@@ -1336,7 +1365,6 @@ static void check_stmt(Compiler *c, Node *n) {
             check_stmt(c, it);
         }
 
-        c->context.types.count = types_count_save;
         c->context.locals.count = locals_count_save;
     } break;
 
@@ -1358,6 +1386,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_VAR: {
         NodeVar *var = (NodeVar *) n;
+        if (var->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (var->kind == NODE_VAR_GLOBAL) {
             if (var->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1367,13 +1399,7 @@ static void check_stmt(Compiler *c, Node *n) {
             var->check_status = CHECK_STATUS_DOING;
         }
 
-        if (var->link) {
-            const ConstValue link_as = eval_const_expr(c, var->link);
-            type_assert(c, var->link, c->context.str_type);
-            var->link_as = link_as.as.sv;
-        }
-
-        if (var->type) {
+        if (var->type && var->type->type.kind == TYPE_UNIT) {
             check_type(c, var->type, true);
             n->type = var->type->type;
         }
@@ -1421,6 +1447,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_TYPE: {
         NodeType *type = (NodeType *) n;
+        if (type->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!type->local) {
             if (type->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1435,12 +1465,16 @@ static void check_stmt(Compiler *c, Node *n) {
 
         type->check_status = CHECK_STATUS_DONE;
         if (type->local) {
-            da_push(&c->context.types, n);
+            da_push(&c->context.locals, n);
         }
     } break;
 
     case NODE_CONST: {
         NodeConst *constt = (NodeConst *) n;
+        if (constt->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!constt->local) {
             if (constt->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1471,6 +1505,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
+        if (structt->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (!structt->local) {
             if (structt->check_status == CHECK_STATUS_DOING) {
                 error_full(ERROR, n->token.pos, "Reference loop");
@@ -1500,7 +1538,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
         structt->check_status = CHECK_STATUS_DONE;
         if (structt->local) {
-            da_push(&c->context.types, n);
+            da_push(&c->context.locals, n);
         }
     } break;
 
@@ -1512,13 +1550,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
         c->context.in_extern = false;
 
-        for (Node *it = externn->libraries.head; it; it = it->next) {
-            const ConstValue library = eval_const_expr(c, it);
-            type_assert(c, it, c->context.str_type);
-
-            da_push(&c->link_flags, "-l");
-            da_push(&c->link_flags, library.as.sv.data);
-        }
+        collect_extern_libraries(c, externn);
     } break;
 
     case NODE_PRINT: {
@@ -1533,83 +1565,69 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
-static void check_fn(Compiler *c, Node *n) {
-    NodeFn *fn = (NodeFn *) n;
-    if (fn->link) {
-        const ConstValue link = eval_const_expr(c, fn->link);
-        type_assert(c, fn->link, c->context.str_type);
-        fn->link_as = link.as.sv;
-    }
-
-    if (fn->local) {
-        da_push(&c->context.locals, n);
-    }
-    n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
-
-    const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
-    for (Node *it = fn->args.head; it; it = it->next) {
-        if (fn->local && it->token.kind == TOKEN_IDENT) {
-            const Node *previous = nodes_find(fn->args, it->token.sv, it);
-            if (previous) {
-                error_redefinition(it, previous, "argument");
-            }
-        }
-
-        check_stmt(c, it);
-    }
-
-    if (fn->local) {
-        check_type(c, fn->ret, true);
-    }
-
-    if (fn->body) {
-        check_stmt(c, fn->body);
-        if (fn->ret && !always_returns(fn->body)) {
-            error_full(ERROR, fn->body->token.pos, "Expected return statement");
-            exit(1);
-        }
-    }
-
-    context_fn_end(&c->context, context_fn_save);
-}
-
 static_assert(COUNT_NODES == 22, "");
-static void pre_register_top_level_stmt(Compiler *c, Node *n) {
+static void define_toplevel(Node *n) {
     switch (n->kind) {
-    case NODE_FN:
-    case NODE_VAR:
-    case NODE_CONST: {
-        const Node *previous = scope_find(c->context.globals, n->token.sv);
+    case NODE_FN: {
+        Package *package = ((NodeFn *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
 
-        da_push(&c->context.globals, n);
+        da_push(&package->globals, n);
+    } break;
+
+    case NODE_VAR: {
+        Package *package = ((NodeVar *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        if (previous) {
+            error_redefinition(n, previous, "identifier");
+        }
+
+        da_push(&package->globals, n);
+    } break;
+
+    case NODE_CONST: {
+        Package *package = ((NodeConst *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        if (previous) {
+            error_redefinition(n, previous, "identifier");
+        }
+
+        da_push(&package->globals, n);
     } break;
 
     case NODE_TYPE: {
-        const Node *previous = scope_find(c->context.types, n->token.sv);
+        Package *package = ((NodeType *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
-        da_push(&c->context.types, n);
+        da_push(&package->globals, n);
     } break;
 
     case NODE_STRUCT: {
-        const Node *previous = scope_find(c->context.types, n->token.sv);
+        Package *package = ((NodeStruct *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
-        da_push(&c->context.types, n);
+        da_push(&package->globals, n);
     } break;
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            pre_register_top_level_stmt(c, it);
+            define_toplevel(it);
         }
     } break;
 
@@ -1623,7 +1641,7 @@ static void pre_register_top_level_stmt(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
+static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
@@ -1657,8 +1675,10 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            pre_typecheck_top_level_stmt(c, it);
+            check_toplevel(c, it);
         }
+
+        collect_extern_libraries(c, externn);
     } break;
 
     default:
@@ -1667,26 +1687,73 @@ static void pre_typecheck_top_level_stmt(Compiler *c, Node *n) {
     }
 }
 
-void check_nodes(Compiler *c, Nodes ns) {
+static void check_fn(Compiler *c, Node *n) {
+    if (c->context.checking_toplevels) {
+        check_toplevel(c, n);
+        return;
+    }
+
+    NodeFn *fn = (NodeFn *) n;
+    if (fn->local) {
+        da_push(&c->context.locals, n);
+    }
+    n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
+
+    const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
+    for (Node *it = fn->args.head; it; it = it->next) {
+        if (fn->local && it->token.kind == TOKEN_IDENT) {
+            const Node *previous = nodes_find(fn->args, it->token.sv, it);
+            if (previous) {
+                error_redefinition(it, previous, "argument");
+            }
+        }
+
+        check_stmt(c, it);
+    }
+
+    if (fn->local) {
+        check_type(c, fn->ret, true);
+    }
+
+    if (fn->body) {
+        check_stmt(c, fn->body);
+        if (fn->ret && !always_returns(fn->body)) {
+            error_full(ERROR, fn->body->token.pos, "Expected return statement");
+            exit(1);
+        }
+    }
+
+    context_fn_end(&c->context, context_fn_save);
+}
+
+void check_packages(Compiler *c, Packages ps) {
     assert(c->context.arena);
 
-    if (c->context.str_type.kind != TYPE_SLICE) {
-        const Type u8_type = {.kind = TYPE_U8};
-        c->context.str_type = (Type) {
-            .kind = TYPE_SLICE,
-            .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
-        };
+    const Type u8_type = {.kind = TYPE_U8};
+    c->context.str_type = (Type) {
+        .kind = TYPE_SLICE,
+        .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
+    };
+
+    for (Package *p = ps.head; p; p = p->next) {
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            define_toplevel(it);
+        }
     }
 
-    for (Node *it = ns.head; it; it = it->next) {
-        pre_register_top_level_stmt(c, it);
+    c->context.checking_toplevels = true;
+    for (Package *p = ps.head; p; p = p->next) {
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            check_toplevel(c, it);
+        }
     }
+    c->context.checking_toplevels = false;
 
-    for (Node *it = ns.head; it; it = it->next) {
-        pre_typecheck_top_level_stmt(c, it);
-    }
-
-    for (Node *it = ns.head; it; it = it->next) {
-        check_stmt(c, it);
+    for (Package *p = ps.head; p; p = p->next) {
+        for (Node *it = p->nodes.head; it; it = it->next) {
+            if (it->kind == NODE_FN) {
+                check_stmt(c, it);
+            }
+        }
     }
 }

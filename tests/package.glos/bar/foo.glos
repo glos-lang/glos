@@ -1,0 +1,5 @@
+package bar
+
+fn foo() {
+    print 420
+}

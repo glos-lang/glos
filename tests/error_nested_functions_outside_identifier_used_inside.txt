@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 146
-error_nested_functions_outside_identifier_used_inside.glos:5:15: ERROR: Undefined identifier 'x'
+error_nested_functions_outside_identifier_used_inside.glos:7:15: ERROR: Undefined identifier 'x'
 
-    5 |         print x
+    7 |         print x
       |               ^
 

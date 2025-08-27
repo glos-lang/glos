@@ -2,6 +2,10 @@
 #include "message.h"
 
 static void nodes_push(Nodes *ns, Node *n) {
+    if (!n) {
+        return;
+    }
+
     if (ns->tail) {
         ns->tail->next = n;
         ns->tail = n;
@@ -9,6 +13,20 @@ static void nodes_push(Nodes *ns, Node *n) {
         ns->head = n;
         ns->tail = n;
     }
+}
+
+static Import *imports_find(Imports is, Package *p) {
+    for (Import *it = is.head; it; it = it->next) {
+        if (it->package == p) {
+            return it;
+        }
+    }
+
+    return NULL;
+}
+
+void parser_free(Parser *p) {
+    da_free(&p->paths);
 }
 
 typedef enum {
@@ -24,7 +42,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -122,7 +140,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -144,15 +162,17 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
 
     switch (token.kind) {
-    case TOKEN_IDENT:
-        node = node_alloc(p, NODE_ATOM, token);
-        break;
+    case TOKEN_IDENT: {
+        NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
+        atom->package = p->packages->current;
+        node = (Node *) atom;
+    } break;
 
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
@@ -341,7 +361,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -351,9 +371,20 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_STR:
     case TOKEN_BOOL:
     case TOKEN_CHAR:
-    case TOKEN_IDENT:
         node = node_alloc(p, NODE_ATOM, token);
         break;
+
+    case TOKEN_IDENT: {
+        NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
+        atom->package = p->packages->current;
+
+        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+            atom->scope = atom->node.token;
+            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+        }
+
+        node = (Node *) atom;
+    } break;
 
     case TOKEN_MUL: {
         if (flags & PF_CONSTANT_EXPR) {
@@ -580,7 +611,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -693,6 +724,7 @@ static Node *parse_stmt(Parser *p) {
             var->kind = NODE_VAR_GLOBAL;
         }
 
+        var->package = p->packages->current;
         node = (Node *) var;
     } break;
 
@@ -700,6 +732,7 @@ static Node *parse_stmt(Parser *p) {
         NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
         type->local = p->local;
         type->definition = parse_type(p);
+        type->package = p->packages->current;
         node = (Node *) type;
     } break;
 
@@ -713,6 +746,7 @@ static Node *parse_stmt(Parser *p) {
 
         constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED | PF_CONSTANT_EXPR);
         constt->local = p->local;
+        constt->package = p->packages->current;
         node = (Node *) constt;
     } break;
 
@@ -734,6 +768,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        structt->package = p->packages->current;
         node = (Node *) structt;
     } break;
 
@@ -742,12 +777,16 @@ static Node *parse_stmt(Parser *p) {
         p->in_extern = true;
 
         NodeExtern *externn = node_alloc(p, NODE_EXTERN, token);
-        while (!lexer_read(&p->lexer, TOKEN_LBRACE)) {
-            nodes_push(&externn->libraries, parse_expr(p, POWER_SET, PF_CONSTANT_EXPR));
+
+        token = lexer_expect(&p->lexer, TOKEN_LBRACE, TOKEN_STR);
+        while (token.kind == TOKEN_STR) {
+            nodes_push(&externn->libraries, node_alloc(p, NODE_ATOM, token));
             token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_LBRACE);
             if (token.kind != TOKEN_COMMA) {
                 break;
             }
+
+            token = lexer_expect(&p->lexer, TOKEN_LBRACE, TOKEN_STR);
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
@@ -780,7 +819,7 @@ static Node *parse_stmt(Parser *p) {
             local_assert(p, token, false);
         }
 
-        Node *link = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+        Node *link = node_alloc(p, NODE_ATOM, lexer_expect(&p->lexer, TOKEN_STR));
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR));
 
         node = parse_stmt(p);
@@ -791,6 +830,91 @@ static Node *parse_stmt(Parser *p) {
         } else {
             unreachable();
         }
+    } break;
+
+    case TOKEN_IMPORT: {
+        local_assert(p, token, false);
+        token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT);
+
+        SV as = {0};
+        if (token.kind == TOKEN_IDENT) {
+            as = token.sv;
+            token = lexer_expect(&p->lexer, TOKEN_STR);
+        }
+
+        char *path_start = temp_alloc(0);
+        if (p->cwd.count) {
+            path_start = temp_sprintf(SVFmt "/", SVArg(p->cwd));
+            temp_remove_null();
+        }
+
+        char *path_buffer = temp_alloc(token.as.integer + 1);
+        SV    path_sv = {.data = token.sv.data + 1, .count = token.sv.count - 2};
+
+        resolve_escape_chars(path_buffer, &path_sv);
+        path_buffer[token.as.integer] = '\0';
+
+        const char *path = get_relative_path(path_start, p->arena);
+        temp_reset(path_start);
+
+        if (!strcmp(path, ".")) {
+            error_full(ERROR, token.pos, "Cannot import package 'main'");
+            exit(1);
+        }
+        path_sv = sv_from_cstr(path);
+
+        Package *previous = packages_find_by_path(*p->packages, path_sv);
+        if (previous) {
+            Import *previous_import = imports_find(p->packages->current->imports, previous);
+            if (previous_import) {
+                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(path_sv));
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous_import->pos, "Imported here");
+                exit(1);
+            }
+
+            Import *import = arena_alloc(p->arena, sizeof(*import));
+            if (as.count) {
+                import->as = as;
+            } else {
+                import->as = previous->name.sv;
+            }
+
+            import->pos = token.pos;
+            import->package = previous;
+            imports_push(&p->packages->current->imports, import);
+
+            return NULL;
+        }
+
+        Package *packages_current_save = p->packages->current;
+        Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
+        package->path = path_sv;
+
+        Import *import = arena_alloc(p->arena, sizeof(*import));
+        import->as = as;
+        import->pos = token.pos;
+        import->package = package;
+        imports_push(&p->packages->current->imports, import);
+
+        packages_push(p->packages, package);
+
+        ParseDirError pde = parse_dir(p, path);
+        if (pde == PDE_FAILED) {
+            error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            exit(1);
+        }
+
+        if (pde == PDE_EMPTY) {
+            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
+            exit(1);
+        }
+
+        if (!import->as.count) {
+            import->as = package->name.sv;
+        }
+
+        p->packages->current = packages_current_save;
     } break;
 
     case TOKEN_PRINT: {
@@ -846,19 +970,92 @@ static Node *parse_fn(Parser *p, Token token) {
     }
 
     p->local = local_save;
+    fn->package = p->packages->current;
     return (Node *) fn;
 }
 
-void parse_file(Parser *p, Lexer lexer) {
+bool parse_file(Parser *p, const char *path) {
     assert(p->arena);
+    if (!lexer_open(&p->lexer, path, p->arena)) {
+        return false;
+    }
 
-    p->lexer = lexer;
+    lexer_expect(&p->lexer, TOKEN_PACKAGE);
+    const Token name = lexer_expect(&p->lexer, TOKEN_IDENT);
+
+    Package *package = p->packages->current;
+    if (!sv_eq(name.sv, package->name.sv)) {
+        if (!package->name.sv.count) {
+            Package *previous = packages_find_by_name(*p->packages, name.sv);
+            if (previous) {
+                error_full(ERROR, name.pos, "Redefinition of package '" SVFmt "'", SVArg(name.sv));
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous->name.pos, "Defined here: " SVFmt, SVArg(package->name.sv));
+                exit(1);
+            }
+
+            package->name = name;
+        } else {
+            error_full(
+                ERROR,
+                name.pos,
+                "Expected package '" SVFmt "', got '" SVFmt "'",
+                SVArg(package->name.sv),
+                SVArg(name.sv));
+
+            if (package->name.pos.path) {
+                fprintf(stderr, "\n");
+                error_full(NOTE, package->name.pos, "Package first set here");
+            }
+
+            exit(1);
+        }
+    }
+
+    if (!package->name.pos.path) {
+        package->name.pos = name.pos;
+    }
+
     while (true) {
         consume(p, TOKEN_EOL);
         if (lexer_read(&p->lexer, TOKEN_EOF)) {
             break;
         }
 
-        nodes_push(&p->nodes, parse_stmt(p));
+        nodes_push(&package->nodes, parse_stmt(p));
     }
+
+    return true;
+}
+
+ParseDirError parse_dir(Parser *p, const char *path) {
+    assert(p->arena);
+
+    const size_t start = p->paths.count;
+    if (!read_dir(&p->paths, path, sv_from_cstr(".glos"), p->arena)) {
+        return PDE_FAILED;
+    }
+    bool empty = true;
+
+    const Lexer lexer_save = p->lexer;
+    for (size_t i = start; i < p->paths.count; i++) {
+        const char *it = p->paths.data[i];
+        if (is_dir(it)) {
+            continue;
+        }
+
+        empty = false;
+        if (!parse_file(p, it)) {
+            error_standalone(ERROR, "Could not read file '%s'", it);
+            exit(1);
+        }
+    }
+
+    p->paths.count = start;
+    p->lexer = lexer_save;
+
+    if (empty) {
+        return PDE_EMPTY;
+    }
+    return PDE_NONE;
 }

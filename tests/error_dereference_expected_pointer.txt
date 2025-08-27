@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 117
-error_dereference_expected_pointer.glos:2:6: ERROR: Expected pointer type, got 'i64'
+error_dereference_expected_pointer.glos:4:6: ERROR: Expected pointer type, got 'i64'
 
-    2 |     *10
+    4 |     *10
       |      ^
 

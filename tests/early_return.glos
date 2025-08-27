@@ -1,3 +1,5 @@
+package main
+
 fn bar() i64 {
     return 69
     print 420

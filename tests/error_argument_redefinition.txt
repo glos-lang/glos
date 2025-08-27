@@ -2,13 +2,13 @@ EXIT 1
 STDOUT 0
 
 STDERR 240
-error_argument_redefinition.glos:1:15: ERROR: Redefinition of argument 'x'
+error_argument_redefinition.glos:3:15: ERROR: Redefinition of argument 'x'
 
-    1 | fn add(x i64, x i64) {}
+    3 | fn add(x i64, x i64) {}
       |               ^
 
-error_argument_redefinition.glos:1:8: NOTE: Defined here
+error_argument_redefinition.glos:3:8: NOTE: Defined here
 
-    1 | fn add(x i64, x i64) {}
+    3 | fn add(x i64, x i64) {}
       |        ^
 

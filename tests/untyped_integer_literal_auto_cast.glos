@@ -1,3 +1,5 @@
+package main
+
 fn a(x i8)  { print x }
 fn b(x i16) { print x }
 fn c(x i32) { print x }

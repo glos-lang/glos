@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     var acc = 42
     print acc

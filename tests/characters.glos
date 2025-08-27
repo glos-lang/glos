@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     fn putc(c u8) {
         extern {

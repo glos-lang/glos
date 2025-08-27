@@ -79,6 +79,7 @@ typedef struct {
 
 bool sv_eq(SV a, SV b);
 bool sv_match(SV a, const char *b);
+bool sv_has_prefix(SV a, SV b);
 bool sv_has_suffix(SV a, SV b);
 
 SV sv_from_cstr(const char *cstr);
@@ -113,9 +114,22 @@ void *arena_alloc(Arena *a, size_t size);
 void *arena_clone(Arena *a, const void *data, size_t size);
 char *arena_sprintf(Arena *a, const char *fmt, ...) PrintfLike(2);
 
-// OS
+// FS
+const char *get_relative_path(const char *path, Arena *arena);
+const char *get_absolute_path(const char *path, Arena *arena);
+
 bool read_file(SV *out, const char *path, Arena *arena);
 
+typedef struct {
+    const char **data;
+    size_t       count;
+    size_t       capacity;
+} Paths;
+
+bool is_dir(const char *path);
+bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena);
+
+// OS
 typedef struct {
     const char **data;
     size_t       count;

@@ -1,2 +1,4 @@
+package main
+
 var x i64
 var x i64

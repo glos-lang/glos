@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 141
-error_expected_slice_range_end_type_integer.glos:3:11: ERROR: Expected integer type, got 'bool'
+error_expected_slice_range_end_type_integer.glos:5:11: ERROR: Expected integer type, got 'bool'
 
-    3 |     xs[0..true]
+    5 |     xs[0..true]
       |           ^
 

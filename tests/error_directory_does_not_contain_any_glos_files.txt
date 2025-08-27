@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 172
+error_directory_does_not_contain_any_glos_files.glos:3:8: ERROR: Directory 'empty_package' does not contain any glos files
+
+    3 | import "empty_package"
+      |        ^
+

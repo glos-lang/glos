@@ -1,3 +1,5 @@
+package main
+
 fn f() {
     var x = 69
     var p = &x

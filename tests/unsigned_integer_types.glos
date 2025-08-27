@@ -1,3 +1,5 @@
+package main
+
 fn main() {
     var a = <u8> 69
     var b = <u16> 420

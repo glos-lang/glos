@@ -14,7 +14,7 @@ static void usage(FILE *file) {
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Usage:\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_GREEN, "    glos");
-    fprintf(file, " [FLAGS...] FILE\n\n");
+    fprintf(file, " [FLAGS...] [FILE|DIR]\n\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
     usage_flag(file, "h ", "           Show this message");
@@ -36,10 +36,23 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
     return *(*argv)++;
 }
 
+static const char *path_last(const char *path) {
+    const char *last = path + strlen(path) - 1;
+    while (last > path && last[-1] != '/') {
+        last--;
+    }
+    return last;
+}
+
 int main(int argc, char **argv) {
-    int      result = 0;
-    Arena    arena = {0};
-    Compiler c = {.context.arena = &arena};
+    int   result = 0;
+    Arena arena = {0};
+
+    Packages packages = {0};
+    Compiler compiler = {
+        .context.arena = &arena,
+        .context.packages = &packages,
+    };
 
     bool        run = false;
     const char *cc = "cc";
@@ -47,7 +60,7 @@ int main(int argc, char **argv) {
     const char *output = NULL;
 
     shift(&argc, &argv, "Program name");
-    while (!input || argc) {
+    while (argc) {
         const char *arg = shift(&argc, &argv, "Input file");
         if (arg[0] == '-') {
             if (!strcmp(arg, "-h")) {
@@ -67,16 +80,16 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, "Library path");
                 }
 
-                da_push(&c.link_flags, "-L");
-                da_push(&c.link_flags, value);
+                da_push(&compiler.link_flags, "-L");
+                da_push(&compiler.link_flags, value);
             } else if (arg[1] == 'l') {
                 const char *value = &arg[2];
                 if (*value == '\0') {
                     value = shift(&argc, &argv, "Library name");
                 }
 
-                da_push(&c.link_flags, "-l");
-                da_push(&c.link_flags, value);
+                da_push(&compiler.link_flags, "-l");
+                da_push(&compiler.link_flags, value);
             } else {
                 error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
@@ -92,17 +105,37 @@ int main(int argc, char **argv) {
         }
     }
 
-    Lexer l = {0};
-    if (!lexer_open(&l, input, &arena)) {
-        error_standalone(ERROR, "Could not read file '%s'", input);
+    if (input) {
+        input = get_relative_path(input, &arena);
+    } else {
+        input = ".";
+    }
+
+    Package package = {
+        .path = sv_from_cstr(input),
+        .name.sv = sv_from_cstr("main"),
+    };
+
+    packages_push(&packages, &package);
+
+    Parser parser = {.arena = &arena, .packages = &packages};
+    if (is_dir(input)) {
+        parser.cwd = sv_from_cstr(input);
+    }
+
+    ParseDirError pde = parse_dir(&parser, input);
+    if (pde == PDE_EMPTY) {
+        error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
         exit(1);
     }
 
-    Parser p = {.arena = &arena};
-    parse_file(&p, l);
+    if (pde == PDE_FAILED && !parse_file(&parser, input)) {
+        error_standalone(ERROR, "Could not read '%s'", input);
+        exit(1);
+    }
 
-    compiler_init(&c);
-    check_nodes(&c, p.nodes);
+    compiler_init(&compiler);
+    check_packages(&compiler, packages);
 
     Cmd  cmd = {0};
     bool remove_after = false;
@@ -128,8 +161,17 @@ int main(int argc, char **argv) {
         }
     } else {
         if (!output) {
-            output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+            if (is_dir(input)) {
+                output = path_last(get_absolute_path(input, &arena));
+            } else {
+                output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(path_last(input)), sv_from_cstr(".glos")));
+            }
         }
+    }
+
+    if (is_dir(output)) {
+        error_standalone(ERROR, "The output path '%s' exists and is a directory", output);
+        exit(1);
     }
 
     const char *object_file_path = temp_sprintf("%s.o", output);
@@ -138,10 +180,11 @@ int main(int argc, char **argv) {
     da_push(&cmd, "-o");
     da_push(&cmd, output);
     da_push(&cmd, object_file_path);
-    da_push_many(&cmd, c.link_flags.data, c.link_flags.count);
+    da_push_many(&cmd, compiler.link_flags.data, compiler.link_flags.count);
 
-    compiler_build(&c, object_file_path);
+    compiler_build(&compiler, object_file_path);
     if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
+        remove(object_file_path);
         error_standalone(ERROR, "Could not generate '%s'", output);
         exit(1);
     }
@@ -157,6 +200,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    parser_free(&parser);
+    packages_free(&packages);
     arena_free(&arena);
     da_free(&cmd);
     return result;

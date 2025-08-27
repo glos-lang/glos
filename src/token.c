@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 63, "");
 const char *token_kind_to_cstr(TokenKind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -20,6 +20,9 @@ const char *token_kind_to_cstr(TokenKind kind) {
 
     case TOKEN_RANGE:
         return "'..'";
+
+    case TOKEN_SCOPE:
+        return "'::'";
 
     case TOKEN_INT:
         return "integer";
@@ -177,6 +180,12 @@ const char *token_kind_to_cstr(TokenKind kind) {
     case TOKEN_STATIC:
         return "'static'";
 
+    case TOKEN_IMPORT:
+        return "'import'";
+
+    case TOKEN_PACKAGE:
+        return "'package'";
+
     case TOKEN_LINK:
         return "'#link'";
 
@@ -186,4 +195,12 @@ const char *token_kind_to_cstr(TokenKind kind) {
     default:
         unreachable();
     }
+}
+
+SV resolve_str_token(Token token, Arena *a) {
+    SV sv = token.sv;
+    sv.data += 1;
+    sv.count -= 2;
+    resolve_escape_chars(arena_alloc(a, token.as.integer), &sv);
+    return sv;
 }

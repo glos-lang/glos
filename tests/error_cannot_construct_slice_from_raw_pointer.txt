@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 180
-error_cannot_construct_slice_from_raw_pointer.glos:3:17: ERROR: Expected typed pointer or slice or array, got 'rawptr'
+error_cannot_construct_slice_from_raw_pointer.glos:5:17: ERROR: Expected typed pointer or slice or array, got 'rawptr'
 
-    3 |     var slice = xs[0..10]
+    5 |     var slice = xs[0..10]
       |                 ^
 

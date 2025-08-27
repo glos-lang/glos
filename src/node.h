@@ -4,7 +4,8 @@
 #include "qbe.h"
 #include "token.h"
 
-typedef struct Node Node;
+typedef struct Node    Node;
+typedef struct Package Package;
 
 typedef struct {
     Node *head;
@@ -122,6 +123,11 @@ struct Node {
 typedef struct {
     Node  node;
     Node *definition;
+
+    Token scope;
+    bool  scope_resolved;
+
+    Package *package;
 } NodeAtom;
 
 typedef struct {
@@ -215,12 +221,11 @@ typedef struct {
 
     Node *ret;
     Node *body;
+    Node *link;
     bool  local;
 
+    Package    *package;
     CheckStatus check_status;
-
-    Node *link;
-    SV    link_as;
 
     QbeNode *qbe;
 } NodeFn;
@@ -238,15 +243,14 @@ typedef struct {
 
     Node *expr;
     Node *type;
+    Node *link;
 
     bool is_extern;
     bool is_static;
 
+    Package    *package;
     NodeVarKind kind;
     CheckStatus check_status;
-
-    Node *link;
-    SV    link_as;
 
     QbeNode *qbe;
 } NodeVar;
@@ -259,6 +263,7 @@ typedef struct {
 
     bool local;
 
+    Package    *package;
     CheckStatus check_status;
 } NodeType;
 
@@ -269,6 +274,7 @@ typedef struct {
     Node *type;
     bool  local;
 
+    Package    *package;
     ConstValue  value;
     CheckStatus check_status;
 
@@ -286,6 +292,7 @@ typedef struct {
     Nodes fields;
     bool  local;
 
+    Package    *package;
     CheckStatus check_status;
 
     QbeStruct *qbe;

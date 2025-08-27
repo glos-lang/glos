@@ -1,0 +1,15 @@
+package main
+
+import "bar"
+import "baz"
+import lmao "lol"
+
+fn main() {
+    foo()
+    bar::foo()
+    baz::foo()
+
+    print bar::bar
+    print baz::baz
+    print lmao::lmao
+}

@@ -51,36 +51,6 @@ static bool parse_uint_from_sv(SV s, size_t *n) {
 }
 
 typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-} Paths;
-
-static int compare_cstrings(const void *a, const void *b) {
-    const char *str1 = *(const char **) a;
-    const char *str2 = *(const char **) b;
-    return strcmp(str1, str2);
-}
-
-static bool load_glos_file_paths(Paths *p) {
-    DIR *d = opendir(".");
-    if (!d) {
-        return false;
-    }
-
-    struct dirent *entry = NULL;
-    while ((entry = readdir(d)) != NULL) {
-        if (sv_has_suffix(sv_from_cstr(entry->d_name), sv_from_cstr(".glos"))) {
-            da_push(p, temp_sprintf("%s", entry->d_name));
-        }
-    }
-
-    closedir(d);
-    qsort(p->data, p->count, sizeof(const char *), compare_cstrings);
-    return true;
-}
-
-typedef struct {
     char  *data;
     size_t count;
     size_t capacity;
@@ -312,8 +282,9 @@ int main(int argc, char **argv) {
         }
     }
 
+    Arena arena = {0};
     Paths paths = {0};
-    if (!load_glos_file_paths(&paths)) {
+    if (!read_dir(&paths, ".", sv_from_cstr("glos"), &arena)) {
         fprintf(stderr, "ERROR: Could not contents of current directory\n");
         exit(1);
     }
@@ -436,4 +407,5 @@ int main(int argc, char **argv) {
     da_free(&sb);
     da_free(&cmd);
     da_free(&paths);
+    arena_free(&arena);
 }
