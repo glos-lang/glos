@@ -1,0 +1,5 @@
+package main
+
+fn foo() {
+    print 69
+}

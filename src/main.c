@@ -119,6 +119,10 @@ int main(int argc, char **argv) {
     packages_push(&packages, &package);
 
     Parser parser = {.arena = &arena, .packages = &packages};
+    if (is_dir(input)) {
+        parser.cwd = sv_from_cstr(input);
+    }
+
     if (!parse_dir(&parser, input) && !parse_file(&parser, input)) {
         error_standalone(ERROR, "Could not read '%s'", input);
         exit(1);

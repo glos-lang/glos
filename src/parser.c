@@ -42,7 +42,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -140,7 +140,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -162,13 +162,14 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
 
     switch (token.kind) {
     case TOKEN_IDENT: {
+        // TODO: Packages
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
         node = (Node *) atom;
@@ -361,7 +362,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -377,6 +378,12 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_IDENT: {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
+
+        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+            atom->scope = atom->node.token;
+            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+        }
+
         node = (Node *) atom;
     } break;
 
@@ -605,7 +612,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -830,14 +837,20 @@ static Node *parse_stmt(Parser *p) {
         local_assert(p, token, false);
         token = lexer_expect(&p->lexer, TOKEN_STR);
 
+        char *path_start = temp_alloc(0);
+        if (p->cwd.count) {
+            path_start = temp_sprintf(SVFmt "/", SVArg(p->cwd));
+            temp_remove_null();
+        }
+
         char *path_buffer = temp_alloc(token.as.integer + 1);
         SV    path_sv = {.data = token.sv.data + 1, .count = token.sv.count - 2};
 
         resolve_escape_chars(path_buffer, &path_sv);
         path_buffer[token.as.integer] = '\0';
 
-        const char *path = get_relative_path(path_buffer, p->arena);
-        temp_reset(path_buffer);
+        const char *path = get_relative_path(path_start, p->arena);
+        temp_reset(path_start);
 
         if (!strcmp(path, ".")) {
             error_full(ERROR, token.pos, "Cannot import package 'main'");
@@ -859,6 +872,7 @@ static Node *parse_stmt(Parser *p) {
 
         Package *packages_current_save = p->packages->current;
         Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
+        package->path = path_sv;
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         import->package = package;
@@ -950,7 +964,7 @@ bool parse_file(Parser *p, const char *path) {
             if (previous) {
                 error_full(ERROR, name.pos, "Redefinition of package '" SVFmt "'", SVArg(name.sv));
                 fprintf(stderr, "\n");
-                error_full(NOTE, previous->name.pos, "Defined here");
+                error_full(NOTE, previous->name.pos, "Defined here: " SVFmt, SVArg(package->name.sv));
                 exit(1);
             }
 
@@ -999,6 +1013,10 @@ bool parse_dir(Parser *p, const char *path) {
     const Lexer lexer_save = p->lexer;
     for (size_t i = start; i < p->paths.count; i++) {
         const char *it = p->paths.data[i];
+        if (is_dir(it)) {
+            continue;
+        }
+
         if (!parse_file(p, it)) {
             error_standalone(ERROR, "Could not read file '%s'", it);
             exit(1);

@@ -121,8 +121,12 @@ struct Node {
 };
 
 typedef struct {
-    Node     node;
-    Node    *definition;
+    Node  node;
+    Node *definition;
+
+    Token scope;
+    bool  scope_resolved;
+
     Package *package;
 } NodeAtom;
 

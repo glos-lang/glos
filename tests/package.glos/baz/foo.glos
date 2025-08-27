@@ -1,0 +1,5 @@
+package baz
+
+fn foo() {
+    print 1337
+}

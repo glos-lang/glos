@@ -480,6 +480,8 @@ bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena) {
         return false;
     }
 
+    const size_t start = p->count;
+
     struct dirent *entry = NULL;
     while ((entry = readdir(d))) {
         if (sv_has_suffix(sv_from_cstr(entry->d_name), suffix)) {
@@ -490,7 +492,7 @@ bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena) {
     }
 
     closedir(d);
-    qsort(p->data, p->count, sizeof(*p->data), compare_cstrs);
+    qsort(p->data + start, p->count - start, sizeof(*p->data), compare_cstrs);
     return true;
 }
 

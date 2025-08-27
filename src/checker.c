@@ -238,6 +238,26 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition);
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
+static void resolve_ident_package(Node *n) {
+    assert(n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT);
+
+    NodeAtom *atom = (NodeAtom *) n;
+    if (atom->scope_resolved || !atom->scope.sv.data) {
+        return;
+    }
+    atom->scope_resolved = true;
+
+    for (Import *i = atom->package->imports.head; i; i = i->next) {
+        if (sv_eq(i->as, atom->scope.sv)) {
+            atom->package = i->package;
+            return;
+        }
+    }
+
+    error_full(ERROR, atom->scope.pos, "Package '" SVFmt "' not imported", SVArg(atom->scope.sv));
+    exit(1);
+}
+
 static_assert(COUNT_NODES == 22, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
@@ -252,7 +272,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -271,8 +291,8 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_IDENT:
-            // TODO: We don't support namespaced access in constant expressions yet
-            //       So just check in its own package
+            resolve_ident_package(n);
+
             atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
@@ -319,7 +339,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -422,7 +442,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -484,7 +504,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -638,10 +658,10 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            NodeAtom *atom = (NodeAtom *) n;
+            resolve_ident_package(n);
 
-            // TODO: Access packages in types
-            Node *definition = ident_find(&c->context, atom->package, n->token.sv, true);
+            NodeAtom *atom = (NodeAtom *) n;
+            Node     *definition = ident_find(&c->context, atom->package, n->token.sv, true);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -733,9 +753,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     bool allow_ref = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        NodeAtom *atom = (NodeAtom *) n;
-
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -754,7 +772,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             n->type = (Type) {.kind = TYPE_U8};
             break;
 
-        case TOKEN_IDENT:
+        case TOKEN_IDENT: {
+            resolve_ident_package(n);
+
+            NodeAtom *atom = (NodeAtom *) n;
             atom->definition = ident_find(&c->context, atom->package, n->token.sv, false);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
@@ -780,7 +801,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             n->type = atom->definition->type;
-            break;
+        } break;
 
         default:
             unreachable();
@@ -846,7 +867,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -975,7 +996,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

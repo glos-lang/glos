@@ -1,0 +1,13 @@
+package main
+
+import "bar"
+import "baz"
+
+fn main() {
+    foo()
+    bar::foo()
+    baz::foo()
+
+    print bar::bar
+    print baz::baz
+}
