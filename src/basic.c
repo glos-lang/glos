@@ -260,19 +260,22 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) {
 }
 
 // FS
-static const char *get_current_dir(void) {
+const char *get_current_dir(Arena *a) {
     size_t capacity = DA_INIT_CAP;
     while (true) {
         char *buffer = temp_alloc(capacity);
         if (getcwd(buffer, capacity)) {
             const size_t n = strlen(buffer);
+
+            const char *result = NULL;
             if (n > 1) {
-                temp_reset(buffer + n);
-                temp_sprintf("/");
+                result = arena_sprintf(a, "%s/", buffer);
             } else {
-                temp_reset(buffer + n + 1);
+                result = arena_clone(a, buffer, n + 1);
             }
-            return buffer;
+
+            temp_reset(buffer);
+            return result;
         }
         temp_reset(buffer);
 
@@ -387,10 +390,9 @@ static const char *convert_fullpath_to_relative(const char *path, const char *cw
     return out;
 }
 
-const char *get_relative_path(const char *path, Arena *arena) {
-    const char *cwd = get_current_dir();
+const char *get_relative_path(const char *cwd, const char *path, Arena *arena) {
     if (!cwd) {
-        return NULL;
+        cwd = get_current_dir(arena);
     }
 
     const char *full = NULL;
@@ -401,21 +403,23 @@ const char *get_relative_path(const char *path, Arena *arena) {
     }
 
     const char *relative = convert_fullpath_to_relative(full, cwd, arena);
-    temp_reset(cwd);
+    temp_reset(full);
     return relative;
 }
 
-const char *get_absolute_path(const char *path, Arena *arena) {
-    char *full = temp_alloc(0);
-    if (!sv_has_prefix(sv_from_cstr(path), sv_from_cstr("/"))) {
-        if (!get_current_dir()) {
-            return NULL;
-        }
-        temp_remove_null();
+const char *get_absolute_path(const char *cwd, const char *path, Arena *arena) {
+    if (!cwd) {
+        cwd = get_current_dir(arena);
     }
-    temp_sprintf("%s", path);
 
-    const char *absolute = arena_sprintf(arena, "%s", resolve_fullpath(full));
+    const char *full = NULL;
+    if (sv_has_prefix(sv_from_cstr(path), sv_from_cstr("/"))) {
+        full = resolve_fullpath(temp_sprintf("%s", path));
+    } else {
+        full = resolve_fullpath(temp_sprintf("%s%s", cwd, path));
+    }
+
+    const char *absolute = arena_sprintf(arena, "%s", full);
     temp_reset(full);
     return absolute;
 }
@@ -474,7 +478,11 @@ static int compare_cstrs(const void *a, const void *b) {
     return strcmp(str1, str2);
 }
 
-bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena) {
+bool read_dir(Paths *p, const char *cwd, const char *path, SV suffix, Arena *arena) {
+    if (!cwd) {
+        cwd = get_current_dir(arena);
+    }
+
     DIR *d = opendir(path);
     if (!d) {
         return false;
@@ -486,7 +494,7 @@ bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena) {
     while ((entry = readdir(d))) {
         if (sv_has_suffix(sv_from_cstr(entry->d_name), suffix)) {
             const char *it = temp_sprintf("%s/%s", path, entry->d_name);
-            da_push(p, get_relative_path(it, arena));
+            da_push(p, get_relative_path(cwd, it, arena));
             temp_reset(it);
         }
     }

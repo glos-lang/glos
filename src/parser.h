@@ -8,7 +8,9 @@ typedef struct {
     Arena    *arena;
     Packages *packages;
 
-    SV    cwd;
+    const char *cwd;
+    const char *root;
+
     Lexer lexer;
 
     bool local;

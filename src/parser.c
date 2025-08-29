@@ -843,8 +843,8 @@ static Node *parse_stmt(Parser *p) {
         }
 
         char *path_start = temp_alloc(0);
-        if (p->cwd.count) {
-            path_start = temp_sprintf(SVFmt "/", SVArg(p->cwd));
+        if (p->root) {
+            path_start = temp_sprintf("%s/", p->root);
             temp_remove_null();
         }
 
@@ -854,7 +854,7 @@ static Node *parse_stmt(Parser *p) {
         resolve_escape_chars(path_buffer, &path_sv);
         path_buffer[token.as.integer] = '\0';
 
-        const char *path = get_relative_path(path_start, p->arena);
+        const char *path = get_relative_path(p->cwd, path_start, p->arena);
         temp_reset(path_start);
 
         if (!strcmp(path, ".")) {
@@ -1032,7 +1032,7 @@ ParseDirError parse_dir(Parser *p, const char *path) {
     assert(p->arena);
 
     const size_t start = p->paths.count;
-    if (!read_dir(&p->paths, path, sv_from_cstr(".glos"), p->arena)) {
+    if (!read_dir(&p->paths, p->cwd, path, sv_from_cstr(".glos"), p->arena)) {
         return PDE_FAILED;
     }
     bool empty = true;

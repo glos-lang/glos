@@ -45,10 +45,15 @@ static const char *path_last(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    int   result = 0;
-    Arena arena = {0};
-
+    int      result = 0;
+    Arena    arena = {0};
     Packages packages = {0};
+
+    Parser parser = {
+        .arena = &arena,
+        .packages = &packages,
+    };
+
     Compiler compiler = {
         .context.arena = &arena,
         .context.packages = &packages,
@@ -105,8 +110,9 @@ int main(int argc, char **argv) {
         }
     }
 
+    parser.cwd = get_current_dir(parser.arena);
     if (input) {
-        input = get_relative_path(input, &arena);
+        input = get_relative_path(parser.cwd, input, &arena);
     } else {
         input = ".";
     }
@@ -115,12 +121,10 @@ int main(int argc, char **argv) {
         .path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
-
     packages_push(&packages, &package);
 
-    Parser parser = {.arena = &arena, .packages = &packages};
     if (is_dir(input)) {
-        parser.cwd = sv_from_cstr(input);
+        parser.root = input;
     }
 
     ParseDirError pde = parse_dir(&parser, input);
@@ -162,7 +166,7 @@ int main(int argc, char **argv) {
     } else {
         if (!output) {
             if (is_dir(input)) {
-                output = path_last(get_absolute_path(input, &arena));
+                output = path_last(get_absolute_path(parser.cwd, input, &arena));
             } else {
                 output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(path_last(input)), sv_from_cstr(".glos")));
             }

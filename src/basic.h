@@ -115,8 +115,9 @@ void *arena_clone(Arena *a, const void *data, size_t size);
 char *arena_sprintf(Arena *a, const char *fmt, ...) PrintfLike(2);
 
 // FS
-const char *get_relative_path(const char *path, Arena *arena);
-const char *get_absolute_path(const char *path, Arena *arena);
+const char *get_current_dir(Arena *arena);
+const char *get_relative_path(const char *cwd, const char *path, Arena *arena);
+const char *get_absolute_path(const char *cwd, const char *path, Arena *arena);
 
 bool read_file(SV *out, const char *path, Arena *arena);
 
@@ -127,7 +128,7 @@ typedef struct {
 } Paths;
 
 bool is_dir(const char *path);
-bool read_dir(Paths *p, const char *path, SV suffix, Arena *arena);
+bool read_dir(Paths *p, const char *cwd, const char *path, SV suffix, Arena *arena);
 
 // OS
 typedef struct {

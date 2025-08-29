@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
 
     Arena arena = {0};
     Paths paths = {0};
-    if (!read_dir(&paths, ".", sv_from_cstr("glos"), &arena)) {
+    if (!read_dir(&paths, get_current_dir(&arena), ".", sv_from_cstr("glos"), &arena)) {
         fprintf(stderr, "ERROR: Could not contents of current directory\n");
         exit(1);
     }
