@@ -208,6 +208,7 @@ void arena_free(Arena *a) {
         free(it);
         it = next;
     }
+    memset(a, 0, sizeof(*a));
 }
 
 void *arena_alloc(Arena *a, size_t size) {
