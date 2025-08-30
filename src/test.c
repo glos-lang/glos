@@ -219,7 +219,7 @@ static void usage(FILE *f) {
     fprintf(f, "\n");
     fprintf(f, "Commands:\n");
     fprintf(f, "    -h          Show this message\n");
-    fprintf(f, "    -j COUNT    Set the maximum parallel processes count. Default is 5\n");
+    fprintf(f, "    -j COUNT    Set the parallel processes count. Default is 5\n");
     fprintf(f, "    -check      Only check the programs, don't prompt for error recording\n");
 }
 
@@ -339,11 +339,11 @@ int main(int argc, char **argv) {
             if (arg[2]) {
                 arg += 2;
             } else {
-                arg = shift(&argc, &argv, "Maximum process count");
+                arg = shift(&argc, &argv, "Parallel process count");
             }
 
             if (!parse_uint_from_sv(sv_from_cstr(arg), &units.maximum) || !units.maximum) {
-                fprintf(stderr, "ERROR: Invalid maximum process count '%s'\n", arg);
+                fprintf(stderr, "ERROR: Invalid parallel process count '%s'\n", arg);
                 exit(1);
             }
         } else {
