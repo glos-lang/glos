@@ -242,7 +242,6 @@ static void usage(FILE *f) {
     fprintf(f, "Commands:\n");
     fprintf(f, "    -h             Show this message\n");
     fprintf(f, "    -check         Only check the programs, don't prompt for error recording\n");
-    fprintf(f, "    -cc COMMAND    Set the command used for linking\n");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -257,8 +256,7 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
 }
 
 int main(int argc, char **argv) {
-    bool        check = false;
-    const char *cc = NULL;
+    bool check = false;
 
     shift(&argc, &argv, "Program name");
     while (argc) {
@@ -272,8 +270,6 @@ int main(int argc, char **argv) {
             exit(0);
         } else if (!strcmp(arg, "-check")) {
             check = true;
-        } else if (!strcmp(arg, "-cc")) {
-            cc = shift(&argc, &argv, "Command");
         } else {
             fprintf(stderr, "ERROR: Invalid flag '%s'\n", arg);
             fprintf(stderr, "\n");
@@ -327,12 +323,6 @@ int main(int argc, char **argv) {
         }
 
         da_push(&cmd, "../glos");
-
-        if (cc) {
-            da_push(&cmd, "-cc");
-            da_push(&cmd, cc);
-        }
-
         da_push(&cmd, "-r");
         da_push(&cmd, it);
 

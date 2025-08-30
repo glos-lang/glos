@@ -18,12 +18,11 @@ static void usage(FILE *file) {
     fprintf(file, " [FLAGS...] [FILE|DIR]\n\n");
 
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
-    usage_flag(file, "h ", "           Show this message");
-    usage_flag(file, "r ", "           Run the program");
-    usage_flag(file, "o ", "OUTPUT     Set the output path");
-    usage_flag(file, "L ", "PATH       Add a library path");
-    usage_flag(file, "l ", "NAME       Add a library");
-    usage_flag(file, "cc", "COMMAND    Set the command used for linking");
+    usage_flag(file, "h", "           Show this message");
+    usage_flag(file, "r", "           Run the program");
+    usage_flag(file, "o", "OUTPUT     Set the output path");
+    usage_flag(file, "L", "PATH       Add a library path");
+    usage_flag(file, "l", "NAME       Add a library");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
@@ -112,7 +111,6 @@ int main(int argc, char **argv) {
     };
 
     bool        run = false;
-    const char *cc = "cc";
     const char *input = NULL;
     const char *output = NULL;
 
@@ -127,8 +125,6 @@ int main(int argc, char **argv) {
                 run = true;
             } else if (!strcmp(arg, "-o")) {
                 output = shift(&argc, &argv, "Output file");
-            } else if (!strcmp(arg, "-cc")) {
-                cc = shift(&argc, &argv, "Command");
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'L') {
@@ -231,21 +227,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    const char *object_file_path = temp_sprintf("%s.o", output);
-
-    da_push(&cmd, cc);
-    da_push(&cmd, "-o");
-    da_push(&cmd, output);
-    da_push(&cmd, object_file_path);
-    da_push_many(&cmd, compiler.link_flags.data, compiler.link_flags.count);
-
-    compiler_build(&compiler, object_file_path);
-    if (cmd_run_sync(&cmd, (CmdStdio) {0})) {
-        remove(object_file_path);
-        error_standalone(ERROR, "Could not generate '%s'", output);
-        exit(1);
-    }
-    remove(object_file_path);
+    compiler_build(&compiler, output);
 
     if (run) {
         da_push(&cmd, output);

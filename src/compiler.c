@@ -1189,7 +1189,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
     exit(0);
 #endif
 
-    if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path)) {
+    if (qbe_generate(c->qbe, QBE_TARGET_DEFAULT, object_file_path, c->link_flags.data, c->link_flags.count)) {
         error_standalone(ERROR, "Could not generate '%s'", object_file_path);
         exit(1);
     }
