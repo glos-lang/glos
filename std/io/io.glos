@@ -1,0 +1,12 @@
+package io
+
+fn write(s [u8]) {
+    type FILE rawptr
+
+    extern {
+        var stdout FILE
+        fn fwrite(data rawptr, size u64, count u64, stream FILE) u64
+    }
+
+    fwrite(<rawptr> &s[0], <u64> len(s), 1, stdout)
+}

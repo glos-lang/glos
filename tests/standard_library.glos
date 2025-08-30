@@ -1,0 +1,7 @@
+package main
+
+import "io"
+
+fn main() {
+    io::write("Hello, world!\n")
+}

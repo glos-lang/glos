@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <unistd.h>
 
 #include "checker.h"
@@ -42,6 +43,57 @@ static const char *path_last(const char *path) {
         last--;
     }
     return last;
+}
+
+static const char *get_std_path(Arena *a) {
+    char *data = NULL;
+    long  count = 0;
+
+#if defined(__APPLE__)
+    uint32_t count = DA_INIT_CAP;
+    char    *data = temp_alloc(count);
+
+    int _NSGetExecutablePath(char *buffer, uint32_t *size);
+    if (_NSGetExecutablePath(data, &count) == -1) {
+        temp_reset(data);
+        data = temp_alloc(count);
+
+        if (_NSGetExecutablePath(data, &count) == -1) {
+            temp_reset(data);
+            return NULL;
+        }
+    }
+
+    count = strlen(data);
+#elif defined(__linux__)
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = temp_alloc(capacity);
+        count = readlink("/proc/self/exe", data, capacity);
+
+        if (count == -1) {
+            temp_reset(data);
+            return NULL;
+        }
+
+        if ((size_t) count < capacity) {
+            break;
+        }
+
+        temp_reset(data);
+    }
+#endif
+
+    SV sv = {.data = data, .count = count};
+    for (size_t i = sv.count; i; i--) {
+        if (sv.data[i - 1] == '/') {
+            sv.count = i;
+            break;
+        }
+    }
+
+    const char *path = arena_sprintf(a, SVFmt "std/", SVArg(sv));
+    temp_reset(data);
+    return path;
 }
 
 int main(int argc, char **argv) {
@@ -102,7 +154,7 @@ int main(int argc, char **argv) {
             }
         } else {
             if (input) {
-                error_standalone(ERROR, "Multiple input files is not supported yet");
+                error_standalone(ERROR, "Multiple input paths provided");
                 exit(1);
             }
 
@@ -111,6 +163,7 @@ int main(int argc, char **argv) {
     }
 
     parser.cwd = get_current_dir(parser.arena);
+    parser.std = get_std_path(&arena);
     if (input) {
         input = get_relative_path(parser.cwd, input, &arena);
     } else {
@@ -127,7 +180,7 @@ int main(int argc, char **argv) {
         parser.root = input;
     }
 
-    ParseDirError pde = parse_dir(&parser, input);
+    ParseDirError pde = parse_dir(&parser, input, false);
     if (pde == PDE_EMPTY) {
         error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
         exit(1);
