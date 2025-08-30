@@ -15,7 +15,17 @@ static void nodes_push(Nodes *ns, Node *n) {
     }
 }
 
-static Import *imports_find(Imports is, Package *p) {
+static Import *imports_find_by_name(Imports is, SV name) {
+    for (Import *it = is.head; it; it = it->next) {
+        if (sv_eq(it->as, name)) {
+            return it;
+        }
+    }
+
+    return NULL;
+}
+
+static Import *imports_find_by_package(Imports is, Package *p) {
     for (Import *it = is.head; it; it = it->next) {
         if (it->package == p) {
             return it;
@@ -865,9 +875,9 @@ static Node *parse_stmt(Parser *p) {
 
         Package *previous = packages_find_by_path(*p->packages, path_sv);
         if (previous) {
-            Import *previous_import = imports_find(p->packages->current->imports, previous);
+            Import *previous_import = imports_find_by_package(p->packages->current->imports, previous);
             if (previous_import) {
-                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(path_sv));
+                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
                 fprintf(stderr, "\n");
                 error_full(NOTE, previous_import->pos, "Imported here");
                 exit(1);
@@ -887,16 +897,10 @@ static Node *parse_stmt(Parser *p) {
             return NULL;
         }
 
-        Package *packages_current_save = p->packages->current;
         Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
         package->path = path_sv;
 
-        Import *import = arena_alloc(p->arena, sizeof(*import));
-        import->as = as;
-        import->pos = token.pos;
-        import->package = package;
-        imports_push(&p->packages->current->imports, import);
-
+        Package *packages_current_save = p->packages->current;
         packages_push(p->packages, package);
 
         ParseDirError pde = parse_dir(p, path, true);
@@ -910,11 +914,27 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        Import *import = arena_alloc(p->arena, sizeof(*import));
+        import->as = as;
+        import->pos = token.pos;
+        import->package = package;
+
         if (!import->as.count) {
             import->as = package->name.sv;
         }
 
         p->packages->current = packages_current_save;
+        {
+            Import *previous_import = imports_find_by_name(p->packages->current->imports, import->as);
+            if (previous_import) {
+                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous_import->pos, "Imported here");
+                exit(1);
+            }
+        }
+
+        imports_push(&p->packages->current->imports, import);
     } break;
 
     case TOKEN_PRINT: {
@@ -985,17 +1005,7 @@ bool parse_file(Parser *p, const char *path) {
 
     Package *package = p->packages->current;
     if (!sv_eq(name.sv, package->name.sv)) {
-        if (!package->name.sv.count) {
-            Package *previous = packages_find_by_name(*p->packages, name.sv);
-            if (previous) {
-                error_full(ERROR, name.pos, "Redefinition of package '" SVFmt "'", SVArg(name.sv));
-                fprintf(stderr, "\n");
-                error_full(NOTE, previous->name.pos, "Defined here: " SVFmt, SVArg(package->name.sv));
-                exit(1);
-            }
-
-            package->name = name;
-        } else {
+        if (package->name.sv.count) {
             error_full(
                 ERROR,
                 name.pos,
@@ -1010,6 +1020,8 @@ bool parse_file(Parser *p, const char *path) {
 
             exit(1);
         }
+
+        package->name = name;
     }
 
     if (!package->name.pos.path) {

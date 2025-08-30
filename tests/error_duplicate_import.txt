@@ -1,8 +1,8 @@
 EXIT 1
 STDOUT 0
 
-STDERR 254
-error_duplicate_import.glos/main.glos:4:8: ERROR: Duplicate import of package 'error_duplicate_import.glos/foo'
+STDERR 226
+error_duplicate_import.glos/main.glos:4:8: ERROR: Duplicate import of package 'foo'
 
     4 | import "foo"
       |        ^
