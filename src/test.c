@@ -213,19 +213,19 @@ static bool compare_tests(Test expected, Test actual, const char *name) {
     }
 }
 
-// TODO: CLI flag to control parallel tests count
 static void usage(FILE *f) {
     fprintf(f, "Usage:\n");
     fprintf(f, "    test [FLAGS...]\n");
     fprintf(f, "\n");
     fprintf(f, "Commands:\n");
-    fprintf(f, "    -h             Show this message\n");
-    fprintf(f, "    -check         Only check the programs, don't prompt for error recording\n");
+    fprintf(f, "    -h          Show this message\n");
+    fprintf(f, "    -j COUNT    Set the maximum parallel processes count. Default is 5\n");
+    fprintf(f, "    -check      Only check the programs, don't prompt for error recording\n");
 }
 
 static const char *shift(int *argc, char ***argv, const char *expected) {
     if (*argc <= 0) {
-        fprintf(stderr, "ERROR: %s not provided\n", expected);
+        fprintf(stderr, "ERROR: %s not provided\n\n", expected);
         usage(stderr);
         exit(1);
     }
@@ -335,6 +335,17 @@ int main(int argc, char **argv) {
             exit(0);
         } else if (!strcmp(arg, "-check")) {
             check = true;
+        } else if (arg[1] == 'j') {
+            if (arg[2]) {
+                arg += 2;
+            } else {
+                arg = shift(&argc, &argv, "Maximum process count");
+            }
+
+            if (!parse_uint_from_sv(sv_from_cstr(arg), &units.maximum) || !units.maximum) {
+                fprintf(stderr, "ERROR: Invalid maximum process count '%s'\n", arg);
+                exit(1);
+            }
         } else {
             fprintf(stderr, "ERROR: Invalid flag '%s'\n", arg);
             fprintf(stderr, "\n");
