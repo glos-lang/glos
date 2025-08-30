@@ -15,19 +15,9 @@ static void nodes_push(Nodes *ns, Node *n) {
     }
 }
 
-static Import *imports_find_by_name(Imports is, SV name) {
+static Import *imports_find(Imports is, SV name) {
     for (Import *it = is.head; it; it = it->next) {
         if (sv_eq(it->as, name)) {
-            return it;
-        }
-    }
-
-    return NULL;
-}
-
-static Import *imports_find_by_package(Imports is, Package *p) {
-    for (Import *it = is.head; it; it = it->next) {
-        if (it->package == p) {
             return it;
         }
     }
@@ -621,6 +611,91 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
+static void do_import(Parser *p, Token token, SV as) {
+    char *path_start = temp_alloc(0);
+    if (p->root) {
+        path_start = temp_sprintf("%s/", p->root);
+        temp_remove_null();
+    }
+
+    char *path_buffer = temp_alloc(token.as.integer + 1);
+    SV    path_sv = {.data = token.sv.data + 1, .count = token.sv.count - 2};
+
+    resolve_escape_chars(path_buffer, &path_sv);
+    path_buffer[token.as.integer] = '\0';
+
+    const char *path = get_relative_path(p->cwd, path_start, p->arena);
+    temp_reset(path_start);
+
+    if (!strcmp(path, ".")) {
+        error_full(ERROR, token.pos, "Cannot import package 'main'");
+        exit(1);
+    }
+    path_sv = sv_from_cstr(path);
+
+    Package *previous = packages_find_by_path(*p->packages, path_sv);
+    if (previous) {
+        Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
+        if (previous_import) {
+            error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
+            fprintf(stderr, "\n");
+            error_full(NOTE, previous_import->pos, "Imported here");
+            exit(1);
+        }
+
+        Import *import = arena_alloc(p->arena, sizeof(*import));
+        if (as.count) {
+            import->as = as;
+        } else {
+            import->as = previous->name.sv;
+        }
+
+        import->pos = token.pos;
+        import->package = previous;
+        imports_push(&p->packages->current->imports, import);
+        return;
+    }
+
+    Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
+    package->path = path_sv;
+
+    Package *packages_current_save = p->packages->current;
+    packages_push(p->packages, package);
+
+    ParseDirError pde = parse_dir(p, path, true);
+    if (pde == PDE_FAILED) {
+        error_full(ERROR, token.pos, "Could not import package '%s'", path);
+        exit(1);
+    }
+
+    if (pde == PDE_EMPTY) {
+        error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
+        exit(1);
+    }
+
+    Import *import = arena_alloc(p->arena, sizeof(*import));
+    import->as = as;
+    import->pos = token.pos;
+    import->package = package;
+
+    if (!import->as.count) {
+        import->as = package->name.sv;
+    }
+
+    p->packages->current = packages_current_save;
+    {
+        Import *previous_import = imports_find(p->packages->current->imports, import->as);
+        if (previous_import) {
+            error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
+            fprintf(stderr, "\n");
+            error_full(NOTE, previous_import->pos, "Imported here");
+            exit(1);
+        }
+    }
+
+    imports_push(&p->packages->current->imports, import);
+}
+
 static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
@@ -844,97 +919,30 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_IMPORT: {
         local_assert(p, token, false);
-        token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT);
 
-        SV as = {0};
-        if (token.kind == TOKEN_IDENT) {
-            as = token.sv;
-            token = lexer_expect(&p->lexer, TOKEN_STR);
-        }
+        token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT, TOKEN_LPAREN);
+        if (token.kind == TOKEN_LPAREN) {
+            while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+                token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT);
 
-        char *path_start = temp_alloc(0);
-        if (p->root) {
-            path_start = temp_sprintf("%s/", p->root);
-            temp_remove_null();
-        }
+                SV as = {0};
+                if (token.kind == TOKEN_IDENT) {
+                    as = token.sv;
+                    token = lexer_expect(&p->lexer, TOKEN_STR);
+                }
 
-        char *path_buffer = temp_alloc(token.as.integer + 1);
-        SV    path_sv = {.data = token.sv.data + 1, .count = token.sv.count - 2};
-
-        resolve_escape_chars(path_buffer, &path_sv);
-        path_buffer[token.as.integer] = '\0';
-
-        const char *path = get_relative_path(p->cwd, path_start, p->arena);
-        temp_reset(path_start);
-
-        if (!strcmp(path, ".")) {
-            error_full(ERROR, token.pos, "Cannot import package 'main'");
-            exit(1);
-        }
-        path_sv = sv_from_cstr(path);
-
-        Package *previous = packages_find_by_path(*p->packages, path_sv);
-        if (previous) {
-            Import *previous_import = imports_find_by_package(p->packages->current->imports, previous);
-            if (previous_import) {
-                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
-                fprintf(stderr, "\n");
-                error_full(NOTE, previous_import->pos, "Imported here");
-                exit(1);
+                do_import(p, token, as);
+                lexer_read(&p->lexer, TOKEN_COMMA);
+            }
+        } else {
+            SV as = {0};
+            if (token.kind == TOKEN_IDENT) {
+                as = token.sv;
+                token = lexer_expect(&p->lexer, TOKEN_STR);
             }
 
-            Import *import = arena_alloc(p->arena, sizeof(*import));
-            if (as.count) {
-                import->as = as;
-            } else {
-                import->as = previous->name.sv;
-            }
-
-            import->pos = token.pos;
-            import->package = previous;
-            imports_push(&p->packages->current->imports, import);
-
-            return NULL;
+            do_import(p, token, as);
         }
-
-        Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
-        package->path = path_sv;
-
-        Package *packages_current_save = p->packages->current;
-        packages_push(p->packages, package);
-
-        ParseDirError pde = parse_dir(p, path, true);
-        if (pde == PDE_FAILED) {
-            error_full(ERROR, token.pos, "Could not import package '%s'", path);
-            exit(1);
-        }
-
-        if (pde == PDE_EMPTY) {
-            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
-            exit(1);
-        }
-
-        Import *import = arena_alloc(p->arena, sizeof(*import));
-        import->as = as;
-        import->pos = token.pos;
-        import->package = package;
-
-        if (!import->as.count) {
-            import->as = package->name.sv;
-        }
-
-        p->packages->current = packages_current_save;
-        {
-            Import *previous_import = imports_find_by_name(p->packages->current->imports, import->as);
-            if (previous_import) {
-                error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
-                fprintf(stderr, "\n");
-                error_full(NOTE, previous_import->pos, "Imported here");
-                exit(1);
-            }
-        }
-
-        imports_push(&p->packages->current->imports, import);
     } break;
 
     case TOKEN_PRINT: {
