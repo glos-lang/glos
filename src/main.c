@@ -46,9 +46,6 @@ static const char *path_last(const char *path) {
 }
 
 static const char *get_std_path(Arena *a) {
-    char *data = NULL;
-    long  count = 0;
-
 #if defined(__APPLE__)
     uint32_t count = DA_INIT_CAP;
     char    *data = temp_alloc(count);
@@ -66,6 +63,9 @@ static const char *get_std_path(Arena *a) {
 
     count = strlen(data);
 #elif defined(__linux__)
+    long  count = 0;
+    char *data = NULL;
+
     for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
         data = temp_alloc(capacity);
         count = readlink("/proc/self/exe", data, capacity);
