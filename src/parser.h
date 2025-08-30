@@ -9,6 +9,7 @@ typedef struct {
     Packages *packages;
 
     const char *cwd;
+    const char *std;
     const char *root;
 
     Lexer lexer;
@@ -30,6 +31,6 @@ typedef enum {
     PDE_FAILED,
 } ParseDirError;
 
-ParseDirError parse_dir(Parser *p, const char *path);
+ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std);
 
 #endif // PARSER_H

@@ -899,7 +899,7 @@ static Node *parse_stmt(Parser *p) {
 
         packages_push(p->packages, package);
 
-        ParseDirError pde = parse_dir(p, path);
+        ParseDirError pde = parse_dir(p, path, true);
         if (pde == PDE_FAILED) {
             error_full(ERROR, token.pos, "Could not import package '%s'", path);
             exit(1);
@@ -1028,12 +1028,23 @@ bool parse_file(Parser *p, const char *path) {
     return true;
 }
 
-ParseDirError parse_dir(Parser *p, const char *path) {
+ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
     assert(p->arena);
 
+    const SV     suffix = sv_from_cstr(".glos");
     const size_t start = p->paths.count;
-    if (!read_dir(&p->paths, p->cwd, path, sv_from_cstr(".glos"), p->arena)) {
-        return PDE_FAILED;
+    if (!read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
+        if (!check_in_std) {
+            return PDE_FAILED;
+        }
+
+        path = temp_sprintf("%s%s", p->std, path);
+        const bool ok = read_dir(&p->paths, p->cwd, path, suffix, p->arena);
+        temp_reset(path);
+
+        if (!ok) {
+            return PDE_FAILED;
+        }
     }
     bool empty = true;
 
