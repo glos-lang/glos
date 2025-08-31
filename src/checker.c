@@ -26,7 +26,7 @@ static void check_int_limit(Node *n, size_t value) {
 }
 
 static_assert(COUNT_NODES == 22, "");
-static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
+static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
         switch (n->token.kind) {
@@ -54,14 +54,14 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
-        cast_untyped_int(c, unary->operand, expected);
+        cast_untyped(c, unary->operand, expected);
         n->type = expected;
     } break;
 
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
-        cast_untyped_int(c, binary->lhs, expected);
-        cast_untyped_int(c, binary->rhs, expected);
+        cast_untyped(c, binary->lhs, expected);
+        cast_untyped(c, binary->rhs, expected);
         n->type = expected;
     } break;
 
@@ -81,7 +81,7 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
-        cast_untyped_int(c, ret->value, expected);
+        cast_untyped(c, ret->value, expected);
         n->type = ret->value->type;
     } break;
 
@@ -90,7 +90,7 @@ static void cast_untyped_int(Compiler *c, Node *n, Type expected) {
     }
 }
 
-static bool try_auto_cast_untyped_int(Compiler *c, Node *n, Type expected) {
+static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     // If the types are already equal, consider it a succesful auto cast
     if (type_eq(n->type, expected)) {
         return true;
@@ -104,7 +104,7 @@ static bool try_auto_cast_untyped_int(Compiler *c, Node *n, Type expected) {
         }
 
         if (expected.kind != TYPE_INT) {
-            cast_untyped_int(c, n, expected);
+            cast_untyped(c, n, expected);
         }
 
         return true;
@@ -118,7 +118,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return n->type;
     }
 
-    if (try_auto_cast_untyped_int(c, n, expected)) {
+    if (try_auto_cast_untyped(c, n, expected)) {
         return expected;
     }
 
@@ -131,11 +131,11 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped_int(c, b, a->type)) {
+    if (try_auto_cast_untyped(c, b, a->type)) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped_int(c, a, b->type)) {
+    if (try_auto_cast_untyped(c, a, b->type)) {
         return b->type;
     }
 
@@ -761,7 +761,6 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         case TOKEN_STR:
             n->type = c->context.str_type;
-            allow_ref = true;
             break;
 
         case TOKEN_BOOL:
@@ -854,14 +853,32 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         check_expr(c, cast->from, REF_NONE);
         check_type(c, cast->to, true);
 
-        const Type from = type_assert_scalar(cast->from);
-        const Type to = type_assert_scalar(cast->to);
-        if (!type_eq(from, to) && is_type_cast_illegal(cast->from, cast->to)) {
-            error_full(ERROR, n->token.pos, "Cannot cast type '%s' to type '%s'", type_to_cstr(from), type_to_cstr(to));
-            exit(1);
+        if (cast->from->kind == NODE_ATOM && cast->from->token.kind == TOKEN_STR) {
+            const Type i8_pointer = {.kind = TYPE_I8, .ref = 1};
+            const Type u8_pointer = {.kind = TYPE_U8, .ref = 1};
+
+            if (!type_eq(cast->to->type, i8_pointer) && !type_eq(cast->to->type, u8_pointer)) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Can only cast string literals to '%s' or '%s', not '%s'",
+                    type_to_cstr(i8_pointer),
+                    type_to_cstr(u8_pointer),
+                    type_to_cstr(cast->to->type));
+
+                exit(1);
+            }
+        } else {
+            const Type from = type_assert_scalar(cast->from);
+            const Type to = type_assert_scalar(cast->to);
+            if (!type_eq(from, to) && is_type_cast_illegal(cast->from, cast->to)) {
+                error_full(
+                    ERROR, n->token.pos, "Cannot cast type '%s' to type '%s'", type_to_cstr(from), type_to_cstr(to));
+                exit(1);
+            }
         }
 
-        n->type = to;
+        n->type = cast->to->type;
     } break;
 
     case NODE_UNARY: {

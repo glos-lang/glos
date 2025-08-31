@@ -299,10 +299,6 @@ static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
             fprintf(f, "\n");
 
             fclose(f);
-
-            if (!it.record_exists) {
-                fprintf(stderr, "Recorded test case '%s'\n", it.name);
-            }
         }
     }
 

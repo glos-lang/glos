@@ -249,6 +249,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, QBE_BINARY_NE, n->type.qbe, from, zero);
         }
 
+        if (cast->from->kind == NODE_ATOM && cast->from->token.kind == TOKEN_STR) {
+            return qbe_build_load(c->qbe, c->fn, from, n->type.qbe, type_is_signed(n->type));
+        }
+
         return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, type_is_signed(n->type));
     }
 
