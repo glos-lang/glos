@@ -114,6 +114,8 @@ int main(int argc, char **argv) {
     const char *input = NULL;
     const char *output = NULL;
 
+    DynamicArray(const char *) link_flags = {0};
+
     shift(&argc, &argv, "Program name");
     while (argc) {
         const char *arg = shift(&argc, &argv, "Input file");
@@ -141,8 +143,8 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, "Library name");
                 }
 
-                da_push(&compiler.link_flags, "-l");
-                da_push(&compiler.link_flags, value);
+                da_push(&link_flags, "-l");
+                da_push(&link_flags, value);
             } else {
                 error_standalone(ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);
@@ -189,6 +191,9 @@ int main(int argc, char **argv) {
 
     compiler_init(&compiler);
     check_packages(&compiler, packages);
+
+    da_push_many(&compiler.link_flags, link_flags.data, link_flags.count);
+    da_free(&link_flags);
 
     Cmd  cmd = {0};
     bool remove_after = false;

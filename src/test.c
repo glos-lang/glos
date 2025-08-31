@@ -24,11 +24,7 @@ static bool yes_or_no_prompt(void) {
     return buffer[0] == '\0' || buffer[0] == 'y' || buffer[0] == 'Y';
 }
 
-typedef struct {
-    char  *data;
-    size_t count;
-    size_t capacity;
-} SB;
+typedef DynamicArray(char) SB;
 
 static bool read_file_into_arena(FILE *f, SV *out, SB *s, Arena *a) {
     const size_t start = s->count;
@@ -247,12 +243,7 @@ typedef struct {
     Test expected;
 } Unit;
 
-typedef struct {
-    Unit  *data;
-    size_t count;
-    size_t capacity;
-    size_t maximum;
-} Units;
+typedef DynamicArray(Unit) Units;
 
 static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
     for (size_t i = 0; i < units->count; i++) {
@@ -320,8 +311,8 @@ static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
 }
 
 int main(int argc, char **argv) {
-    bool  check = false;
-    Units units = {.maximum = 5};
+    bool   check = false;
+    size_t parallel = 5;
 
     shift(&argc, &argv, "Program name");
     while (argc) {
@@ -342,7 +333,7 @@ int main(int argc, char **argv) {
                 arg = shift(&argc, &argv, "Parallel process count");
             }
 
-            if (!parse_uint_from_sv(sv_from_cstr(arg), &units.maximum) || !units.maximum) {
+            if (!parse_uint_from_sv(sv_from_cstr(arg), &parallel) || !parallel) {
                 fprintf(stderr, "ERROR: Invalid parallel process count '%s'\n", arg);
                 exit(1);
             }
@@ -363,6 +354,7 @@ int main(int argc, char **argv) {
 
     SB    sb = {0};
     Cmd   cmd = {0};
+    Units units = {0};
     Arena arena = {0};
     for (size_t i = 0; i < paths.count; i++) {
         const char *it = paths.data[i];
@@ -411,7 +403,7 @@ int main(int argc, char **argv) {
             unit.expected = expected;
             da_push(&units, unit);
 
-            if (units.count < units.maximum) {
+            if (units.count < parallel) {
                 continue;
             }
         }

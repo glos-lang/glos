@@ -28,6 +28,13 @@
 // Dynamic Array
 #define DA_INIT_CAP 128
 
+#define DynamicArray(T)                                                                                                \
+    struct {                                                                                                           \
+        T     *data;                                                                                                   \
+        size_t count;                                                                                                  \
+        size_t capacity;                                                                                               \
+    }
+
 #define da_free(l)                                                                                                     \
     do {                                                                                                               \
         free((l)->data);                                                                                               \

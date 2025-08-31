@@ -20,11 +20,7 @@ typedef struct {
 
 void imports_push(Imports *is, Import *i);
 
-typedef struct {
-    Node **data;
-    size_t count;
-    size_t capacity;
-} Scope;
+typedef DynamicArray(Node *) Scope;
 
 struct Package {
     SV    path;
