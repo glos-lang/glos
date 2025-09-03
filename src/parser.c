@@ -171,6 +171,12 @@ static Node *parse_type(Parser *p) {
     case TOKEN_IDENT: {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
+
+        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+            atom->scope = atom->node.token;
+            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+        }
+
         node = (Node *) atom;
     } break;
 
