@@ -40,6 +40,7 @@ typedef enum {
     TOKEN_SUB,
     TOKEN_MUL,
     TOKEN_DIV,
+    TOKEN_MOD,
 
     TOKEN_SHL,
     TOKEN_SHR,
@@ -52,6 +53,7 @@ typedef enum {
     TOKEN_SUB_SET,
     TOKEN_MUL_SET,
     TOKEN_DIV_SET,
+    TOKEN_MOD_SET,
     TOKEN_SHL_SET,
     TOKEN_SHR_SET,
     TOKEN_BOR_SET,

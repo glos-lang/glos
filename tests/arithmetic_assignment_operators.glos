@@ -27,4 +27,7 @@ fn main() {
 
     acc &= 15
     print acc
+
+	acc %= 4
+	print acc
 }
