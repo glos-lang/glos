@@ -42,7 +42,7 @@ typedef enum {
     POWER_DOT
 } Power;
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -57,6 +57,7 @@ static Power token_kind_to_power(TokenKind kind) {
 
     case TOKEN_MUL:
     case TOKEN_DIV:
+    case TOKEN_MOD:
         return POWER_MUL;
 
     case TOKEN_SHL:
@@ -76,6 +77,7 @@ static Power token_kind_to_power(TokenKind kind) {
     case TOKEN_SUB_SET:
     case TOKEN_MUL_SET:
     case TOKEN_DIV_SET:
+    case TOKEN_MOD_SET:
     case TOKEN_SHL_SET:
     case TOKEN_SHR_SET:
     case TOKEN_BOR_SET:
@@ -140,7 +142,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 65, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -162,7 +164,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -367,7 +369,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -702,7 +704,7 @@ static void do_import(Parser *p, Token token, SV as) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

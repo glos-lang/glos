@@ -7,7 +7,7 @@ fn main() {
     print 23 * 3
     print 1260 / 3
     print 17 * 2 - -35
-    print 2 * (100 + 110)
+    print 10 % 4 * (100 + 110)
 
     // Bitwise
     print 276 >> 2
