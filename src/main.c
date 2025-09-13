@@ -113,8 +113,7 @@ int main(int argc, char **argv) {
     bool        run = false;
     const char *input = NULL;
     const char *output = NULL;
-
-    DynamicArray(const char *) link_flags = {0};
+    LinkFlags   link_flags = {0};
 
     shift(&argc, &argv, "Program name");
     while (argc) {
@@ -184,9 +183,19 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    if (pde == PDE_FAILED && !parse_file(&parser, input)) {
-        error_standalone(ERROR, "Could not read '%s'", input);
-        exit(1);
+    if (pde == PDE_FAILED) {
+        if (!parse_file(&parser, input)) {
+            error_standalone(ERROR, "Could not read '%s'", input);
+            exit(1);
+        }
+        package.is_file = true;
+    }
+
+    for (Package *it = packages.head; it; it = it->next) {
+        if (!it->is_file) {
+            da_push(&compiler.link_flags, "-L");
+            da_push(&compiler.link_flags, it->path.data);
+        }
     }
 
     compiler_init(&compiler);

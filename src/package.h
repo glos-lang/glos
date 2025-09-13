@@ -25,6 +25,7 @@ typedef DynamicArray(Node *) Scope;
 struct Package {
     SV    path;
     Token name;
+    bool  is_file;
 
     Nodes   nodes;
     Scope   globals;
