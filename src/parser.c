@@ -1066,14 +1066,13 @@ ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
             return PDE_FAILED;
         }
 
-        path = temp_sprintf("%s%s", p->std, path);
-        const bool ok = read_dir(&p->paths, p->cwd, path, suffix, p->arena);
-        temp_reset(path);
-
-        if (!ok) {
+        path = arena_sprintf(p->arena, "%s%s", p->std, path);
+        if (!read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
             return PDE_FAILED;
         }
     }
+    p->packages->current->real_path = path;
+
     bool empty = true;
 
     const Lexer lexer_save = p->lexer;

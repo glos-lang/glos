@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
     for (Package *it = packages.head; it; it = it->next) {
         if (!it->is_file) {
             da_push(&compiler.link_flags, "-L");
-            da_push(&compiler.link_flags, it->path.data);
+            da_push(&compiler.link_flags, it->real_path);
         }
     }
 
