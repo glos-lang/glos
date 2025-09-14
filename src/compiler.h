@@ -3,11 +3,7 @@
 
 #include "context.h"
 
-typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-} LinkFlags;
+typedef DynamicArray(const char *) LinkFlags;
 
 typedef struct {
     Context context;

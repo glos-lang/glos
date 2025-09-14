@@ -7,12 +7,6 @@
 
 #include "basic.h"
 
-#define return_defer(value)                                                                                            \
-    do {                                                                                                               \
-        result = (value);                                                                                              \
-        goto defer;                                                                                                    \
-    } while (0)
-
 // String View
 bool sv_eq(SV a, SV b) {
     return a.count == b.count && memcmp(a.data, b.data, b.count) == 0;
@@ -82,6 +76,27 @@ SV sv_split(SV *s, char ch) {
     s->data = p + 1;
     s->count -= result.count + 1;
     return result;
+}
+
+// String Builder
+void sb_sprintf(SB *sb, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    const int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    assert(n >= 0);
+    sb_grow(sb, n + 1);
+
+    va_start(args, fmt);
+    vsnprintf(sb->data + sb->count, n + 1, fmt, args);
+    sb->count += n;
+    va_end(args);
+}
+
+SV sb_to_sv(SB sb, size_t start) {
+    assert(start <= sb.count);
+    return (SV) {.data = sb.data + start, .count = sb.count - start};
 }
 
 // Characters

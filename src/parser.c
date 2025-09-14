@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "formatter.h"
 #include "message.h"
 
 static void nodes_push(Nodes *ns, Node *n) {
@@ -15,6 +16,11 @@ static void nodes_push(Nodes *ns, Node *n) {
     }
 }
 
+static void nodes_append(Nodes *dst, Nodes *src) {
+    nodes_push(dst, src->head);
+    dst->tail = src->tail;
+}
+
 static Import *imports_find(Imports is, SV name) {
     for (Import *it = is.head; it; it = it->next) {
         if (sv_eq(it->as, name)) {
@@ -27,74 +33,6 @@ static Import *imports_find(Imports is, SV name) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
-}
-
-typedef enum {
-    POWER_NIL,
-    POWER_SET,
-    POWER_LOR,
-    POWER_CMP,
-    POWER_SHL,
-    POWER_ADD,
-    POWER_BOR,
-    POWER_MUL,
-    POWER_PRE,
-    POWER_DOT
-} Power;
-
-static_assert(COUNT_TOKENS == 65, "");
-static Power token_kind_to_power(TokenKind kind) {
-    switch (kind) {
-    case TOKEN_DOT:
-    case TOKEN_LPAREN:
-    case TOKEN_LBRACE:
-    case TOKEN_LBRACKET:
-        return POWER_DOT;
-
-    case TOKEN_ADD:
-    case TOKEN_SUB:
-        return POWER_ADD;
-
-    case TOKEN_MUL:
-    case TOKEN_DIV:
-    case TOKEN_MOD:
-        return POWER_MUL;
-
-    case TOKEN_SHL:
-    case TOKEN_SHR:
-        return POWER_SHL;
-
-    case TOKEN_BOR:
-    case TOKEN_BAND:
-        return POWER_BOR;
-
-    case TOKEN_LOR:
-    case TOKEN_LAND:
-        return POWER_LOR;
-
-    case TOKEN_SET:
-    case TOKEN_ADD_SET:
-    case TOKEN_SUB_SET:
-    case TOKEN_MUL_SET:
-    case TOKEN_DIV_SET:
-    case TOKEN_MOD_SET:
-    case TOKEN_SHL_SET:
-    case TOKEN_SHR_SET:
-    case TOKEN_BOR_SET:
-    case TOKEN_BAND_SET:
-        return POWER_SET;
-
-    case TOKEN_GT:
-    case TOKEN_GE:
-    case TOKEN_LT:
-    case TOKEN_LE:
-    case TOKEN_EQ:
-    case TOKEN_NE:
-        return POWER_CMP;
-
-    default:
-        return POWER_NIL;
-    }
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -635,7 +573,7 @@ static void do_import(Parser *p, Token token, SV as) {
     const char *path = get_relative_path(p->cwd, path_start, p->arena);
     temp_reset(path_start);
 
-    if (!strcmp(path, ".")) {
+    if (!p->formatter && !strcmp(path, ".")) {
         error_full(ERROR, token.pos, "Cannot import package 'main'");
         exit(1);
     }
@@ -644,21 +582,22 @@ static void do_import(Parser *p, Token token, SV as) {
     Package *previous = packages_find_by_path(*p->packages, path_sv);
     if (previous) {
         Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
-        if (previous_import) {
+        if (previous_import && !p->formatter) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
             fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->pos, "Imported here");
+            error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         if (as.count) {
             import->as = as;
+            import->aliased = true;
         } else {
             import->as = previous->name.sv;
         }
 
-        import->pos = token.pos;
+        import->token = token;
         import->package = previous;
         imports_push(&p->packages->current->imports, import);
         return;
@@ -670,33 +609,37 @@ static void do_import(Parser *p, Token token, SV as) {
     Package *packages_current_save = p->packages->current;
     packages_push(p->packages, package);
 
-    ParseDirError pde = parse_dir(p, path, true);
-    if (pde == PDE_FAILED) {
-        error_full(ERROR, token.pos, "Could not import package '%s'", path);
-        exit(1);
-    }
+    if (!p->formatter) {
+        ParseDirError pde = parse_dir(p, path, true);
+        if (pde == PDE_FAILED) {
+            error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            exit(1);
+        }
 
-    if (pde == PDE_EMPTY) {
-        error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
-        exit(1);
+        if (pde == PDE_EMPTY) {
+            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
+            exit(1);
+        }
     }
 
     Import *import = arena_alloc(p->arena, sizeof(*import));
     import->as = as;
-    import->pos = token.pos;
+    import->token = token;
     import->package = package;
 
-    if (!import->as.count) {
+    if (import->as.count) {
+        import->aliased = true;
+    } else {
         import->as = package->name.sv;
     }
 
     p->packages->current = packages_current_save;
-    {
+    if (!p->formatter) {
         Import *previous_import = imports_find(p->packages->current->imports, import->as);
         if (previous_import) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
             fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->pos, "Imported here");
+            error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
     }
@@ -1021,7 +964,7 @@ bool parse_file(Parser *p, const char *path) {
 
     Package *package = p->packages->current;
     if (!sv_eq(name.sv, package->name.sv)) {
-        if (package->name.sv.count) {
+        if (!p->formatter && package->name.sv.count) {
             error_full(
                 ERROR,
                 name.pos,
@@ -1044,15 +987,30 @@ bool parse_file(Parser *p, const char *path) {
         package->name.pos = name.pos;
     }
 
+    Nodes   nodes = {0};
+    Import *imports = p->packages->current->imports.tail;
+
     while (true) {
         consume(p, TOKEN_EOL);
         if (lexer_read(&p->lexer, TOKEN_EOF)) {
             break;
         }
 
-        nodes_push(&package->nodes, parse_stmt(p));
+        nodes_push(&nodes, parse_stmt(p));
     }
 
+    if (p->formatter) {
+        if (!imports) {
+            imports = p->packages->current->imports.head;
+        }
+
+        if (!format_file(path, name.sv, imports, nodes.head, p->formatter)) {
+            p->formatter_failed = true;
+            error_standalone(ERROR, "Could not format file '%s'", path);
+        }
+    } else {
+        nodes_append(&package->nodes, &nodes);
+    }
     return true;
 }
 

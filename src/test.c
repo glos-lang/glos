@@ -24,8 +24,6 @@ static bool yes_or_no_prompt(void) {
     return buffer[0] == '\0' || buffer[0] == 'y' || buffer[0] == 'Y';
 }
 
-typedef DynamicArray(char) SB;
-
 static bool read_file_into_arena(FILE *f, SV *out, SB *s, Arena *a) {
     const size_t start = s->count;
 
@@ -342,7 +340,7 @@ int main(int argc, char **argv) {
     }
 
     Paths paths = {0};
-    Arena paths_arena = {0};
+    Arena paths_arena = {0}; // TODO: Instead of separate arena consider reseting
     if (!read_dir(&paths, get_current_dir(&paths_arena), ".", sv_from_cstr("glos"), &paths_arena)) {
         fprintf(stderr, "ERROR: Could not contents of current directory\n");
         exit(1);

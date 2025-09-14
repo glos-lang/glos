@@ -20,6 +20,7 @@ static void usage(FILE *file) {
     write_message(file, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_CYAN, "Flags:\n");
     usage_flag(file, "h", "           Show this message");
     usage_flag(file, "r", "           Run the program");
+    usage_flag(file, "f", "           Format the program");
     usage_flag(file, "o", "OUTPUT     Set the output path");
     usage_flag(file, "L", "PATH       Add a library path");
     usage_flag(file, "l", "NAME       Add a library");
@@ -113,7 +114,10 @@ int main(int argc, char **argv) {
     bool        run = false;
     const char *input = NULL;
     const char *output = NULL;
-    LinkFlags   link_flags = {0};
+
+    Cmd       cmd = {0};
+    SB        formatter = {0};
+    LinkFlags link_flags = {0};
 
     shift(&argc, &argv, "Program name");
     while (argc) {
@@ -123,8 +127,25 @@ int main(int argc, char **argv) {
                 usage(stdout);
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
+                if (parser.formatter) {
+                    error_standalone(ERROR, "Cannot format and compile at the same time");
+                    exit(1);
+                }
+
                 run = true;
+            } else if (!strcmp(arg, "-f")) {
+                if (run || output) {
+                    error_standalone(ERROR, "Cannot format and compile at the same time");
+                    exit(1);
+                }
+
+                parser.formatter = &formatter;
             } else if (!strcmp(arg, "-o")) {
+                if (parser.formatter) {
+                    error_standalone(ERROR, "Cannot format and compile at the same time");
+                    exit(1);
+                }
+
                 output = shift(&argc, &argv, "Output file");
             } else if (!strcmp(arg, "--")) {
                 break;
@@ -198,13 +219,16 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (parser.formatter) {
+        return_defer(parser.formatter_failed);
+    }
+
     compiler_init(&compiler);
     check_packages(&compiler, packages);
 
     da_push_many(&compiler.link_flags, link_flags.data, link_flags.count);
     da_free(&link_flags);
 
-    Cmd  cmd = {0};
     bool remove_after = false;
     if (run) {
         if (output) {
@@ -253,9 +277,11 @@ int main(int argc, char **argv) {
         }
     }
 
+defer:
     parser_free(&parser);
     packages_free(&packages);
     arena_free(&arena);
     da_free(&cmd);
+    sb_free(&formatter);
     return result;
 }

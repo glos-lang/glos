@@ -14,6 +14,9 @@ typedef struct {
 
     Lexer lexer;
 
+    SB  *formatter;
+    bool formatter_failed;
+
     bool local;
     bool in_extern;
     bool dont_consume_eols;

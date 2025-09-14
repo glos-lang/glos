@@ -6,8 +6,10 @@
 typedef struct Import Import;
 
 struct Import {
-    SV       as;
-    Pos      pos;
+    SV   as;
+    bool aliased;
+
+    Token    token;
     Package *package;
 
     Import *next;
