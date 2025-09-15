@@ -1,5 +1,4 @@
 #include "formatter.h"
-#include "node.h"
 
 typedef struct {
     size_t depth;
@@ -205,6 +204,18 @@ static void format_expr(Formatter *f, Node *n) {
             f->depth++;
         }
 
+        typedef struct {
+            size_t start;
+            size_t count;
+            bool   newline;
+        } Designator;
+
+        Designator *designators = NULL;
+        if (compound->designators && compound->fmt_multiline) {
+            designators = temp_alloc(compound->designators * sizeof(*designators));
+        }
+        Designator *dp = designators;
+
         for (Node *it = compound->nodes.head; it; it = it->next) {
             if (it->fmt_newline) {
                 sb_push(f->sb, '\n');
@@ -217,8 +228,22 @@ static void format_expr(Formatter *f, Node *n) {
 
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
+                if (dp) {
+                    dp->start = f->sb->count;
+                    dp->newline = it->fmt_newline;
+                }
+
                 format_expr(f, assign->lhs);
+                if (dp) {
+                    dp->count = f->sb->count - dp->start;
+                }
+
                 sb_sprintf(f->sb, ": ");
+                if (dp) {
+                    dp->start = f->sb->count;
+                    dp++;
+                }
+
                 format_expr(f, assign->rhs);
             } else {
                 format_expr(f, it);
@@ -227,6 +252,30 @@ static void format_expr(Formatter *f, Node *n) {
             if (it->next) {
                 sb_sprintf(f->sb, ", ");
             }
+        }
+
+        if (designators) {
+            size_t offset = 0;
+            size_t max_spaces = 0;
+            for (size_t i = 0, j = 0; i < compound->designators; i++) {
+                const Designator it = designators[i];
+                if (!it.newline) {
+                    max_spaces = max(max_spaces, it.count);
+                }
+
+                if (it.newline || i + 1 == compound->designators) {
+                    while (j < i) {
+                        const Designator it = designators[j++];
+                        const size_t     n = max_spaces - it.count;
+                        sb_insert(f->sb, ' ', it.start + offset, n);
+                        offset += n;
+                    }
+
+                    max_spaces = it.count;
+                }
+            }
+
+            temp_reset(designators);
         }
 
         if (compound->fmt_multiline) {

@@ -307,6 +307,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
             assign->lhs = expr;
             assign->rhs = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
             nodes_push(&compound->nodes, (Node *) assign);
+            compound->designators++;
         } else {
             if (kind == COMPOUND_DESIGNATED) {
                 error_full(ERROR, expr->token.pos, "Cannot mix ordered and designated initializers");

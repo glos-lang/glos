@@ -191,7 +191,9 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *type;
-    Nodes nodes;
+
+    Nodes  nodes;
+    size_t designators;
 
     // Formatter metadata
     bool fmt_multiline;

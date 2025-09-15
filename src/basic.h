@@ -114,6 +114,7 @@ typedef DynamicArray(char) SB;
 #define sb_push_many da_push_many
 
 void sb_sprintf(SB *sb, const char *fmt, ...) PrintfLike(2);
+void sb_insert(SB *sb, char ch, size_t index, size_t count);
 SV   sb_to_sv(SB sb, size_t start);
 
 // Encoding

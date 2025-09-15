@@ -99,6 +99,14 @@ void sb_sprintf(SB *sb, const char *fmt, ...) {
     va_end(args);
 }
 
+void sb_insert(SB *sb, char ch, size_t index, size_t count) {
+    assert(index <= sb->count);
+    sb_grow(sb, count);
+    memmove(sb->data + index + count, sb->data + index, sb->count - index);
+    memset(sb->data + index, ch, count);
+    sb->count += count;
+}
+
 SV sb_to_sv(SB sb, size_t start) {
     assert(start <= sb.count);
     return (SV) {.data = sb.data + start, .count = sb.count - start};
