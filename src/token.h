@@ -116,9 +116,9 @@ Power token_kind_to_power(TokenKind kind);
 typedef struct {
     TokenKind kind;
 
-    SV   sv;
-    Pos  pos;
-    bool newline;
+    SV     sv;
+    Pos    pos;
+    size_t newlines;
 
     union {
         bool   boolean;

@@ -4,9 +4,9 @@
 #include "token.h"
 
 typedef struct {
-    Pos  pos;
-    SV   sv;
-    bool newline;
+    Pos    pos;
+    SV     sv;
+    size_t newlines;
 
     bool  peeked;
     Token buffer;

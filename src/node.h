@@ -118,6 +118,9 @@ struct Node {
     Type     type;
     Token    token;
     Node    *next;
+
+    // Formatter metadata
+    bool fmt_newline;
 };
 
 typedef struct {

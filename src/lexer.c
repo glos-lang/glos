@@ -76,7 +76,7 @@ static bool match_char(Lexer *l, char ch) {
 }
 
 static void skip_whitespace(Lexer *l) {
-    l->newline = false;
+    l->newlines = 0;
     while (l->sv.count) {
         switch (*l->sv.data) {
         case ' ':
@@ -87,7 +87,7 @@ static void skip_whitespace(Lexer *l) {
 
         case '\n':
             next_char(l);
-            l->newline = true;
+            l->newlines++;
             break;
 
         case '/':
@@ -173,7 +173,7 @@ Token lexer_next(Lexer *l) {
     Token token = {
         .pos = l->pos,
         .sv = l->sv,
-        .newline = l->newline,
+        .newlines = l->newlines,
     };
 
     if (!l->sv.count) {

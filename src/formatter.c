@@ -53,6 +53,10 @@ static void format_type(Formatter *f, Node *n) {
         }
 
         for (Node *it = fn->args.head; it; it = it->next) {
+            if (it->fmt_newline) {
+                sb_push(f->sb, '\n');
+            }
+
             if (fn->fmt_multiline) {
                 sb_push(f->sb, '\n');
                 format_indent(f);
@@ -116,6 +120,10 @@ static void format_expr(Formatter *f, Node *n) {
         }
 
         for (Node *it = call->args.head; it; it = it->next) {
+            if (it->fmt_newline) {
+                sb_push(f->sb, '\n');
+            }
+
             if (call->fmt_multiline) {
                 sb_push(f->sb, '\n');
                 format_indent(f);
@@ -198,6 +206,10 @@ static void format_expr(Formatter *f, Node *n) {
         }
 
         for (Node *it = compound->nodes.head; it; it = it->next) {
+            if (it->fmt_newline) {
+                sb_push(f->sb, '\n');
+            }
+
             if (compound->fmt_multiline) {
                 sb_push(f->sb, '\n');
                 format_indent(f);
@@ -235,6 +247,10 @@ static_assert(COUNT_NODES == 22, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
+    }
+
+    if (n->fmt_newline) {
+        sb_push(f->sb, '\n');
     }
 
     if (!no_indent) {
@@ -299,6 +315,9 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         f->depth++;
         for (Node *it = block->body.head; it; it = it->next) {
             sb_push(f->sb, '\n');
+            if (it->fmt_newline) {
+                sb_push(f->sb, '\n');
+            }
             format_stmt(f, it, false);
         }
         f->depth--;
@@ -340,6 +359,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
 
         for (Node *arg = fn->args.head; arg; arg = arg->next) {
+            if (arg->fmt_newline) {
+                sb_push(f->sb, '\n');
+            }
+
             if (fn->fmt_multiline) {
                 sb_push(f->sb, '\n');
                 format_indent(f);
@@ -419,7 +442,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         NodeStruct *structt = (NodeStruct *) n;
 
         size_t max_field_length = 0;
-        for (Node *it = structt->fields.head; it; it = it->next) {
+        for (Node *it = structt->fields.head; it && !it->fmt_newline; it = it->next) {
             max_field_length = max(max_field_length, it->token.sv.count);
         }
 
@@ -427,6 +450,15 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         f->depth++;
         for (Node *it = structt->fields.head; it; it = it->next) {
+            if (it->fmt_newline) {
+                sb_push(f->sb, '\n');
+
+                max_field_length = it->token.sv.count;
+                for (Node *it2 = it->next; it2 && !it2->fmt_newline; it2 = it2->next) {
+                    max_field_length = max(max_field_length, it2->token.sv.count);
+                }
+            }
+
             format_indent(f);
             sb_sprintf(f->sb, SVFmt "%*s", SVArg(it->token.sv), (int) (max_field_length - it->token.sv.count + 1), "");
 
@@ -436,7 +468,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         f->depth--;
 
         format_indent(f);
-        sb_sprintf(f->sb, "}\n");
+        sb_sprintf(f->sb, "}");
     } break;
 
     case NODE_EXTERN: {
@@ -537,7 +569,7 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
         }
     }
 
-    if (nodes) {
+    if (nodes && !nodes->fmt_newline) {
         sb_push(sb, '\n');
     }
 
@@ -546,15 +578,17 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
         format_stmt(&f, it, false);
         sb_push(f.sb, '\n');
 
-        if (!it->next) {
-            break;
+        if (!it->next || it->next->fmt_newline) {
+            continue;
         }
 
         if (it->kind == NODE_FN) {
             if (fn_needs_newline((NodeFn *) it) || it->next->kind != NODE_FN || fn_needs_newline((NodeFn *) it->next)) {
                 sb_push(f.sb, '\n');
             }
-        } else if (it->kind != NODE_STRUCT && it->kind != NODE_ASSERT && it->next->kind != it->kind) {
+        } else if (it->kind == NODE_STRUCT) {
+            sb_push(f.sb, '\n');
+        } else if (it->kind != NODE_ASSERT && it->next->kind != it->kind) {
             sb_push(f.sb, '\n');
         }
     }
@@ -572,5 +606,4 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
     return true;
 }
 
-// TODO: Newlines
 // TODO: Comments

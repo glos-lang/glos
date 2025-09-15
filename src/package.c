@@ -7,11 +7,11 @@ void imports_push(Imports *is, Import *i) {
 
     if (is->tail) {
         is->tail->next = i;
-        is->tail = i;
     } else {
         is->head = i;
-        is->tail = i;
     }
+
+    is->tail = i;
 }
 
 void packages_free(Packages *ps) {
@@ -27,12 +27,11 @@ void packages_push(Packages *ps, Package *p) {
 
     if (ps->tail) {
         ps->tail->next = p;
-        ps->tail = p;
     } else {
         ps->head = p;
-        ps->tail = p;
     }
 
+    ps->tail = p;
     ps->current = p;
 }
 

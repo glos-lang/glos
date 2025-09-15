@@ -9,11 +9,11 @@ static void nodes_push(Nodes *ns, Node *n) {
 
     if (ns->tail) {
         ns->tail->next = n;
-        ns->tail = n;
     } else {
         ns->head = n;
-        ns->tail = n;
     }
+
+    ns->tail = n;
 }
 
 static void nodes_append(Nodes *dst, Nodes *src) {
@@ -97,7 +97,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
 
 static bool is_multiline(Lexer *l, TokenKind ending) {
     const Token token = lexer_peek(l);
-    return token.kind != ending && token.newline;
+    return token.kind != ending && token.newlines;
 }
 
 typedef enum {
@@ -156,10 +156,17 @@ static Node *parse_type(Parser *p) {
         NodeFn *fn = node_alloc(p, NODE_FN, token);
         fn->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
         while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+            token = lexer_peek(&p->lexer);
+            if (token.newlines) {
+                fn->fmt_multiline = true;
+            }
+            const bool fmt_newline = fn->args.head && token.newlines > 1;
+
             NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
             arg->type = parse_type(p);
 
             nodes_push(&fn->args, (Node *) arg);
+            fn->args.tail->fmt_newline = fmt_newline;
             fn->arity++;
 
             token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -169,7 +176,7 @@ static Node *parse_type(Parser *p) {
         }
 
         token = lexer_peek(&p->lexer);
-        if (!token.newline && token_kind_is_start_of_type(token.kind)) {
+        if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
             fn->ret = parse_type(p);
         }
 
@@ -276,6 +283,12 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
 
     compound->fmt_multiline = is_multiline(&p->lexer, TOKEN_RBRACE);
     while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+        token = lexer_peek(&p->lexer);
+        if (token.newlines) {
+            compound->fmt_multiline = true;
+        }
+        const bool fmt_newline = compound->nodes.head && token.newlines > 1;
+
         Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
 
         token = lexer_peek(&p->lexer);
@@ -303,6 +316,8 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
 
             nodes_push(&compound->nodes, expr);
         }
+
+        compound->nodes.tail->fmt_newline = fmt_newline;
 
         token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACE);
         if (token.kind != TOKEN_COMMA) {
@@ -419,7 +434,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             node = parse_type(p);
             token = lexer_expect(&p->lexer, TOKEN_LBRACE);
-            if (token.newline) {
+            if (token.newlines) {
                 error_full(ERROR, token.pos, "Expected '{' on same line as type");
                 exit(1);
             }
@@ -445,7 +460,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
     while (true) {
         token = lexer_peek(&p->lexer);
-        if (token.newline) {
+        if (token.newlines) {
             break;
         }
 
@@ -478,7 +493,15 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             call->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
 
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+                token = lexer_peek(&p->lexer);
+                if (token.newlines) {
+                    call->fmt_multiline = true;
+                }
+                const bool fmt_newline = call->args.head && token.newlines > 1;
+
                 nodes_push(&call->args, parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED));
+                call->args.tail->fmt_newline = fmt_newline;
+
                 call->arity++;
 
                 token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -660,13 +683,17 @@ static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
-    Token token = lexer_next(&p->lexer);
+    Token      token = lexer_next(&p->lexer);
+    const bool fmt_newline = !p->local && token.newlines > 1;
+
     switch (token.kind) {
     case TOKEN_LBRACE: {
         local_assert(p, token, true);
         NodeBlock *block = node_alloc(p, NODE_BLOCK, token);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            const bool fmt_newline = block->body.head && lexer_peek(&p->lexer).newlines > 1;
             nodes_push(&block->body, parse_stmt(p));
+            block->body.tail->fmt_newline = fmt_newline;
         }
 
         assert(p->lexer.buffer.kind == TOKEN_RBRACE);
@@ -736,7 +763,7 @@ static Node *parse_stmt(Parser *p) {
         NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
 
         token = lexer_peek(&p->lexer);
-        if (!token.newline && token.kind != TOKEN_EOL && token.kind != TOKEN_RBRACE) {
+        if (!token.newlines && token.kind != TOKEN_EOL && token.kind != TOKEN_RBRACE) {
             ret->value = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
         }
 
@@ -802,6 +829,10 @@ static Node *parse_stmt(Parser *p) {
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             NodeField *field = node_alloc(p, NODE_FIELD, lexer_expect(&p->lexer, TOKEN_IDENT));
+            if (structt->fields.head) {
+                field->node.fmt_newline = field->node.token.newlines > 1;
+            }
+
             field->type = parse_type(p);
             consume(p, TOKEN_COMMA);
             nodes_push(&structt->fields, (Node *) field);
@@ -922,6 +953,10 @@ static Node *parse_stmt(Parser *p) {
     if (!p->dont_consume_eols) {
         consume(p, TOKEN_EOL);
     }
+
+    if (node) {
+        node->fmt_newline = fmt_newline;
+    }
     return node;
 }
 
@@ -935,11 +970,18 @@ static Node *parse_fn(Parser *p, Token token) {
 
     fn->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+        token = lexer_peek(&p->lexer);
+        if (token.newlines) {
+            fn->fmt_multiline = true;
+        }
+        const bool fmt_newline = fn->args.head && token.newlines > 1;
+
         NodeVar *arg = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
         arg->kind = NODE_VAR_ARG;
         arg->type = parse_type(p);
 
         nodes_push(&fn->args, (Node *) arg);
+        fn->args.tail->fmt_newline = fmt_newline;
         fn->arity++;
 
         token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -949,7 +991,7 @@ static Node *parse_fn(Parser *p, Token token) {
     }
 
     token = lexer_peek(&p->lexer);
-    if (!token.newline && token_kind_is_start_of_type(token.kind)) {
+    if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
         fn->ret = parse_type(p);
     }
 
