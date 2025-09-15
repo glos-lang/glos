@@ -318,6 +318,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             format_indent(f);
         }
 
+        if (var->is_static) {
+            sb_sprintf(f->sb, "static ");
+        }
+
         sb_sprintf(f->sb, "var " SVFmt, SVArg(n->token.sv));
         if (var->type) {
             sb_push(f->sb, ' ');
