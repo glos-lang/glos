@@ -136,6 +136,9 @@ typedef struct {
 
     Nodes  args;
     size_t arity;
+
+    // Formatter metadata
+    bool fmt_multiline;
 } NodeCall;
 
 typedef struct {
@@ -186,6 +189,9 @@ typedef struct {
     Node  node;
     Node *type;
     Nodes nodes;
+
+    // Formatter metadata
+    bool fmt_multiline;
 } NodeCompound;
 
 typedef struct {
@@ -228,6 +234,9 @@ typedef struct {
     CheckStatus check_status;
 
     QbeNode *qbe;
+
+    // Formatter metadata
+    bool fmt_multiline;
 } NodeFn;
 
 Type node_fn_return_type(const NodeFn *fn);

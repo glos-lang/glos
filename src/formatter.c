@@ -48,11 +48,26 @@ static void format_type(Formatter *f, Node *n) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
         sb_sprintf(f->sb, "fn (");
+        if (fn->fmt_multiline) {
+            f->depth++;
+        }
+
         for (Node *it = fn->args.head; it; it = it->next) {
+            if (fn->fmt_multiline) {
+                sb_push(f->sb, '\n');
+                format_indent(f);
+            }
+
             format_type(f, ((NodeVar *) it)->type);
             if (it->next) {
                 sb_sprintf(f->sb, ", ");
             }
+        }
+
+        if (fn->fmt_multiline) {
+            f->depth--;
+            sb_push(f->sb, '\n');
+            format_indent(f);
         }
         sb_push(f->sb, ')');
 
@@ -96,11 +111,26 @@ static void format_expr(Formatter *f, Node *n) {
         format_expr(f, call->fn);
 
         sb_push(f->sb, '(');
+        if (call->fmt_multiline) {
+            f->depth++;
+        }
+
         for (Node *it = call->args.head; it; it = it->next) {
+            if (call->fmt_multiline) {
+                sb_push(f->sb, '\n');
+                format_indent(f);
+            }
+
             format_expr(f, it);
             if (it->next) {
                 sb_sprintf(f->sb, ", ");
             }
+        }
+
+        if (call->fmt_multiline) {
+            f->depth--;
+            sb_push(f->sb, '\n');
+            format_indent(f);
         }
         sb_push(f->sb, ')');
     } break;
@@ -163,8 +193,16 @@ static void format_expr(Formatter *f, Node *n) {
         NodeCompound *compound = (NodeCompound *) n;
         format_type(f, compound->type);
         sb_sprintf(f->sb, " {");
+        if (compound->fmt_multiline) {
+            f->depth++;
+        }
 
         for (Node *it = compound->nodes.head; it; it = it->next) {
+            if (compound->fmt_multiline) {
+                sb_push(f->sb, '\n');
+                format_indent(f);
+            }
+
             if (it->kind == NODE_BINARY && it->token.kind == TOKEN_COLON) {
                 NodeBinary *assign = (NodeBinary *) it;
                 format_expr(f, assign->lhs);
@@ -177,6 +215,12 @@ static void format_expr(Formatter *f, Node *n) {
             if (it->next) {
                 sb_sprintf(f->sb, ", ");
             }
+        }
+
+        if (compound->fmt_multiline) {
+            f->depth--;
+            sb_push(f->sb, '\n');
+            format_indent(f);
         }
         sb_push(f->sb, '}');
     } break;
@@ -291,7 +335,16 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
 
         sb_push(f->sb, '(');
+        if (fn->fmt_multiline) {
+            f->depth++;
+        }
+
         for (Node *arg = fn->args.head; arg; arg = arg->next) {
+            if (fn->fmt_multiline) {
+                sb_push(f->sb, '\n');
+                format_indent(f);
+            }
+
             sb_sprintf(f->sb, SVFmt, SVArg(arg->token.sv));
             sb_push(f->sb, ' ');
             format_type(f, ((NodeVar *) arg)->type);
@@ -299,6 +352,12 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             if (arg->next) {
                 sb_sprintf(f->sb, ", ");
             }
+        }
+
+        if (fn->fmt_multiline) {
+            f->depth--;
+            sb_push(f->sb, '\n');
+            format_indent(f);
         }
         sb_sprintf(f->sb, ") ");
 
@@ -418,6 +477,11 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     }
 }
 
+static bool fn_needs_newline(NodeFn *fn) {
+    assert(fn->body->kind == NODE_BLOCK);
+    return ((NodeBlock *) fn->body)->body.head || fn->fmt_multiline;
+}
+
 bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB *sb) {
     const size_t start = sb->count;
 
@@ -451,10 +515,16 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
         format_stmt(&f, it, false);
         sb_push(f.sb, '\n');
 
-        if (it->kind != NODE_FN && it->kind != NODE_STRUCT && it->kind != NODE_ASSERT) {
-            if (it->next && it->next->kind != it->kind) {
+        if (!it->next) {
+            break;
+        }
+
+        if (it->kind == NODE_FN) {
+            if (fn_needs_newline((NodeFn *) it) || it->next->kind != NODE_FN || fn_needs_newline((NodeFn *) it->next)) {
                 sb_push(f.sb, '\n');
             }
+        } else if (it->kind != NODE_STRUCT && it->kind != NODE_ASSERT && it->next->kind != it->kind) {
+            sb_push(f.sb, '\n');
         }
     }
 

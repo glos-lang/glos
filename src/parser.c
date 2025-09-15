@@ -95,6 +95,11 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     }
 }
 
+static bool is_multiline(Lexer *l, TokenKind ending) {
+    const Token token = lexer_peek(l);
+    return token.kind != ending && token.newline;
+}
+
 typedef enum {
     PF_COMPOUND_ALLOWED = 1 << 0,
     PF_CONSTANT_EXPR = 1 << 1
@@ -146,9 +151,10 @@ static Node *parse_type(Parser *p) {
     } break;
 
     case TOKEN_FN: {
-        NodeFn *fn = node_alloc(p, NODE_FN, token);
-
         lexer_expect(&p->lexer, TOKEN_LPAREN);
+
+        NodeFn *fn = node_alloc(p, NODE_FN, token);
+        fn->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
         while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
             NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
             arg->type = parse_type(p);
@@ -262,13 +268,13 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
     compound->type = node;
 
-    typedef enum {
+    enum {
         COMPOUND_UNKNOWN,
         COMPOUND_ORDERED,
         COMPOUND_DESIGNATED,
-    } CompoundKind;
+    } kind = COMPOUND_UNKNOWN;
 
-    CompoundKind kind = COMPOUND_UNKNOWN;
+    compound->fmt_multiline = is_multiline(&p->lexer, TOKEN_RBRACE);
     while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
         Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
 
@@ -469,6 +475,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
+            call->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
+
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
                 nodes_push(&call->args, parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED));
                 call->arity++;
@@ -924,6 +932,7 @@ static Node *parse_fn(Parser *p, Token token) {
     const bool local_save = p->local;
     p->local = true;
 
+    fn->fmt_multiline = is_multiline(&p->lexer, TOKEN_RPAREN);
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
         NodeVar *arg = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
         arg->kind = NODE_VAR_ARG;
