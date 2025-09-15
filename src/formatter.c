@@ -482,6 +482,35 @@ static bool fn_needs_newline(NodeFn *fn) {
     return ((NodeBlock *) fn->body)->body.head || fn->fmt_multiline;
 }
 
+static Import *sort_imports(Import *head) {
+    if (!head) {
+        return NULL;
+    }
+
+    bool     swapped = false;
+    Import **p = NULL;
+
+    do {
+        swapped = false;
+        p = &head;
+
+        while ((*p) && (*p)->next) {
+            Import *a = *p;
+            Import *b = a->next;
+            if (sv_cmp(a->token.sv, b->token.sv) > 0) {
+                a->next = b->next;
+                b->next = a;
+                *p = b;
+                swapped = true;
+            }
+
+            p = &((*p)->next);
+        }
+    } while (swapped);
+
+    return head;
+}
+
 bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB *sb) {
     const size_t start = sb->count;
 
@@ -489,6 +518,8 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
     if (imports) {
         sb_sprintf(sb, "\nimport ");
         if (imports->next) {
+            imports = sort_imports(imports);
+
             sb_sprintf(sb, "(\n");
             for (Import *it = imports; it; it = it->next) {
                 sb_push(sb, '\t');

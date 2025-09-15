@@ -596,6 +596,7 @@ static void do_import(Parser *p, Token token, SV as) {
             error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
+        // TODO: Also check whether the same package is imported under a different namespace
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         if (as.count) {

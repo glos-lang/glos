@@ -92,6 +92,8 @@ typedef struct {
 #define SVArg(s) (int) ((s).count), ((s).data)
 
 bool sv_eq(SV a, SV b);
+int  sv_cmp(SV a, SV b);
+
 bool sv_match(SV a, const char *b);
 bool sv_has_prefix(SV a, SV b);
 bool sv_has_suffix(SV a, SV b);
