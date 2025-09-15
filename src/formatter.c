@@ -1,4 +1,5 @@
 #include "formatter.h"
+#include "node.h"
 
 typedef struct {
     size_t depth;
@@ -449,6 +450,12 @@ bool format_file(const char *path, SV package, Import *imports, Node *nodes, SB 
     for (Node *it = nodes; it; it = it->next) {
         format_stmt(&f, it, false);
         sb_push(f.sb, '\n');
+
+        if (it->kind != NODE_FN && it->kind != NODE_STRUCT && it->kind != NODE_ASSERT) {
+            if (it->next && it->next->kind != it->kind) {
+                sb_push(f.sb, '\n');
+            }
+        }
     }
 
     const SV result = sb_to_sv(*sb, start);
