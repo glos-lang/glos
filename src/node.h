@@ -121,6 +121,7 @@ struct Node {
 
     // Formatter metadata
     bool fmt_newline;
+    bool fmt_toplevel_newline;
 };
 
 typedef struct {
@@ -142,6 +143,7 @@ typedef struct {
 
     // Formatter metadata
     bool fmt_multiline;
+    Pos  rparen_pos;
 } NodeCall;
 
 typedef struct {
@@ -197,6 +199,7 @@ typedef struct {
 
     // Formatter metadata
     bool fmt_multiline;
+    Pos  rbrace_pos;
 } NodeCompound;
 
 typedef struct {
@@ -217,6 +220,8 @@ typedef struct {
 typedef struct {
     Node  node;
     Nodes body;
+
+    Pos rbrace_pos;
 } NodeBlock;
 
 typedef struct {

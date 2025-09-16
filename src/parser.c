@@ -1,5 +1,4 @@
 #include "parser.h"
-#include "formatter.h"
 #include "message.h"
 
 static void nodes_push(Nodes *ns, Node *n) {
@@ -316,6 +315,9 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
         }
     }
 
+    compound->rbrace_pos = p->lexer.pos;
+    compound->rbrace_pos.col--; // The lexer has already consumed the '}'
+
     if (p->lexer.pos.row != starting_row) {
         compound->fmt_multiline = true;
     }
@@ -502,6 +504,9 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 }
             }
 
+            call->rparen_pos = p->lexer.pos;
+            call->rparen_pos.col--; // The lexer has already consumed the ')'
+
             if (p->lexer.pos.row != starting_row) {
                 call->fmt_multiline = true;
             }
@@ -681,7 +686,7 @@ static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
     Token      token = lexer_next(&p->lexer);
-    const bool fmt_newline = !p->local && token.newlines > 1;
+    const bool fmt_toplevel_newline = !p->local && token.newlines > 1;
 
     switch (token.kind) {
     case TOKEN_LBRACE: {
@@ -694,7 +699,7 @@ static Node *parse_stmt(Parser *p) {
         }
 
         assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-        block->node.token = p->lexer.buffer;
+        block->rbrace_pos = p->lexer.buffer.pos;
 
         node = (Node *) block;
     } break;
@@ -952,7 +957,7 @@ static Node *parse_stmt(Parser *p) {
     }
 
     if (node) {
-        node->fmt_newline = fmt_newline;
+        node->fmt_toplevel_newline = fmt_toplevel_newline;
     }
     return node;
 }
@@ -1007,6 +1012,10 @@ bool parse_file(Parser *p, const char *path) {
         return false;
     }
 
+    if (p->formatter) {
+        p->lexer.comments = &p->formatter->comments;
+    }
+
     lexer_expect(&p->lexer, TOKEN_PACKAGE);
     const Token name = lexer_expect(&p->lexer, TOKEN_IDENT);
 
@@ -1052,7 +1061,7 @@ bool parse_file(Parser *p, const char *path) {
             imports = p->packages->current->imports.head;
         }
 
-        if (!format_file(path, name.sv, imports, nodes.head, p->formatter)) {
+        if (!format_file(p->formatter, path, name.sv, imports, nodes.head)) {
             p->formatter_failed = true;
             error_standalone(ERROR, "Could not format file '%s'", path);
         }

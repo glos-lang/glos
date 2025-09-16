@@ -1745,7 +1745,8 @@ static void check_fn(Compiler *c, Node *n) {
     if (fn->body) {
         check_stmt(c, fn->body);
         if (fn->ret && !always_returns(fn->body)) {
-            error_full(ERROR, fn->body->token.pos, "Expected return statement");
+            assert(fn->body->kind == NODE_BLOCK);
+            error_full(ERROR, ((NodeBlock *) fn->body)->rbrace_pos, "Expected return statement");
             exit(1);
         }
     }

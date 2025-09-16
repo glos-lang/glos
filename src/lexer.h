@@ -3,6 +3,20 @@
 
 #include "token.h"
 
+typedef enum {
+    CWS_INLINE,
+    CWS_NEWLINE,
+    CWS_BLANKLINE,
+} CommentWS;
+
+typedef struct {
+    CommentWS ws;
+    Pos       pos;
+    SV        sv;
+} Comment;
+
+typedef DynamicArray(Comment) Comments;
+
 typedef struct {
     Pos    pos;
     SV     sv;
@@ -10,6 +24,8 @@ typedef struct {
 
     bool  peeked;
     Token buffer;
+
+    Comments *comments;
 } Lexer;
 
 bool lexer_open(Lexer *l, const char *path, Arena *arena);

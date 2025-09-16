@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     const char *output = NULL;
 
     Cmd       cmd = {0};
-    SB        formatter = {0};
+    Formatter formatter = {0};
     LinkFlags link_flags = {0};
 
     shift(&argc, &argv, "Program name");
@@ -280,8 +280,8 @@ int main(int argc, char **argv) {
 defer:
     parser_free(&parser);
     packages_free(&packages);
+    formatter_free(&formatter);
     arena_free(&arena);
     da_free(&cmd);
-    sb_free(&formatter);
     return result;
 }
