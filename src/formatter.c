@@ -427,7 +427,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!no_indent) {
         format_indent(f);
     }
-    format_sync_comments(f, &n->token.pos, true);
+
+    if (!format_sync_comments(f, &n->token.pos, true) && n->fmt_newline) {
+        format_ensure_blank_line(f);
+    }
 
     switch (n->kind) {
     case NODE_ASSERT: {
