@@ -200,6 +200,10 @@ static void format_expr_with_parens_maybe(Formatter *f, Node *n, Power mbp) {
         da_push(&f->sb, '(');
         format_expr(f, n, true);
         da_push(&f->sb, ')');
+    } else if (n->kind == NODE_CAST && POWER_PRE < mbp) {
+        da_push(&f->sb, '(');
+        format_expr(f, n, true);
+        da_push(&f->sb, ')');
     } else {
         format_expr(f, n, true);
     }
