@@ -115,7 +115,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
     return emitted;
 }
 
-static void format_expr(Formatter *f, Node *n);
+static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
 
 static_assert(COUNT_NODES == 22, "");
 static void format_type(Formatter *f, Node *n) {
@@ -143,7 +143,7 @@ static void format_type(Formatter *f, Node *n) {
         format_type(f, index->base);
         if (index->from) {
             sb_sprintf(&f->sb, "; ");
-            format_expr(f, index->from);
+            format_expr(f, index->from, true);
         }
         sb_push(&f->sb, ']');
     } break;
@@ -195,21 +195,23 @@ static void format_type(Formatter *f, Node *n) {
 static void format_expr_with_parens_maybe(Formatter *f, Node *n, Power mbp) {
     if (n->kind == NODE_BINARY && token_kind_to_power(n->token.kind) < mbp) {
         da_push(&f->sb, '(');
-        format_expr(f, n);
+        format_expr(f, n, true);
         da_push(&f->sb, ')');
     } else {
-        format_expr(f, n);
+        format_expr(f, n, true);
     }
 }
 
-static void format_expr(Formatter *f, Node *n) {
+static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
     }
 
-    format_sync_comments(f, &n->token.pos, true);
-    if (n->fmt_newline) {
-        format_ensure_blank_line(f);
+    if (sync_comments_before) {
+        format_sync_comments(f, &n->token.pos, true);
+        if (n->fmt_newline) {
+            format_ensure_blank_line(f);
+        }
     }
 
     switch (n->kind) {
@@ -223,7 +225,7 @@ static void format_expr(Formatter *f, Node *n) {
 
     case NODE_CALL: {
         NodeCall *call = (NodeCall *) n;
-        format_expr(f, call->fn);
+        format_expr(f, call->fn, true);
 
         sb_push(&f->sb, '(');
         if (call->fmt_multiline) {
@@ -240,7 +242,7 @@ static void format_expr(Formatter *f, Node *n) {
                 format_indent(f);
             }
 
-            format_expr(f, it);
+            format_expr(f, it, true);
             if (it->next) {
                 sb_push(&f->sb, ',');
                 if (!call->fmt_multiline) {
@@ -276,11 +278,11 @@ static void format_expr(Formatter *f, Node *n) {
         NodeIndex *index = (NodeIndex *) n;
         format_expr_with_parens_maybe(f, index->base, POWER_DOT);
         sb_push(&f->sb, '[');
-        format_expr(f, index->from);
+        format_expr(f, index->from, true);
         if (index->ranged) {
             sb_sprintf(&f->sb, "..");
         }
-        format_expr(f, index->to);
+        format_expr(f, index->to, true);
         sb_push(&f->sb, ']');
     } break;
 
@@ -294,7 +296,7 @@ static void format_expr(Formatter *f, Node *n) {
 
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
-        format_expr(f, member->lhs);
+        format_expr(f, member->lhs, true);
         sb_sprintf(&f->sb, "." SVFmt, SVArg(n->token.sv));
     } break;
 
@@ -303,11 +305,11 @@ static void format_expr(Formatter *f, Node *n) {
         sb_sprintf(&f->sb, "sizeof");
         if (sizeoff->expr) {
             sb_push(&f->sb, '(');
-            format_expr(f, sizeoff->expr);
+            format_expr(f, sizeoff->expr, true);
             sb_push(&f->sb, ')');
         } else {
             sb_push(&f->sb, '<');
-            format_expr(f, sizeoff->type);
+            format_expr(f, sizeoff->type, true);
             sb_push(&f->sb, '>');
         }
     } break;
@@ -349,7 +351,7 @@ static void format_expr(Formatter *f, Node *n) {
                     dp->newline = it->fmt_newline;
                 }
 
-                format_expr(f, assign->lhs);
+                format_expr(f, assign->lhs, true);
                 if (dp) {
                     dp->count = f->sb.count - dp->start;
                 }
@@ -360,9 +362,9 @@ static void format_expr(Formatter *f, Node *n) {
                     dp++;
                 }
 
-                format_expr(f, assign->rhs);
+                format_expr(f, assign->rhs, true);
             } else {
-                format_expr(f, it);
+                format_expr(f, it, true);
             }
 
             if (it->next) {
@@ -434,18 +436,18 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             sb_sprintf(&f->sb, "static ");
         }
         sb_sprintf(&f->sb, "assert ");
-        format_expr(f, assertt->expr);
+        format_expr(f, assertt->expr, true);
 
         if (assertt->message) {
             sb_sprintf(&f->sb, ", ");
-            format_expr(f, assertt->message);
+            format_expr(f, assertt->message, true);
         }
     } break;
 
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
         sb_sprintf(&f->sb, "if ");
-        format_expr(f, iff->condition);
+        format_expr(f, iff->condition, true);
         sb_push(&f->sb, ' ');
         format_stmt(f, iff->consequence, true);
 
@@ -466,7 +468,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         if (forr->condition) {
             sb_push(&f->sb, ' ');
-            format_expr(f, forr->condition);
+            format_expr(f, forr->condition, true);
         }
 
         if (forr->update) {
@@ -508,7 +510,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         if (ret->value) {
             sb_push(&f->sb, ' ');
-            format_expr(f, ret->value);
+            format_expr(f, ret->value, true);
         }
     } break;
 
@@ -516,7 +518,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         NodeFn *fn = (NodeFn *) n;
         if (fn->link) {
             sb_sprintf(&f->sb, "#link ");
-            format_expr(f, fn->link);
+            format_expr(f, fn->link, true);
             sb_push(&f->sb, '\n');
             format_indent(f);
         }
@@ -572,7 +574,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         NodeVar *var = (NodeVar *) n;
         if (var->link) {
             sb_sprintf(&f->sb, "#link ");
-            format_expr(f, var->link);
+            format_expr(f, var->link, true);
             sb_push(&f->sb, '\n');
             format_indent(f);
         }
@@ -589,7 +591,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         if (var->expr) {
             sb_sprintf(&f->sb, " = ");
-            format_expr(f, var->expr);
+            format_expr(f, var->expr, true);
         }
     } break;
 
@@ -607,7 +609,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
 
         sb_sprintf(&f->sb, " = ");
-        format_expr(f, constt->expr);
+        format_expr(f, constt->expr, true);
     } break;
 
     case NODE_FIELD:
@@ -652,7 +654,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         sb_sprintf(&f->sb, "extern ");
 
         for (Node *it = externn->libraries.head; it; it = it->next) {
-            format_expr(f, it);
+            format_expr(f, it, true);
             if (it->next) {
                 sb_push(&f->sb, ',');
             }
@@ -676,11 +678,11 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_PRINT: {
         sb_sprintf(&f->sb, "print ");
-        format_expr(f, ((NodePrint *) n)->operand);
+        format_expr(f, ((NodePrint *) n)->operand, true);
     } break;
 
     default:
-        format_expr(f, n);
+        format_expr(f, n, false);
         break;
     }
 }
