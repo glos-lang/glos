@@ -15,7 +15,14 @@
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
 
-#define panic(...) (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+#define panic(...)    (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+#define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))
+
+#define return_defer(value)                                                                                            \
+    do {                                                                                                               \
+        result = (value);                                                                                              \
+        goto defer;                                                                                                    \
+    } while (0)
 
 // Some systems define unreachable() in stddef.h
 #ifdef unreachable
@@ -85,6 +92,8 @@ typedef struct {
 #define SVArg(s) (int) ((s).count), ((s).data)
 
 bool sv_eq(SV a, SV b);
+int  sv_cmp(SV a, SV b);
+
 bool sv_match(SV a, const char *b);
 bool sv_has_prefix(SV a, SV b);
 bool sv_has_suffix(SV a, SV b);
@@ -96,13 +105,23 @@ SV sv_trim(SV s, char ch);
 SV sv_drop(SV *s, size_t count);
 SV sv_split(SV *s, char ch);
 
+// String Builder
+typedef DynamicArray(char) SB;
+
+#define sb_free      da_free
+#define sb_grow      da_grow
+#define sb_push      da_push
+#define sb_push_many da_push_many
+
+void sb_sprintf(SB *sb, const char *fmt, ...) PrintfLike(2);
+void sb_insert(SB *sb, char ch, size_t index, size_t count);
+SV   sb_to_sv(SB sb, size_t start);
+
 // Encoding
 bool resolve_escape_char(char *ch);
 void resolve_escape_chars(char *buffer, SV *sv);
 
 // Temporary Allocator
-#define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))
-
 void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
 char *temp_sprintf(const char *fmt, ...) PrintfLike(1);
@@ -128,21 +147,13 @@ const char *get_absolute_path(const char *cwd, const char *path, Arena *arena);
 
 bool read_file(SV *out, const char *path, Arena *arena);
 
-typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-} Paths;
+typedef DynamicArray(const char *) Paths;
 
 bool is_dir(const char *path);
 bool read_dir(Paths *p, const char *cwd, const char *path, SV suffix, Arena *arena);
 
 // OS
-typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-} Cmd;
+typedef DynamicArray(const char *) Cmd;
 
 typedef struct {
     FILE **in;

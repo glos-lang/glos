@@ -1,8 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "lexer.h"
-#include "package.h"
+#include "formatter.h"
 
 typedef struct {
     Arena    *arena;
@@ -13,6 +12,9 @@ typedef struct {
     const char *root;
 
     Lexer lexer;
+
+    Formatter *formatter;
+    bool       formatter_failed;
 
     bool local;
     bool in_extern;

@@ -76,7 +76,9 @@ static bool match_char(Lexer *l, char ch) {
 }
 
 static void skip_whitespace(Lexer *l) {
-    l->newline = false;
+    size_t newlines_before_comment = 0;
+
+    l->newlines = 0;
     while (l->sv.count) {
         switch (*l->sv.data) {
         case ' ':
@@ -87,10 +89,12 @@ static void skip_whitespace(Lexer *l) {
 
         case '\n':
             next_char(l);
-            l->newline = true;
+            l->newlines++;
+            newlines_before_comment++;
             break;
 
-        case '/':
+        case '/': {
+            Comment comment = {.pos = l->pos, .sv = l->sv};
             if (peek_char(l, 1) == '/') {
                 while (l->sv.count && *l->sv.data != '\n') {
                     next_char(l);
@@ -98,7 +102,24 @@ static void skip_whitespace(Lexer *l) {
             } else {
                 return;
             }
-            break;
+            comment.sv.count -= l->sv.count;
+
+            comment.sv.data += 2;
+            comment.sv.count -= 2;
+
+            if (newlines_before_comment > 1) {
+                comment.ws = CWS_BLANKLINE;
+            } else if (newlines_before_comment == 1) {
+                comment.ws = CWS_NEWLINE;
+            } else {
+                comment.ws = CWS_INLINE;
+            }
+            newlines_before_comment = 0;
+
+            if (l->comments) {
+                da_push(l->comments, comment);
+            }
+        } break;
 
         default:
             return;
@@ -173,7 +194,7 @@ Token lexer_next(Lexer *l) {
     Token token = {
         .pos = l->pos,
         .sv = l->sv,
-        .newline = l->newline,
+        .newlines = l->newlines,
     };
 
     if (!l->sv.count) {

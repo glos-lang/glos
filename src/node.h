@@ -118,6 +118,10 @@ struct Node {
     Type     type;
     Token    token;
     Node    *next;
+
+    // Formatter metadata
+    bool fmt_newline;
+    bool fmt_toplevel_newline;
 };
 
 typedef struct {
@@ -136,6 +140,10 @@ typedef struct {
 
     Nodes  args;
     size_t arity;
+
+    // Formatter metadata
+    bool fmt_multiline;
+    Pos  rparen_pos;
 } NodeCall;
 
 typedef struct {
@@ -185,7 +193,13 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *type;
-    Nodes nodes;
+
+    Nodes  nodes;
+    size_t designators;
+
+    // Formatter metadata
+    bool fmt_multiline;
+    Pos  rbrace_pos;
 } NodeCompound;
 
 typedef struct {
@@ -206,6 +220,8 @@ typedef struct {
 typedef struct {
     Node  node;
     Nodes body;
+
+    Pos rbrace_pos;
 } NodeBlock;
 
 typedef struct {
@@ -228,6 +244,9 @@ typedef struct {
     CheckStatus check_status;
 
     QbeNode *qbe;
+
+    // Formatter metadata
+    bool fmt_multiline;
 } NodeFn;
 
 Type node_fn_return_type(const NodeFn *fn);

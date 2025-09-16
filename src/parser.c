@@ -8,11 +8,16 @@ static void nodes_push(Nodes *ns, Node *n) {
 
     if (ns->tail) {
         ns->tail->next = n;
-        ns->tail = n;
     } else {
         ns->head = n;
-        ns->tail = n;
     }
+
+    ns->tail = n;
+}
+
+static void nodes_append(Nodes *dst, Nodes *src) {
+    nodes_push(dst, src->head);
+    dst->tail = src->tail;
 }
 
 static Import *imports_find(Imports is, SV name) {
@@ -27,74 +32,6 @@ static Import *imports_find(Imports is, SV name) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
-}
-
-typedef enum {
-    POWER_NIL,
-    POWER_SET,
-    POWER_LOR,
-    POWER_CMP,
-    POWER_SHL,
-    POWER_ADD,
-    POWER_BOR,
-    POWER_MUL,
-    POWER_PRE,
-    POWER_DOT
-} Power;
-
-static_assert(COUNT_TOKENS == 65, "");
-static Power token_kind_to_power(TokenKind kind) {
-    switch (kind) {
-    case TOKEN_DOT:
-    case TOKEN_LPAREN:
-    case TOKEN_LBRACE:
-    case TOKEN_LBRACKET:
-        return POWER_DOT;
-
-    case TOKEN_ADD:
-    case TOKEN_SUB:
-        return POWER_ADD;
-
-    case TOKEN_MUL:
-    case TOKEN_DIV:
-    case TOKEN_MOD:
-        return POWER_MUL;
-
-    case TOKEN_SHL:
-    case TOKEN_SHR:
-        return POWER_SHL;
-
-    case TOKEN_BOR:
-    case TOKEN_BAND:
-        return POWER_BOR;
-
-    case TOKEN_LOR:
-    case TOKEN_LAND:
-        return POWER_LOR;
-
-    case TOKEN_SET:
-    case TOKEN_ADD_SET:
-    case TOKEN_SUB_SET:
-    case TOKEN_MUL_SET:
-    case TOKEN_DIV_SET:
-    case TOKEN_MOD_SET:
-    case TOKEN_SHL_SET:
-    case TOKEN_SHR_SET:
-    case TOKEN_BOR_SET:
-    case TOKEN_BAND_SET:
-        return POWER_SET;
-
-    case TOKEN_GT:
-    case TOKEN_GE:
-    case TOKEN_LT:
-    case TOKEN_LE:
-    case TOKEN_EQ:
-    case TOKEN_NE:
-        return POWER_CMP;
-
-    default:
-        return POWER_NIL;
-    }
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -208,14 +145,17 @@ static Node *parse_type(Parser *p) {
     } break;
 
     case TOKEN_FN: {
-        NodeFn *fn = node_alloc(p, NODE_FN, token);
+        const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
 
-        lexer_expect(&p->lexer, TOKEN_LPAREN);
+        NodeFn *fn = node_alloc(p, NODE_FN, token);
         while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+            const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
+
             NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
             arg->type = parse_type(p);
 
             nodes_push(&fn->args, (Node *) arg);
+            fn->args.tail->fmt_newline = fmt_newline;
             fn->arity++;
 
             token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -224,8 +164,12 @@ static Node *parse_type(Parser *p) {
             }
         }
 
+        if (p->lexer.pos.row != starting_row) {
+            fn->fmt_multiline = true;
+        }
+
         token = lexer_peek(&p->lexer);
-        if (!token.newline && token_kind_is_start_of_type(token.kind)) {
+        if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
             fn->ret = parse_type(p);
         }
 
@@ -321,19 +265,21 @@ static void ensure_const_expr(Node *n) {
 }
 
 static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFlags flags) {
+    const size_t starting_row = token.pos.row;
+
     NodeCompound *compound = node_alloc(p, NODE_COMPOUND, token);
     compound->type = node;
 
-    typedef enum {
+    enum {
         COMPOUND_UNKNOWN,
         COMPOUND_ORDERED,
         COMPOUND_DESIGNATED,
-    } CompoundKind;
+    } kind = COMPOUND_UNKNOWN;
 
-    CompoundKind kind = COMPOUND_UNKNOWN;
     while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-        Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+        const bool fmt_newline = compound->nodes.head && lexer_peek(&p->lexer).newlines > 1;
 
+        Node *expr = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
         token = lexer_peek(&p->lexer);
         if (token.kind == TOKEN_COLON) {
             lexer_unbuffer(&p->lexer);
@@ -350,6 +296,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
             assign->lhs = expr;
             assign->rhs = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
             nodes_push(&compound->nodes, (Node *) assign);
+            compound->designators++;
         } else {
             if (kind == COMPOUND_DESIGNATED) {
                 error_full(ERROR, expr->token.pos, "Cannot mix ordered and designated initializers");
@@ -360,10 +307,19 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
             nodes_push(&compound->nodes, expr);
         }
 
+        compound->nodes.tail->fmt_newline = fmt_newline;
+
         token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACE);
         if (token.kind != TOKEN_COMMA) {
             break;
         }
+    }
+
+    compound->rbrace_pos = p->lexer.pos;
+    compound->rbrace_pos.col--; // The lexer has already consumed the '}'
+
+    if (p->lexer.pos.row != starting_row) {
+        compound->fmt_multiline = true;
     }
 
     return compound;
@@ -475,7 +431,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             node = parse_type(p);
             token = lexer_expect(&p->lexer, TOKEN_LBRACE);
-            if (token.newline) {
+            if (token.newlines) {
                 error_full(ERROR, token.pos, "Expected '{' on same line as type");
                 exit(1);
             }
@@ -501,7 +457,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
     while (true) {
         token = lexer_peek(&p->lexer);
-        if (token.newline) {
+        if (token.newlines) {
             break;
         }
 
@@ -529,10 +485,17 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 exit(1);
             }
 
+            const size_t starting_row = token.pos.row;
+
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
+
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+                const bool fmt_newline = call->args.head && lexer_peek(&p->lexer).newlines > 1;
+
                 nodes_push(&call->args, parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED));
+                call->args.tail->fmt_newline = fmt_newline;
+
                 call->arity++;
 
                 token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -540,6 +503,14 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                     break;
                 }
             }
+
+            call->rparen_pos = p->lexer.pos;
+            call->rparen_pos.col--; // The lexer has already consumed the ')'
+
+            if (p->lexer.pos.row != starting_row) {
+                call->fmt_multiline = true;
+            }
+
             node = (Node *) call;
         } break;
 
@@ -635,7 +606,7 @@ static void do_import(Parser *p, Token token, SV as) {
     const char *path = get_relative_path(p->cwd, path_start, p->arena);
     temp_reset(path_start);
 
-    if (!strcmp(path, ".")) {
+    if (!p->formatter && !strcmp(path, ".")) {
         error_full(ERROR, token.pos, "Cannot import package 'main'");
         exit(1);
     }
@@ -644,21 +615,23 @@ static void do_import(Parser *p, Token token, SV as) {
     Package *previous = packages_find_by_path(*p->packages, path_sv);
     if (previous) {
         Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
-        if (previous_import) {
+        if (previous_import && !p->formatter) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
             fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->pos, "Imported here");
+            error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
+        // TODO: Also check whether the same package is imported under a different namespace
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         if (as.count) {
             import->as = as;
+            import->aliased = true;
         } else {
             import->as = previous->name.sv;
         }
 
-        import->pos = token.pos;
+        import->token = token;
         import->package = previous;
         imports_push(&p->packages->current->imports, import);
         return;
@@ -670,33 +643,37 @@ static void do_import(Parser *p, Token token, SV as) {
     Package *packages_current_save = p->packages->current;
     packages_push(p->packages, package);
 
-    ParseDirError pde = parse_dir(p, path, true);
-    if (pde == PDE_FAILED) {
-        error_full(ERROR, token.pos, "Could not import package '%s'", path);
-        exit(1);
-    }
+    if (!p->formatter) {
+        ParseDirError pde = parse_dir(p, path, true);
+        if (pde == PDE_FAILED) {
+            error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            exit(1);
+        }
 
-    if (pde == PDE_EMPTY) {
-        error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
-        exit(1);
+        if (pde == PDE_EMPTY) {
+            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
+            exit(1);
+        }
     }
 
     Import *import = arena_alloc(p->arena, sizeof(*import));
     import->as = as;
-    import->pos = token.pos;
+    import->token = token;
     import->package = package;
 
-    if (!import->as.count) {
+    if (import->as.count) {
+        import->aliased = true;
+    } else {
         import->as = package->name.sv;
     }
 
     p->packages->current = packages_current_save;
-    {
+    if (!p->formatter) {
         Import *previous_import = imports_find(p->packages->current->imports, import->as);
         if (previous_import) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
             fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->pos, "Imported here");
+            error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
     }
@@ -708,17 +685,21 @@ static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
-    Token token = lexer_next(&p->lexer);
+    Token      token = lexer_next(&p->lexer);
+    const bool fmt_toplevel_newline = !p->local && token.newlines > 1;
+
     switch (token.kind) {
     case TOKEN_LBRACE: {
         local_assert(p, token, true);
         NodeBlock *block = node_alloc(p, NODE_BLOCK, token);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            const bool fmt_newline = block->body.head && lexer_peek(&p->lexer).newlines > 1;
             nodes_push(&block->body, parse_stmt(p));
+            block->body.tail->fmt_newline = fmt_newline;
         }
 
         assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-        block->node.token = p->lexer.buffer;
+        block->rbrace_pos = p->lexer.buffer.pos;
 
         node = (Node *) block;
     } break;
@@ -784,7 +765,7 @@ static Node *parse_stmt(Parser *p) {
         NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
 
         token = lexer_peek(&p->lexer);
-        if (!token.newline && token.kind != TOKEN_EOL && token.kind != TOKEN_RBRACE) {
+        if (!token.newlines && token.kind != TOKEN_EOL && token.kind != TOKEN_RBRACE) {
             ret->value = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
         }
 
@@ -850,6 +831,10 @@ static Node *parse_stmt(Parser *p) {
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             NodeField *field = node_alloc(p, NODE_FIELD, lexer_expect(&p->lexer, TOKEN_IDENT));
+            if (structt->fields.head) {
+                field->node.fmt_newline = field->node.token.newlines > 1;
+            }
+
             field->type = parse_type(p);
             consume(p, TOKEN_COMMA);
             nodes_push(&structt->fields, (Node *) field);
@@ -970,23 +955,30 @@ static Node *parse_stmt(Parser *p) {
     if (!p->dont_consume_eols) {
         consume(p, TOKEN_EOL);
     }
+
+    if (node) {
+        node->fmt_toplevel_newline = fmt_toplevel_newline;
+    }
     return node;
 }
 
 static Node *parse_fn(Parser *p, Token token) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
-    lexer_expect(&p->lexer, TOKEN_LPAREN);
+    const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
 
     const bool local_save = p->local;
     p->local = true;
 
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+        const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
+
         NodeVar *arg = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
         arg->kind = NODE_VAR_ARG;
         arg->type = parse_type(p);
 
         nodes_push(&fn->args, (Node *) arg);
+        fn->args.tail->fmt_newline = fmt_newline;
         fn->arity++;
 
         token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
@@ -995,8 +987,12 @@ static Node *parse_fn(Parser *p, Token token) {
         }
     }
 
+    if (p->lexer.pos.row != starting_row) {
+        fn->fmt_multiline = true;
+    }
+
     token = lexer_peek(&p->lexer);
-    if (!token.newline && token_kind_is_start_of_type(token.kind)) {
+    if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
         fn->ret = parse_type(p);
     }
 
@@ -1016,12 +1012,16 @@ bool parse_file(Parser *p, const char *path) {
         return false;
     }
 
+    if (p->formatter) {
+        p->lexer.comments = &p->formatter->comments;
+    }
+
     lexer_expect(&p->lexer, TOKEN_PACKAGE);
     const Token name = lexer_expect(&p->lexer, TOKEN_IDENT);
 
     Package *package = p->packages->current;
     if (!sv_eq(name.sv, package->name.sv)) {
-        if (package->name.sv.count) {
+        if (!p->formatter && package->name.sv.count) {
             error_full(
                 ERROR,
                 name.pos,
@@ -1044,15 +1044,30 @@ bool parse_file(Parser *p, const char *path) {
         package->name.pos = name.pos;
     }
 
+    Nodes   nodes = {0};
+    Import *imports = p->packages->current->imports.tail;
+
     while (true) {
         consume(p, TOKEN_EOL);
         if (lexer_read(&p->lexer, TOKEN_EOF)) {
             break;
         }
 
-        nodes_push(&package->nodes, parse_stmt(p));
+        nodes_push(&nodes, parse_stmt(p));
     }
 
+    if (p->formatter) {
+        if (!imports) {
+            imports = p->packages->current->imports.head;
+        }
+
+        if (!format_file(p->formatter, path, name.sv, imports, nodes.head)) {
+            p->formatter_failed = true;
+            error_standalone(ERROR, "Could not format file '%s'", path);
+        }
+    } else {
+        nodes_append(&package->nodes, &nodes);
+    }
     return true;
 }
 

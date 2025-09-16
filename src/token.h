@@ -98,12 +98,27 @@ typedef enum {
 
 const char *token_kind_to_cstr(TokenKind kind);
 
+typedef enum {
+    POWER_NIL,
+    POWER_SET,
+    POWER_LOR,
+    POWER_CMP,
+    POWER_SHL,
+    POWER_ADD,
+    POWER_BOR,
+    POWER_MUL,
+    POWER_PRE,
+    POWER_DOT
+} Power;
+
+Power token_kind_to_power(TokenKind kind);
+
 typedef struct {
     TokenKind kind;
 
-    SV   sv;
-    Pos  pos;
-    bool newline;
+    SV     sv;
+    Pos    pos;
+    size_t newlines;
 
     union {
         bool   boolean;
