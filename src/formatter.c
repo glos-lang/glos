@@ -73,7 +73,10 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
             if (nlb.count) {
                 f->sb.count = nlb.indices[nlb.count - 1];
             }
-            sb_push(&f->sb, ' ');
+
+            if (!f->sb.count || f->sb.data[f->sb.count - 1] != ' ') {
+                sb_push(&f->sb, ' ');
+            }
             break;
 
         case CWS_NEWLINE:
