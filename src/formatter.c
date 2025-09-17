@@ -196,17 +196,79 @@ static void format_type(Formatter *f, Node *n) {
 }
 
 static void format_expr_with_parens_maybe(Formatter *f, Node *n, Power mbp) {
+    bool parens = false;
     if (n->kind == NODE_BINARY && token_kind_to_power(n->token.kind) < mbp) {
-        da_push(&f->sb, '(');
-        format_expr(f, n, true);
-        da_push(&f->sb, ')');
+        parens = true;
+    } else if (n->kind == NODE_UNARY && POWER_PRE < mbp) {
+        parens = true;
     } else if (n->kind == NODE_CAST && POWER_PRE < mbp) {
-        da_push(&f->sb, '(');
+        parens = true;
+    }
+
+    if (parens) {
+        sb_push(&f->sb, '(');
         format_expr(f, n, true);
-        da_push(&f->sb, ')');
+        sb_push(&f->sb, ')');
     } else {
         format_expr(f, n, true);
     }
+}
+
+static void format_stmt(Formatter *f, Node *n, bool no_indent);
+
+static void format_fn(Formatter *f, NodeFn *fn) {
+    if (fn->link) {
+        sb_sprintf(&f->sb, "#link ");
+        format_expr(f, fn->link, true);
+        sb_push(&f->sb, '\n');
+        format_indent(f);
+    }
+
+    sb_sprintf(&f->sb, "fn ");
+    if (fn->node.token.kind == TOKEN_IDENT) {
+        sb_sprintf(&f->sb, SVFmt, SVArg(fn->node.token.sv));
+    }
+
+    sb_push(&f->sb, '(');
+    if (fn->fmt_multiline) {
+        f->depth++;
+    }
+
+    for (Node *arg = fn->args.head; arg; arg = arg->next) {
+        if (arg->fmt_newline) {
+            sb_push(&f->sb, '\n');
+        }
+
+        if (fn->fmt_multiline) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+        }
+
+        sb_sprintf(&f->sb, SVFmt, SVArg(arg->token.sv));
+        sb_push(&f->sb, ' ');
+        format_type(f, ((NodeVar *) arg)->type);
+
+        if (arg->next) {
+            sb_push(&f->sb, ',');
+            if (!fn->fmt_multiline) {
+                sb_push(&f->sb, ' ');
+            }
+        }
+    }
+
+    if (fn->fmt_multiline) {
+        f->depth--;
+        sb_push(&f->sb, '\n');
+        format_indent(f);
+    }
+    sb_sprintf(&f->sb, ") ");
+
+    if (fn->ret) {
+        format_type(f, fn->ret);
+        sb_push(&f->sb, ' ');
+    }
+
+    format_stmt(f, fn->body, true);
 }
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
@@ -232,7 +294,13 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
 
     case NODE_CALL: {
         NodeCall *call = (NodeCall *) n;
-        format_expr(f, call->fn, true);
+        if (call->fn->kind == NODE_FN) {
+            sb_push(&f->sb, '(');
+            format_expr(f, call->fn, true);
+            sb_push(&f->sb, ')');
+        } else {
+            format_expr_with_parens_maybe(f, call->fn, POWER_DOT);
+        }
 
         sb_push(&f->sb, '(');
         if (call->fmt_multiline) {
@@ -421,6 +489,20 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         sb_push(&f->sb, '}');
     } break;
 
+    case NODE_IF: {
+        NodeIf *iff = (NodeIf *) n;
+        sb_sprintf(&f->sb, "if ");
+        format_expr(f, iff->condition, true);
+        sb_sprintf(&f->sb, " then ");
+        format_expr(f, iff->consequence, true);
+        sb_sprintf(&f->sb, " else ");
+        format_expr(f, iff->antecedence, true);
+    } break;
+
+    case NODE_FN:
+        format_fn(f, (NodeFn *) n);
+        break;
+
     default:
         unreachable();
         break;
@@ -462,14 +544,20 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
-        sb_sprintf(&f->sb, "if ");
-        format_expr(f, iff->condition, true);
-        sb_push(&f->sb, ' ');
-        format_stmt(f, iff->consequence, true);
+        if (iff->expr) {
+            sb_push(&f->sb, '(');
+            format_expr(f, n, false);
+            sb_push(&f->sb, ')');
+        } else {
+            sb_sprintf(&f->sb, "if ");
+            format_expr(f, iff->condition, true);
+            sb_push(&f->sb, ' ');
+            format_stmt(f, iff->consequence, true);
 
-        if (iff->antecedence) {
-            sb_sprintf(&f->sb, " else ");
-            format_stmt(f, iff->antecedence, true);
+            if (iff->antecedence) {
+                sb_sprintf(&f->sb, " else ");
+                format_stmt(f, iff->antecedence, true);
+            }
         }
     } break;
 
@@ -532,58 +620,13 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
-        if (fn->link) {
-            sb_sprintf(&f->sb, "#link ");
-            format_expr(f, fn->link, true);
-            sb_push(&f->sb, '\n');
-            format_indent(f);
+        if (fn->node.token.kind != TOKEN_IDENT) {
+            sb_push(&f->sb, '(');
+            format_fn(f, fn);
+            sb_push(&f->sb, ')');
+        } else {
+            format_fn(f, fn);
         }
-
-        sb_sprintf(&f->sb, "fn ");
-        if (n->token.kind == TOKEN_IDENT) {
-            sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
-        }
-
-        sb_push(&f->sb, '(');
-        if (fn->fmt_multiline) {
-            f->depth++;
-        }
-
-        for (Node *arg = fn->args.head; arg; arg = arg->next) {
-            if (arg->fmt_newline) {
-                sb_push(&f->sb, '\n');
-            }
-
-            if (fn->fmt_multiline) {
-                sb_push(&f->sb, '\n');
-                format_indent(f);
-            }
-
-            sb_sprintf(&f->sb, SVFmt, SVArg(arg->token.sv));
-            sb_push(&f->sb, ' ');
-            format_type(f, ((NodeVar *) arg)->type);
-
-            if (arg->next) {
-                sb_push(&f->sb, ',');
-                if (!fn->fmt_multiline) {
-                    sb_push(&f->sb, ' ');
-                }
-            }
-        }
-
-        if (fn->fmt_multiline) {
-            f->depth--;
-            sb_push(&f->sb, '\n');
-            format_indent(f);
-        }
-        sb_sprintf(&f->sb, ") ");
-
-        if (fn->ret) {
-            format_type(f, fn->ret);
-            sb_push(&f->sb, ' ');
-        }
-
-        format_stmt(f, fn->body, true);
     } break;
 
     case NODE_VAR: {
