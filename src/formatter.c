@@ -224,6 +224,9 @@ static void format_fn(Formatter *f, NodeFn *fn) {
         format_indent(f);
     }
 
+    if (fn->is_public) {
+        sb_sprintf(&f->sb, "pub ");
+    }
     sb_sprintf(&f->sb, "fn ");
     if (fn->node.token.kind == TOKEN_IDENT) {
         sb_sprintf(&f->sb, SVFmt, SVArg(fn->node.token.sv));
@@ -638,6 +641,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             format_indent(f);
         }
 
+        if (var->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         if (var->is_static) {
             sb_sprintf(&f->sb, "static ");
         }
@@ -654,13 +661,22 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
     } break;
 
-    case NODE_TYPE:
+    case NODE_TYPE: {
+        NodeType *type = (NodeType *) n;
+        if (type->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         sb_sprintf(&f->sb, "type " SVFmt " ", SVArg(n->token.sv));
-        format_type(f, ((NodeType *) n)->definition);
-        break;
+        format_type(f, type->definition);
+    } break;
 
     case NODE_CONST: {
         NodeConst *constt = (NodeConst *) n;
+        if (constt->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         sb_sprintf(&f->sb, "const " SVFmt, SVArg(n->token.sv));
         if (constt->type) {
             sb_push(&f->sb, ' ');
@@ -677,6 +693,9 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
+        if (structt->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
 
         size_t max_field_length = 0;
         for (Node *it = structt->fields.head; it && !it->fmt_newline; it = it->next) {
@@ -710,6 +729,38 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
+
+        bool all_public = externn->definitions.head != NULL;
+        for (Node *it = externn->definitions.head; it; it = it->next) {
+            if (it->kind == NODE_FN) {
+                if (!((NodeFn *) it)->is_public) {
+                    all_public = false;
+                    break;
+                }
+            } else if (it->kind == NODE_VAR) {
+                if (!((NodeVar *) it)->is_public) {
+                    all_public = false;
+                    break;
+                }
+            } else {
+                unreachable();
+            }
+        }
+
+        if (all_public) {
+            for (Node *it = externn->definitions.head; it; it = it->next) {
+                if (it->kind == NODE_FN) {
+                    ((NodeFn *) it)->is_public = false;
+                } else if (it->kind == NODE_VAR) {
+                    ((NodeVar *) it)->is_public = false;
+                } else {
+                    unreachable();
+                }
+            }
+
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         sb_sprintf(&f->sb, "extern ");
 
         for (Node *it = externn->libraries.head; it; it = it->next) {

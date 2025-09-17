@@ -966,11 +966,9 @@ static Node *parse_stmt(Parser *p) {
         case NODE_EXTERN:
             for (Node *it = ((NodeExtern *) node)->definitions.head; it; it = it->next) {
                 if (it->kind == NODE_FN) {
-                    NodeFn *fn = (NodeFn *) it;
-                    fn->is_public = true;
+                    ((NodeFn *) it)->is_public = true;
                 } else if (it->kind == NODE_VAR) {
-                    NodeVar *var = (NodeVar *) it;
-                    var->is_public = true;
+                    ((NodeVar *) it)->is_public = true;
                 } else {
                     unreachable();
                 }
