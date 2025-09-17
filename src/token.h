@@ -89,6 +89,7 @@ typedef enum {
     TOKEN_EXTERN,
     TOKEN_STATIC,
 
+    TOKEN_PUB,
     TOKEN_IMPORT,
     TOKEN_PACKAGE,
 

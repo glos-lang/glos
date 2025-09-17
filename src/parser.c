@@ -79,7 +79,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -101,7 +101,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -325,7 +325,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -695,7 +695,7 @@ static void do_import(Parser *p, Token token, SV as) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -912,14 +912,72 @@ static Node *parse_stmt(Parser *p) {
         }
 
         Node *link = node_alloc(p, NODE_ATOM, lexer_expect(&p->lexer, TOKEN_STR));
-        lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR));
+        bool  is_public = false;
+
+        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_PUB);
+        if (token.kind == TOKEN_PUB) {
+            is_public = true;
+            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR);
+        }
+        lexer_buffer(&p->lexer, token);
 
         node = parse_stmt(p);
         if (node->kind == NODE_FN) {
-            ((NodeFn *) node)->link = link;
+            NodeFn *fn = (NodeFn *) node;
+            fn->link = link;
+            fn->is_public = is_public;
         } else if (node->kind == NODE_VAR) {
-            ((NodeVar *) node)->link = link;
+            NodeVar *var = (NodeVar *) node;
+            var->link = link;
+            var->is_public = is_public;
         } else {
+            unreachable();
+        }
+    } break;
+
+    case TOKEN_PUB: {
+        local_assert(p, token, false);
+        lexer_buffer(
+            &p->lexer,
+            lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_TYPE, TOKEN_CONST, TOKEN_STRUCT, TOKEN_EXTERN));
+
+        node = parse_stmt(p);
+        switch (node->kind) {
+        case NODE_FN:
+            ((NodeFn *) node)->is_public = true;
+            break;
+
+        case NODE_VAR:
+            ((NodeVar *) node)->is_public = true;
+            break;
+
+        case NODE_TYPE:
+            ((NodeType *) node)->is_public = true;
+            break;
+
+        case NODE_CONST:
+            ((NodeConst *) node)->is_public = true;
+            break;
+
+        case NODE_STRUCT:
+            ((NodeStruct *) node)->is_public = true;
+            break;
+
+        case NODE_EXTERN:
+            for (Node *it = ((NodeExtern *) node)->definitions.head; it; it = it->next) {
+                if (it->kind == NODE_FN) {
+                    NodeFn *fn = (NodeFn *) it;
+                    fn->is_public = true;
+                } else if (it->kind == NODE_VAR) {
+                    NodeVar *var = (NodeVar *) it;
+                    var->is_public = true;
+                } else {
+                    unreachable();
+                }
+            }
+            break;
+
+        default:
             unreachable();
         }
     } break;
