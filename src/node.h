@@ -240,6 +240,7 @@ typedef struct {
     Node *body;
     Node *link;
     bool  local;
+    bool  is_public;
 
     Package    *package;
     CheckStatus check_status;
@@ -267,6 +268,7 @@ typedef struct {
 
     bool is_extern;
     bool is_static;
+    bool is_public;
 
     Package    *package;
     NodeVarKind kind;
@@ -282,6 +284,7 @@ typedef struct {
     Node  *definition;
 
     bool local;
+    bool is_public;
 
     Package    *package;
     CheckStatus check_status;
@@ -293,6 +296,7 @@ typedef struct {
     Node *expr;
     Node *type;
     bool  local;
+    bool  is_public;
 
     Package    *package;
     ConstValue  value;
@@ -311,6 +315,7 @@ typedef struct {
     Node  node;
     Nodes fields;
     bool  local;
+    bool  is_public;
 
     Package    *package;
     CheckStatus check_status;

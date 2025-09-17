@@ -1,5 +1,5 @@
 package bar
 
-fn foo() {
+pub fn foo() {
     print 420
 }
