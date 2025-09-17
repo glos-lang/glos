@@ -75,6 +75,7 @@ typedef enum {
     TOKEN_ASSERT,
 
     TOKEN_IF,
+    TOKEN_THEN,
     TOKEN_ELSE,
     TOKEN_FOR,
 

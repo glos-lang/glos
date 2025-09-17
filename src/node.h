@@ -207,6 +207,7 @@ typedef struct {
     Node *condition;
     Node *consequence;
     Node *antecedence;
+    bool  expr;
 } NodeIf;
 
 typedef struct {

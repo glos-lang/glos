@@ -79,7 +79,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -101,7 +101,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -325,7 +325,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -441,6 +441,20 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             error_unexpected(token);
         }
         break;
+
+    case TOKEN_IF: {
+        NodeIf *iff = node_alloc(p, NODE_IF, token);
+        iff->condition = parse_expr(p, POWER_SET, flags);
+
+        lexer_expect(&p->lexer, TOKEN_THEN);
+        iff->consequence = parse_expr(p, POWER_SET, flags);
+
+        lexer_expect(&p->lexer, TOKEN_ELSE);
+        iff->antecedence = parse_expr(p, POWER_SET, flags);
+
+        iff->expr = true;
+        node = (Node *) iff;
+    } break;
 
     case TOKEN_FN:
         if (flags & PF_CONSTANT_EXPR) {
@@ -681,7 +695,7 @@ static void do_import(Parser *p, Token token, SV as) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

@@ -1,0 +1,6 @@
+package main
+
+fn main() {
+	print if true then 69 else 420
+	print if false then 69 else 420
+}
