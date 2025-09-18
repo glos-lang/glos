@@ -1,6 +1,6 @@
 package main
 
-fn println(s [u8]) {
+fn println(s []u8) {
     extern {
         fn putchar(ch i32) i32
     }

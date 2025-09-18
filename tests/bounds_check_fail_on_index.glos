@@ -1,6 +1,6 @@
 package main
 
-fn alloc_i64s(n i64) [i64] {
+fn alloc_i64s(n i64) []i64 {
     extern {
         fn malloc(size u64) rawptr
     }

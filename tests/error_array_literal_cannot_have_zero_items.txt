@@ -4,6 +4,6 @@ STDOUT 0
 STDERR 132
 error_array_literal_cannot_have_zero_items.glos:4:11: ERROR: Array cannot have zero items
 
-    4 |     [i64] {}
+    4 |     []i64 {}
       |           ^
 

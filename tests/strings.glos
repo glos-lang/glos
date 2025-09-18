@@ -1,18 +1,7 @@
 package main
 
-fn println(s [u8]) {
-    extern {
-        fn putchar(ch i32) i32
-    }
-
-    for var i = 0; i < len(s); i += 1 {
-        putchar(<i32> s[i])
-    }
-
-    putchar(<i32> '
-')
-}
+import "io"
 
 fn main() {
-    println("Hello, world!")
+	io::write("Hello, world!\n")
 }

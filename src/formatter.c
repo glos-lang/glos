@@ -143,12 +143,9 @@ static void format_type(Formatter *f, Node *n) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
         sb_push(&f->sb, '[');
-        format_type(f, index->base);
-        if (index->from) {
-            sb_sprintf(&f->sb, "; ");
-            format_expr(f, index->from, true);
-        }
+        format_expr(f, index->from, true);
         sb_push(&f->sb, ']');
+        format_type(f, index->base);
     } break;
 
     case NODE_FN: {

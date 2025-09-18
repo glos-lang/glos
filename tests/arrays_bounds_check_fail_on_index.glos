@@ -1,6 +1,6 @@
 package main
 
 fn main() {
-    var xs [i64; 10]
+    var xs [10]i64
     xs[10]
 }

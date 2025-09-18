@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 175
-error_array_literal_designated_initializer_out_of_bounds.glos:4:15: ERROR: Cannot assign to index 3 in array of length 3
+STDERR 171
+error_array_literal_designated_initializer_out_of_bounds.glos:4:13: ERROR: Cannot assign to index 3 in array of length 3
 
-    4 |     [i64; 3] {3: 69}
-      |               ^
+    4 |     [3]i64 {3: 69}
+      |             ^
 

@@ -1,6 +1,6 @@
 package io
 
-pub fn write(s [u8]) {
+pub fn write(s []u8) {
     extern {
         fn putchar(ch i32) i32
     }

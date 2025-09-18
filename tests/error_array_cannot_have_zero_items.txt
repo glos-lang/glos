@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 138
-error_array_cannot_have_zero_items.glos:4:18: ERROR: Array cannot have zero items
+STDERR 131
+error_array_cannot_have_zero_items.glos:4:13: ERROR: Array cannot have zero items
 
-    4 |     var xs [i64; 0]
-      |                  ^
+    4 |     var xs [0]i64
+      |             ^
 

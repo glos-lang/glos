@@ -121,14 +121,12 @@ static Node *parse_type(Parser *p) {
 
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
-        index->base = parse_type(p);
-
-        token = lexer_expect(&p->lexer, TOKEN_EOL, TOKEN_RBRACKET);
-        if (token.kind == TOKEN_EOL) {
+        if (!lexer_read(&p->lexer, TOKEN_RBRACKET)) {
             index->from = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
             lexer_expect(&p->lexer, TOKEN_RBRACKET);
         }
 
+        index->base = parse_type(p);
         node = (Node *) index;
     } break;
 

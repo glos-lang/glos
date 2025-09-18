@@ -1,16 +1,16 @@
 package main
 
-fn print_i64s(xs [i64]) {
+fn print_i64s(xs []i64) {
     for var i = 0; i < len(xs); i += 1 {
         print xs[i]
     }
 }
 
 fn main() {
-    var xs = [i64] {69, 420, 1337}
+    var xs = []i64 {69, 420, 1337}
     print_i64s(xs[..])
 
-    var ys = [i64; 3] {
+    var ys = [3]i64 {
         0: 69,
         1: 420,
         2: 1337

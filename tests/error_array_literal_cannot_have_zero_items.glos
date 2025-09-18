@@ -1,5 +1,5 @@
 package main
 
 fn main() {
-    [i64] {}
+    []i64 {}
 }

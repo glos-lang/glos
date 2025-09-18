@@ -1,5 +1,5 @@
 package main
 
 fn main() {
-    var xs [i64; 0]
+    var xs [0]i64
 }
