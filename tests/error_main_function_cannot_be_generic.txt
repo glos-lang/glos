@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 126
+error_main_function_cannot_be_generic.glos:3:4: ERROR: Function 'main' cannot be generic
+
+    3 | fn main<T>() {
+      |    ^
+

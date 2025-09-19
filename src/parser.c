@@ -337,6 +337,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             }
 
             if (token.kind == TOKEN_LT) {
+                if (flags & PF_CONSTANT_EXPR) {
+                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
+                    exit(1);
+                }
+
                 nodes_push(&atom->generics, parse_type(p));
                 atom->generics_count++;
                 lexer_expect(&p->lexer, TOKEN_GT);
@@ -922,6 +927,11 @@ static Node *parse_stmt(Parser *p) {
             NodeFn *fn = (NodeFn *) node;
             fn->link = link;
             fn->is_public = is_public;
+
+            if (fn->generics.head) {
+                error_full(ERROR, node->token.pos, "Externally linked function cannot be generic");
+                exit(1);
+            }
         } else if (node->kind == NODE_VAR) {
             NodeVar *var = (NodeVar *) node;
             var->link = link;
@@ -1034,6 +1044,11 @@ static Node *parse_fn(Parser *p, Token token) {
 
     token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LT);
     if (token.kind == TOKEN_LT) {
+        if (p->in_extern) {
+            error_full(ERROR, fn->node.token.pos, "Externally linked function cannot be generic");
+            exit(1);
+        }
+
         // TODO: Prevent generics in extern
         nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
         fn->generics.tail->token.as.integer = fn->generics_count++;

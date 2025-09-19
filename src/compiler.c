@@ -1234,6 +1234,11 @@ static NodeFn *get_main(Context *c) {
         error_full(ERROR, main->token.pos, "Function 'main' cannot return anything");
         exit(1);
     }
+
+    if (main_fn->generics.head) {
+        error_full(ERROR, main->token.pos, "Function 'main' cannot be generic");
+        exit(1);
+    }
     return main_fn;
 }
 
