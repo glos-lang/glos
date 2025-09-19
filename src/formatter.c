@@ -229,6 +229,17 @@ static void format_fn(Formatter *f, NodeFn *fn) {
         sb_sprintf(&f->sb, SVFmt, SVArg(fn->node.token.sv));
     }
 
+    if (fn->generics.head) {
+        sb_push(&f->sb, '<');
+        for (Node *type = fn->generics.head; type; type = type->next) {
+            sb_sprintf(&f->sb, SVFmt, SVArg(type->token.sv));
+            if (type->next) {
+                sb_sprintf(&f->sb, ", ");
+            }
+        }
+        sb_push(&f->sb, '>');
+    }
+
     sb_push(&f->sb, '(');
     if (fn->fmt_multiline) {
         f->depth++;
@@ -290,6 +301,18 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
             sb_sprintf(&f->sb, SVFmt "::", SVArg(atom->scope.sv));
         }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
+
+        if (atom->generics.head) {
+            sb_sprintf(&f->sb, "::<");
+            for (Node *type = atom->generics.head; type; type = type->next) {
+                sb_sprintf(&f->sb, SVFmt, SVArg(type->token.sv));
+                if (type->next) {
+                    sb_sprintf(&f->sb, ", ");
+                }
+            }
+            sb_push(&f->sb, '>');
+        }
+
     } break;
 
     case NODE_CALL: {
