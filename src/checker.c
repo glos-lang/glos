@@ -968,7 +968,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     error_full(
                         ERROR,
                         n->token.pos,
-                        "Expected %zu instance type%s, got %zu",
+                        "Expected %zu generic parameter%s, got %zu",
                         definition->generics_count,
                         definition->generics_count == 1 ? "" : "s",
                         atom->generics_count);

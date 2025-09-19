@@ -342,9 +342,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                     exit(1);
                 }
 
-                nodes_push(&atom->generics, parse_type(p));
-                atom->generics_count++;
-                lexer_expect(&p->lexer, TOKEN_GT);
+                do {
+                    nodes_push(&atom->generics, parse_type(p));
+                    atom->generics_count++;
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+                } while (token.kind != TOKEN_GT);
             }
         }
 
@@ -1049,11 +1051,12 @@ static Node *parse_fn(Parser *p, Token token) {
             exit(1);
         }
 
-        // TODO: Prevent generics in extern
-        nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
-        fn->generics.tail->token.as.integer = fn->generics_count++;
+        do {
+            nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+            fn->generics.tail->token.as.integer = fn->generics_count++;
+            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+        } while (token.kind != TOKEN_GT);
 
-        lexer_expect(&p->lexer, TOKEN_GT);
         token = lexer_expect(&p->lexer, TOKEN_LPAREN);
     }
     const size_t starting_row = token.pos.row;
