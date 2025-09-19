@@ -118,6 +118,26 @@ const char *type_to_cstr(Type type) {
     } break;
 
     case TYPE_STRUCT:
+        temp_sv_to_cstr(type.spec_node->token.sv);
+        if (type.spec_struct_instance) {
+            temp_remove_null();
+            temp_sprintf("<");
+
+            for (Node *it = type.spec_struct_instance->generics; it; it = it->next) {
+                temp_remove_null();
+                type_to_cstr(it->type);
+
+                if (it->next) {
+                    temp_remove_null();
+                    temp_sprintf(", ");
+                }
+            }
+
+            temp_remove_null();
+            temp_sprintf(">");
+        }
+        break;
+
     case TYPE_GENERIC:
         temp_sv_to_cstr(type.spec_node->token.sv);
         break;
@@ -164,6 +184,35 @@ bool type_eq(Type a, Type b) {
         return type_eq(*a.spec_type, *b.spec_type) && a.spec_count == b.spec_count;
 
     case TYPE_STRUCT:
+        if (a.spec_struct_instance) {
+            if (!b.spec_struct_instance) {
+                return false;
+            }
+
+            const StructInstanace *a_spec = a.spec_struct_instance;
+            const StructInstanace *b_spec = b.spec_struct_instance;
+            if (a_spec->definition != b_spec->definition) {
+                return false;
+            }
+
+            Node *a_it = a_spec->generics;
+            Node *b_it = b_spec->generics;
+            while (a_it && b_it) {
+                assert(a_it);
+                assert(b_it);
+                if (!type_eq(a_it->type, b_it->type)) {
+                    return false;
+                }
+
+                a_it = a_it->next;
+                b_it = b_it->next;
+            }
+
+            return true;
+        }
+
+        return a.spec_node == b.spec_node;
+
     case TYPE_GENERIC:
         return a.spec_node == b.spec_node;
 
@@ -244,6 +293,7 @@ Instantiation *instantiations_find(Instantiations is, Type *types, size_t count)
         if (it->count == count) {
             bool ok = true;
             for (size_t i = 0; i < count; i++) {
+                // TODO: This may not be enough
                 if (!type_eq(types[i], it->types[i])) {
                     ok = false;
                     break;

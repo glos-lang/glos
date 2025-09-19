@@ -102,6 +102,17 @@ static Node *parse_type(Parser *p) {
             atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
         }
 
+        token = lexer_peek(&p->lexer);
+        if (token.kind == TOKEN_LT && !token.newlines) {
+            lexer_unbuffer(&p->lexer);
+
+            do {
+                nodes_push(&atom->generics, parse_type(p));
+                atom->generics_count++;
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            } while (token.kind != TOKEN_GT);
+        }
+
         node = (Node *) atom;
     } break;
 
@@ -845,7 +856,17 @@ static Node *parse_stmt(Parser *p) {
         NodeStruct *structt = node_alloc(p, NODE_STRUCT, lexer_expect(&p->lexer, TOKEN_IDENT));
         structt->local = p->local;
 
-        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        token = lexer_expect(&p->lexer, TOKEN_LT, TOKEN_LBRACE);
+        if (token.kind == TOKEN_LT) {
+            do {
+                nodes_push(&structt->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+                structt->generics.tail->token.as.integer = structt->generics_count++;
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            } while (token.kind != TOKEN_GT);
+
+            lexer_expect(&p->lexer, TOKEN_LBRACE);
+        }
+
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             NodeField *field = node_alloc(p, NODE_FIELD, lexer_expect(&p->lexer, TOKEN_IDENT));
             if (structt->fields.head) {

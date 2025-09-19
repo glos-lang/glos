@@ -702,6 +702,106 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
+static_assert(COUNT_TYPES == 17, "");
+static Type instantiate_type(Compiler *c, Type type, Node *generics) {
+    switch (type.kind) {
+    case TYPE_UNIT:
+    case TYPE_BOOL:
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+    case TYPE_RAWPTR:
+        return type;
+
+    case TYPE_FN: {
+        assert(type.spec_node);
+        NodeFn *from = (NodeFn *) type.spec_node;
+        NodeFn *to = arena_alloc(c->context.arena, sizeof(NodeFn));
+        to->node = from->node;
+        to->node.type.spec_node = (Node *) to;
+
+        to->arity = from->arity;
+        for (Node *it = from->args.head; it; it = it->next) {
+            NodeVar *arg = arena_alloc(c->context.arena, sizeof(NodeVar));
+            arg->node = *it;
+            arg->node.type = instantiate_type(c, it->type, generics);
+            nodes_push(&to->args, (Node *) arg);
+        }
+
+        if (from->ret) {
+            to->ret = arena_clone(c->context.arena, from->ret, sizeof(*from->ret));
+            to->ret->type = instantiate_type(c, to->ret->type, generics);
+        }
+
+        type.spec_node = (Node *) to;
+        return type;
+    }
+
+    case TYPE_SLICE:
+    case TYPE_ARRAY: {
+        const Type base = instantiate_type(c, *type.spec_type, generics);
+        type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
+        return type;
+    }
+
+    case TYPE_STRUCT: {
+        assert(type.spec_node);
+        if (type.spec_struct_instance) {
+            type.spec_node = (Node *) type.spec_struct_instance->definition;
+            type.spec_struct_instance = NULL;
+        }
+
+        NodeStruct *from = (NodeStruct *) type.spec_node;
+        NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
+        to->node = from->node;
+        to->node.type.spec_node = (Node *) to;
+
+        for (Node *it = from->fields.head; it; it = it->next) {
+            NodeField *field = arena_alloc(c->context.arena, sizeof(NodeField));
+            field->node = *it;
+            field->node.type = instantiate_type(c, it->type, generics);
+            nodes_push(&to->fields, (Node *) field);
+        }
+
+        type.spec_node = (Node *) to;
+
+        const StructInstanace instance = {
+            .generics = generics,
+            .definition = from,
+        };
+
+        type.spec_struct_instance = arena_clone(c->context.arena, &instance, sizeof(instance));
+        return type;
+    }
+
+    case TYPE_GENERIC: {
+        assert(type.spec_node);
+        const size_t n = type.spec_node->token.as.integer;
+
+        Node *instance = generics;
+        for (size_t i = 0; i < n; i++) {
+            assert(instance);
+            instance = instance->next;
+        }
+
+        assert(instance);
+        Type result = instance->type;
+        result.ref += type.ref;
+        return result;
+    }
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static_assert(COUNT_TYPES == 17, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
@@ -772,6 +872,46 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
             default:
                 unreachable();
             }
+
+            if (atom->generics.head) {
+                if (n->type.kind != TYPE_STRUCT) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic structures");
+                    exit(1);
+                }
+
+                const NodeStruct *structt = (const NodeStruct *) n->type.spec_node;
+                if (!structt->generics.head) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic structures");
+                    exit(1);
+                }
+
+                if (atom->generics_count != structt->generics_count) {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Expected %zu generic parameter%s, got %zu",
+                        structt->generics_count,
+                        structt->generics_count == 1 ? "" : "s",
+                        atom->generics_count);
+
+                    exit(1);
+                }
+
+                for (Node *it = atom->generics.head; it; it = it->next) {
+                    check_type(c, it, true, extra_generic_context);
+                }
+
+                n->type = instantiate_type(c, n->type, atom->generics.head);
+            } else {
+                // TODO: What to do in this case, really?
+                if (n->type.kind == TYPE_STRUCT) {
+                    const NodeStruct *structt = (const NodeStruct *) n->type.spec_node;
+                    if (structt->generics.head) {
+                        error_full(ERROR, n->token.pos, "Cannot use generic structure without instantiation");
+                        exit(1);
+                    }
+                }
+            }
         }
         break;
 
@@ -834,81 +974,6 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     check_expr(c, iff->consequence, REF_NONE);
     check_expr(c, iff->antecedence, REF_NONE);
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
-}
-
-static_assert(COUNT_TYPES == 17, "");
-static Type instantiate_type(Compiler *c, Type type, Node *generics) {
-    switch (type.kind) {
-    case TYPE_UNIT:
-    case TYPE_BOOL:
-    case TYPE_I8:
-    case TYPE_I16:
-    case TYPE_I32:
-    case TYPE_I64:
-    case TYPE_U8:
-    case TYPE_U16:
-    case TYPE_U32:
-    case TYPE_U64:
-    case TYPE_INT:
-    case TYPE_RAWPTR:
-        return type;
-
-    case TYPE_FN: {
-        assert(type.spec_node);
-        NodeFn *from = (NodeFn *) type.spec_node;
-        NodeFn *to = arena_alloc(c->context.arena, sizeof(NodeFn));
-        to->node = from->node;
-        to->node.type.spec_node = (Node *) to;
-
-        to->arity = from->arity;
-        for (Node *it = from->args.head; it; it = it->next) {
-            NodeVar *arg = arena_alloc(c->context.arena, sizeof(NodeVar));
-            arg->node = *it;
-            arg->node.type = instantiate_type(c, it->type, generics);
-
-            nodes_push(&to->args, (Node *) arg);
-        }
-
-        if (from->ret) {
-            to->ret = arena_clone(c->context.arena, from->ret, sizeof(*from->ret));
-            to->ret->type = instantiate_type(c, to->ret->type, generics);
-        }
-
-        type.spec_node = (Node *) to;
-        return type;
-    }
-
-    case TYPE_SLICE:
-    case TYPE_ARRAY: {
-        const Type base = instantiate_type(c, *type.spec_type, generics);
-        type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
-        return type;
-    }
-
-    case TYPE_STRUCT:
-        // TODO: Instantiation of structs is not yet supported but will be
-        return type;
-
-    case TYPE_GENERIC: {
-        assert(type.spec_node);
-        const size_t n = type.spec_node->token.as.integer;
-
-        Node *instance = generics;
-        for (size_t i = 0; i < n; i++) {
-            assert(instance);
-            instance = instance->next;
-        }
-
-        assert(instance);
-        Type result = instance->type;
-        result.ref += type.ref;
-        return result;
-    }
-
-    default:
-        unreachable();
-        break;
-    }
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -1750,6 +1815,15 @@ static void check_stmt(Compiler *c, Node *n) {
             structt->check_status = CHECK_STATUS_DOING;
         }
 
+        if (structt->generics.head) {
+            for (Node *it = structt->generics.head; it; it = it->next) {
+                NodeType *type = (NodeType *) it;
+                type->check_status = CHECK_STATUS_DONE;
+                type->local = true;
+                it->type = (Type) {.kind = TYPE_GENERIC, .spec_node = it};
+            }
+        }
+
         for (Node *it = structt->fields.head; it; it = it->next) {
             const Node *previous = nodes_find(structt->fields, it->token.sv, it);
             if (previous) {
@@ -1757,7 +1831,7 @@ static void check_stmt(Compiler *c, Node *n) {
             }
 
             NodeField *field = (NodeField *) it;
-            check_type(c, field->type, true, NULL);
+            check_type(c, field->type, true, structt->generics.head);
 
             it->type = field->type->type;
             if (it->type.kind == TYPE_UNIT) {

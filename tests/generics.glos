@@ -1,18 +1,37 @@
 package main
 
-fn swap<T>(a &T, b &T) {
-	var t = *a
-	*a = *b
-	*b = t
+struct Array<T> {
+	items &T
+	count i64
+	capacity i64
+}
+
+fn append<T>(a &Array<T>, value T) {
+	extern {
+		fn realloc(ptr rawptr, size u64) rawptr
+	}
+
+	if a.count >= a.capacity {
+		a.capacity = if a.capacity != 0 then a.capacity * 2 else 128
+		a.items = <&T> realloc(<rawptr> a.items, <u64> a.capacity * sizeof<T>)
+	}
+
+	*(a.items + <&T> (a.count * sizeof<T>)) = value
+	a.count += 1
+}
+
+fn slice<T>(a Array<T>) []T {
+	return a.items[..a.count]
 }
 
 fn main() {
-	var a = 69
-	var b = 420
-	print a
-	print b
+	var xs Array<i64>
+	for var i = 0; i < 10; i += 1 {
+		append::<i64>(&xs, i * 2)
+	}
 
-	swap::<i64>(&a, &b)
-	print a
-	print b
+	var xs = slice::<i64>(xs)
+	for var i = 0; i < len(xs); i += 1 {
+		print xs[i]
+	}
 }

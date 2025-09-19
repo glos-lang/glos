@@ -4,8 +4,9 @@
 #include "qbe.h"
 #include "token.h"
 
-typedef struct Node    Node;
-typedef struct Package Package;
+typedef struct Node       Node;
+typedef struct NodeStruct NodeStruct;
+typedef struct Package    Package;
 
 typedef struct {
     Node *head;
@@ -41,6 +42,11 @@ typedef enum {
 
 typedef struct Type Type;
 
+typedef struct {
+    Node       *generics;
+    NodeStruct *definition;
+} StructInstanace;
+
 struct Type {
     TypeKind kind;
     size_t   ref;
@@ -58,6 +64,10 @@ struct Type {
     // For:
     //   TYPE_ARRAY
     size_t spec_count;
+
+    // For:
+    //   struct<..T>
+    StructInstanace *spec_struct_instance;
 
     QbeType qbe;
 };
@@ -340,17 +350,20 @@ typedef struct {
     QbeField *qbe;
 } NodeField;
 
-typedef struct {
+struct NodeStruct {
     Node  node;
     Nodes fields;
     bool  local;
     bool  is_public;
 
+    Nodes  generics;
+    size_t generics_count;
+
     Package    *package;
     CheckStatus check_status;
 
     QbeStruct *qbe;
-} NodeStruct;
+};
 
 typedef struct {
     Node  node;
