@@ -1,7 +1,7 @@
 #include "compiler.h"
 #include "message.h"
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
     switch (kind) {
     case TYPE_I8:
@@ -26,7 +26,7 @@ static QbeTypeKind integer_type_kind(TypeKind kind) {
     }
 }
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type) {
         return;
@@ -77,6 +77,10 @@ static void compile_type(Compiler *c, Type *type) {
 
         type->qbe = qbe_type_struct(spec->qbe);
     } break;
+
+    case TYPE_GENERIC:
+        type->qbe = type->spec_node->type.qbe;
+        break;
 
     default:
         unreachable();
@@ -156,6 +160,72 @@ static QbeNode *compile_str(Compiler *c, SV sv, bool ref) {
     return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
 }
 
+static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
+    QbeSV link_as = {0};
+    if (fn->link) {
+        const SV link = resolve_str_token(fn->link->token, c->context.arena);
+        link_as.data = link.data;
+        link_as.count = link.count;
+    }
+
+    if (!fn->body) {
+        if (!link_as.data) {
+            link_as.data = fn->node.token.sv.data;
+            link_as.count = fn->node.token.sv.count;
+        }
+
+        fn->qbe = qbe_atom_extern_fn(c->qbe, link_as);
+        if (export_qbe) {
+            *export_qbe = fn->qbe;
+        }
+        return fn->qbe;
+    }
+
+    Type return_type = node_fn_return_type(fn);
+    compile_type(c, &return_type);
+
+    QbeFn *fn_save = c->fn;
+    c->fn = qbe_fn_new(c->qbe, link_as, return_type.qbe);
+    fn->qbe = (QbeNode *) c->fn;
+    if (export_qbe) {
+        *export_qbe = fn->qbe;
+    }
+
+    for (Node *it = fn->args.head; it; it = it->next) {
+        NodeVar *arg = (NodeVar *) it;
+        compile_type(c, &it->type);
+        arg->qbe = qbe_fn_add_arg(c->qbe, c->fn, it->type.qbe);
+        if (arg->kind == NODE_VAR_LOCAL) {
+            QbeNode *var = qbe_fn_add_var(c->qbe, c->fn, it->type.qbe);
+            qbe_build_store(c->qbe, c->fn, var, arg->qbe);
+            arg->qbe = var;
+        }
+    }
+
+    assert(fn->body->kind == NODE_BLOCK);
+    NodeBlock *fn_block = (NodeBlock *) fn->body;
+
+    size_t fn_row = 0;
+    if (fn_block->body.head) {
+        fn_row = fn_block->body.head->token.pos.row;
+
+        compile_stmt(c, fn_block->body.head);
+        for (Node *it = fn_block->body.head->next; it; it = it->next) {
+            qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
+            compile_stmt(c, it);
+        }
+    } else {
+        fn_row = fn_block->node.token.pos.row;
+    }
+
+    qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
+    qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
+    qbe_build_return(c->qbe, c->fn, NULL);
+
+    c->fn = fn_save;
+    return fn->qbe;
+}
+
 static_assert(COUNT_NODES == 22, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -186,6 +256,60 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             switch (atom->definition->kind) {
             case NODE_FN: {
                 NodeFn *fn = (NodeFn *) atom->definition;
+                if (fn->generics.head) {
+                    assert(fn->generics_count == atom->generics_count);
+                    Type *types = temp_alloc(atom->generics_count * sizeof(Type));
+                    {
+                        Node *generic = atom->generics.head;
+                        for (size_t i = 0; i < atom->generics_count; i++) {
+                            assert(generic);
+                            types[i] = generic->type;
+                            generic = generic->next;
+                        }
+                    }
+
+                    Instantiation *instantiation = instantiations_find(fn->instantiations, types, atom->generics_count);
+                    if (instantiation) {
+                        return instantiation->qbe;
+                    }
+
+                    instantiation = arena_alloc(c->context.arena, sizeof(Instantiation));
+                    instantiation->count = atom->generics_count;
+                    instantiation->types = arena_clone(c->context.arena, types, atom->generics_count * sizeof(Type));
+                    temp_reset(types);
+
+                    QbeType *save = temp_alloc(atom->generics_count * sizeof(QbeType));
+                    {
+                        Node *generic = fn->generics.head;
+                        Node *specific = atom->generics.head;
+                        for (size_t i = 0; i < atom->generics_count; i++) {
+                            assert(generic);
+                            save[i] = generic->type.qbe;
+
+                            assert(specific);
+                            compile_type(c, &specific->type);
+                            generic->type.qbe = specific->type.qbe;
+
+                            generic = generic->next;
+                            specific = specific->next;
+                        }
+                    }
+
+                    compile_fn(c, fn, &instantiation->qbe);
+
+                    {
+                        Node *generic = fn->generics.head;
+                        for (size_t i = 0; i < atom->generics_count; i++) {
+                            assert(generic);
+                            generic->type.qbe = save[i];
+                            generic = generic->next;
+                        }
+                    }
+
+                    temp_reset(save);
+                    return instantiation->qbe;
+                }
+
                 if (!fn->qbe) {
                     compile_stmt(c, atom->definition);
                 }
@@ -845,11 +969,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         return qbe_build_phi(c->qbe, c->fn, consequence_phi, antecedence_phi);
     } break;
 
-    case NODE_FN: {
-        NodeFn *fn = (NodeFn *) n;
-        compile_stmt(c, n);
-        return fn->qbe;
-    }
+    case NODE_FN:
+        return compile_fn(c, (NodeFn *) n, NULL);
 
     default:
         unreachable();
@@ -1005,62 +1126,11 @@ static void compile_stmt(Compiler *c, Node *n) {
             return;
         }
 
-        QbeSV link_as = {0};
-        if (fn->link) {
-            const SV link = resolve_str_token(fn->link->token, c->context.arena);
-            link_as.data = link.data;
-            link_as.count = link.count;
-        }
-
-        if (!fn->body) {
-            if (!link_as.data) {
-                link_as.data = n->token.sv.data;
-                link_as.count = n->token.sv.count;
-            }
-
-            fn->qbe = qbe_atom_extern_fn(c->qbe, link_as);
+        if (fn->generics.head) {
             return;
         }
 
-        Type return_type = node_fn_return_type(fn);
-        compile_type(c, &return_type);
-
-        QbeFn *fn_save = c->fn;
-        c->fn = qbe_fn_new(c->qbe, link_as, return_type.qbe);
-        fn->qbe = (QbeNode *) c->fn;
-
-        for (Node *it = fn->args.head; it; it = it->next) {
-            NodeVar *arg = (NodeVar *) it;
-            compile_type(c, &it->type);
-            arg->qbe = qbe_fn_add_arg(c->qbe, c->fn, it->type.qbe);
-            if (arg->kind == NODE_VAR_LOCAL) {
-                QbeNode *var = qbe_fn_add_var(c->qbe, c->fn, it->type.qbe);
-                qbe_build_store(c->qbe, c->fn, var, arg->qbe);
-                arg->qbe = var;
-            }
-        }
-
-        assert(fn->body->kind == NODE_BLOCK);
-        NodeBlock *fn_block = (NodeBlock *) fn->body;
-
-        size_t fn_row = 0;
-        if (fn_block->body.head) {
-            fn_row = fn_block->body.head->token.pos.row;
-
-            compile_stmt(c, fn_block->body.head);
-            for (Node *it = fn_block->body.head->next; it; it = it->next) {
-                qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
-                compile_stmt(c, it);
-            }
-        } else {
-            fn_row = fn_block->node.token.pos.row;
-        }
-
-        qbe_build_debug_line(c->qbe, c->fn, fn_block->node.token.pos.row + 1);
-        qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
-        qbe_build_return(c->qbe, c->fn, NULL);
-
-        c->fn = fn_save;
+        compile_fn(c, fn, NULL);
     } break;
 
     case NODE_VAR: {

@@ -34,6 +34,8 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_STRUCT,
 
+    TYPE_GENERIC,
+
     COUNT_TYPES
 } TypeKind;
 
@@ -68,6 +70,24 @@ bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
 
 Type type_remove_ref(Type type);
+
+typedef struct Instantiation Instantiation;
+
+struct Instantiation {
+    Type    *types;
+    size_t   count;
+    QbeNode *qbe;
+
+    Instantiation *next;
+};
+
+typedef struct {
+    Instantiation *head;
+    Instantiation *tail;
+} Instantiations;
+
+void           instantiations_push(Instantiations *is, Instantiation *i);
+Instantiation *instantiations_find(Instantiations is, Type *types, size_t count);
 
 typedef enum {
     CHECK_STATUS_TODO,
@@ -124,12 +144,17 @@ struct Node {
     bool fmt_toplevel_newline;
 };
 
+void nodes_push(Nodes *ns, Node *n);
+
 typedef struct {
     Node  node;
     Node *definition;
 
     Token scope;
     bool  scope_resolved;
+
+    Nodes  generics;
+    size_t generics_count;
 
     Package *package;
 } NodeAtom;
@@ -236,6 +261,10 @@ typedef struct {
     Nodes  args;
     size_t arity;
 
+    Nodes          generics;
+    size_t         generics_count;
+    Instantiations instantiations;
+
     Node *ret;
     Node *body;
     Node *link;
@@ -280,7 +309,7 @@ typedef struct {
 typedef struct {
     Node node;
 
-    size_t ref;
+    size_t ref; // TODO: What purpose does this serve?
     Node  *definition;
 
     bool local;

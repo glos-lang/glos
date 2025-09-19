@@ -1,20 +1,6 @@
 #include "parser.h"
 #include "message.h"
 
-static void nodes_push(Nodes *ns, Node *n) {
-    if (!n) {
-        return;
-    }
-
-    if (ns->tail) {
-        ns->tail->next = n;
-    } else {
-        ns->head = n;
-    }
-
-    ns->tail = n;
-}
-
 static void nodes_append(Nodes *dst, Nodes *src) {
     nodes_push(dst, src->head);
     dst->tail = src->tail;
@@ -341,8 +327,20 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            atom->scope = atom->node.token;
-            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            if (token.kind == TOKEN_IDENT) {
+                atom->scope = atom->node.token;
+                atom->node.token = token;
+                if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+                    token = lexer_expect(&p->lexer, TOKEN_LT);
+                }
+            }
+
+            if (token.kind == TOKEN_LT) {
+                nodes_push(&atom->generics, parse_type(p));
+                atom->generics_count++;
+                lexer_expect(&p->lexer, TOKEN_GT);
+            }
         }
 
         node = (Node *) atom;
@@ -1033,7 +1031,17 @@ static Node *parse_stmt(Parser *p) {
 static Node *parse_fn(Parser *p, Token token) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
-    const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
+
+    token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LT);
+    if (token.kind == TOKEN_LT) {
+        // TODO: Prevent generics in extern
+        nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+        fn->generics.tail->token.as.integer = fn->generics_count++;
+
+        lexer_expect(&p->lexer, TOKEN_GT);
+        token = lexer_expect(&p->lexer, TOKEN_LPAREN);
+    }
+    const size_t starting_row = token.pos.row;
 
     const bool local_save = p->local;
     p->local = true;

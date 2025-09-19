@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
@@ -58,7 +58,28 @@ const char *type_to_cstr(Type type) {
     case TYPE_FN: {
         const NodeFn *spec = (const NodeFn *) type.spec_node;
 
-        temp_sprintf("fn (");
+        temp_sprintf("fn");
+        if (spec->generics.head) {
+            temp_remove_null();
+            temp_sprintf("<");
+
+            for (Node *it = spec->generics.head; it; it = it->next) {
+                temp_remove_null();
+                type_to_cstr(it->type);
+
+                if (it->next) {
+                    temp_remove_null();
+                    temp_sprintf(", ");
+                }
+            }
+
+            temp_remove_null();
+            temp_sprintf(">");
+        }
+
+        temp_remove_null();
+        temp_sprintf("(");
+
         for (const Node *it = spec->args.head; it; it = it->next) {
             temp_remove_null();
             type_to_cstr(it->type);
@@ -68,6 +89,7 @@ const char *type_to_cstr(Type type) {
                 temp_sprintf(", ");
             }
         }
+
         temp_remove_null();
         temp_sprintf(")");
 
@@ -96,6 +118,7 @@ const char *type_to_cstr(Type type) {
     } break;
 
     case TYPE_STRUCT:
+    case TYPE_GENERIC:
         temp_sv_to_cstr(type.spec_node->token.sv);
         break;
 
@@ -106,7 +129,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -141,6 +164,7 @@ bool type_eq(Type a, Type b) {
         return type_eq(*a.spec_type, *b.spec_type) && a.spec_count == b.spec_count;
 
     case TYPE_STRUCT:
+    case TYPE_GENERIC:
         return a.spec_node == b.spec_node;
 
     default:
@@ -148,7 +172,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -167,7 +191,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 16, "");
+static_assert(COUNT_TYPES == 17, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
@@ -199,6 +223,54 @@ bool type_is_pointer(Type type) {
 Type type_remove_ref(Type type) {
     type.ref = 0;
     return type;
+}
+
+void instantiations_push(Instantiations *is, Instantiation *i) {
+    if (!i) {
+        return;
+    }
+
+    if (is->tail) {
+        is->tail->next = i;
+    } else {
+        is->head = i;
+    }
+
+    is->tail = i;
+}
+
+Instantiation *instantiations_find(Instantiations is, Type *types, size_t count) {
+    for (Instantiation *it = is.head; it; it = it->next) {
+        if (it->count == count) {
+            bool ok = true;
+            for (size_t i = 0; i < count; i++) {
+                if (!type_eq(types[i], it->types[i])) {
+                    ok = false;
+                    break;
+                }
+            }
+
+            if (ok) {
+                return it;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+void nodes_push(Nodes *ns, Node *n) {
+    if (!n) {
+        return;
+    }
+
+    if (ns->tail) {
+        ns->tail->next = n;
+    } else {
+        ns->head = n;
+    }
+
+    ns->tail = n;
 }
 
 Type node_fn_return_type(const NodeFn *fn) {
