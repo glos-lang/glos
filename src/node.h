@@ -325,6 +325,9 @@ typedef struct {
     bool local;
     bool is_public;
 
+    Nodes  generics;
+    size_t generics_count;
+
     Package    *package;
     CheckStatus check_status;
 } NodeType;

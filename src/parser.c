@@ -832,6 +832,14 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_TYPE: {
         NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
+        if (lexer_read(&p->lexer, TOKEN_LT)) {
+            do {
+                nodes_push(&type->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+                type->generics.tail->token.as.integer = type->generics_count++;
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            } while (token.kind != TOKEN_GT);
+        }
+
         type->local = p->local;
         type->definition = parse_type(p);
         type->package = p->packages->current;

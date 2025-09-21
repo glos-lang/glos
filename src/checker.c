@@ -849,6 +849,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 error_undefined(n, "type");
             }
 
+            size_t definition_generics_count = 0;
             switch (definition->kind) {
             case NODE_TYPE: {
                 NodeType *type = (NodeType *) definition;
@@ -858,6 +859,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
                 n->type = definition->type;
                 type->ref = n->type.ref;
+                definition_generics_count = type->generics_count;
             } break;
 
             case NODE_STRUCT: {
@@ -867,6 +869,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 }
 
                 n->type = definition->type;
+                definition_generics_count = structt->generics_count;
             } break;
 
             default:
@@ -874,24 +877,18 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
             }
 
             if (atom->generics.head) {
-                if (n->type.kind != TYPE_STRUCT) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic structures");
+                if (!definition_generics_count) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic types");
                     exit(1);
                 }
 
-                const NodeStruct *structt = (const NodeStruct *) n->type.spec_node;
-                if (!structt->generics.head) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic structures");
-                    exit(1);
-                }
-
-                if (atom->generics_count != structt->generics_count) {
+                if (atom->generics_count != definition_generics_count) {
                     error_full(
                         ERROR,
                         n->token.pos,
                         "Expected %zu generic parameter%s, got %zu",
-                        structt->generics_count,
-                        structt->generics_count == 1 ? "" : "s",
+                        definition_generics_count,
+                        definition_generics_count == 1 ? "" : "s",
                         atom->generics_count);
 
                     exit(1);
@@ -903,13 +900,9 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
                 n->type = instantiate_type(c, n->type, atom->generics.head);
             } else {
-                // TODO: What to do in this case, really?
-                if (n->type.kind == TYPE_STRUCT) {
-                    const NodeStruct *structt = (const NodeStruct *) n->type.spec_node;
-                    if (structt->generics.head) {
-                        error_full(ERROR, n->token.pos, "Cannot use generic structure without instantiation");
-                        exit(1);
-                    }
+                if (definition_generics_count) {
+                    error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
+                    exit(1);
                 }
             }
         }
@@ -1757,7 +1750,16 @@ static void check_stmt(Compiler *c, Node *n) {
             type->check_status = CHECK_STATUS_DOING;
         }
 
-        check_type(c, type->definition, true, NULL);
+        if (type->generics.head) {
+            for (Node *it = type->generics.head; it; it = it->next) {
+                NodeType *type = (NodeType *) it;
+                type->check_status = CHECK_STATUS_DONE;
+                type->local = true;
+                it->type = (Type) {.kind = TYPE_GENERIC, .spec_node = it};
+            }
+        }
+
+        check_type(c, type->definition, true, type->generics.head);
         n->type = type->definition->type;
 
         type->check_status = CHECK_STATUS_DONE;

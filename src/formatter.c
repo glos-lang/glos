@@ -921,3 +921,5 @@ bool format_file(Formatter *f, const char *path, SV package, Import *imports, No
     fclose(out);
     return true;
 }
+
+// TODO: Generics
