@@ -858,7 +858,6 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 }
 
                 n->type = definition->type;
-                type->ref = n->type.ref;
                 definition_generics_count = type->generics_count;
             } break;
 

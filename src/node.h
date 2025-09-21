@@ -317,10 +317,8 @@ typedef struct {
 } NodeVar;
 
 typedef struct {
-    Node node;
-
-    size_t ref; // TODO: What purpose does this serve?
-    Node  *definition;
+    Node  node;
+    Node *definition;
 
     bool local;
     bool is_public;
