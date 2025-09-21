@@ -293,7 +293,6 @@ Instantiation *instantiations_find(Instantiations is, Type *types, size_t count)
         if (it->count == count) {
             bool ok = true;
             for (size_t i = 0; i < count; i++) {
-                // TODO: This may not be enough
                 if (!type_eq(types[i], it->types[i])) {
                     ok = false;
                     break;

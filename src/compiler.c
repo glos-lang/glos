@@ -79,7 +79,7 @@ static void compile_type(Compiler *c, Type *type) {
     } break;
 
     case TYPE_GENERIC:
-        type->qbe = type->spec_node->type.qbe;
+        type->qbe = type->spec_node->type.spec_type->qbe;
         break;
 
     default:
@@ -263,7 +263,14 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         Node *generic = atom->generics.head;
                         for (size_t i = 0; i < atom->generics_count; i++) {
                             assert(generic);
-                            types[i] = generic->type;
+
+                            Type type = generic->type;
+                            while (type.kind == TYPE_GENERIC) {
+                                assert(type.spec_node->type.spec_type);
+                                type = *type.spec_node->type.spec_type;
+                            }
+                            types[i] = type;
+
                             generic = generic->next;
                         }
                     }
@@ -276,19 +283,21 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     instantiation = arena_alloc(c->context.arena, sizeof(Instantiation));
                     instantiation->count = atom->generics_count;
                     instantiation->types = arena_clone(c->context.arena, types, atom->generics_count * sizeof(Type));
+
+                    instantiations_push(&fn->instantiations, instantiation);
                     temp_reset(types);
 
-                    QbeType *save = temp_alloc(atom->generics_count * sizeof(QbeType));
+                    Type **save = temp_alloc(atom->generics_count * sizeof(Type *));
                     {
                         Node *generic = fn->generics.head;
                         Node *specific = atom->generics.head;
                         for (size_t i = 0; i < atom->generics_count; i++) {
                             assert(generic);
-                            save[i] = generic->type.qbe;
+                            save[i] = generic->type.spec_type;
 
                             assert(specific);
                             compile_type(c, &specific->type);
-                            generic->type.qbe = specific->type.qbe;
+                            generic->type.spec_type = &specific->type;
 
                             generic = generic->next;
                             specific = specific->next;
@@ -301,7 +310,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         Node *generic = fn->generics.head;
                         for (size_t i = 0; i < atom->generics_count; i++) {
                             assert(generic);
-                            generic->type.qbe = save[i];
+                            generic->type.spec_type = save[i];
                             generic = generic->next;
                         }
                     }
