@@ -312,9 +312,11 @@ static void clear_qbe(Node *n) {
         }
     } break;
 
-    case NODE_VAR:
-        ((NodeVar *) n)->qbe = NULL;
-        break;
+    case NODE_VAR: {
+        NodeVar *var = (NodeVar *) n;
+        var->qbe = NULL;
+        clear_qbe(var->expr);
+    } break;
 
     case NODE_CONST:
         ((NodeConst *) n)->qbe = NULL;
