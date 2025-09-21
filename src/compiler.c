@@ -227,6 +227,124 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
 }
 
 static_assert(COUNT_NODES == 22, "");
+static void clear_qbe(Node *n) {
+    if (!n) {
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_CALL: {
+        NodeCall *call = (NodeCall *) n;
+        clear_qbe(call->fn);
+        for (Node *it = call->args.head; it; it = it->next) {
+            clear_qbe(it);
+        }
+    } break;
+
+    case NODE_CAST:
+        clear_qbe(((NodeCast *) n)->from);
+        break;
+
+    case NODE_UNARY:
+        clear_qbe(((NodeUnary *) n)->operand);
+        break;
+
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+        clear_qbe(index->base);
+        clear_qbe(index->from);
+        clear_qbe(index->to);
+    } break;
+
+    case NODE_BINARY: {
+        NodeBinary *binary = (NodeBinary *) n;
+        clear_qbe(binary->lhs);
+        clear_qbe(binary->rhs);
+    } break;
+
+    case NODE_MEMBER:
+        clear_qbe(((NodeMember *) n)->lhs);
+        break;
+
+    case NODE_ASSERT:
+        clear_qbe(((NodeAssert *) n)->expr);
+        break;
+
+    case NODE_COMPOUND:
+        for (Node *it = ((NodeCompound *) n)->nodes.head; it; it = it->next) {
+            clear_qbe(it);
+        }
+        break;
+
+    case NODE_IF: {
+        NodeIf *iff = (NodeIf *) n;
+        clear_qbe(iff->condition);
+        clear_qbe(iff->consequence);
+        clear_qbe(iff->antecedence);
+    } break;
+
+    case NODE_FOR: {
+        NodeFor *forr = (NodeFor *) n;
+        clear_qbe(forr->init);
+        clear_qbe(forr->condition);
+        clear_qbe(forr->update);
+        clear_qbe(forr->body);
+    } break;
+
+    case NODE_BLOCK:
+        for (Node *it = ((NodeBlock *) n)->body.head; it; it = it->next) {
+            clear_qbe(it);
+        }
+        break;
+
+    case NODE_RETURN:
+        clear_qbe(((NodeReturn *) n)->value);
+        break;
+
+    case NODE_FN: {
+        NodeFn *fn = (NodeFn *) n;
+        if (!fn->link) {
+            fn->qbe = NULL;
+            for (Node *it = fn->args.head; it; it = it->next) {
+                ((NodeVar *) it)->qbe = NULL;
+            }
+            clear_qbe(fn->body);
+        }
+    } break;
+
+    case NODE_VAR:
+        ((NodeVar *) n)->qbe = NULL;
+        break;
+
+    case NODE_CONST:
+        ((NodeConst *) n)->qbe = NULL;
+        break;
+
+    case NODE_FIELD:
+        ((NodeField *) n)->qbe = NULL;
+        break;
+
+    case NODE_STRUCT:
+        ((NodeStruct *) n)->qbe = NULL;
+        break;
+
+    case NODE_PRINT:
+        clear_qbe(((NodePrint *) n)->operand);
+        break;
+
+    case NODE_ATOM:
+    case NODE_SIZEOF:
+    case NODE_TYPE:
+    case NODE_EXTERN:
+        // Pass
+        break;
+
+    default:
+        unreachable();
+    }
+}
+
+static_assert(COUNT_NODES == 22, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -304,6 +422,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                         }
                     }
 
+                    clear_qbe((Node *) fn);
                     compile_fn(c, fn, &instantiation->qbe);
 
                     {
