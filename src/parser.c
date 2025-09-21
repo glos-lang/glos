@@ -98,11 +98,22 @@ static Node *parse_type(Parser *p) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            atom->scope = atom->node.token;
-            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            if (token.kind == TOKEN_IDENT) {
+                atom->scope = atom->node.token;
+                atom->node.token = token;
+            } else {
+                lexer_buffer(&p->lexer, token);
+            }
         }
 
-        token = lexer_peek(&p->lexer);
+        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+            token = lexer_expect(&p->lexer, TOKEN_LT);
+            lexer_buffer(&p->lexer, token);
+        } else {
+            token = lexer_peek(&p->lexer);
+        }
+
         if (token.kind == TOKEN_LT && !token.newlines) {
             lexer_unbuffer(&p->lexer);
 
