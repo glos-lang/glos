@@ -1080,6 +1080,11 @@ static Node *parse_fn(Parser *p, Token token) {
             exit(1);
         }
 
+        if (fn->node.token.kind == TOKEN_FN) {
+            error_full(ERROR, fn->node.token.pos, "Anonymous function cannot be generic");
+            exit(1);
+        }
+
         do {
             nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
             fn->generics.tail->token.as.integer = fn->generics_count++;
