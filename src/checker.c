@@ -1119,11 +1119,22 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 }
 
                 for (Node *it = atom->generics.head; it; it = it->next) {
-                    check_type(c, it, true, NULL);
-                    it->token.as.boolean = true;
+                    if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
+                        if (!atom->will_be_called) {
+                            error_full(ERROR, it->token.pos, "Cannot infer generic types here");
+                            exit(1);
+                        }
+
+                        atom->generics_incomplete = true;
+                    } else {
+                        check_type(c, it, true, NULL);
+                        it->token.as.boolean = true;
+                    }
                 }
 
-                n->type = instantiate_type(c, n->type, atom->generics.head);
+                if (!atom->generics_incomplete) {
+                    n->type = instantiate_type(c, n->type, atom->generics.head);
+                }
             } else {
                 if (atom->definition->kind == NODE_FN && !atom->will_be_called) {
                     const NodeFn *definition = (const NodeFn *) atom->definition;
@@ -1193,12 +1204,14 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         if (expected->generics_count) {
             if (call->fn->kind == NODE_ATOM) {
                 NodeAtom *fn = (NodeAtom *) call->fn;
-                if (!fn->generics_count) {
+                if (!fn->generics_count || fn->generics_incomplete) {
                     inferred = true;
-                    for (size_t i = 0; i < expected->generics_count; i++) {
-                        nodes_push(&fn->generics, arena_alloc(c->context.arena, sizeof(Node)));
+                    if (!fn->generics_count) {
+                        for (size_t i = 0; i < expected->generics_count; i++) {
+                            nodes_push(&fn->generics, arena_alloc(c->context.arena, sizeof(Node)));
+                        }
+                        fn->generics_count = expected->generics_count;
                     }
-                    fn->generics_count = expected->generics_count;
 
                     for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
                         check_expr(c, a, REF_NONE);

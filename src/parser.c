@@ -851,6 +851,11 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_TYPE: {
         NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
+        if (sv_match(type->node.token.sv, "_")) {
+            error_full(ERROR, type->node.token.pos, "Cannot use '_' as name of type");
+            exit(1);
+        }
+
         if (lexer_read(&p->lexer, TOKEN_LT)) {
             do {
                 nodes_push(&type->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
@@ -881,6 +886,11 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_STRUCT: {
         NodeStruct *structt = node_alloc(p, NODE_STRUCT, lexer_expect(&p->lexer, TOKEN_IDENT));
+        if (sv_match(structt->node.token.sv, "_")) {
+            error_full(ERROR, structt->node.token.pos, "Cannot use '_' as name of type");
+            exit(1);
+        }
+
         structt->local = p->local;
 
         token = lexer_expect(&p->lexer, TOKEN_LT, TOKEN_LBRACE);

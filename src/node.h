@@ -165,6 +165,7 @@ typedef struct {
 
     Nodes  generics;
     size_t generics_count;
+    bool   generics_incomplete;
     bool   will_be_called;
 
     Package *package;

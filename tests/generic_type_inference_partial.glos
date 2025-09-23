@@ -1,0 +1,10 @@
+package main
+
+fn foo<A, B>(a A) {
+	print sizeof<A>
+	print sizeof<B>
+}
+
+fn main() {
+	foo::<_, bool>(69)
+}
