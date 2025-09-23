@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 138
+error_extern_function_cannot_be_generic.glos:4:5: ERROR: Externally linked function cannot be generic
+
+    4 | 	fn foo<T>()
+      | 	   ^
+

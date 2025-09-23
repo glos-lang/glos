@@ -1,10 +1,11 @@
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "checker.h"
 #include "message.h"
 
-static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 16, "");
+void check_int_limit(Node *n, size_t value) {
+    static_assert(COUNT_TYPES == 17, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -76,7 +77,9 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             type = &sizeoff->expr->type;
         }
 
-        check_int_limit(n, compile_sizeof(c, type));
+        if (type->kind != TYPE_GENERIC) {
+            check_int_limit(n, compile_sizeof(c, type));
+        }
     } break;
 
     case NODE_RETURN: {
@@ -91,11 +94,6 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 }
 
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    // If the types are already equal, consider it a succesful auto cast
-    if (type_eq(n->type, expected)) {
-        return true;
-    }
-
     // Untyped integer -> Typed integer
     if (type_is_integer(type_remove_ref(expected)) && n->type.kind == TYPE_INT) {
         // The indirection level of the typed and untyped integers must match
@@ -279,7 +277,7 @@ typedef enum {
     REF_MUTATE,
 } RefKind;
 
-static void check_type(Compiler *c, Node *n, bool need_full_definition);
+static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context);
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
@@ -364,7 +362,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_CAST: {
         NodeCast  *cast = (NodeCast *) n;
         ConstValue value = eval_const_expr_impl(c, cast->from);
-        check_type(c, cast->to, true);
+        check_type(c, cast->to, true, NULL);
 
         const Type from = type_assert_scalar(cast->from);
         const Type to = type_assert_scalar(cast->to);
@@ -646,7 +644,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
-        check_type(c, sizeoff->type, true);
+        check_type(c, sizeoff->type, true, NULL);
         check_expr(c, sizeoff->expr, false);
         n->type = (Type) {.kind = TYPE_INT};
 
@@ -657,6 +655,10 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             type = &sizeoff->expr->type;
         }
 
+        if (type->kind == TYPE_GENERIC) {
+            error_full(ERROR, n->token.pos, "Cannot calculate constant size of generic type '%s'", type_to_cstr(*type));
+            exit(1);
+        }
         return const_int(compile_sizeof(c, type));
     }
 
@@ -694,9 +696,109 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
+static_assert(COUNT_TYPES == 17, "");
+static Type instantiate_type(Compiler *c, Type type, Node *generics) {
+    switch (type.kind) {
+    case TYPE_UNIT:
+    case TYPE_BOOL:
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+    case TYPE_RAWPTR:
+        return type;
+
+    case TYPE_FN: {
+        assert(type.spec_node);
+        NodeFn *from = (NodeFn *) type.spec_node;
+        NodeFn *to = arena_alloc(c->context.arena, sizeof(NodeFn));
+        to->node = from->node;
+        to->node.type.spec_node = (Node *) to;
+
+        to->arity = from->arity;
+        for (Node *it = from->args.head; it; it = it->next) {
+            NodeVar *arg = arena_alloc(c->context.arena, sizeof(NodeVar));
+            arg->node = *it;
+            arg->node.type = instantiate_type(c, it->type, generics);
+            nodes_push(&to->args, (Node *) arg);
+        }
+
+        if (from->ret) {
+            to->ret = arena_clone(c->context.arena, from->ret, sizeof(*from->ret));
+            to->ret->type = instantiate_type(c, to->ret->type, generics);
+        }
+
+        type.spec_node = (Node *) to;
+        return type;
+    }
+
+    case TYPE_SLICE:
+    case TYPE_ARRAY: {
+        const Type base = instantiate_type(c, *type.spec_type, generics);
+        type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
+        return type;
+    }
+
+    case TYPE_STRUCT: {
+        assert(type.spec_node);
+        if (type.spec_struct_instance) {
+            type.spec_node = (Node *) type.spec_struct_instance->definition;
+            type.spec_struct_instance = NULL;
+        }
+
+        NodeStruct *from = (NodeStruct *) type.spec_node;
+        NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
+        to->node = from->node;
+        to->node.type.spec_node = (Node *) to;
+
+        for (Node *it = from->fields.head; it; it = it->next) {
+            NodeField *field = arena_alloc(c->context.arena, sizeof(NodeField));
+            field->node = *it;
+            field->node.type = instantiate_type(c, it->type, generics);
+            nodes_push(&to->fields, (Node *) field);
+        }
+
+        type.spec_node = (Node *) to;
+
+        const StructInstanace instance = {
+            .generics = generics,
+            .definition = from,
+        };
+
+        type.spec_struct_instance = arena_clone(c->context.arena, &instance, sizeof(instance));
+        return type;
+    }
+
+    case TYPE_GENERIC: {
+        assert(type.spec_node);
+        const size_t n = type.spec_node->token.as.integer;
+
+        Node *instance = generics;
+        for (size_t i = 0; i < n; i++) {
+            assert(instance);
+            instance = instance->next;
+        }
+
+        assert(instance);
+        Type result = instance->type;
+        result.ref += type.ref;
+        return result;
+    }
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
-static_assert(COUNT_TYPES == 16, "");
-static void check_type(Compiler *c, Node *n, bool need_full_definition) {
+static_assert(COUNT_TYPES == 17, "");
+static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
         return;
     }
@@ -726,12 +828,22 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         } else {
             resolve_ident_package(n);
 
+            if (extra_generic_context) {
+                for (Node *it = extra_generic_context; it; it = it->next) {
+                    if (sv_eq(it->token.sv, n->token.sv)) {
+                        n->type = it->type;
+                        return;
+                    }
+                }
+            }
+
             NodeAtom *atom = (NodeAtom *) n;
             Node     *definition = ident_find(&c->context, atom->package, &n->token, true, atom->scope_resolved);
             if (!definition) {
                 error_undefined(n, "type");
             }
 
+            size_t definition_generics_count = 0;
             switch (definition->kind) {
             case NODE_TYPE: {
                 NodeType *type = (NodeType *) definition;
@@ -740,7 +852,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
                 }
 
                 n->type = definition->type;
-                type->ref = n->type.ref;
+                definition_generics_count = type->generics_count;
             } break;
 
             case NODE_STRUCT: {
@@ -750,24 +862,55 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
                 }
 
                 n->type = definition->type;
+                definition_generics_count = structt->generics_count;
             } break;
 
             default:
                 unreachable();
+            }
+
+            if (atom->generics.head) {
+                if (!definition_generics_count) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic types");
+                    exit(1);
+                }
+
+                if (atom->generics_count != definition_generics_count) {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Expected %zu generic parameter%s, got %zu",
+                        definition_generics_count,
+                        definition_generics_count == 1 ? "" : "s",
+                        atom->generics_count);
+
+                    exit(1);
+                }
+
+                for (Node *it = atom->generics.head; it; it = it->next) {
+                    check_type(c, it, true, extra_generic_context);
+                }
+
+                n->type = instantiate_type(c, n->type, atom->generics.head);
+            } else {
+                if (definition_generics_count) {
+                    error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
+                    exit(1);
+                }
             }
         }
         break;
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
-        check_type(c, unary->operand, false);
+        check_type(c, unary->operand, false, extra_generic_context);
         n->type = unary->operand->type;
         n->type.ref++;
     } break;
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
-        check_type(c, index->base, true);
+        check_type(c, index->base, true, extra_generic_context);
 
         if (index->from) {
             ConstValue count = eval_const_expr(c, index->from);
@@ -795,11 +938,11 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition) {
         NodeFn *spec = (NodeFn *) n;
         for (Node *it = spec->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
-            check_type(c, arg->type, true);
+            check_type(c, arg->type, true, extra_generic_context);
             it->type = arg->type->type;
         }
 
-        check_type(c, spec->ret, true);
+        check_type(c, spec->ret, true, extra_generic_context);
         n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
     } break;
 
@@ -817,6 +960,89 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     check_expr(c, iff->consequence, REF_NONE);
     check_expr(c, iff->antecedence, REF_NONE);
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
+}
+
+static void infer_generic_type(Type actual, Type expected, Node *generics) {
+    switch (expected.kind) {
+    case TYPE_UNIT:
+    case TYPE_BOOL:
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+    case TYPE_RAWPTR:
+        // Pass
+        break;
+
+    case TYPE_FN:
+        if (actual.ref == expected.ref && actual.kind == expected.kind) {
+            NodeFn *actual_fn = (NodeFn *) actual.spec_node;
+            assert(actual_fn);
+
+            NodeFn *expected_fn = (NodeFn *) expected.spec_node;
+            assert(expected_fn);
+
+            for (Node *a = actual_fn->args.head, *e = expected_fn->args.head; a && e; a = a->next, e = e->next) {
+                infer_generic_type(a->type, e->type, generics);
+            }
+
+            if (actual_fn->ret && expected_fn->ret) {
+                infer_generic_type(actual_fn->ret->type, expected_fn->ret->type, generics);
+            }
+        }
+        break;
+
+    case TYPE_SLICE:
+    case TYPE_ARRAY:
+        if (actual.ref == expected.ref && actual.kind == expected.kind) {
+            assert(actual.spec_type);
+            assert(expected.spec_type);
+            infer_generic_type(*actual.spec_type, *expected.spec_type, generics);
+        }
+        break;
+
+    case TYPE_STRUCT:
+        if (actual.ref == expected.ref && actual.kind == expected.kind) {
+            StructInstanace *a_instance = actual.spec_struct_instance;
+            StructInstanace *e_instance = expected.spec_struct_instance;
+            if (a_instance && e_instance && a_instance->definition == e_instance->definition) {
+                for (Node *a = a_instance->generics, *e = e_instance->generics; a && e; a = a->next, e = e->next) {
+                    infer_generic_type(a->type, e->type, generics);
+                }
+            }
+        }
+        break;
+
+    case TYPE_GENERIC:
+        if (actual.ref >= expected.ref) {
+            actual.ref -= expected.ref;
+
+            assert(expected.spec_node);
+            const size_t n = expected.spec_node->token.as.integer;
+
+            Node *instance = generics;
+            for (size_t i = 0; i < n; i++) {
+                assert(instance);
+                instance = instance->next;
+            }
+
+            assert(instance);
+            if (!instance->token.as.boolean) {
+                instance->type = actual;
+                instance->token.as.boolean = true;
+            }
+        }
+        break;
+
+    default:
+        unreachable();
+        break;
+    }
 }
 
 static_assert(COUNT_NODES == 22, "");
@@ -858,6 +1084,62 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             if (c->context.checking_toplevels) {
                 check_stmt(c, atom->definition);
             }
+            n->type = atom->definition->type;
+
+            if (atom->generics.head) {
+                if (atom->definition->kind != NODE_FN) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+                    exit(1);
+                }
+
+                const NodeFn *definition = (const NodeFn *) atom->definition;
+                if (!definition->generics.head) {
+                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+                    exit(1);
+                }
+
+                if (atom->generics_count != definition->generics_count) {
+                    if (atom->will_be_called && atom->generics_count < definition->generics_count) {
+                        atom->generics_incomplete = true;
+                    } else {
+                        error_full(
+                            ERROR,
+                            n->token.pos,
+                            "Expected %zu generic parameter%s, got %zu",
+                            definition->generics_count,
+                            definition->generics_count == 1 ? "" : "s",
+                            atom->generics_count);
+
+                        exit(1);
+                    }
+                }
+
+                for (Node *it = atom->generics.head; it; it = it->next) {
+                    if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
+                        if (!atom->will_be_called) {
+                            error_full(ERROR, it->token.pos, "Cannot infer generic types here");
+                            exit(1);
+                        }
+
+                        atom->generics_incomplete = true;
+                    } else {
+                        check_type(c, it, true, NULL);
+                        it->token.as.boolean = true;
+                    }
+                }
+
+                if (!atom->generics_incomplete) {
+                    n->type = instantiate_type(c, n->type, atom->generics.head);
+                }
+            } else {
+                if (atom->definition->kind == NODE_FN && !atom->will_be_called) {
+                    const NodeFn *definition = (const NodeFn *) atom->definition;
+                    if (definition->generics.head) {
+                        error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
+                        exit(1);
+                    }
+                }
+            }
 
             allow_ref = atom->definition->kind == NODE_VAR;
             if (ref) {
@@ -873,8 +1155,6 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     }
                 }
             }
-
-            n->type = atom->definition->type;
         } break;
 
         default:
@@ -886,13 +1166,13 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         NodeCall *call = (NodeCall *) n;
         check_expr(c, call->fn, REF_NONE);
 
-        const Type fn_type = call->fn->type;
-        if (fn_type.kind != TYPE_FN) {
-            error_full(ERROR, call->fn->token.pos, "Cannot call type '%s'", type_to_cstr(fn_type));
+        const Type *fn_type = &call->fn->type;
+        if (fn_type->kind != TYPE_FN) {
+            error_full(ERROR, call->fn->token.pos, "Cannot call type '%s'", type_to_cstr(*fn_type));
             exit(1);
         }
 
-        if (fn_type.ref != 0) {
+        if (fn_type->ref != 0) {
             error_full(
                 ERROR,
                 call->fn->token.pos,
@@ -902,7 +1182,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             exit(1);
         }
 
-        const NodeFn *expected = (const NodeFn *) fn_type.spec_node;
+        const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
         if (call->arity != expected->arity) {
             error_full(
                 ERROR,
@@ -915,9 +1195,69 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             exit(1);
         }
 
+        bool inferred = false;
+        bool inferred_left = false;
+        if (expected->generics_count) {
+            if (call->fn->kind == NODE_ATOM) {
+                NodeAtom *atom = (NodeAtom *) call->fn;
+                if (!atom->generics_count || atom->generics_incomplete) {
+                    inferred = true;
+                    for (size_t i = atom->generics_count; i < expected->generics_count; i++) {
+                        nodes_push(&atom->generics, arena_alloc(c->context.arena, sizeof(Node)));
+                    }
+                    atom->generics_count = expected->generics_count;
+
+                    for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
+                        check_expr(c, a, REF_NONE);
+                        infer_generic_type(a->type, e->type, atom->generics.head);
+                    }
+
+                    for (Node *it = atom->generics.head; it; it = it->next) {
+                        if (!it->token.as.boolean) {
+                            inferred_left = true;
+                            break;
+                        }
+                    }
+
+                    call->fn->type = instantiate_type(c, call->fn->type, atom->generics.head);
+                    expected = (const NodeFn *) fn_type->spec_node;
+                }
+            }
+        }
+
         for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-            check_expr(c, a, REF_NONE);
-            type_assert_node(c, a, e);
+            if (!inferred) {
+                check_expr(c, a, REF_NONE);
+            }
+            type_assert(c, a, e->type);
+        }
+
+        if (inferred_left) {
+            error_full(ERROR, n->token.pos, "Could not infer all the generic parameters, instance the call explicitly");
+            fprintf(stderr, "\n");
+
+            error_begin(NOTE, n->token.pos);
+            if (call->fn->kind == NODE_ATOM) {
+                NodeAtom *atom = (NodeAtom *) call->fn;
+                fprintf(stderr, "Inferred " SVFmt "::<", SVArg(atom->node.token.sv));
+                for (Node *it = atom->generics.head; it; it = it->next) {
+                    if (it->token.as.boolean) {
+                        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
+                    } else {
+                        write_message(stderr, MESSAGE_FG_RED, "_");
+                    }
+
+                    if (it->next) {
+                        fprintf(stderr, ", ");
+                    } else {
+                        fprintf(stderr, ">\n");
+                    }
+                }
+            } else {
+                unreachable();
+            }
+
+            exit(1);
         }
 
         n->type = node_fn_return_type(expected);
@@ -926,7 +1266,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
         check_expr(c, cast->from, REF_NONE);
-        check_type(c, cast->to, true);
+        check_type(c, cast->to, true, NULL);
 
         if (cast->from->kind == NODE_ATOM && cast->from->token.kind == TOKEN_STR) {
             const Type i8_pointer = {.kind = TYPE_I8, .ref = 1};
@@ -1205,14 +1545,14 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
-        check_type(c, sizeoff->type, true);
+        check_type(c, sizeoff->type, true, NULL);
         check_expr(c, sizeoff->expr, REF_NONE);
         n->type = (Type) {.kind = TYPE_INT};
     } break;
 
     case NODE_COMPOUND: {
         NodeCompound *compound = (NodeCompound *) n;
-        check_type(c, compound->type, true);
+        check_type(c, compound->type, true, NULL);
 
         n->type = compound->type->type;
         if (n->type.ref || (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE)) {
@@ -1502,7 +1842,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         if (var->type && var->type->type.kind == TYPE_UNIT) {
-            check_type(c, var->type, true);
+            check_type(c, var->type, true, NULL);
             n->type = var->type->type;
         }
 
@@ -1562,7 +1902,21 @@ static void check_stmt(Compiler *c, Node *n) {
             type->check_status = CHECK_STATUS_DOING;
         }
 
-        check_type(c, type->definition, true);
+        if (type->generics.head) {
+            for (Node *it = type->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(type->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
+                NodeType *type = (NodeType *) it;
+                type->check_status = CHECK_STATUS_DONE;
+                type->local = true;
+                it->type = (Type) {.kind = TYPE_GENERIC, .spec_node = it};
+            }
+        }
+
+        check_type(c, type->definition, true, type->generics.head);
         n->type = type->definition->type;
 
         type->check_status = CHECK_STATUS_DONE;
@@ -1587,7 +1941,7 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         if (constt->type) {
-            check_type(c, constt->type, true);
+            check_type(c, constt->type, true, NULL);
             n->type = constt->type->type;
         }
 
@@ -1620,6 +1974,20 @@ static void check_stmt(Compiler *c, Node *n) {
             structt->check_status = CHECK_STATUS_DOING;
         }
 
+        if (structt->generics.head) {
+            for (Node *it = structt->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(structt->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
+                NodeType *type = (NodeType *) it;
+                type->check_status = CHECK_STATUS_DONE;
+                type->local = true;
+                it->type = (Type) {.kind = TYPE_GENERIC, .spec_node = it};
+            }
+        }
+
         for (Node *it = structt->fields.head; it; it = it->next) {
             const Node *previous = nodes_find(structt->fields, it->token.sv, it);
             if (previous) {
@@ -1627,7 +1995,7 @@ static void check_stmt(Compiler *c, Node *n) {
             }
 
             NodeField *field = (NodeField *) it;
-            check_type(c, field->type, true);
+            check_type(c, field->type, true, structt->generics.head);
 
             it->type = field->type->type;
             if (it->type.kind == TYPE_UNIT) {
@@ -1753,8 +2121,21 @@ static void check_toplevel(Compiler *c, Node *n) {
         }
 
         fn->check_status = CHECK_STATUS_DOING;
-
         n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
+
+        if (fn->generics.head) {
+            for (Node *it = fn->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(fn->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
+                NodeType *type = (NodeType *) it;
+                type->check_status = CHECK_STATUS_DONE;
+                type->local = true;
+                it->type = (Type) {.kind = TYPE_GENERIC, .spec_node = it};
+            }
+        }
 
         for (Node *it = fn->args.head; it; it = it->next) {
             if (it->token.kind == TOKEN_IDENT) {
@@ -1766,11 +2147,11 @@ static void check_toplevel(Compiler *c, Node *n) {
 
             NodeVar *var = (NodeVar *) it;
             assert(var->type);
-            check_type(c, var->type, true);
+            check_type(c, var->type, true, fn->generics.head);
             it->type = var->type->type;
         }
 
-        check_type(c, fn->ret, true);
+        check_type(c, fn->ret, true, fn->generics.head);
         fn->check_status = CHECK_STATUS_DONE;
     } break;
 
@@ -1802,6 +2183,16 @@ static void check_fn(Compiler *c, Node *n) {
     n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
 
     const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
+    for (Node *it = fn->generics.head; it; it = it->next) {
+        if (fn->local) {
+            Node *previous = nodes_find(fn->generics, it->token.sv, it);
+            if (previous) {
+                error_redefinition(it, previous, "generic parameter");
+            }
+        }
+        da_push(&c->context.locals, it);
+    }
+
     for (Node *it = fn->args.head; it; it = it->next) {
         if (fn->local && it->token.kind == TOKEN_IDENT) {
             const Node *previous = nodes_find(fn->args, it->token.sv, it);
@@ -1814,7 +2205,7 @@ static void check_fn(Compiler *c, Node *n) {
     }
 
     if (fn->local) {
-        check_type(c, fn->ret, true);
+        check_type(c, fn->ret, true, NULL);
     }
 
     if (fn->body) {

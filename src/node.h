@@ -4,8 +4,9 @@
 #include "qbe.h"
 #include "token.h"
 
-typedef struct Node    Node;
-typedef struct Package Package;
+typedef struct Node       Node;
+typedef struct NodeStruct NodeStruct;
+typedef struct Package    Package;
 
 typedef struct {
     Node *head;
@@ -34,10 +35,17 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_STRUCT,
 
+    TYPE_GENERIC,
+
     COUNT_TYPES
 } TypeKind;
 
 typedef struct Type Type;
+
+typedef struct {
+    Node       *generics;
+    NodeStruct *definition;
+} StructInstanace;
 
 struct Type {
     TypeKind kind;
@@ -57,6 +65,10 @@ struct Type {
     //   TYPE_ARRAY
     size_t spec_count;
 
+    // For:
+    //   struct<..T>
+    StructInstanace *spec_struct_instance;
+
     QbeType qbe;
 };
 
@@ -68,6 +80,24 @@ bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
 
 Type type_remove_ref(Type type);
+
+typedef struct Instantiation Instantiation;
+
+struct Instantiation {
+    Type    *types;
+    size_t   count;
+    QbeNode *qbe;
+
+    Instantiation *next;
+};
+
+typedef struct {
+    Instantiation *head;
+    Instantiation *tail;
+} Instantiations;
+
+void           instantiations_push(Instantiations *is, Instantiation *i);
+Instantiation *instantiations_find(Instantiations is, Type *types, size_t count);
 
 typedef enum {
     CHECK_STATUS_TODO,
@@ -124,12 +154,19 @@ struct Node {
     bool fmt_toplevel_newline;
 };
 
+void nodes_push(Nodes *ns, Node *n);
+
 typedef struct {
     Node  node;
     Node *definition;
 
     Token scope;
     bool  scope_resolved;
+
+    Nodes  generics;
+    size_t generics_count;
+    bool   generics_incomplete;
+    bool   will_be_called;
 
     Package *package;
 } NodeAtom;
@@ -236,6 +273,10 @@ typedef struct {
     Nodes  args;
     size_t arity;
 
+    Nodes          generics;
+    size_t         generics_count;
+    Instantiations instantiations;
+
     Node *ret;
     Node *body;
     Node *link;
@@ -278,13 +319,14 @@ typedef struct {
 } NodeVar;
 
 typedef struct {
-    Node node;
-
-    size_t ref;
-    Node  *definition;
+    Node  node;
+    Node *definition;
 
     bool local;
     bool is_public;
+
+    Nodes  generics;
+    size_t generics_count;
 
     Package    *package;
     CheckStatus check_status;
@@ -311,17 +353,20 @@ typedef struct {
     QbeField *qbe;
 } NodeField;
 
-typedef struct {
+struct NodeStruct {
     Node  node;
     Nodes fields;
     bool  local;
     bool  is_public;
 
+    Nodes  generics;
+    size_t generics_count;
+
     Package    *package;
     CheckStatus check_status;
 
     QbeStruct *qbe;
-} NodeStruct;
+};
 
 typedef struct {
     Node  node;

@@ -1,20 +1,6 @@
 #include "parser.h"
 #include "message.h"
 
-static void nodes_push(Nodes *ns, Node *n) {
-    if (!n) {
-        return;
-    }
-
-    if (ns->tail) {
-        ns->tail->next = n;
-    } else {
-        ns->head = n;
-    }
-
-    ns->tail = n;
-}
-
 static void nodes_append(Nodes *dst, Nodes *src) {
     nodes_push(dst, src->head);
     dst->tail = src->tail;
@@ -112,8 +98,35 @@ static Node *parse_type(Parser *p) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            atom->scope = atom->node.token;
-            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            if (token.kind == TOKEN_IDENT) {
+                atom->scope = atom->node.token;
+                atom->node.token = token;
+            } else {
+                lexer_buffer(&p->lexer, token);
+            }
+        }
+
+        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+            token = lexer_expect(&p->lexer, TOKEN_LT);
+            lexer_buffer(&p->lexer, token);
+        } else {
+            token = lexer_peek(&p->lexer);
+        }
+
+        if (token.kind == TOKEN_LT && !token.newlines) {
+            lexer_unbuffer(&p->lexer);
+
+            do {
+                nodes_push(&atom->generics, parse_type(p));
+                atom->generics_count++;
+
+                if (lexer_read(&p->lexer, TOKEN_SHR)) {
+                    token = lexer_split_token(&p->lexer, p->lexer.buffer);
+                } else {
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+                }
+            } while (token.kind != TOKEN_GT);
         }
 
         node = (Node *) atom;
@@ -341,8 +354,27 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            atom->scope = atom->node.token;
-            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            if (token.kind == TOKEN_IDENT) {
+                atom->scope = atom->node.token;
+                atom->node.token = token;
+                if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+                    token = lexer_expect(&p->lexer, TOKEN_LT);
+                }
+            }
+
+            if (token.kind == TOKEN_LT) {
+                if (flags & PF_CONSTANT_EXPR) {
+                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
+                    exit(1);
+                }
+
+                do {
+                    nodes_push(&atom->generics, parse_type(p));
+                    atom->generics_count++;
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+                } while (token.kind != TOKEN_GT);
+            }
         }
 
         node = (Node *) atom;
@@ -501,6 +533,9 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
+            if (call->fn->kind == NODE_ATOM) {
+                ((NodeAtom *) call->fn)->will_be_called = true;
+            }
 
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
                 const bool fmt_newline = call->args.head && lexer_peek(&p->lexer).newlines > 1;
@@ -816,6 +851,19 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_TYPE: {
         NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
+        if (sv_match(type->node.token.sv, "_")) {
+            error_full(ERROR, type->node.token.pos, "Cannot use '_' as name of type");
+            exit(1);
+        }
+
+        if (lexer_read(&p->lexer, TOKEN_LT)) {
+            do {
+                nodes_push(&type->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+                type->generics.tail->token.as.integer = type->generics_count++;
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            } while (token.kind != TOKEN_GT);
+        }
+
         type->local = p->local;
         type->definition = parse_type(p);
         type->package = p->packages->current;
@@ -838,9 +886,24 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_STRUCT: {
         NodeStruct *structt = node_alloc(p, NODE_STRUCT, lexer_expect(&p->lexer, TOKEN_IDENT));
+        if (sv_match(structt->node.token.sv, "_")) {
+            error_full(ERROR, structt->node.token.pos, "Cannot use '_' as name of type");
+            exit(1);
+        }
+
         structt->local = p->local;
 
-        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        token = lexer_expect(&p->lexer, TOKEN_LT, TOKEN_LBRACE);
+        if (token.kind == TOKEN_LT) {
+            do {
+                nodes_push(&structt->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+                structt->generics.tail->token.as.integer = structt->generics_count++;
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            } while (token.kind != TOKEN_GT);
+
+            lexer_expect(&p->lexer, TOKEN_LBRACE);
+        }
+
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             NodeField *field = node_alloc(p, NODE_FIELD, lexer_expect(&p->lexer, TOKEN_IDENT));
             if (structt->fields.head) {
@@ -924,6 +987,11 @@ static Node *parse_stmt(Parser *p) {
             NodeFn *fn = (NodeFn *) node;
             fn->link = link;
             fn->is_public = is_public;
+
+            if (fn->generics.head) {
+                error_full(ERROR, node->token.pos, "Externally linked function cannot be generic");
+                exit(1);
+            }
         } else if (node->kind == NODE_VAR) {
             NodeVar *var = (NodeVar *) node;
             var->link = link;
@@ -1033,7 +1101,28 @@ static Node *parse_stmt(Parser *p) {
 static Node *parse_fn(Parser *p, Token token) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
-    const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
+
+    token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LT);
+    if (token.kind == TOKEN_LT) {
+        if (p->in_extern) {
+            error_full(ERROR, fn->node.token.pos, "Externally linked function cannot be generic");
+            exit(1);
+        }
+
+        if (fn->node.token.kind == TOKEN_FN) {
+            error_full(ERROR, fn->node.token.pos, "Anonymous function cannot be generic");
+            exit(1);
+        }
+
+        do {
+            nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
+            fn->generics.tail->token.as.integer = fn->generics_count++;
+            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+        } while (token.kind != TOKEN_GT);
+
+        token = lexer_expect(&p->lexer, TOKEN_LPAREN);
+    }
+    const size_t starting_row = token.pos.row;
 
     const bool local_save = p->local;
     p->local = true;

@@ -1,0 +1,16 @@
+package main
+
+fn foo<A, B>(b B) {
+	print sizeof<A>
+	print sizeof<B>
+}
+
+fn bar<A, B>(a A) {
+	print sizeof<A>
+	print sizeof<B>
+}
+
+fn main() {
+	foo::<i16>(69)
+	bar::<_, bool>(420)
+}
