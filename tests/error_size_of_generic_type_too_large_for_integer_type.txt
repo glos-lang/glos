@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 163
+error_size_of_generic_type_too_large_for_integer_type.glos:4:9: ERROR: Integer value '128' is too large for type 'i8'
+
+    4 | 	return sizeof<T>
+      | 	       ^
+

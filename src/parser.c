@@ -1269,5 +1269,3 @@ ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
     }
     return PDE_NONE;
 }
-
-// TODO: Generic parameter redefinition

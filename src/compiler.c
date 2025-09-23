@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "checker.h"
 #include "message.h"
 
 static_assert(COUNT_TYPES == 17, "");
@@ -990,8 +991,9 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             type = &sizeoff->expr->type;
         }
 
-        compile_type(c, type);
-        return qbe_atom_int(c->qbe, n->type.qbe.kind, qbe_sizeof(type->qbe));
+        const size_t size = compile_sizeof(c, type);
+        check_int_limit(n, size);
+        return qbe_atom_int(c->qbe, n->type.qbe.kind, size);
     }
 
     case NODE_COMPOUND: {

@@ -4,7 +4,7 @@
 #include "checker.h"
 #include "message.h"
 
-static void check_int_limit(Node *n, size_t value) {
+void check_int_limit(Node *n, size_t value) {
     static_assert(COUNT_TYPES == 17, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
@@ -77,7 +77,6 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             type = &sizeoff->expr->type;
         }
 
-        // TODO: Verify the "return size" of sizeof<T>
         if (type->kind != TYPE_GENERIC) {
             check_int_limit(n, compile_sizeof(c, type));
         }
@@ -95,13 +94,6 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 }
 
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    // TODO: All the calls to try_auto_cast_untyped() check type equality beforehand anyway
-    //       Consider if this is needed
-    if (type_eq(n->type, expected)) {
-        // If the types are already equal, consider it a succesful auto cast
-        return true;
-    }
-
     // Untyped integer -> Typed integer
     if (type_is_integer(type_remove_ref(expected)) && n->type.kind == TYPE_INT) {
         // The indirection level of the typed and untyped integers must match
@@ -1241,7 +1233,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         }
 
         if (inferred_left) {
-            error_full(ERROR, n->token.pos, "Could not infer all generic types, instance the call explicitly");
+            error_full(ERROR, n->token.pos, "Could not infer all the generic parameters, instance the call explicitly");
             fprintf(stderr, "\n");
 
             error_begin(NOTE, n->token.pos);
@@ -1979,6 +1971,11 @@ static void check_stmt(Compiler *c, Node *n) {
 
         if (structt->generics.head) {
             for (Node *it = structt->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(structt->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
                 NodeType *type = (NodeType *) it;
                 type->check_status = CHECK_STATUS_DONE;
                 type->local = true;
@@ -2123,6 +2120,11 @@ static void check_toplevel(Compiler *c, Node *n) {
 
         if (fn->generics.head) {
             for (Node *it = fn->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(fn->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
                 NodeType *type = (NodeType *) it;
                 type->check_status = CHECK_STATUS_DONE;
                 type->local = true;
@@ -2177,6 +2179,12 @@ static void check_fn(Compiler *c, Node *n) {
 
     const ContextFn context_fn_save = context_fn_begin(&c->context, fn);
     for (Node *it = fn->generics.head; it; it = it->next) {
+        if (fn->local) {
+            Node *previous = nodes_find(fn->generics, it->token.sv, it);
+            if (previous) {
+                error_redefinition(it, previous, "generic parameter");
+            }
+        }
         da_push(&c->context.locals, it);
     }
 

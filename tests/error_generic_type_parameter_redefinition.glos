@@ -1,0 +1,3 @@
+package main
+
+fn foo<A, A>() {}
