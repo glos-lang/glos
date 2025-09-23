@@ -1904,6 +1904,11 @@ static void check_stmt(Compiler *c, Node *n) {
 
         if (type->generics.head) {
             for (Node *it = type->generics.head; it; it = it->next) {
+                Node *previous = nodes_find(type->generics, it->token.sv, it);
+                if (previous) {
+                    error_redefinition(it, previous, "generic parameter");
+                }
+
                 NodeType *type = (NodeType *) it;
                 type->check_status = CHECK_STATUS_DONE;
                 type->local = true;
