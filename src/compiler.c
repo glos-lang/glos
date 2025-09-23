@@ -1336,16 +1336,14 @@ static NodeFn *get_main(Context *c) {
 
     Node *main = scope_find(package->globals, sv_from_cstr("main"), false);
     if (!main) {
-        error_full(
-            ERROR,
-            (Pos) {0},
-            "Function 'main' is not defined\n"
-            "\n"
-            "```\n"
-            "fn main() {\n"
-            "    // Define this\n"
-            "}\n"
-            "```");
+        write_message(stderr, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_RED, "ERROR: ");
+        write_message(stderr, 0, "Function 'main' is not defined\n\n");
+        write_message(stderr, MESSAGE_FG_BLUE, "+ ");
+        write_message(stderr, MESSAGE_FG_RED, "fn");
+        write_message(stderr, MESSAGE_FG_GREEN, " main");
+        write_message(stderr, 0, "() {\n");
+        write_message(stderr, MESSAGE_FG_BLUE, "+ ");
+        write_message(stderr, 0, "}\n");
         exit(1);
     }
 

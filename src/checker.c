@@ -1107,15 +1107,19 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 }
 
                 if (atom->generics_count != definition->generics_count) {
-                    error_full(
-                        ERROR,
-                        n->token.pos,
-                        "Expected %zu generic parameter%s, got %zu",
-                        definition->generics_count,
-                        definition->generics_count == 1 ? "" : "s",
-                        atom->generics_count);
+                    if (atom->will_be_called && atom->generics_count < definition->generics_count) {
+                        atom->generics_incomplete = true;
+                    } else {
+                        error_full(
+                            ERROR,
+                            n->token.pos,
+                            "Expected %zu generic parameter%s, got %zu",
+                            definition->generics_count,
+                            definition->generics_count == 1 ? "" : "s",
+                            atom->generics_count);
 
-                    exit(1);
+                        exit(1);
+                    }
                 }
 
                 for (Node *it = atom->generics.head; it; it = it->next) {
@@ -1203,29 +1207,27 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         bool inferred_left = false;
         if (expected->generics_count) {
             if (call->fn->kind == NODE_ATOM) {
-                NodeAtom *fn = (NodeAtom *) call->fn;
-                if (!fn->generics_count || fn->generics_incomplete) {
+                NodeAtom *atom = (NodeAtom *) call->fn;
+                if (!atom->generics_count || atom->generics_incomplete) {
                     inferred = true;
-                    if (!fn->generics_count) {
-                        for (size_t i = 0; i < expected->generics_count; i++) {
-                            nodes_push(&fn->generics, arena_alloc(c->context.arena, sizeof(Node)));
-                        }
-                        fn->generics_count = expected->generics_count;
+                    for (size_t i = atom->generics_count; i < expected->generics_count; i++) {
+                        nodes_push(&atom->generics, arena_alloc(c->context.arena, sizeof(Node)));
                     }
+                    atom->generics_count = expected->generics_count;
 
                     for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
                         check_expr(c, a, REF_NONE);
-                        infer_generic_type(a->type, e->type, fn->generics.head);
+                        infer_generic_type(a->type, e->type, atom->generics.head);
                     }
 
-                    for (Node *it = fn->generics.head; it; it = it->next) {
+                    for (Node *it = atom->generics.head; it; it = it->next) {
                         if (!it->token.as.boolean) {
                             inferred_left = true;
                             break;
                         }
                     }
 
-                    call->fn->type = instantiate_type(c, call->fn->type, fn->generics.head);
+                    call->fn->type = instantiate_type(c, call->fn->type, atom->generics.head);
                     expected = (const NodeFn *) fn_type->spec_node;
                 }
             }
@@ -1240,6 +1242,29 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         if (inferred_left) {
             error_full(ERROR, n->token.pos, "Could not infer all generic types, instance the call explicitly");
+            fprintf(stderr, "\n");
+
+            error_begin(NOTE, n->token.pos);
+            if (call->fn->kind == NODE_ATOM) {
+                NodeAtom *atom = (NodeAtom *) call->fn;
+                fprintf(stderr, "Inferred " SVFmt "::<", SVArg(atom->node.token.sv));
+                for (Node *it = atom->generics.head; it; it = it->next) {
+                    if (it->token.as.boolean) {
+                        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
+                    } else {
+                        write_message(stderr, MESSAGE_FG_RED, "_");
+                    }
+
+                    if (it->next) {
+                        fprintf(stderr, ", ");
+                    } else {
+                        fprintf(stderr, ">\n");
+                    }
+                }
+            } else {
+                unreachable();
+            }
+
             exit(1);
         }
 

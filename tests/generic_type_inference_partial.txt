@@ -1,5 +1,7 @@
 EXIT 0
-STDOUT 4
+STDOUT 8
+2
+8
 8
 1
 
