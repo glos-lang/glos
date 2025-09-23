@@ -1,0 +1,7 @@
+EXIT 0
+STDOUT 5
+69
+0
+
+STDERR 0
+

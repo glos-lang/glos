@@ -120,7 +120,12 @@ static Node *parse_type(Parser *p) {
             do {
                 nodes_push(&atom->generics, parse_type(p));
                 atom->generics_count++;
-                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+
+                if (lexer_read(&p->lexer, TOKEN_SHR)) {
+                    token = lexer_split_token(&p->lexer, p->lexer.buffer);
+                } else {
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+                }
             } while (token.kind != TOKEN_GT);
         }
 
@@ -528,6 +533,9 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
+            if (call->fn->kind == NODE_ATOM) {
+                ((NodeAtom *) call->fn)->will_be_called = true;
+            }
 
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
                 const bool fmt_newline = call->args.head && lexer_peek(&p->lexer).newlines > 1;
@@ -1251,3 +1259,5 @@ ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
     }
     return PDE_NONE;
 }
+
+// TODO: Generic parameter redefinition

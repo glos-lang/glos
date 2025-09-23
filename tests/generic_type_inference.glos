@@ -1,0 +1,17 @@
+package main
+
+fn zero<T>(ptr &T) {
+	extern {
+		fn memset(ptr rawptr, ch i32, count u64) rawptr
+	}
+
+	memset(<rawptr> ptr, 0, sizeof<T>)
+}
+
+fn main() {
+	var x = 69
+	print x
+
+	zero(&x)
+	print x
+}
