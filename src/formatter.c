@@ -142,7 +142,7 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
             }
 
             for (Node *type = atom->generics.head; type; type = type->next) {
-                sb_sprintf(&f->sb, SVFmt, SVArg(type->token.sv));
+                format_type(f, type, false);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");
                 }
@@ -321,7 +321,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         if (atom->generics.head) {
             sb_sprintf(&f->sb, "::<");
             for (Node *type = atom->generics.head; type; type = type->next) {
-                sb_sprintf(&f->sb, SVFmt, SVArg(type->token.sv));
+                format_type(f, type, false);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");
                 }
