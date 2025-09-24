@@ -11,8 +11,10 @@ typedef enum {
 
 typedef struct {
     CommentWS ws;
-    Pos       pos;
-    SV        sv;
+    bool      shebang;
+
+    Pos pos;
+    SV  sv;
 } Comment;
 
 typedef DynamicArray(Comment) Comments;

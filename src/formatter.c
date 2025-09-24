@@ -894,10 +894,17 @@ void formatter_free(Formatter *f) {
     da_free(&f->comments);
 }
 
-bool format_file(Formatter *f, const char *path, SV package, Import *imports, Node *nodes) {
+bool format_file(Formatter *f, const char *path, Token package, Import *imports, Node *nodes) {
     const size_t start = f->sb.count;
 
-    sb_sprintf(&f->sb, "package " SVFmt "\n", SVArg(package));
+    if (f->comments.count && f->comments.data[0].shebang) {
+        sb_sprintf(&f->sb, SVFmt "\n\n", SVArg(f->comments.data[0].sv));
+        f->comments_synced++;
+    }
+
+    format_sync_comments(f, &package.pos, true);
+    sb_sprintf(&f->sb, "package " SVFmt "\n", SVArg(package.sv));
+
     if (imports) {
         sb_sprintf(&f->sb, "\nimport ");
         if (imports->next) {

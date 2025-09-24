@@ -1218,7 +1218,7 @@ bool parse_file(Parser *p, const char *path) {
             imports = p->packages->current->imports.head;
         }
 
-        if (!format_file(p->formatter, path, name.sv, imports, nodes.head)) {
+        if (!format_file(p->formatter, path, name, imports, nodes.head)) {
             p->formatter_failed = true;
             error_standalone(ERROR, "Could not format file '%s'", path);
         }

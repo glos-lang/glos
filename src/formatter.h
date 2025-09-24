@@ -15,6 +15,6 @@ typedef struct {
 
 void formatter_free(Formatter *f);
 
-bool format_file(Formatter *f, const char *path, SV package, Import *imports, Node *nodes);
+bool format_file(Formatter *f, const char *path, Token package, Import *imports, Node *nodes);
 
 #endif // FORMATTER_H

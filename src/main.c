@@ -196,20 +196,16 @@ int main(int argc, char **argv) {
 
     if (is_dir(input)) {
         parser.root = input;
-    }
-
-    ParseDirError pde = parse_dir(&parser, input, false);
-    if (pde == PDE_EMPTY) {
-        error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
-        exit(1);
-    }
-
-    if (pde == PDE_FAILED) {
+        if (parse_dir(&parser, input, false) == PDE_EMPTY) {
+            error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
+            exit(1);
+        }
+    } else {
+        package.is_file = true;
         if (!parse_file(&parser, input)) {
             error_standalone(ERROR, "Could not read '%s'", input);
             exit(1);
         }
-        package.is_file = true;
     }
 
     for (Package *it = packages.head; it; it = it->next) {

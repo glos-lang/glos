@@ -93,6 +93,22 @@ static void skip_whitespace(Lexer *l) {
             newlines_before_comment++;
             break;
 
+        case '#':
+            if (l->pos.col == 0 && l->pos.row == 0 && peek_char(l, 1) == '!') {
+                Comment comment = {.shebang = true, .pos = l->pos, .sv = l->sv};
+                while (l->sv.count && *l->sv.data != '\n') {
+                    next_char(l);
+                }
+                comment.sv.count -= l->sv.count;
+
+                if (l->comments) {
+                    da_push(l->comments, comment);
+                }
+            } else {
+                return;
+            }
+            break;
+
         case '/': {
             Comment comment = {.pos = l->pos, .sv = l->sv};
             if (peek_char(l, 1) == '/') {
