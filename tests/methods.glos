@@ -1,0 +1,9 @@
+package main
+
+fn (n i64) double() i64 {
+	return n * 2
+}
+
+fn main() {
+	print 210.double()
+}

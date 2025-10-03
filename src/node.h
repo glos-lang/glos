@@ -5,8 +5,10 @@
 #include "token.h"
 
 typedef struct Node       Node;
+typedef struct NodeFn     NodeFn;
 typedef struct NodeStruct NodeStruct;
-typedef struct Package    Package;
+
+typedef struct Package Package;
 
 typedef struct {
     Node *head;
@@ -212,6 +214,9 @@ typedef struct {
     Node  node;
     Node *lhs;
     Node *definition;
+    bool  is_method;
+
+    QbeNode *lhs_qbe;
 } NodeMember;
 
 typedef struct {
@@ -267,7 +272,7 @@ typedef struct {
     Node *value;
 } NodeReturn;
 
-typedef struct {
+struct NodeFn {
     Node node;
 
     Nodes  args;
@@ -283,6 +288,9 @@ typedef struct {
     bool  local;
     bool  is_public;
 
+    bool    is_method;
+    NodeFn *next_method;
+
     Package    *package;
     CheckStatus check_status;
 
@@ -290,7 +298,7 @@ typedef struct {
 
     // Formatter metadata
     bool fmt_multiline;
-} NodeFn;
+};
 
 Type node_fn_return_type(const NodeFn *fn);
 

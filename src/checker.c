@@ -1182,17 +1182,34 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             exit(1);
         }
 
-        const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
-        if (call->arity != expected->arity) {
-            error_full(
-                ERROR,
-                n->token.pos,
-                "Expected %zu argument%s, got %zu",
-                expected->arity,
-                expected->arity == 1 ? "" : "s",
-                call->arity);
+        bool is_method = false;
 
-            exit(1);
+        const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
+        {
+            size_t expected_arity = expected->arity;
+            if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                if (member->is_method) {
+                    Node *self = member->lhs;
+                    self->next = call->args.head;
+                    call->args.head = self;
+
+                    is_method = true;
+                    expected_arity--;
+                }
+            }
+
+            if (call->arity != expected_arity) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Expected %zu argument%s, got %zu",
+                    expected_arity,
+                    expected_arity == 1 ? "" : "s",
+                    call->arity);
+
+                exit(1);
+            }
         }
 
         bool inferred = false;
@@ -1208,7 +1225,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     atom->generics_count = expected->generics_count;
 
                     for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-                        check_expr(c, a, REF_NONE);
+                        if (!is_method) {
+                            check_expr(c, a, REF_NONE);
+                        }
                         infer_generic_type(a->type, e->type, atom->generics.head);
                     }
 
@@ -1222,6 +1241,8 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     call->fn->type = instantiate_type(c, call->fn->type, atom->generics.head);
                     expected = (const NodeFn *) fn_type->spec_node;
                 }
+            } else {
+                unreachable();
             }
         }
 
@@ -1229,7 +1250,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             if (!inferred) {
                 check_expr(c, a, REF_NONE);
             }
-            type_assert(c, a, e->type);
+
+            if (!is_method) {
+                type_assert(c, a, e->type);
+            }
         }
 
         if (inferred_left) {
@@ -1525,21 +1549,36 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             member->definition = nodes_find(structt->fields, n->token.sv, NULL);
             if (!member->definition) {
-                error_undefined(n, "field");
+                Methods *methods = context_methods_find(&c->context, member->lhs->type);
+                if (methods) {
+                    member->is_method = true;
+                    member->definition = (Node *) methods_find(methods, n->token.sv);
+                }
+            }
+
+            if (!member->definition) {
+                error_undefined(n, "field or method");
             }
 
             allow_ref = ref;
             n->type = member->definition->type;
         } else {
-            if (member->lhs->type.kind != TYPE_STRUCT) {
-                error_full(
-                    ERROR,
-                    member->lhs->token.pos,
-                    "Expected structure type, got '%s'",
-                    type_to_cstr(member->lhs->type));
-
-                exit(1);
+            Type self_type = member->lhs->type;
+            if (type_eq(self_type, (Type) {.kind = TYPE_INT})) {
+                self_type.kind = TYPE_I64;
             }
+
+            Methods *methods = context_methods_find(&c->context, self_type);
+            if (methods) {
+                member->is_method = true;
+                member->definition = (Node *) methods_find(methods, n->token.sv);
+            }
+
+            if (!member->definition) {
+                error_undefined(n, "method");
+            }
+
+            n->type = member->definition->type;
         }
     } break;
 
@@ -2039,14 +2078,17 @@ static_assert(COUNT_NODES == 22, "");
 static void define_toplevel(Node *n) {
     switch (n->kind) {
     case NODE_FN: {
-        Package *package = ((NodeFn *) n)->package;
+        NodeFn *fn = (NodeFn *) n;
+        if (!fn->is_method) {
+            Package *package = fn->package;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, false);
-        if (previous) {
-            error_redefinition(n, previous, "identifier");
+            const Node *previous = scope_find(package->globals, n->token.sv, false);
+            if (previous) {
+                error_redefinition(n, previous, "identifier");
+            }
+
+            da_push(&package->globals, n);
         }
-
-        da_push(&package->globals, n);
     } break;
 
     case NODE_VAR: {
@@ -2149,6 +2191,25 @@ static void check_toplevel(Compiler *c, Node *n) {
             assert(var->type);
             check_type(c, var->type, true, fn->generics.head);
             it->type = var->type->type;
+        }
+
+        if (fn->is_method) {
+            Methods *methods = context_methods_find(&c->context, fn->args.head->type);
+            if (!methods) {
+                methods = context_methods_alloc(&c->context, fn->args.head->type);
+            }
+
+            Node *previous = (Node *) methods_find(methods, n->token.sv);
+            if (previous) {
+                error_redefinition(n, previous, "method");
+            } else if (fn->args.head->type.kind == TYPE_STRUCT) {
+                previous = nodes_find(((NodeStruct *) fn->args.head->type.spec_node)->fields, n->token.sv, NULL);
+                if (previous) {
+                    error_redefinition(n, previous, "field");
+                }
+            }
+
+            methods_push(methods, fn);
         }
 
         check_type(c, fn->ret, true, fn->generics.head);

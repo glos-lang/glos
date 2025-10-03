@@ -820,7 +820,22 @@ static Node *parse_stmt(Parser *p) {
     } break;
 
     case TOKEN_FN:
-        node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+        token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LPAREN);
+        if (token.kind == TOKEN_LPAREN) {
+            NodeVar *self = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
+            self->type = parse_type(p);
+
+            lexer_expect(&p->lexer, TOKEN_RPAREN);
+            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+
+            NodeFn *fn = (NodeFn *) node;
+            self->node.next = fn->args.head;
+            fn->args.head = (Node *) self;
+            fn->arity++;
+            fn->is_method = true;
+        } else {
+            node = parse_fn(p, token);
+        }
         break;
 
     case TOKEN_VAR: {
