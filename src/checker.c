@@ -1282,9 +1282,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 check_expr(c, a, REF_NONE);
             }
 
-            if (!is_method || a != call->args.head) {
-                type_assert(c, a, e->type);
-            }
+            type_assert(c, a, e->type);
         }
 
         if (inferred_left) {
@@ -1292,24 +1290,35 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             fprintf(stderr, "\n");
 
             error_begin(NOTE, n->token.pos);
-            if (call->fn->kind == NODE_ATOM) {
-                NodeAtom *atom = (NodeAtom *) call->fn;
-                fprintf(stderr, "Inferred " SVFmt "::<", SVArg(atom->node.token.sv));
-                for (Node *it = atom->generics.head; it; it = it->next) {
-                    if (it->token.as.boolean) {
-                        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
-                    } else {
-                        write_message(stderr, MESSAGE_FG_RED, "_");
-                    }
 
-                    if (it->next) {
-                        fprintf(stderr, ", ");
-                    } else {
-                        fprintf(stderr, ">\n");
-                    }
-                }
+            Node *generics = NULL;
+            if (call->fn->kind == NODE_ATOM) {
+                generics = ((NodeAtom *) call->fn)->generics.head;
+                fprintf(stderr, "Inferred ");
+            } else if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                generics = member->generics.head;
+                fprintf(stderr, "Inferred (");
+                write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(member->lhs->type));
+                fprintf(stderr, ").");
             } else {
                 unreachable();
+            }
+
+            write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(call->fn->token.sv));
+            fprintf(stderr, "::<");
+            for (Node *it = generics; it; it = it->next) {
+                if (it->token.as.boolean) {
+                    write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
+                } else {
+                    write_message(stderr, MESSAGE_FG_RED, "_");
+                }
+
+                if (it->next) {
+                    fprintf(stderr, ", ");
+                } else {
+                    fprintf(stderr, ">\n");
+                }
             }
 
             exit(1);
