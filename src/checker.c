@@ -1122,7 +1122,6 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         return;
     }
 
-    bool allow_ref = false;
     switch (n->kind) {
     case NODE_ATOM: {
         static_assert(COUNT_TOKENS == 67, "");
@@ -1159,14 +1158,14 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             check_generics(c, n, atom->generics.head, atom->generics_count, atom->definition);
 
-            allow_ref = atom->definition->kind == NODE_VAR;
+            n->allow_ref = atom->definition->kind == NODE_VAR;
             if (ref) {
                 if (atom->definition->kind == NODE_CONST && ref == REF_MUTATE) {
                     error_full(ERROR, n->token.pos, "Cannot mutate constant value");
                     exit(1);
                 }
 
-                if (allow_ref) {
+                if (n->allow_ref) {
                     NodeVar *var = (NodeVar *) atom->definition;
                     if (var->kind == NODE_VAR_ARG) {
                         var->kind = NODE_VAR_LOCAL;
@@ -1390,7 +1389,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->type = unary->operand->type;
             n->type.ref--;
-            allow_ref = true;
+            n->allow_ref = true;
             break;
 
         case TOKEN_BAND:
@@ -1485,7 +1484,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
         } else {
             n->type = *base.spec_type;
-            allow_ref = true;
+            n->allow_ref = true;
         }
     } break;
 
@@ -1589,18 +1588,49 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             member->definition = nodes_find(structt->fields, n->token.sv, NULL);
             if (!member->definition) {
-                Methods *methods = context_methods_find(&c->context, member->lhs->type);
-                if (methods) {
-                    member->is_method = true;
-                    member->definition = (Node *) methods_find(methods, n->token.sv);
-                }
+                member->is_method = true;
+                member->definition = (Node *) methods_find(member->lhs->type, n->token.sv);
             }
 
             if (!member->definition) {
                 error_undefined(n, "field or method");
             }
 
-            allow_ref = !member->is_method;
+            if (member->is_method) {
+                NodeFn *definition = (NodeFn *) member->definition;
+
+                const size_t actual_ref = member->lhs->type.ref;
+                const size_t expected_ref = definition->args.head->type.ref;
+                if (actual_ref == expected_ref) {
+                    // OK
+                } else if (actual_ref + 1 == expected_ref) {
+                    if (!member->lhs->allow_ref) {
+                        error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
+                        exit(1);
+                    }
+
+                    NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                    unary->node.kind = NODE_UNARY;
+                    unary->node.token.kind = TOKEN_BAND;
+
+                    unary->operand = member->lhs;
+                    unary->node.type = member->lhs->type;
+                    unary->node.type.ref++;
+
+                    member->lhs = (Node *) unary;
+                } else {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Method requires self to be '%s', got '%s'",
+                        type_to_cstr(definition->args.head->type),
+                        type_to_cstr(member->lhs->type));
+
+                    exit(1);
+                }
+            }
+
+            n->allow_ref = !member->is_method;
             n->type = member->definition->type;
         } else {
             if (member->lhs->type.kind != TYPE_STRUCT) {
@@ -1739,7 +1769,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         unreachable();
     }
 
-    if (!allow_ref && ref) {
+    if (!n->allow_ref && ref) {
         error_full(ERROR, n->token.pos, "Cannot take reference to value not in memory");
         exit(1);
     }
@@ -2236,23 +2266,19 @@ static void check_toplevel(Compiler *c, Node *n) {
                 error_full(ERROR, self->type->token.pos, "Can only define methods for structures");
                 exit(1);
             }
+            NodeStruct *structt = (NodeStruct *) fn->args.head->type.spec_node;
 
-            Methods *methods = context_methods_find(&c->context, fn->args.head->type);
-            if (!methods) {
-                methods = context_methods_alloc(&c->context, fn->args.head->type);
-            }
-
-            Node *previous = (Node *) methods_find(methods, n->token.sv);
+            Node *previous = (Node *) methods_find(fn->args.head->type, n->token.sv);
             if (previous) {
                 error_redefinition(n, previous, "method");
             } else if (fn->args.head->type.kind == TYPE_STRUCT) {
-                previous = nodes_find(((NodeStruct *) fn->args.head->type.spec_node)->fields, n->token.sv, NULL);
+                previous = nodes_find(structt->fields, n->token.sv, NULL);
                 if (previous) {
                     error_redefinition(n, previous, "field");
                 }
             }
 
-            methods_push(methods, fn);
+            methods_push(fn->args.head->type, fn);
         }
 
         check_type(c, fn->ret, true, fn->generics.head);

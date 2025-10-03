@@ -151,6 +151,8 @@ struct Node {
     Token    token;
     Node    *next;
 
+    bool allow_ref;
+
     // Formatter metadata
     bool fmt_newline;
     bool fmt_toplevel_newline;
@@ -369,8 +371,12 @@ typedef struct {
 struct NodeStruct {
     Node  node;
     Nodes fields;
-    bool  local;
-    bool  is_public;
+
+    NodeFn *methods_head;
+    NodeFn *methods_tail;
+
+    bool local;
+    bool is_public;
 
     Nodes  generics;
     size_t generics_count;
@@ -380,6 +386,9 @@ struct NodeStruct {
 
     QbeStruct *qbe;
 };
+
+NodeFn *methods_find(Type type, SV name);
+void    methods_push(Type type, NodeFn *m);
 
 typedef struct {
     Node  node;

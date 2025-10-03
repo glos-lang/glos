@@ -10,6 +10,6 @@ fn (b &Box<T>) set<T>(v T) {
 
 fn main() {
 	var box Box<i64>
-	(&box).set(69)
+	box.set(69)
 	print box.v
 }

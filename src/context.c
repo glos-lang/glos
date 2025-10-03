@@ -25,30 +25,6 @@ Node *scope_find(Scope s, SV name, bool is_type) {
     return scope_find_impl(s, name, is_type, 0);
 }
 
-NodeFn *methods_find(Methods *ms, SV name) {
-    for (NodeFn *it = ms->head; it; it = it->next_method) {
-        if (sv_eq(it->node.token.sv, name)) {
-            return it;
-        }
-    }
-
-    return NULL;
-}
-
-void methods_push(Methods *ms, NodeFn *m) {
-    if (!m) {
-        return;
-    }
-
-    if (ms->tail) {
-        ms->tail->next_method = m;
-    } else {
-        ms->head = m;
-    }
-
-    ms->tail = m;
-}
-
 ContextFn context_fn_begin(Context *c, NodeFn *fn) {
     const ContextFn save = c->fn;
     c->fn.base = c->locals.count;
@@ -63,55 +39,6 @@ void context_fn_end(Context *c, ContextFn save) {
 
 Node *context_fn_find(ContextFn f, Scope s, SV name, bool is_type) {
     return scope_find_impl(s, name, is_type, f.base);
-}
-
-static bool method_applicable(Type expected, Type actual) {
-    if (expected.spec_struct_instance) {
-        if (!actual.spec_struct_instance) {
-            return false;
-        }
-
-        const StructInstanace *actual_spec = actual.spec_struct_instance;
-        const StructInstanace *expected_spec = expected.spec_struct_instance;
-        if (expected_spec->definition != actual_spec->definition) {
-            return false;
-        }
-
-        Node *actual_it = actual_spec->generics;
-        Node *expected_it = expected_spec->generics;
-        while (expected_it && actual_it) {
-            assert(expected_it);
-            assert(actual_it);
-            if (expected_it->type.kind != TYPE_GENERIC && !type_eq(expected_it->type, actual_it->type)) {
-                return false;
-            }
-
-            expected_it = expected_it->next;
-            actual_it = actual_it->next;
-        }
-
-        return true;
-    }
-
-    return actual.spec_node == expected.spec_node;
-}
-
-Methods *context_methods_find(Context *c, Type type) {
-    for (Methods *it = c->methods; it; it = it->next) {
-        if (method_applicable(it->type, type)) {
-            return it;
-        }
-    }
-
-    return NULL;
-}
-
-Methods *context_methods_alloc(Context *c, Type type) {
-    Methods *ms = arena_alloc(c->arena, sizeof(Methods));
-    ms->type = type;
-    ms->next = c->methods;
-    c->methods = ms;
-    return ms;
 }
 
 void context_free(Context *c) {
