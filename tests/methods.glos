@@ -1,9 +1,15 @@
 package main
 
-fn (n i64) double() i64 {
-	return n * 2
+struct Box {
+	v i64
+}
+
+fn (b &Box) set(v i64) {
+	b.v = v
 }
 
 fn main() {
-	print 210.double()
+	var box Box
+	(&box).set(420)
+	print box.v
 }

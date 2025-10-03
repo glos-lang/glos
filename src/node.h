@@ -216,6 +216,11 @@ typedef struct {
     Node *definition;
     bool  is_method;
 
+    Nodes  generics;
+    size_t generics_count;
+    bool   generics_incomplete;
+    bool   will_be_called;
+
     QbeNode *lhs_qbe;
 } NodeMember;
 

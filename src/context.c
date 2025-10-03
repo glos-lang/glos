@@ -65,9 +65,40 @@ Node *context_fn_find(ContextFn f, Scope s, SV name, bool is_type) {
     return scope_find_impl(s, name, is_type, f.base);
 }
 
+static bool method_applicable(Type expected, Type actual) {
+    if (expected.spec_struct_instance) {
+        if (!actual.spec_struct_instance) {
+            return false;
+        }
+
+        const StructInstanace *actual_spec = actual.spec_struct_instance;
+        const StructInstanace *expected_spec = expected.spec_struct_instance;
+        if (expected_spec->definition != actual_spec->definition) {
+            return false;
+        }
+
+        Node *actual_it = actual_spec->generics;
+        Node *expected_it = expected_spec->generics;
+        while (expected_it && actual_it) {
+            assert(expected_it);
+            assert(actual_it);
+            if (expected_it->type.kind != TYPE_GENERIC && !type_eq(expected_it->type, actual_it->type)) {
+                return false;
+            }
+
+            expected_it = expected_it->next;
+            actual_it = actual_it->next;
+        }
+
+        return true;
+    }
+
+    return actual.spec_node == expected.spec_node;
+}
+
 Methods *context_methods_find(Context *c, Type type) {
     for (Methods *it = c->methods; it; it = it->next) {
-        if (type_eq(it->type, type)) {
+        if (method_applicable(it->type, type)) {
             return it;
         }
     }

@@ -1045,6 +1045,77 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
     }
 }
 
+static void check_generics(Compiler *c, Node *n, Node *generics_head, size_t generics_count, Node *definition) {
+    bool *will_be_called = NULL;
+    bool *generics_incomplete = NULL;
+    if (n->kind == NODE_ATOM) {
+        NodeAtom *atom = (NodeAtom *) n;
+        will_be_called = &atom->will_be_called;
+        generics_incomplete = &atom->generics_incomplete;
+    } else if (n->kind == NODE_MEMBER) {
+        NodeMember *member = (NodeMember *) n;
+        will_be_called = &member->will_be_called;
+        generics_incomplete = &member->generics_incomplete;
+    } else {
+        unreachable();
+    }
+
+    if (generics_head) {
+        if (definition->kind != NODE_FN) {
+            error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+            exit(1);
+        }
+
+        const NodeFn *definition_fn = (const NodeFn *) definition;
+        if (!definition_fn->generics.head) {
+            error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+            exit(1);
+        }
+
+        if (generics_count != definition_fn->generics_count) {
+            if (*will_be_called && generics_count < definition_fn->generics_count) {
+                *generics_incomplete = true;
+            } else {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Expected %zu generic parameter%s, got %zu",
+                    definition_fn->generics_count,
+                    definition_fn->generics_count == 1 ? "" : "s",
+                    generics_count);
+
+                exit(1);
+            }
+        }
+
+        for (Node *it = generics_head; it; it = it->next) {
+            if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
+                if (!*will_be_called) {
+                    error_full(ERROR, it->token.pos, "Cannot infer generic types here");
+                    exit(1);
+                }
+
+                *generics_incomplete = true;
+            } else {
+                check_type(c, it, true, NULL);
+                it->token.as.boolean = true;
+            }
+        }
+
+        if (!*generics_incomplete) {
+            n->type = instantiate_type(c, n->type, generics_head);
+        }
+    } else {
+        if (definition->kind == NODE_FN && !*will_be_called) {
+            const NodeFn *definition_fn = (const NodeFn *) definition;
+            if (definition_fn->generics.head) {
+                error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
+                exit(1);
+            }
+        }
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
@@ -1086,60 +1157,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
             n->type = atom->definition->type;
 
-            if (atom->generics.head) {
-                if (atom->definition->kind != NODE_FN) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
-                    exit(1);
-                }
-
-                const NodeFn *definition = (const NodeFn *) atom->definition;
-                if (!definition->generics.head) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
-                    exit(1);
-                }
-
-                if (atom->generics_count != definition->generics_count) {
-                    if (atom->will_be_called && atom->generics_count < definition->generics_count) {
-                        atom->generics_incomplete = true;
-                    } else {
-                        error_full(
-                            ERROR,
-                            n->token.pos,
-                            "Expected %zu generic parameter%s, got %zu",
-                            definition->generics_count,
-                            definition->generics_count == 1 ? "" : "s",
-                            atom->generics_count);
-
-                        exit(1);
-                    }
-                }
-
-                for (Node *it = atom->generics.head; it; it = it->next) {
-                    if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
-                        if (!atom->will_be_called) {
-                            error_full(ERROR, it->token.pos, "Cannot infer generic types here");
-                            exit(1);
-                        }
-
-                        atom->generics_incomplete = true;
-                    } else {
-                        check_type(c, it, true, NULL);
-                        it->token.as.boolean = true;
-                    }
-                }
-
-                if (!atom->generics_incomplete) {
-                    n->type = instantiate_type(c, n->type, atom->generics.head);
-                }
-            } else {
-                if (atom->definition->kind == NODE_FN && !atom->will_be_called) {
-                    const NodeFn *definition = (const NodeFn *) atom->definition;
-                    if (definition->generics.head) {
-                        error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
-                        exit(1);
-                    }
-                }
-            }
+            check_generics(c, n, atom->generics.head, atom->generics_count, atom->definition);
 
             allow_ref = atom->definition->kind == NODE_VAR;
             if (ref) {
@@ -1215,34 +1233,47 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         bool inferred = false;
         bool inferred_left = false;
         if (expected->generics_count) {
+            Nodes  *generics = NULL;
+            size_t *generics_count = NULL;
+            bool   *generics_incomplete = NULL;
+
             if (call->fn->kind == NODE_ATOM) {
                 NodeAtom *atom = (NodeAtom *) call->fn;
-                if (!atom->generics_count || atom->generics_incomplete) {
-                    inferred = true;
-                    for (size_t i = atom->generics_count; i < expected->generics_count; i++) {
-                        nodes_push(&atom->generics, arena_alloc(c->context.arena, sizeof(Node)));
-                    }
-                    atom->generics_count = expected->generics_count;
-
-                    for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-                        if (!is_method) {
-                            check_expr(c, a, REF_NONE);
-                        }
-                        infer_generic_type(a->type, e->type, atom->generics.head);
-                    }
-
-                    for (Node *it = atom->generics.head; it; it = it->next) {
-                        if (!it->token.as.boolean) {
-                            inferred_left = true;
-                            break;
-                        }
-                    }
-
-                    call->fn->type = instantiate_type(c, call->fn->type, atom->generics.head);
-                    expected = (const NodeFn *) fn_type->spec_node;
-                }
+                generics = &atom->generics;
+                generics_count = &atom->generics_count;
+                generics_incomplete = &atom->generics_incomplete;
+            } else if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                generics = &member->generics;
+                generics_count = &member->generics_count;
+                generics_incomplete = &member->generics_incomplete;
             } else {
                 unreachable();
+            }
+
+            if (!*generics_count || *generics_incomplete) {
+                inferred = true;
+                for (size_t i = *generics_count; i < expected->generics_count; i++) {
+                    nodes_push(generics, arena_alloc(c->context.arena, sizeof(Node)));
+                }
+                *generics_count = expected->generics_count;
+
+                for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
+                    if (!is_method || a != call->args.head) {
+                        check_expr(c, a, REF_NONE);
+                    }
+                    infer_generic_type(a->type, e->type, generics->head);
+                }
+
+                for (Node *it = generics->head; it; it = it->next) {
+                    if (!it->token.as.boolean) {
+                        inferred_left = true;
+                        break;
+                    }
+                }
+
+                call->fn->type = instantiate_type(c, call->fn->type, generics->head);
+                expected = (const NodeFn *) fn_type->spec_node;
             }
         }
 
@@ -1251,7 +1282,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 check_expr(c, a, REF_NONE);
             }
 
-            if (!is_method) {
+            if (!is_method || a != call->args.head) {
                 type_assert(c, a, e->type);
             }
         }
@@ -1560,25 +1591,22 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 error_undefined(n, "field or method");
             }
 
-            allow_ref = ref;
+            allow_ref = !member->is_method;
             n->type = member->definition->type;
         } else {
-            Type self_type = member->lhs->type;
-            if (type_eq(self_type, (Type) {.kind = TYPE_INT})) {
-                self_type.kind = TYPE_I64;
-            }
+            if (member->lhs->type.kind != TYPE_STRUCT) {
+                error_full(
+                    ERROR,
+                    member->lhs->token.pos,
+                    "Expected structure type, got '%s'",
+                    type_to_cstr(member->lhs->type));
 
-            Methods *methods = context_methods_find(&c->context, self_type);
-            if (methods) {
-                member->is_method = true;
-                member->definition = (Node *) methods_find(methods, n->token.sv);
+                exit(1);
             }
+        }
 
-            if (!member->definition) {
-                error_undefined(n, "method");
-            }
-
-            n->type = member->definition->type;
+        if (member->is_method) {
+            check_generics(c, n, member->generics.head, member->generics_count, member->definition);
         }
     } break;
 
@@ -2194,6 +2222,12 @@ static void check_toplevel(Compiler *c, Node *n) {
         }
 
         if (fn->is_method) {
+            if (fn->args.head->type.kind != TYPE_STRUCT) {
+                NodeVar *self = (NodeVar *) fn->args.head;
+                error_full(ERROR, self->type->token.pos, "Can only define methods for structures");
+                exit(1);
+            }
+
             Methods *methods = context_methods_find(&c->context, fn->args.head->type);
             if (!methods) {
                 methods = context_methods_alloc(&c->context, fn->args.head->type);

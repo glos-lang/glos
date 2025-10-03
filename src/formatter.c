@@ -966,3 +966,5 @@ bool format_file(Formatter *f, const char *path, Token package, Import *imports,
     fclose(out);
     return true;
 }
+
+// TODO: Member generics
