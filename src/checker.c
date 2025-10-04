@@ -205,6 +205,13 @@ static void error_undefined(const Node *n, const char *label) {
     exit(1);
 }
 
+static void error_use_of_private(const Token *token, const Node *defined, const char *label) {
+    error_full(ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its package", label, SVArg(token->sv));
+    fprintf(stderr, "\n");
+    error_full(NOTE, defined->token.pos, "Defined here");
+    exit(1);
+}
+
 static Node *ident_find(const Context *c, Package *package, const Token *token, bool is_type, bool is_imported) {
     if (c->fn.fn) {
         Node *n = context_fn_find(c->fn, c->locals, token->sv, is_type);
@@ -250,11 +257,7 @@ static Node *ident_find(const Context *c, Package *package, const Token *token, 
 
         if (!is_public) {
             assert(label);
-            error_full(
-                ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its package", label, SVArg(token->sv));
-            fprintf(stderr, "\n");
-            error_full(NOTE, global->token.pos, "Defined here");
-            exit(1);
+            error_use_of_private(token, global, label);
         }
     }
 
@@ -754,6 +757,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
         NodeStruct *from = (NodeStruct *) type.spec_node;
         NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
         to->node = from->node;
+        to->package = from->package;
         to->node.type.spec_node = (Node *) to;
 
         for (Node *it = from->fields.head; it; it = it->next) {
@@ -1598,6 +1602,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             if (member->is_method) {
                 NodeFn *definition = (NodeFn *) member->definition;
+                if (definition->package != member->package && !definition->is_public) {
+                    error_use_of_private(&n->token, member->definition, "method");
+                }
 
                 const size_t actual_ref = member->lhs->type.ref;
                 const size_t expected_ref = definition->args.head->type.ref;
@@ -2267,6 +2274,11 @@ static void check_toplevel(Compiler *c, Node *n) {
                 exit(1);
             }
             NodeStruct *structt = (NodeStruct *) fn->args.head->type.spec_node;
+
+            if (structt->package != fn->package) {
+                error_full(ERROR, n->token.pos, "Cannot define methods for structure outside of its package");
+                exit(1);
+            }
 
             Node *previous = (Node *) methods_find(fn->args.head->type, n->token.sv);
             if (previous) {

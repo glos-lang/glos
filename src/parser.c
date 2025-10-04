@@ -520,6 +520,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
+            member->package = p->packages->current;
 
             if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
                 lexer_expect(&p->lexer, TOKEN_LT);

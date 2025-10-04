@@ -223,6 +223,8 @@ typedef struct {
     bool   generics_incomplete;
     bool   will_be_called;
 
+    Package *package;
+
     QbeNode *lhs_qbe;
 } NodeMember;
 
