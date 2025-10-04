@@ -1,0 +1,5 @@
+package main
+
+fn main() {
+	(<&i64> 0)[1..0]
+}
