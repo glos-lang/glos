@@ -241,6 +241,12 @@ static void format_fn(Formatter *f, NodeFn *fn) {
         sb_sprintf(&f->sb, "pub ");
     }
     sb_sprintf(&f->sb, "fn ");
+    if (fn->is_method) {
+        sb_sprintf(&f->sb, "(" SVFmt " ", SVArg(fn->args.head->token.sv));
+        format_type(f, ((NodeVar *) fn->args.head)->type, false);
+        sb_sprintf(&f->sb, ") ");
+    }
+
     if (fn->node.token.kind == TOKEN_IDENT) {
         sb_sprintf(&f->sb, SVFmt, SVArg(fn->node.token.sv));
     }
@@ -262,6 +268,10 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 
     for (Node *arg = fn->args.head; arg; arg = arg->next) {
+        if (fn->is_method && arg == fn->args.head) {
+            continue;
+        }
+
         if (arg->fmt_newline) {
             sb_push(&f->sb, '\n');
         }
@@ -417,6 +427,17 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         NodeMember *member = (NodeMember *) n;
         format_expr(f, member->lhs, true);
         sb_sprintf(&f->sb, "." SVFmt, SVArg(n->token.sv));
+
+        if (member->generics.head) {
+            sb_sprintf(&f->sb, "::<");
+            for (Node *type = member->generics.head; type; type = type->next) {
+                format_type(f, type, false);
+                if (type->next) {
+                    sb_sprintf(&f->sb, ", ");
+                }
+            }
+            sb_push(&f->sb, '>');
+        }
     } break;
 
     case NODE_SIZEOF: {
@@ -966,5 +987,3 @@ bool format_file(Formatter *f, const char *path, Token package, Import *imports,
     fclose(out);
     return true;
 }
-
-// TODO: Member generics
