@@ -191,6 +191,8 @@ typedef struct {
     Node  node;
     Node *from;
     Node *to;
+
+    bool slice_lowering;
 } NodeCast;
 
 typedef struct {

@@ -1335,21 +1335,23 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         check_expr(c, cast->from, REF_NONE);
         check_type(c, cast->to, true, NULL);
 
-        if (cast->from->kind == NODE_ATOM && cast->from->token.kind == TOKEN_STR) {
-            const Type i8_pointer = {.kind = TYPE_I8, .ref = 1};
-            const Type u8_pointer = {.kind = TYPE_U8, .ref = 1};
+        if (cast->from->type.kind == TYPE_SLICE && !cast->from->type.ref) {
+            Type element_pointer = *cast->from->type.spec_type;
+            element_pointer.ref++;
 
-            if (!type_eq(cast->to->type, i8_pointer) && !type_eq(cast->to->type, u8_pointer)) {
+            if (!type_eq(cast->to->type, element_pointer)) {
                 error_full(
                     ERROR,
                     n->token.pos,
-                    "Can only cast string literals to '%s' or '%s', not '%s'",
-                    type_to_cstr(i8_pointer),
-                    type_to_cstr(u8_pointer),
+                    "Can only cast '%s' to '%s', not '%s'",
+                    type_to_cstr(cast->from->type),
+                    type_to_cstr(element_pointer),
                     type_to_cstr(cast->to->type));
 
                 exit(1);
             }
+
+            cast->slice_lowering = true;
         } else {
             const Type from = type_assert_scalar(cast->from);
             const Type to = type_assert_scalar(cast->to);
@@ -1640,15 +1642,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             n->allow_ref = !member->is_method;
             n->type = member->definition->type;
         } else {
-            if (member->lhs->type.kind != TYPE_STRUCT) {
-                error_full(
-                    ERROR,
-                    member->lhs->token.pos,
-                    "Expected structure type, got '%s'",
-                    type_to_cstr(member->lhs->type));
+            error_full(
+                ERROR, member->lhs->token.pos, "Expected structure type, got '%s'", type_to_cstr(member->lhs->type));
 
-                exit(1);
-            }
+            exit(1);
         }
 
         if (member->is_method) {

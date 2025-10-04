@@ -1,0 +1,9 @@
+package main
+
+fn main() {
+    extern {
+        fn puts(s &u8) i32
+    }
+
+    puts(<&u8> "Foo bar")
+}
