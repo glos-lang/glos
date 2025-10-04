@@ -329,3 +329,39 @@ Type node_fn_return_type(const NodeFn *fn) {
 
     return (Type) {.kind = TYPE_UNIT};
 }
+
+NodeFn *methods_find(Type type, SV name) {
+    assert(type.kind == TYPE_STRUCT);
+    NodeStruct *structt = (NodeStruct *) type.spec_node;
+    if (type.spec_struct_instance) {
+        structt = type.spec_struct_instance->definition;
+    }
+
+    for (NodeFn *it = structt->methods_head; it; it = it->next_method) {
+        if (sv_eq(it->node.token.sv, name)) {
+            return it;
+        }
+    }
+
+    return NULL;
+}
+
+void methods_push(Type type, NodeFn *m) {
+    if (!m) {
+        return;
+    }
+
+    assert(type.kind == TYPE_STRUCT);
+    NodeStruct *structt = (NodeStruct *) type.spec_node;
+    if (type.spec_struct_instance) {
+        structt = type.spec_struct_instance->definition;
+    }
+
+    if (structt->methods_tail) {
+        structt->methods_tail->next_method = m;
+    } else {
+        structt->methods_head = m;
+    }
+
+    structt->methods_tail = m;
+}

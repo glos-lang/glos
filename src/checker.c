@@ -205,6 +205,13 @@ static void error_undefined(const Node *n, const char *label) {
     exit(1);
 }
 
+static void error_use_of_private(const Token *token, const Node *defined, const char *label) {
+    error_full(ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its package", label, SVArg(token->sv));
+    fprintf(stderr, "\n");
+    error_full(NOTE, defined->token.pos, "Defined here");
+    exit(1);
+}
+
 static Node *ident_find(const Context *c, Package *package, const Token *token, bool is_type, bool is_imported) {
     if (c->fn.fn) {
         Node *n = context_fn_find(c->fn, c->locals, token->sv, is_type);
@@ -250,11 +257,7 @@ static Node *ident_find(const Context *c, Package *package, const Token *token, 
 
         if (!is_public) {
             assert(label);
-            error_full(
-                ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its package", label, SVArg(token->sv));
-            fprintf(stderr, "\n");
-            error_full(NOTE, global->token.pos, "Defined here");
-            exit(1);
+            error_use_of_private(token, global, label);
         }
     }
 
@@ -754,6 +757,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
         NodeStruct *from = (NodeStruct *) type.spec_node;
         NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
         to->node = from->node;
+        to->package = from->package;
         to->node.type.spec_node = (Node *) to;
 
         for (Node *it = from->fields.head; it; it = it->next) {
@@ -1045,13 +1049,83 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
     }
 }
 
+static void check_generics(Compiler *c, Node *n, Node *generics_head, size_t generics_count, Node *definition) {
+    bool *will_be_called = NULL;
+    bool *generics_incomplete = NULL;
+    if (n->kind == NODE_ATOM) {
+        NodeAtom *atom = (NodeAtom *) n;
+        will_be_called = &atom->will_be_called;
+        generics_incomplete = &atom->generics_incomplete;
+    } else if (n->kind == NODE_MEMBER) {
+        NodeMember *member = (NodeMember *) n;
+        will_be_called = &member->will_be_called;
+        generics_incomplete = &member->generics_incomplete;
+    } else {
+        unreachable();
+    }
+
+    if (generics_head) {
+        if (definition->kind != NODE_FN) {
+            error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+            exit(1);
+        }
+
+        const NodeFn *definition_fn = (const NodeFn *) definition;
+        if (!definition_fn->generics.head) {
+            error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
+            exit(1);
+        }
+
+        if (generics_count != definition_fn->generics_count) {
+            if (*will_be_called && generics_count < definition_fn->generics_count) {
+                *generics_incomplete = true;
+            } else {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Expected %zu generic parameter%s, got %zu",
+                    definition_fn->generics_count,
+                    definition_fn->generics_count == 1 ? "" : "s",
+                    generics_count);
+
+                exit(1);
+            }
+        }
+
+        for (Node *it = generics_head; it; it = it->next) {
+            if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
+                if (!*will_be_called) {
+                    error_full(ERROR, it->token.pos, "Cannot infer generic types here");
+                    exit(1);
+                }
+
+                *generics_incomplete = true;
+            } else {
+                check_type(c, it, true, NULL);
+                it->token.as.boolean = true;
+            }
+        }
+
+        if (!*generics_incomplete) {
+            n->type = instantiate_type(c, n->type, generics_head);
+        }
+    } else {
+        if (definition->kind == NODE_FN && !*will_be_called) {
+            const NodeFn *definition_fn = (const NodeFn *) definition;
+            if (definition_fn->generics.head) {
+                error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
+                exit(1);
+            }
+        }
+    }
+}
+
 static_assert(COUNT_NODES == 22, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
     }
 
-    bool allow_ref = false;
     switch (n->kind) {
     case NODE_ATOM: {
         static_assert(COUNT_TOKENS == 67, "");
@@ -1086,69 +1160,16 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
             n->type = atom->definition->type;
 
-            if (atom->generics.head) {
-                if (atom->definition->kind != NODE_FN) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
-                    exit(1);
-                }
+            check_generics(c, n, atom->generics.head, atom->generics_count, atom->definition);
 
-                const NodeFn *definition = (const NodeFn *) atom->definition;
-                if (!definition->generics.head) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
-                    exit(1);
-                }
-
-                if (atom->generics_count != definition->generics_count) {
-                    if (atom->will_be_called && atom->generics_count < definition->generics_count) {
-                        atom->generics_incomplete = true;
-                    } else {
-                        error_full(
-                            ERROR,
-                            n->token.pos,
-                            "Expected %zu generic parameter%s, got %zu",
-                            definition->generics_count,
-                            definition->generics_count == 1 ? "" : "s",
-                            atom->generics_count);
-
-                        exit(1);
-                    }
-                }
-
-                for (Node *it = atom->generics.head; it; it = it->next) {
-                    if (it->kind == NODE_ATOM && it->token.kind == TOKEN_IDENT && sv_match(it->token.sv, "_")) {
-                        if (!atom->will_be_called) {
-                            error_full(ERROR, it->token.pos, "Cannot infer generic types here");
-                            exit(1);
-                        }
-
-                        atom->generics_incomplete = true;
-                    } else {
-                        check_type(c, it, true, NULL);
-                        it->token.as.boolean = true;
-                    }
-                }
-
-                if (!atom->generics_incomplete) {
-                    n->type = instantiate_type(c, n->type, atom->generics.head);
-                }
-            } else {
-                if (atom->definition->kind == NODE_FN && !atom->will_be_called) {
-                    const NodeFn *definition = (const NodeFn *) atom->definition;
-                    if (definition->generics.head) {
-                        error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
-                        exit(1);
-                    }
-                }
-            }
-
-            allow_ref = atom->definition->kind == NODE_VAR;
+            n->allow_ref = atom->definition->kind == NODE_VAR;
             if (ref) {
                 if (atom->definition->kind == NODE_CONST && ref == REF_MUTATE) {
                     error_full(ERROR, n->token.pos, "Cannot mutate constant value");
                     exit(1);
                 }
 
-                if (allow_ref) {
+                if (n->allow_ref) {
                     NodeVar *var = (NodeVar *) atom->definition;
                     if (var->kind == NODE_VAR_ARG) {
                         var->kind = NODE_VAR_LOCAL;
@@ -1182,46 +1203,80 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             exit(1);
         }
 
-        const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
-        if (call->arity != expected->arity) {
-            error_full(
-                ERROR,
-                n->token.pos,
-                "Expected %zu argument%s, got %zu",
-                expected->arity,
-                expected->arity == 1 ? "" : "s",
-                call->arity);
+        bool is_method = false;
 
-            exit(1);
+        const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
+        {
+            size_t expected_arity = expected->arity;
+            if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                if (member->is_method) {
+                    Node *self = member->lhs;
+                    self->next = call->args.head;
+                    call->args.head = self;
+
+                    is_method = true;
+                    expected_arity--;
+                }
+            }
+
+            if (call->arity != expected_arity) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Expected %zu argument%s, got %zu",
+                    expected_arity,
+                    expected_arity == 1 ? "" : "s",
+                    call->arity);
+
+                exit(1);
+            }
         }
 
         bool inferred = false;
         bool inferred_left = false;
         if (expected->generics_count) {
+            Nodes  *generics = NULL;
+            size_t *generics_count = NULL;
+            bool   *generics_incomplete = NULL;
+
             if (call->fn->kind == NODE_ATOM) {
                 NodeAtom *atom = (NodeAtom *) call->fn;
-                if (!atom->generics_count || atom->generics_incomplete) {
-                    inferred = true;
-                    for (size_t i = atom->generics_count; i < expected->generics_count; i++) {
-                        nodes_push(&atom->generics, arena_alloc(c->context.arena, sizeof(Node)));
-                    }
-                    atom->generics_count = expected->generics_count;
+                generics = &atom->generics;
+                generics_count = &atom->generics_count;
+                generics_incomplete = &atom->generics_incomplete;
+            } else if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                generics = &member->generics;
+                generics_count = &member->generics_count;
+                generics_incomplete = &member->generics_incomplete;
+            } else {
+                unreachable();
+            }
 
-                    for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-                        check_expr(c, a, REF_NONE);
-                        infer_generic_type(a->type, e->type, atom->generics.head);
-                    }
-
-                    for (Node *it = atom->generics.head; it; it = it->next) {
-                        if (!it->token.as.boolean) {
-                            inferred_left = true;
-                            break;
-                        }
-                    }
-
-                    call->fn->type = instantiate_type(c, call->fn->type, atom->generics.head);
-                    expected = (const NodeFn *) fn_type->spec_node;
+            if (!*generics_count || *generics_incomplete) {
+                inferred = true;
+                for (size_t i = *generics_count; i < expected->generics_count; i++) {
+                    nodes_push(generics, arena_alloc(c->context.arena, sizeof(Node)));
                 }
+                *generics_count = expected->generics_count;
+
+                for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
+                    if (!is_method || a != call->args.head) {
+                        check_expr(c, a, REF_NONE);
+                    }
+                    infer_generic_type(a->type, e->type, generics->head);
+                }
+
+                for (Node *it = generics->head; it; it = it->next) {
+                    if (!it->token.as.boolean) {
+                        inferred_left = true;
+                        break;
+                    }
+                }
+
+                call->fn->type = instantiate_type(c, call->fn->type, generics->head);
+                expected = (const NodeFn *) fn_type->spec_node;
             }
         }
 
@@ -1229,6 +1284,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             if (!inferred) {
                 check_expr(c, a, REF_NONE);
             }
+
             type_assert(c, a, e->type);
         }
 
@@ -1237,24 +1293,35 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             fprintf(stderr, "\n");
 
             error_begin(NOTE, n->token.pos);
-            if (call->fn->kind == NODE_ATOM) {
-                NodeAtom *atom = (NodeAtom *) call->fn;
-                fprintf(stderr, "Inferred " SVFmt "::<", SVArg(atom->node.token.sv));
-                for (Node *it = atom->generics.head; it; it = it->next) {
-                    if (it->token.as.boolean) {
-                        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
-                    } else {
-                        write_message(stderr, MESSAGE_FG_RED, "_");
-                    }
 
-                    if (it->next) {
-                        fprintf(stderr, ", ");
-                    } else {
-                        fprintf(stderr, ">\n");
-                    }
-                }
+            Node *generics = NULL;
+            if (call->fn->kind == NODE_ATOM) {
+                generics = ((NodeAtom *) call->fn)->generics.head;
+                fprintf(stderr, "Inferred ");
+            } else if (call->fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) call->fn;
+                generics = member->generics.head;
+                fprintf(stderr, "Inferred (");
+                write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(member->lhs->type));
+                fprintf(stderr, ").");
             } else {
                 unreachable();
+            }
+
+            write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(call->fn->token.sv));
+            fprintf(stderr, "::<");
+            for (Node *it = generics; it; it = it->next) {
+                if (it->token.as.boolean) {
+                    write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
+                } else {
+                    write_message(stderr, MESSAGE_FG_RED, "_");
+                }
+
+                if (it->next) {
+                    fprintf(stderr, ", ");
+                } else {
+                    fprintf(stderr, ">\n");
+                }
             }
 
             exit(1);
@@ -1326,7 +1393,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->type = unary->operand->type;
             n->type.ref--;
-            allow_ref = true;
+            n->allow_ref = true;
             break;
 
         case TOKEN_BAND:
@@ -1421,7 +1488,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
         } else {
             n->type = *base.spec_type;
-            allow_ref = true;
+            n->allow_ref = true;
         }
     } break;
 
@@ -1525,10 +1592,52 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             member->definition = nodes_find(structt->fields, n->token.sv, NULL);
             if (!member->definition) {
-                error_undefined(n, "field");
+                member->is_method = true;
+                member->definition = (Node *) methods_find(member->lhs->type, n->token.sv);
             }
 
-            allow_ref = ref;
+            if (!member->definition) {
+                error_undefined(n, "field or method");
+            }
+
+            if (member->is_method) {
+                NodeFn *definition = (NodeFn *) member->definition;
+                if (definition->package != member->package && !definition->is_public) {
+                    error_use_of_private(&n->token, member->definition, "method");
+                }
+
+                const size_t actual_ref = member->lhs->type.ref;
+                const size_t expected_ref = definition->args.head->type.ref;
+                if (actual_ref == expected_ref) {
+                    // OK
+                } else if (actual_ref + 1 == expected_ref) {
+                    if (!member->lhs->allow_ref) {
+                        error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
+                        exit(1);
+                    }
+
+                    NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                    unary->node.kind = NODE_UNARY;
+                    unary->node.token.kind = TOKEN_BAND;
+
+                    unary->operand = member->lhs;
+                    unary->node.type = member->lhs->type;
+                    unary->node.type.ref++;
+
+                    member->lhs = (Node *) unary;
+                } else {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Method requires self to be '%s', got '%s'",
+                        type_to_cstr(definition->args.head->type),
+                        type_to_cstr(member->lhs->type));
+
+                    exit(1);
+                }
+            }
+
+            n->allow_ref = !member->is_method;
             n->type = member->definition->type;
         } else {
             if (member->lhs->type.kind != TYPE_STRUCT) {
@@ -1540,6 +1649,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
                 exit(1);
             }
+        }
+
+        if (member->is_method) {
+            check_generics(c, n, member->generics.head, member->generics_count, member->definition);
         }
     } break;
 
@@ -1663,7 +1776,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         unreachable();
     }
 
-    if (!allow_ref && ref) {
+    if (!n->allow_ref && ref) {
         error_full(ERROR, n->token.pos, "Cannot take reference to value not in memory");
         exit(1);
     }
@@ -2039,14 +2152,17 @@ static_assert(COUNT_NODES == 22, "");
 static void define_toplevel(Node *n) {
     switch (n->kind) {
     case NODE_FN: {
-        Package *package = ((NodeFn *) n)->package;
+        NodeFn *fn = (NodeFn *) n;
+        if (!fn->is_method) {
+            Package *package = fn->package;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, false);
-        if (previous) {
-            error_redefinition(n, previous, "identifier");
+            const Node *previous = scope_find(package->globals, n->token.sv, false);
+            if (previous) {
+                error_redefinition(n, previous, "identifier");
+            }
+
+            da_push(&package->globals, n);
         }
-
-        da_push(&package->globals, n);
     } break;
 
     case NODE_VAR: {
@@ -2149,6 +2265,32 @@ static void check_toplevel(Compiler *c, Node *n) {
             assert(var->type);
             check_type(c, var->type, true, fn->generics.head);
             it->type = var->type->type;
+        }
+
+        if (fn->is_method) {
+            if (fn->args.head->type.kind != TYPE_STRUCT) {
+                NodeVar *self = (NodeVar *) fn->args.head;
+                error_full(ERROR, self->type->token.pos, "Can only define methods for structures");
+                exit(1);
+            }
+            NodeStruct *structt = (NodeStruct *) fn->args.head->type.spec_node;
+
+            if (structt->package != fn->package) {
+                error_full(ERROR, n->token.pos, "Cannot define methods for structure outside of its package");
+                exit(1);
+            }
+
+            Node *previous = (Node *) methods_find(fn->args.head->type, n->token.sv);
+            if (previous) {
+                error_redefinition(n, previous, "method");
+            } else if (fn->args.head->type.kind == TYPE_STRUCT) {
+                previous = nodes_find(structt->fields, n->token.sv, NULL);
+                if (previous) {
+                    error_redefinition(n, previous, "field");
+                }
+            }
+
+            methods_push(fn->args.head->type, fn);
         }
 
         check_type(c, fn->ret, true, fn->generics.head);

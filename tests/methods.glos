@@ -1,0 +1,15 @@
+package main
+
+struct Box {
+	v i64
+}
+
+fn (b &Box) set(v i64) {
+	b.v = v
+}
+
+fn main() {
+	var box Box
+	(&box).set(420)
+	print box.v
+}

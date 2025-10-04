@@ -520,6 +520,17 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
+            member->package = p->packages->current;
+
+            if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+                lexer_expect(&p->lexer, TOKEN_LT);
+                do {
+                    nodes_push(&member->generics, parse_type(p));
+                    member->generics_count++;
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+                } while (token.kind != TOKEN_GT);
+            }
+
             node = (Node *) member;
         } break;
 
@@ -535,6 +546,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             call->fn = node;
             if (call->fn->kind == NODE_ATOM) {
                 ((NodeAtom *) call->fn)->will_be_called = true;
+            } else if (call->fn->kind == NODE_MEMBER) {
+                ((NodeMember *) call->fn)->will_be_called = true;
             }
 
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
@@ -819,9 +832,31 @@ static Node *parse_stmt(Parser *p) {
         node = (Node *) ret;
     } break;
 
-    case TOKEN_FN:
-        node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
-        break;
+    case TOKEN_FN: {
+        const Token fn_token = token;
+
+        token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LPAREN);
+        if (token.kind == TOKEN_LPAREN) {
+            if (p->local) {
+                error_full(ERROR, fn_token.pos, "Cannot define methods in local scope");
+                exit(1);
+            }
+
+            NodeVar *self = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
+            self->type = parse_type(p);
+
+            lexer_expect(&p->lexer, TOKEN_RPAREN);
+            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+
+            NodeFn *fn = (NodeFn *) node;
+            self->node.next = fn->args.head;
+            fn->args.head = (Node *) self;
+            fn->arity++;
+            fn->is_method = true;
+        } else {
+            node = parse_fn(p, token);
+        }
+    } break;
 
     case TOKEN_VAR: {
         NodeVar *var = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));

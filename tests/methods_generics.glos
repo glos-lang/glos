@@ -1,0 +1,15 @@
+package main
+
+struct Box<T> {
+	v T
+}
+
+fn (b &Box<T>) set<T>(v T) {
+	b.v = v
+}
+
+fn main() {
+	var box Box<i64>
+	box.set(69)
+	print box.v
+}

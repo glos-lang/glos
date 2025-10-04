@@ -5,8 +5,10 @@
 #include "token.h"
 
 typedef struct Node       Node;
+typedef struct NodeFn     NodeFn;
 typedef struct NodeStruct NodeStruct;
-typedef struct Package    Package;
+
+typedef struct Package Package;
 
 typedef struct {
     Node *head;
@@ -149,6 +151,8 @@ struct Node {
     Token    token;
     Node    *next;
 
+    bool allow_ref;
+
     // Formatter metadata
     bool fmt_newline;
     bool fmt_toplevel_newline;
@@ -212,6 +216,16 @@ typedef struct {
     Node  node;
     Node *lhs;
     Node *definition;
+    bool  is_method;
+
+    Nodes  generics;
+    size_t generics_count;
+    bool   generics_incomplete;
+    bool   will_be_called;
+
+    Package *package;
+
+    QbeNode *lhs_qbe;
 } NodeMember;
 
 typedef struct {
@@ -267,7 +281,7 @@ typedef struct {
     Node *value;
 } NodeReturn;
 
-typedef struct {
+struct NodeFn {
     Node node;
 
     Nodes  args;
@@ -283,6 +297,9 @@ typedef struct {
     bool  local;
     bool  is_public;
 
+    bool    is_method;
+    NodeFn *next_method;
+
     Package    *package;
     CheckStatus check_status;
 
@@ -290,7 +307,7 @@ typedef struct {
 
     // Formatter metadata
     bool fmt_multiline;
-} NodeFn;
+};
 
 Type node_fn_return_type(const NodeFn *fn);
 
@@ -356,8 +373,12 @@ typedef struct {
 struct NodeStruct {
     Node  node;
     Nodes fields;
-    bool  local;
-    bool  is_public;
+
+    NodeFn *methods_head;
+    NodeFn *methods_tail;
+
+    bool local;
+    bool is_public;
 
     Nodes  generics;
     size_t generics_count;
@@ -367,6 +388,9 @@ struct NodeStruct {
 
     QbeStruct *qbe;
 };
+
+NodeFn *methods_find(Type type, SV name);
+void    methods_push(Type type, NodeFn *m);
 
 typedef struct {
     Node  node;
