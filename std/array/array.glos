@@ -1,0 +1,22 @@
+package array
+
+pub struct Array<T> {
+	items []T
+	capacity i64
+}
+
+pub fn (a &Array<T>) push<T>(value T) {
+	extern {
+		fn realloc(ptr rawptr, size u64) rawptr
+	}
+
+	var data = <&T> a.items
+	var count = len(a.items)
+	if count >= a.capacity {
+		a.capacity = if a.capacity != 0 then a.capacity * 2 else 128
+		data = <&T> realloc(<rawptr> data, <u64> a.capacity * sizeof<T>)
+	}
+
+	a.items = data[..count + 1]
+	a.items[count] = value
+}
