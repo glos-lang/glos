@@ -26,7 +26,7 @@ void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -304,7 +304,7 @@ static void resolve_ident_package(Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
@@ -318,7 +318,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -385,7 +385,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -488,7 +488,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -551,7 +551,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -800,7 +800,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static_assert(COUNT_TYPES == 17, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
@@ -1120,7 +1120,7 @@ static void check_generics(Compiler *c, Node *n, Node *generics_head, size_t gen
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
@@ -1128,7 +1128,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1368,7 +1368,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1497,7 +1497,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1786,7 +1786,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -1823,7 +1823,7 @@ static bool always_returns(Node *n) {
         }
 
         if (infinite) {
-            // NOTE: Till we get break, an infinite loop "always returns"
+            // TODO: Check whether loop has 'break'
             return true;
         }
 
@@ -1846,7 +1846,7 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1919,6 +1919,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
         c->context.locals.count = locals_count_save;
     } break;
+
+    case NODE_JUMP:
+        // Pass
+        break;
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
@@ -2145,7 +2149,7 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void define_toplevel(Node *n) {
     switch (n->kind) {
     case NODE_FN: {
@@ -2223,7 +2227,7 @@ static void define_toplevel(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {

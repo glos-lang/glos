@@ -227,7 +227,7 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     return fn->qbe;
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void clear_qbe(Node *n) {
     if (!n) {
         return;
@@ -337,6 +337,7 @@ static void clear_qbe(Node *n) {
 
     case NODE_ATOM:
     case NODE_SIZEOF:
+    case NODE_JUMP:
     case NODE_TYPE:
     case NODE_EXTERN:
         // Pass
@@ -418,7 +419,7 @@ static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Node *caller_generics_h
     return fn->qbe;
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -429,7 +430,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -530,7 +531,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -822,7 +823,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -855,7 +856,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -886,7 +887,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1127,7 +1128,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1221,10 +1222,16 @@ static void compile_stmt(Compiler *c, Node *n) {
         QbeBlock *body = qbe_block_new(c->qbe);
         QbeBlock *end = qbe_block_new(c->qbe);
 
-        QbeBlock *update = NULL;
+        QbeBlock *update = condition;
         if (forr->update) {
             update = qbe_block_new(c->qbe);
         }
+
+        QbeBlock *loop_break_save = c->loop_break;
+        QbeBlock *loop_condition_save = c->loop_continue;
+
+        c->loop_break = end;
+        c->loop_continue = update;
 
         // Condition
         qbe_build_block(c->qbe, c->fn, condition);
@@ -1247,6 +1254,9 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         // End
         qbe_build_block(c->qbe, c->fn, end);
+
+        c->loop_break = loop_break_save;
+        c->loop_continue = loop_condition_save;
     } break;
 
     case NODE_BLOCK: {
@@ -1263,6 +1273,18 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
         qbe_build_debug_line(c->qbe, c->fn, n->token.pos.row + 1);
     } break;
+
+    case NODE_JUMP:
+        if (n->token.kind == TOKEN_BREAK) {
+            qbe_build_jump(c->qbe, c->fn, c->loop_break);
+        } else if (n->token.kind == TOKEN_CONTINUE) {
+            qbe_build_jump(c->qbe, c->fn, c->loop_continue);
+        } else {
+            unreachable();
+        }
+
+        qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
+        break;
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;

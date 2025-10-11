@@ -120,7 +120,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -298,14 +298,17 @@ static void format_fn(Formatter *f, NodeFn *fn) {
         sb_push(&f->sb, '\n');
         format_indent(f);
     }
-    sb_sprintf(&f->sb, ") ");
+    sb_push(&f->sb, ')');
 
     if (fn->ret) {
-        format_type(f, fn->ret, false);
         sb_push(&f->sb, ' ');
+        format_type(f, fn->ret, false);
     }
 
-    format_stmt(f, fn->body, true);
+    if (fn->body) {
+        sb_push(&f->sb, ' ');
+        format_stmt(f, fn->body, true);
+    }
 }
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
@@ -568,7 +571,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -666,6 +669,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         sb_push(&f->sb, '}');
     } break;
+
+    case NODE_JUMP:
+        sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
+        break;
 
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
