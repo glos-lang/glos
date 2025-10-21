@@ -11,6 +11,9 @@ typedef struct {
     Qbe   *qbe;
     QbeFn *fn;
 
+    QbeBlock *loop_break;
+    QbeBlock *loop_continue;
+
     QbeNode *print_fn;
     QbeNode *print_sfmt;
     QbeNode *print_ufmt;

@@ -20,7 +20,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -38,6 +38,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_FOR] = sizeof(NodeFor),
         [NODE_BLOCK] = sizeof(NodeBlock),
 
+        [NODE_JUMP] = sizeof(Node),
         [NODE_RETURN] = sizeof(NodeReturn),
 
         [NODE_FN] = sizeof(NodeFn),
@@ -65,7 +66,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 69, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -87,7 +88,7 @@ typedef enum {
 
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -205,7 +206,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -336,7 +337,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -741,7 +742,7 @@ static void do_import(Parser *p, Token token, SV as) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -815,11 +816,26 @@ static Node *parse_stmt(Parser *p) {
             }
         }
 
+        const bool in_loop_save = p->in_loop;
+        p->in_loop = true;
+
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
         forr->body = parse_stmt(p);
 
+        p->in_loop = in_loop_save;
+
         node = (Node *) forr;
     } break;
+
+    case TOKEN_BREAK:
+    case TOKEN_CONTINUE:
+        if (!p->in_loop) {
+            error_full(ERROR, token.pos, "Unexpected %s outside loop", token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        node = node_alloc(p, NODE_JUMP, token);
+        break;
 
     case TOKEN_RETURN: {
         NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
@@ -1162,6 +1178,9 @@ static Node *parse_fn(Parser *p, Token token) {
     const bool local_save = p->local;
     p->local = true;
 
+    const bool in_loop_save = p->in_loop;
+    p->in_loop = false;
+
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
         const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
 
@@ -1194,6 +1213,7 @@ static Node *parse_fn(Parser *p, Token token) {
     }
 
     p->local = local_save;
+    p->in_loop = in_loop_save;
     fn->package = p->packages->current;
     return (Node *) fn;
 }

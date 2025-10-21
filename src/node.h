@@ -131,6 +131,8 @@ typedef enum {
     NODE_IF,
     NODE_FOR,
     NODE_BLOCK,
+
+    NODE_JUMP,
     NODE_RETURN,
 
     NODE_FN,

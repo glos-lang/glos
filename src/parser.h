@@ -17,6 +17,7 @@ typedef struct {
     bool       formatter_failed;
 
     bool local;
+    bool in_loop;
     bool in_extern;
     bool dont_consume_eols;
 
