@@ -4,6 +4,6 @@ STDOUT 0
 STDERR 146
 error_cannot_link_generic_functions_externally.glos:4:4: ERROR: Externally linked function cannot be generic
 
-    4 | fn bar<T>() {}
+    4 | fn bar[T]() {}
       |    ^
 

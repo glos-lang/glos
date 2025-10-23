@@ -1309,7 +1309,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(call->fn->token.sv));
-            fprintf(stderr, "::<");
+            fprintf(stderr, "::[");
             for (Node *it = generics; it; it = it->next) {
                 if (it->token.as.boolean) {
                     write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(it->type));
@@ -1320,7 +1320,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 if (it->next) {
                     fprintf(stderr, ", ");
                 } else {
-                    fprintf(stderr, ">\n");
+                    fprintf(stderr, "]\n");
                 }
             }
 

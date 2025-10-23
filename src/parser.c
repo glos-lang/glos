@@ -98,7 +98,7 @@ static Node *parse_type(Parser *p) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
             if (token.kind == TOKEN_IDENT) {
                 atom->scope = atom->node.token;
                 atom->node.token = token;
@@ -108,25 +108,20 @@ static Node *parse_type(Parser *p) {
         }
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_LT);
+            token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
             lexer_buffer(&p->lexer, token);
         } else {
             token = lexer_peek(&p->lexer);
         }
 
-        if (token.kind == TOKEN_LT && !token.newlines) {
+        if (token.kind == TOKEN_LBRACKET && !token.newlines) {
             lexer_unbuffer(&p->lexer);
 
             do {
                 nodes_push(&atom->generics, parse_type(p));
                 atom->generics_count++;
-
-                if (lexer_read(&p->lexer, TOKEN_SHR)) {
-                    token = lexer_split_token(&p->lexer, p->lexer.buffer);
-                } else {
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                }
-            } while (token.kind != TOKEN_GT);
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+            } while (token.kind == TOKEN_COMMA);
         }
 
         node = (Node *) atom;
@@ -348,16 +343,16 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
+            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
             if (token.kind == TOKEN_IDENT) {
                 atom->scope = atom->node.token;
                 atom->node.token = token;
                 if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                    token = lexer_expect(&p->lexer, TOKEN_LT);
+                    token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
                 }
             }
 
-            if (token.kind == TOKEN_LT) {
+            if (token.kind == TOKEN_LBRACKET) {
                 if (flags & PF_CONSTANT_EXPR) {
                     error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
                     exit(1);
@@ -366,8 +361,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 do {
                     nodes_push(&atom->generics, parse_type(p));
                     atom->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                } while (token.kind != TOKEN_GT);
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+                } while (token.kind == TOKEN_COMMA);
             }
         }
 
@@ -517,12 +512,12 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             member->package = p->packages->current;
 
             if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                lexer_expect(&p->lexer, TOKEN_LT);
+                lexer_expect(&p->lexer, TOKEN_LBRACKET);
                 do {
                     nodes_push(&member->generics, parse_type(p));
                     member->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                } while (token.kind != TOKEN_GT);
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+                } while (token.kind == TOKEN_COMMA);
             }
 
             node = (Node *) member;
@@ -900,12 +895,12 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        if (lexer_read(&p->lexer, TOKEN_LT)) {
+        if (lexer_read(&p->lexer, TOKEN_LBRACKET)) {
             do {
                 nodes_push(&type->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
                 type->generics.tail->token.as.integer = type->generics_count++;
-                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-            } while (token.kind != TOKEN_GT);
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+            } while (token.kind == TOKEN_COMMA);
         }
 
         type->local = p->local;
@@ -937,13 +932,13 @@ static Node *parse_stmt(Parser *p) {
 
         structt->local = p->local;
 
-        token = lexer_expect(&p->lexer, TOKEN_LT, TOKEN_LBRACE);
-        if (token.kind == TOKEN_LT) {
+        token = lexer_expect(&p->lexer, TOKEN_LBRACKET, TOKEN_LBRACE);
+        if (token.kind == TOKEN_LBRACKET) {
             do {
                 nodes_push(&structt->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
                 structt->generics.tail->token.as.integer = structt->generics_count++;
-                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-            } while (token.kind != TOKEN_GT);
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+            } while (token.kind == TOKEN_COMMA);
 
             lexer_expect(&p->lexer, TOKEN_LBRACE);
         }
@@ -1146,8 +1141,8 @@ static Node *parse_fn(Parser *p, Token token) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
 
-    token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LT);
-    if (token.kind == TOKEN_LT) {
+    token = lexer_expect(&p->lexer, TOKEN_LPAREN, TOKEN_LBRACKET);
+    if (token.kind == TOKEN_LBRACKET) {
         if (p->in_extern) {
             error_full(ERROR, fn->node.token.pos, "Externally linked function cannot be generic");
             exit(1);
@@ -1161,8 +1156,8 @@ static Node *parse_fn(Parser *p, Token token) {
         do {
             nodes_push(&fn->generics, node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT)));
             fn->generics.tail->token.as.integer = fn->generics_count++;
-            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-        } while (token.kind != TOKEN_GT);
+            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+        } while (token.kind == TOKEN_COMMA);
 
         token = lexer_expect(&p->lexer, TOKEN_LPAREN);
     }

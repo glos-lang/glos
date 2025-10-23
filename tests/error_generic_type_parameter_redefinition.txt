@@ -4,11 +4,11 @@ STDOUT 0
 STDERR 261
 error_generic_type_parameter_redefinition.glos:3:11: ERROR: Redefinition of generic parameter 'A'
 
-    3 | fn foo<A, A>() {}
+    3 | fn foo[A, A]() {}
       |           ^
 
 error_generic_type_parameter_redefinition.glos:3:8: NOTE: Defined here
 
-    3 | fn foo<A, A>() {}
+    3 | fn foo[A, A]() {}
       |        ^
 

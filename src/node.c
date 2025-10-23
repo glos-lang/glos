@@ -61,7 +61,7 @@ const char *type_to_cstr(Type type) {
         temp_sprintf("fn");
         if (spec->generics.head) {
             temp_remove_null();
-            temp_sprintf("<");
+            temp_sprintf("[");
 
             for (Node *it = spec->generics.head; it; it = it->next) {
                 temp_remove_null();
@@ -74,7 +74,7 @@ const char *type_to_cstr(Type type) {
             }
 
             temp_remove_null();
-            temp_sprintf(">");
+            temp_sprintf("]");
         }
 
         temp_remove_null();
@@ -121,7 +121,7 @@ const char *type_to_cstr(Type type) {
         temp_sv_to_cstr(type.spec_node->token.sv);
         if (type.spec_struct_instance) {
             temp_remove_null();
-            temp_sprintf("<");
+            temp_sprintf("[");
 
             for (Node *it = type.spec_struct_instance->generics; it; it = it->next) {
                 temp_remove_null();
@@ -134,7 +134,7 @@ const char *type_to_cstr(Type type) {
             }
 
             temp_remove_null();
-            temp_sprintf(">");
+            temp_sprintf("]");
         }
         break;
 

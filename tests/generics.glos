@@ -1,12 +1,12 @@
 package main
 
-struct Array<T> {
+struct Array[T] {
 	items *T
 	count i64
 	capacity i64
 }
 
-fn append<T>(a *Array<T>, value T) {
+fn append[T](a *Array[T], value T) {
 	extern {
 		fn realloc(ptr rawptr, size u64) rawptr
 	}
@@ -20,17 +20,17 @@ fn append<T>(a *Array<T>, value T) {
 	a.count += 1
 }
 
-fn slice<T>(a Array<T>) []T {
+fn slice[T](a Array[T]) []T {
 	return a.items[..a.count]
 }
 
 fn main() {
-	var xs Array<i64>
+	var xs Array[i64]
 	for var i = 0; i < 10; i += 1 {
-		append::<i64>(&xs, i * 2)
+		append::[i64](&xs, i * 2)
 	}
 
-	var xs = slice::<i64>(xs)
+	var xs = slice::[i64](xs)
 	for var i = 0; i < len(xs); i += 1 {
 		print xs[i]
 	}

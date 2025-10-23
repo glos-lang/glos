@@ -533,24 +533,3 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
     error_end(token.pos);
     exit(1);
 }
-
-Token lexer_split_token(Lexer *l, Token token) {
-    switch (token.kind) {
-    case TOKEN_SHR:
-        token.kind = TOKEN_GT;
-        break;
-
-    case TOKEN_LAND:
-        token.kind = TOKEN_BAND;
-        break;
-
-    default:
-        unreachable();
-    }
-    token.sv.count = 1;
-
-    Token remainder = token;
-    remainder.pos.col++;
-    lexer_buffer(l, remainder);
-    return token;
-}
