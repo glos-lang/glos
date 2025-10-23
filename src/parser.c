@@ -98,25 +98,11 @@ static Node *parse_type(Parser *p) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
-            if (token.kind == TOKEN_IDENT) {
-                atom->scope = atom->node.token;
-                atom->node.token = token;
-            } else {
-                lexer_buffer(&p->lexer, token);
-            }
+            atom->scope = atom->node.token;
+            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
         }
 
-        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
-            lexer_buffer(&p->lexer, token);
-        } else {
-            token = lexer_peek(&p->lexer);
-        }
-
-        if (token.kind == TOKEN_LBRACKET && !token.newlines) {
-            lexer_unbuffer(&p->lexer);
-
+        if (lexer_read_inline(&p->lexer, TOKEN_LBRACKET)) {
             do {
                 nodes_push(&atom->generics, parse_type(p));
                 atom->generics_count++;
@@ -134,6 +120,7 @@ static Node *parse_type(Parser *p) {
             lexer_expect(&p->lexer, TOKEN_RBRACKET);
         }
 
+        index->is_type = true;
         index->base = parse_type(p);
         node = (Node *) index;
     } break;
@@ -343,27 +330,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
-            if (token.kind == TOKEN_IDENT) {
-                atom->scope = atom->node.token;
-                atom->node.token = token;
-                if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                    token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
-                }
-            }
-
-            if (token.kind == TOKEN_LBRACKET) {
-                if (flags & PF_CONSTANT_EXPR) {
-                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
-                    exit(1);
-                }
-
-                do {
-                    nodes_push(&atom->generics, parse_type(p));
-                    atom->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
-                } while (token.kind == TOKEN_COMMA);
-            }
+            atom->scope = atom->node.token;
+            atom->node.token = lexer_expect(&p->lexer, TOKEN_IDENT);
         }
 
         node = (Node *) atom;
@@ -449,13 +417,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             lexer_buffer(&p->lexer, token);
 
             node = parse_type(p);
-            token = lexer_expect(&p->lexer, TOKEN_LBRACE);
-            if (token.newlines) {
-                error_full(ERROR, token.pos, "Expected '{' on same line as type");
-                exit(1);
+            if (lexer_read_inline(&p->lexer, TOKEN_LBRACE)) {
+                node = (Node *) parse_compound(p, node, p->lexer.buffer, flags);
+            } else {
+                ((NodeIndex *) node)->is_type = true;
             }
-
-            node = (Node *) parse_compound(p, node, token, flags);
         } else {
             error_unexpected(token);
         }
@@ -482,6 +448,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         }
 
         node = parse_fn(p, token);
+        ((NodeFn *) node)->is_expr = true;
         break;
 
     default:
@@ -535,6 +502,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             call->fn = node;
             if (call->fn->kind == NODE_ATOM) {
                 ((NodeAtom *) call->fn)->will_be_called = true;
+            } else if (call->fn->kind == NODE_INDEX) {
+                ((NodeIndex *) call->fn)->will_be_called = true;
             } else if (call->fn->kind == NODE_MEMBER) {
                 ((NodeMember *) call->fn)->will_be_called = true;
             }
@@ -583,16 +552,58 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             if (lexer_peek(&p->lexer).kind != TOKEN_RANGE) {
                 index->from = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
-            }
-
-            if (lexer_read(&p->lexer, TOKEN_RANGE)) {
-                index->ranged = true;
-                if (lexer_peek(&p->lexer).kind != TOKEN_RBRACKET) {
-                    index->to = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+                if (node->kind == NODE_ATOM) {
+                    ((NodeAtom *) node)->parent_index = index;
+                } else if (node->kind == NODE_MEMBER) {
+                    ((NodeMember *) node)->parent_index = index;
                 }
             }
 
-            lexer_expect(&p->lexer, TOKEN_RBRACKET);
+            token = lexer_expect(&p->lexer, TOKEN_RBRACKET, TOKEN_RANGE, TOKEN_COMMA);
+            if (token.kind == TOKEN_RANGE) {
+                index->is_ranged = true;
+                if (lexer_peek(&p->lexer).kind != TOKEN_RBRACKET) {
+                    index->to = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+                }
+                lexer_expect(&p->lexer, TOKEN_RBRACKET);
+            } else if (token.kind == TOKEN_COMMA) {
+                if (flags & PF_CONSTANT_EXPR) {
+                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
+                    exit(1);
+                }
+
+                // Guaranted instantiation
+                index->is_instantiation = true;
+                if (!node_is_type(index->from)) {
+                    error_full(ERROR, index->from->token.pos, "Expected type expression");
+                    exit(1);
+                }
+
+                if (node->kind == NODE_ATOM) {
+                    NodeAtom *atom = (NodeAtom *) node;
+                    nodes_push(&atom->generics, index->from);
+                    atom->generics_count++;
+
+                    do {
+                        nodes_push(&atom->generics, parse_type(p));
+                        atom->generics_count++;
+                        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+                    } while (token.kind == TOKEN_COMMA);
+                } else if (node->kind == NODE_MEMBER) {
+                    NodeMember *member = (NodeMember *) node;
+                    nodes_push(&member->generics, index->from);
+                    member->generics_count++;
+
+                    do {
+                        nodes_push(&member->generics, parse_type(p));
+                        member->generics_count++;
+                        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
+                    } while (token.kind == TOKEN_COMMA);
+                } else {
+                    error_unexpected(token);
+                }
+            }
+
             node = (Node *) index;
         } break;
 
@@ -1195,8 +1206,13 @@ static Node *parse_fn(Parser *p, Token token) {
         fn->ret = parse_type(p);
     }
 
-    if (!p->in_extern) {
-        lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
+    if (lexer_read(&p->lexer, TOKEN_LBRACE)) {
+        if (p->in_extern) {
+            error_full(ERROR, p->lexer.buffer.pos, "Externally linked function cannot have a body");
+            exit(1);
+        }
+
+        p->lexer.peeked = true;
         fn->body = parse_stmt(p);
     }
 

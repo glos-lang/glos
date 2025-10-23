@@ -511,6 +511,12 @@ bool lexer_read(Lexer *l, TokenKind kind) {
     return !l->peeked;
 }
 
+bool lexer_read_inline(Lexer *l, TokenKind kind) {
+    lexer_peek(l);
+    l->peeked = l->buffer.kind != kind || l->buffer.newlines;
+    return !l->peeked;
+}
+
 Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
     const Token token = lexer_next(l);
     for (const TokenKind *it = kinds; *it != TOKEN_EOF; it++) {

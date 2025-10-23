@@ -411,7 +411,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         format_expr_with_parens_maybe(f, index->base, POWER_DOT);
         sb_push(&f->sb, '[');
         format_expr(f, index->from, true);
-        if (index->ranged) {
+        if (index->is_ranged) {
             sb_sprintf(&f->sb, "..");
         }
         format_expr(f, index->to, true);

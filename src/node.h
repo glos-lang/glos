@@ -160,21 +160,36 @@ struct Node {
     bool fmt_toplevel_newline;
 };
 
+bool node_is_type(Node *n);
+
 void nodes_push(Nodes *ns, Node *n);
+
+typedef struct {
+    Node  node;
+    Node *base;
+    Node *from;
+    Node *to;
+
+    bool is_type;
+    bool is_ranged;
+    bool is_instantiation;
+    bool will_be_called;
+} NodeIndex;
 
 typedef struct {
     Node  node;
     Node *definition;
 
-    Token scope;
-    bool  scope_resolved;
-
-    Nodes  generics;
-    size_t generics_count;
-    bool   generics_incomplete;
-    bool   will_be_called;
+    Nodes      generics;
+    size_t     generics_count;
+    bool       generics_incomplete;
+    bool       will_be_called;
+    NodeIndex *parent_index;
 
     Package *package;
+
+    Token scope;
+    bool  scope_resolved;
 } NodeAtom;
 
 typedef struct {
@@ -204,32 +219,26 @@ typedef struct {
 
 typedef struct {
     Node  node;
-    Node *base;
-    Node *from;
-    Node *to;
-    bool  ranged;
-} NodeIndex;
-
-typedef struct {
-    Node  node;
     Node *lhs;
     Node *rhs;
 } NodeBinary;
 
 typedef struct {
     Node  node;
-    Node *lhs;
     Node *definition;
-    bool  is_method;
 
-    Nodes  generics;
-    size_t generics_count;
-    bool   generics_incomplete;
-    bool   will_be_called;
+    Nodes      generics;
+    size_t     generics_count;
+    bool       generics_incomplete;
+    bool       will_be_called;
+    NodeIndex *parent_index;
 
     Package *package;
 
+    Node    *lhs;
     QbeNode *lhs_qbe;
+
+    bool is_method;
 } NodeMember;
 
 typedef struct {
@@ -299,6 +308,7 @@ struct NodeFn {
     Node *body;
     Node *link;
     bool  local;
+    bool  is_expr;
     bool  is_public;
 
     bool    is_method;

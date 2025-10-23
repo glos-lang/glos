@@ -308,6 +308,30 @@ Instantiation *instantiations_find(Instantiations is, Type *types, size_t count)
     return NULL;
 }
 
+static_assert(COUNT_NODES == 23, "");
+bool node_is_type(Node *n) {
+    if (!n) {
+        return false;
+    }
+
+    switch (n->kind) {
+    case NODE_ATOM:
+        return n->token.kind == TOKEN_IDENT;
+
+    case NODE_UNARY:
+        return node_is_type(((NodeUnary *) n)->operand);
+
+    case NODE_INDEX:
+        return ((NodeIndex *) n)->is_type;
+
+    case NODE_FN:
+        return !((NodeFn *) n)->body;
+
+    default:
+        return false;
+    }
+}
+
 void nodes_push(Nodes *ns, Node *n) {
     if (!n) {
         return;

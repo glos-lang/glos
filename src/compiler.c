@@ -585,9 +585,12 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         NodeIndex *index = (NodeIndex *) n;
 
         QbeNode *base = compile_expr(c, index->base, index->base->type.kind == TYPE_ARRAY && !index->base->type.ref);
-        QbeNode *from = compile_expr(c, index->from, false);
+        if (index->is_instantiation) {
+            return base;
+        }
 
-        if (index->ranged) {
+        QbeNode *from = compile_expr(c, index->from, false);
+        if (index->is_ranged) {
             const size_t element_size = compile_sizeof(c, n->type.spec_type);
 
             QbeNode *to = compile_expr(c, index->to, false);

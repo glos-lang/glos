@@ -38,6 +38,7 @@ void lexer_unbuffer(Lexer *l);
 Token lexer_next(Lexer *l);
 Token lexer_peek(Lexer *l);
 bool  lexer_read(Lexer *l, TokenKind kind);
+bool  lexer_read_inline(Lexer *l, TokenKind kind);
 
 Token lexer_expect_impl(Lexer *l, const TokenKind *kinds);
 #define lexer_expect(l, ...) lexer_expect_impl((l), (const TokenKind[]) {__VA_ARGS__, TOKEN_EOF})

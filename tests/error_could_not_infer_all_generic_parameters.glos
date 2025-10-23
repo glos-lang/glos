@@ -3,5 +3,5 @@ package main
 fn foo[A, B]() {}
 
 fn main() {
-	foo::[i64]()
+	foo[i64]()
 }
