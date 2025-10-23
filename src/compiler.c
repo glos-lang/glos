@@ -980,8 +980,12 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             member->lhs_qbe = compile_expr(c, member->lhs, true);
         }
 
-        NodeField   *field = (NodeField *) member->definition;
-        const size_t offset = qbe_offsetof(field->qbe);
+        size_t offset = 0;
+        if (member->lhs->type.kind == TYPE_SLICE) {
+            offset = n->token.as.integer;
+        } else {
+            offset = qbe_offsetof(((NodeField *) member->definition)->qbe);
+        }
 
         if (offset) {
             member->lhs_qbe = qbe_build_binary(

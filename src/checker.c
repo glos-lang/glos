@@ -1641,6 +1641,19 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->allow_ref = !member->is_method;
             n->type = member->definition->type;
+        } else if (member->lhs->type.kind == TYPE_SLICE && !member->lhs->type.ref) {
+            if (sv_match(n->token.sv, "data")) {
+                n->type = *member->lhs->type.spec_type;
+                n->type.ref++;
+                n->token.as.integer = 0;
+            } else if (sv_match(n->token.sv, "count")) {
+                n->type = (Type) {.kind = TYPE_I64};
+                n->token.as.integer = 8;
+            } else {
+                error_undefined(n, "field");
+            }
+
+            n->allow_ref = true;
         } else {
             error_full(
                 ERROR, member->lhs->token.pos, "Expected structure type, got '%s'", type_to_cstr(member->lhs->type));
