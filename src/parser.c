@@ -477,16 +477,6 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
             member->package = p->packages->current;
-
-            if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                lexer_expect(&p->lexer, TOKEN_LBRACKET);
-                do {
-                    nodes_push(&member->generics, parse_type(p));
-                    member->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
-                } while (token.kind == TOKEN_COMMA);
-            }
-
             node = (Node *) member;
         } break;
 

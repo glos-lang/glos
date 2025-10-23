@@ -322,6 +322,7 @@ bool node_is_type(Node *n) {
         return node_is_type(((NodeUnary *) n)->operand);
 
     case NODE_INDEX:
+        // TODO: Might not be super accurate
         return ((NodeIndex *) n)->is_type;
 
     case NODE_FN:
