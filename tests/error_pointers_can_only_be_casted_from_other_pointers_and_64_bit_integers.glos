@@ -1,5 +1,5 @@
 package main
 
-var a = <&i64> 0
-var b = <&i64> <u64> 0
-var c = <&i64> true
+var a = <*i64> 0
+var b = <*i64> <u64> 0
+var c = <*i64> true

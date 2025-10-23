@@ -6,7 +6,7 @@ struct State {
 
 var global = State {x: 69}
 
-fn f() &State {
+fn f() *State {
     return &global
 }
 

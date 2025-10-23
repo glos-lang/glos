@@ -5,7 +5,7 @@ struct Vec2 {
     y i32
 }
 
-fn foo(v &Vec2) {
+fn foo(v *Vec2) {
     v.x = 42
     v.y = 69
 }

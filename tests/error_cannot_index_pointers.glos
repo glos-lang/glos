@@ -1,6 +1,6 @@
 package main
 
 fn main() {
-    var p &i64
+    var p *i64
     p[0]
 }

@@ -4,7 +4,7 @@ struct Box {
 	v i64
 }
 
-fn (b &Box) set(v i64) {
+fn (b *Box) set(v i64) {
 	b.v = v
 }
 

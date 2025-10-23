@@ -1,6 +1,6 @@
 package main
 
-var a &i64
+var a *i64
 var b = <i64> a
 var c = <u64> a
 var d = <bool> a

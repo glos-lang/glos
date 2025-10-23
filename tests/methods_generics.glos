@@ -4,7 +4,7 @@ struct Box<T> {
 	v T
 }
 
-fn (b &Box<T>) set<T>(v T) {
+fn (b *Box<T>) set<T>(v T) {
 	b.v = v
 }
 

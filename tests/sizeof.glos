@@ -5,7 +5,7 @@ fn main() {
     print sizeof<i64>
     print sizeof<fn ()>
     print sizeof<rawptr>
-    print sizeof<&&bool>
+    print sizeof<**bool>
 
     print sizeof(main())
     print sizeof(69)

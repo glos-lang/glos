@@ -71,8 +71,7 @@ static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
     case TOKEN_LBRACKET:
-    case TOKEN_BAND:
-    case TOKEN_LAND:
+    case TOKEN_MUL:
     case TOKEN_FN:
         return true;
 
@@ -144,14 +143,8 @@ static Node *parse_type(Parser *p) {
         node = (Node *) index;
     } break;
 
-    case TOKEN_BAND: {
+    case TOKEN_MUL: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
-        unary->operand = parse_type(p);
-        node = (Node *) unary;
-    } break;
-
-    case TOKEN_LAND: {
-        NodeUnary *unary = node_alloc(p, NODE_UNARY, lexer_split_token(&p->lexer, token));
         unary->operand = parse_type(p);
         node = (Node *) unary;
     } break;

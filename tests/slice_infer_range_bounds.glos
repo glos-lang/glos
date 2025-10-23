@@ -5,7 +5,7 @@ fn alloc_i64s(n i64) []i64 {
         fn malloc(size u64) rawptr
     }
 
-    var ptr = <&i64> malloc(<u64> (n * sizeof<i64>))
+    var ptr = <*i64> malloc(<u64> (n * sizeof<i64>))
     return ptr[..n]
 }
 

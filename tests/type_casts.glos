@@ -4,8 +4,8 @@ fn print_i64(x i64)   { print x }
 fn print_bool(x bool) { print x }
 
 fn main() {
-    var a &&i64 = <&&i64> 0
-    var b &bool = <&bool> a
+    var a **i64 = <**i64> 0
+    var b *bool = <*bool> a
 
     print_i64(<i64> true)
     print_i64(<i64> false)

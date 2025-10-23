@@ -5,7 +5,7 @@ const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
     for (size_t i = 0; i < type.ref; i++) {
-        temp_sprintf("&");
+        temp_sprintf("*");
         temp_remove_null();
     }
 
