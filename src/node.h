@@ -33,10 +33,11 @@ typedef enum {
     TYPE_RAWPTR,
 
     TYPE_FN,
-    TYPE_SLICE,
     TYPE_ARRAY,
-    TYPE_STRUCT,
+    TYPE_SLICE,
+    TYPE_DSLICE,
 
+    TYPE_STRUCT,
     TYPE_GENERIC,
 
     COUNT_TYPES

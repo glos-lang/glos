@@ -19,6 +19,7 @@ typedef struct {
     QbeNode *print_ufmt;
 
     QbeType slice_type;
+    QbeType dslice_type;
 
     LinkFlags link_flags;
 } Compiler;

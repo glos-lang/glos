@@ -1,0 +1,25 @@
+package da
+
+pub fn push<T>(xs &[..]T, x T) {
+	extern {
+		fn realloc(ptr rawptr, size u64) rawptr
+	}
+
+	if xs.count >= xs.capacity {
+		xs.capacity = if xs.capacity != 0 then xs.capacity * 2 else 128
+		xs.data = <&T> realloc(<rawptr> xs.data, <u64> xs.capacity * sizeof<T>)
+	}
+
+	xs.count += 1
+	(*xs)[xs.count - 1] = x
+}
+
+pub fn free<T>(xs &[..]T) {
+	extern {
+		fn free(ptr rawptr)
+		fn memset(s rawptr, c i32, n u64) rawptr
+	}
+
+	free(<rawptr> xs.data)
+	memset(<rawptr> xs, 0, sizeof(*xs))
+}

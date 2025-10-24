@@ -135,7 +135,15 @@ static Node *parse_type(Parser *p) {
 
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
-        if (!lexer_read(&p->lexer, TOKEN_RBRACKET)) {
+
+        token = lexer_peek(&p->lexer);
+        if (token.kind == TOKEN_RBRACKET) {
+            lexer_unbuffer(&p->lexer);
+        } else if (token.kind == TOKEN_RANGE) {
+            index->ranged = true;
+            lexer_unbuffer(&p->lexer);
+            lexer_expect(&p->lexer, TOKEN_RBRACKET);
+        } else {
             index->from = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
             lexer_expect(&p->lexer, TOKEN_RBRACKET);
         }
@@ -461,6 +469,11 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             lexer_buffer(&p->lexer, token);
 
             node = parse_type(p);
+            if (((NodeIndex *) node)->ranged) {
+                error_full(ERROR, node->token.pos, "Cannot construct compound literal with dynamic slice type");
+                exit(1);
+            }
+
             token = lexer_expect(&p->lexer, TOKEN_LBRACE);
             if (token.newlines) {
                 error_full(ERROR, token.pos, "Expected '{' on same line as type");

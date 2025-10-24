@@ -5,7 +5,7 @@
 #include "message.h"
 
 void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 17, "");
+    static_assert(COUNT_TYPES == 18, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -699,7 +699,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 static Type instantiate_type(Compiler *c, Type type, Node *generics) {
     switch (type.kind) {
     case TYPE_UNIT:
@@ -740,8 +740,9 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
         return type;
     }
 
+    case TYPE_ARRAY:
     case TYPE_SLICE:
-    case TYPE_ARRAY: {
+    case TYPE_DSLICE: {
         const Type base = instantiate_type(c, *type.spec_type, generics);
         type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
         return type;
@@ -801,7 +802,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
 }
 
 static_assert(COUNT_NODES == 23, "");
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
         return;
@@ -930,6 +931,11 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 .spec_type = &index->base->type,
                 .spec_count = count.as.integer,
             };
+        } else if (index->ranged) {
+            n->type = (Type) {
+                .kind = TYPE_DSLICE,
+                .spec_type = &index->base->type,
+            };
         } else {
             n->type = (Type) {
                 .kind = TYPE_SLICE,
@@ -966,6 +972,7 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
 }
 
+static_assert(COUNT_TYPES == 18, "");
 static void infer_generic_type(Type actual, Type expected, Node *generics) {
     switch (expected.kind) {
     case TYPE_UNIT:
@@ -1001,8 +1008,9 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
         }
         break;
 
-    case TYPE_SLICE:
     case TYPE_ARRAY:
+    case TYPE_SLICE:
+    case TYPE_DSLICE:
         if (actual.ref == expected.ref && actual.kind == expected.kind) {
             assert(actual.spec_type);
             assert(expected.spec_type);
@@ -1418,7 +1426,8 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             check_expr(c, unary->operand, REF_NONE);
 
             const Type operand = unary->operand->type;
-            if (type_is_pointer(operand) || (operand.kind != TYPE_SLICE && operand.kind != TYPE_ARRAY)) {
+            if (type_is_pointer(operand) ||
+                (operand.kind != TYPE_SLICE && operand.kind != TYPE_DSLICE && operand.kind != TYPE_ARRAY)) {
                 error_full(
                     ERROR, unary->operand->token.pos, "Expected slice or array type, got '%s'", type_to_cstr(operand));
                 exit(1);
@@ -1438,7 +1447,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         const Type base = index->base->type;
         if (index->ranged) {
-            if (!base.ref && base.kind != TYPE_SLICE && base.kind != TYPE_ARRAY) {
+            if (!base.ref && base.kind != TYPE_SLICE && base.kind != TYPE_DSLICE && base.kind != TYPE_ARRAY) {
                 error_full(
                     ERROR,
                     index->base->token.pos,
@@ -1453,7 +1462,8 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 exit(1);
             }
         } else {
-            if (type_is_pointer(base) || (base.kind != TYPE_SLICE && base.kind != TYPE_ARRAY)) {
+            if (type_is_pointer(base) ||
+                (base.kind != TYPE_SLICE && base.kind != TYPE_DSLICE && base.kind != TYPE_ARRAY)) {
                 error_full(ERROR, index->base->token.pos, "Expected slice or array type, got '%s'", type_to_cstr(base));
                 exit(1);
             }
@@ -1478,8 +1488,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     .kind = TYPE_SLICE,
                     .spec_type = arena_clone(c->context.arena, &element, sizeof(element)),
                 };
-            } else if (base.kind == TYPE_SLICE) {
+            } else if (base.kind == TYPE_SLICE || base.kind == TYPE_DSLICE) {
                 n->type = base;
+                n->type.kind = TYPE_SLICE;
             } else if (base.kind == TYPE_ARRAY) {
                 n->type = (Type) {
                     .kind = TYPE_SLICE,
@@ -1643,7 +1654,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->allow_ref = !member->is_method;
             n->type = member->definition->type;
-        } else if (member->lhs->type.kind == TYPE_SLICE && !member->lhs->type.ref) {
+        } else if (member->lhs->type.kind == TYPE_SLICE || member->lhs->type.kind == TYPE_DSLICE) {
             if (sv_match(n->token.sv, "data")) {
                 n->type = *member->lhs->type.spec_type;
                 n->type.ref++;
@@ -1651,6 +1662,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             } else if (sv_match(n->token.sv, "count")) {
                 n->type = (Type) {.kind = TYPE_I64};
                 n->token.as.integer = 8;
+            } else if (sv_match(n->token.sv, "capacity") && member->lhs->type.kind == TYPE_DSLICE) {
+                n->type = (Type) {.kind = TYPE_I64};
+                n->token.as.integer = 16;
             } else {
                 error_undefined(n, "field");
             }

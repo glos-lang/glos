@@ -24,16 +24,16 @@ fn main() {
 ```go
 package main
 
-import "array"
+import "da"
 
 fn main() {
-	var xs array::Array<i64>
+	var xs [..]i64
 	for var i = 0; i < 10; i += 1 {
-		xs.push(i * 2)
+		da::push(&xs, i * 2)
 	}
 
-	for var i = 0; i < len(xs.items); i += 1 {
-		print xs.items[i]
+	for var i = 0; i < len(xs); i += 1 {
+		print xs[i]
 	}
 }
 ```

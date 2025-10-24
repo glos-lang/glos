@@ -2,7 +2,7 @@
 #include "checker.h"
 #include "message.h"
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
     switch (kind) {
     case TYPE_I8:
@@ -27,7 +27,7 @@ static QbeTypeKind integer_type_kind(TypeKind kind) {
     }
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type) {
         return;
@@ -56,13 +56,17 @@ static void compile_type(Compiler *c, Type *type) {
         type->qbe = qbe_type_basic(QBE_TYPE_I64);
         break;
 
+    case TYPE_ARRAY:
+        compile_type(c, type->spec_type);
+        type->qbe = qbe_type_array(c->qbe, type->spec_type->qbe, type->spec_count);
+        break;
+
     case TYPE_SLICE:
         type->qbe = c->slice_type;
         break;
 
-    case TYPE_ARRAY:
-        compile_type(c, type->spec_type);
-        type->qbe = qbe_type_array(c->qbe, type->spec_type->qbe, type->spec_count);
+    case TYPE_DSLICE:
+        type->qbe = c->dslice_type;
         break;
 
     case TYPE_STRUCT: {
@@ -604,9 +608,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeNode *slice_data = NULL;
             if (index->base->type.ref) {
                 slice_data = base;
-            } else if (index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_ARRAY) {
+            } else if (
+                index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_DSLICE ||
+                index->base->type.kind == TYPE_ARRAY) {
                 QbeNode *count = NULL;
-                if (index->base->type.kind == TYPE_SLICE) {
+                if (index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_DSLICE) {
                     slice_data = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
                     count = qbe_build_load(
                         c->qbe,
@@ -741,7 +747,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             // Bounds Check
             {
                 QbeNode *count = NULL;
-                if (index->base->type.kind == TYPE_SLICE) {
+                if (index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_DSLICE) {
                     count = qbe_build_load(
                         c->qbe,
                         c->fn,
@@ -792,7 +798,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             QbeNode *ptr = base;
-            if (index->base->type.kind == TYPE_SLICE) {
+            if (index->base->type.kind == TYPE_SLICE || index->base->type.kind == TYPE_DSLICE) {
                 ptr = qbe_build_load(c->qbe, c->fn, base, qbe_type_basic(QBE_TYPE_I64), false);
             }
 
@@ -981,7 +987,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         size_t offset = 0;
-        if (member->lhs->type.kind == TYPE_SLICE) {
+        if (member->lhs->type.kind == TYPE_SLICE || member->lhs->type.kind == TYPE_DSLICE) {
             offset = n->token.as.integer;
         } else {
             offset = qbe_offsetof(((NodeField *) member->definition)->qbe);
@@ -1424,9 +1430,15 @@ void compiler_init(Compiler *c) {
     c->print_ufmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%zu\n"));
 
     QbeStruct *slice_struct = qbe_struct_new(c->qbe, false);
-    qbe_struct_add_field(c->qbe, slice_struct, qbe_type_basic(QBE_TYPE_I64));
-    qbe_struct_add_field(c->qbe, slice_struct, qbe_type_basic(QBE_TYPE_I64));
+    qbe_struct_add_field(c->qbe, slice_struct, qbe_type_basic(QBE_TYPE_I64)); // data *T
+    qbe_struct_add_field(c->qbe, slice_struct, qbe_type_basic(QBE_TYPE_I64)); // count i64
     c->slice_type = qbe_type_struct(slice_struct);
+
+    QbeStruct *dslice_struct = qbe_struct_new(c->qbe, false);
+    qbe_struct_add_field(c->qbe, dslice_struct, qbe_type_basic(QBE_TYPE_I64)); // data *T
+    qbe_struct_add_field(c->qbe, dslice_struct, qbe_type_basic(QBE_TYPE_I64)); // count i64
+    qbe_struct_add_field(c->qbe, dslice_struct, qbe_type_basic(QBE_TYPE_I64)); // capacity i64
+    c->dslice_type = qbe_type_struct(dslice_struct);
 }
 
 static void compile_global_var_assignment(Compiler *c, Node *n) {
