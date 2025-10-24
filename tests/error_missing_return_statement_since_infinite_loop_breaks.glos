@@ -1,0 +1,9 @@
+package main
+
+fn foo(x i32) i32 {
+	for {
+		if x == 69 {
+			break
+		}
+	}
+}

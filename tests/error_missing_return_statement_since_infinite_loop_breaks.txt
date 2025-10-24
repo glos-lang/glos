@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 122
+error_missing_return_statement_since_infinite_loop_breaks.glos:9:1: ERROR: Expected return statement
+
+    9 | }
+      | ^
+

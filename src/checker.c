@@ -1816,6 +1816,36 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
 }
 
 static_assert(COUNT_NODES == 23, "");
+static bool loop_breaks(Node *n) {
+    if (!n) {
+        return false;
+    }
+
+    switch (n->kind) {
+    case NODE_BLOCK: {
+        NodeBlock *block = (NodeBlock *) n;
+        for (Node *it = block->body.head; it; it = it->next) {
+            if (loop_breaks(it)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case NODE_IF: {
+        NodeIf *iff = (NodeIf *) n;
+        return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
+    }
+
+    case NODE_JUMP:
+        return n->token.kind == TOKEN_BREAK;
+
+    default:
+        return false;
+    }
+}
+
+static_assert(COUNT_NODES == 23, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_BLOCK: {
@@ -1852,8 +1882,7 @@ static bool always_returns(Node *n) {
         }
 
         if (infinite) {
-            // TODO: Check whether loop has 'break'
-            return true;
+            return !loop_breaks(forr->body);
         }
 
         return false;
