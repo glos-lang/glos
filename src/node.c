@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
@@ -101,21 +101,23 @@ const char *type_to_cstr(Type type) {
         }
     } break;
 
-    case TYPE_SLICE:
-        temp_sprintf("[");
+    case TYPE_ARRAY:
+        temp_sprintf("[%zu]", type.spec_count);
         temp_remove_null();
         type_to_cstr(*type.spec_type);
-        temp_remove_null();
-        temp_sprintf("]");
         break;
 
-    case TYPE_ARRAY: {
-        temp_sprintf("[");
+    case TYPE_SLICE:
+        temp_sprintf("[]");
         temp_remove_null();
         type_to_cstr(*type.spec_type);
+        break;
+
+    case TYPE_DSLICE:
+        temp_sprintf("[..]");
         temp_remove_null();
-        temp_sprintf("; %zu]", type.spec_count);
-    } break;
+        type_to_cstr(*type.spec_type);
+        break;
 
     case TYPE_STRUCT:
         temp_sv_to_cstr(type.spec_node->token.sv);
@@ -149,7 +151,7 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -174,6 +176,7 @@ bool type_eq(Type a, Type b) {
     } break;
 
     case TYPE_SLICE:
+    case TYPE_DSLICE:
         assert(a.spec_type);
         assert(b.spec_type);
         return type_eq(*a.spec_type, *b.spec_type);
@@ -221,7 +224,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -240,7 +243,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
