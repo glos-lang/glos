@@ -1621,6 +1621,8 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
                     unary->node.kind = NODE_UNARY;
                     unary->node.token.kind = TOKEN_BAND;
+                    unary->node.token.sv = member->lhs->token.sv;
+                    unary->node.token.pos = member->lhs->token.pos;
 
                     unary->operand = member->lhs;
                     unary->node.type = member->lhs->type;
