@@ -379,9 +379,6 @@ struct NodeStruct {
     Node  node;
     Nodes fields;
 
-    NodeFn *methods_head;
-    NodeFn *methods_tail;
-
     bool local;
     bool is_public;
 
@@ -394,9 +391,6 @@ struct NodeStruct {
     QbeStruct *qbe;
 };
 
-NodeFn *methods_find(Type type, SV name);
-void    methods_push(Type type, NodeFn *m);
-
 typedef struct {
     Node  node;
     Nodes libraries;
@@ -407,5 +401,15 @@ typedef struct {
     Node  node;
     Node *operand;
 } NodePrint;
+
+typedef struct TypeMethods TypeMethods;
+
+typedef struct {
+    TypeMethods *head;
+    TypeMethods *tail;
+} Methods;
+
+NodeFn *methods_find(Methods *list, Type type, SV name);
+void    methods_push(Methods *list, Type type, NodeFn *fn, Arena *a);
 
 #endif // NODE_H

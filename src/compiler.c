@@ -544,10 +544,17 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_MUL: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
-            if (ref) {
-                return operand;
+
+            size_t count = n->token.as.integer;
+            if (!count) {
+                count = 1;
             }
-            return qbe_build_load(c->qbe, c->fn, operand, n->type.qbe, type_is_signed(n->type));
+
+            for (size_t i = ref; i < count; i++) {
+                operand = qbe_build_load(c->qbe, c->fn, operand, n->type.qbe, type_is_signed(n->type));
+            }
+
+            return operand;
         }
 
         case TOKEN_BAND:

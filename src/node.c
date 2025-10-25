@@ -152,7 +152,11 @@ const char *type_to_cstr(Type type) {
 }
 
 static_assert(COUNT_TYPES == 18, "");
-bool type_eq(Type a, Type b) {
+static bool type_matches(Type a, Type b, bool strict) {
+    if (!strict && a.kind == TYPE_GENERIC) {
+        return b.ref >= a.ref;
+    }
+
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
     }
@@ -167,24 +171,24 @@ bool type_eq(Type a, Type b) {
         }
 
         for (const Node *a = a_spec->args.head, *b = b_spec->args.head; a; a = a->next, b = b->next) {
-            if (!type_eq(a->type, b->type)) {
+            if (!type_matches(a->type, b->type, strict)) {
                 return false;
             }
         }
 
-        return type_eq(node_fn_return_type(a_spec), node_fn_return_type(b_spec));
+        return type_matches(node_fn_return_type(a_spec), node_fn_return_type(b_spec), strict);
     } break;
 
     case TYPE_SLICE:
     case TYPE_DSLICE:
         assert(a.spec_type);
         assert(b.spec_type);
-        return type_eq(*a.spec_type, *b.spec_type);
+        return type_matches(*a.spec_type, *b.spec_type, strict);
 
     case TYPE_ARRAY:
         assert(a.spec_type);
         assert(b.spec_type);
-        return type_eq(*a.spec_type, *b.spec_type) && a.spec_count == b.spec_count;
+        return type_matches(*a.spec_type, *b.spec_type, strict) && a.spec_count == b.spec_count;
 
     case TYPE_STRUCT:
         if (a.spec_struct_instance) {
@@ -203,7 +207,7 @@ bool type_eq(Type a, Type b) {
             while (a_it && b_it) {
                 assert(a_it);
                 assert(b_it);
-                if (!type_eq(a_it->type, b_it->type)) {
+                if (!type_matches(a_it->type, b_it->type, strict)) {
                     return false;
                 }
 
@@ -222,6 +226,11 @@ bool type_eq(Type a, Type b) {
     default:
         return true;
     }
+}
+
+static_assert(COUNT_TYPES == 18, "");
+bool type_eq(Type a, Type b) {
+    return type_matches(a, b, true);
 }
 
 static_assert(COUNT_TYPES == 18, "");
@@ -333,14 +342,32 @@ Type node_fn_return_type(const NodeFn *fn) {
     return (Type) {.kind = TYPE_UNIT};
 }
 
-NodeFn *methods_find(Type type, SV name) {
-    assert(type.kind == TYPE_STRUCT);
-    NodeStruct *structt = (NodeStruct *) type.spec_node;
-    if (type.spec_struct_instance) {
-        structt = type.spec_struct_instance->definition;
+struct TypeMethods {
+    Type type;
+
+    NodeFn *head;
+    NodeFn *tail;
+
+    TypeMethods *next;
+};
+
+static TypeMethods *type_methods_find(Methods *list, Type type) {
+    type = type_remove_ref(type);
+    for (TypeMethods *it = list->head; it; it = it->next) {
+        if (type_matches(type_remove_ref(it->type), type, false)) {
+            return it;
+        }
+    }
+    return NULL;
+}
+
+NodeFn *methods_find(Methods *list, Type type, SV name) {
+    TypeMethods *methods = type_methods_find(list, type);
+    if (!methods) {
+        return NULL;
     }
 
-    for (NodeFn *it = structt->methods_head; it; it = it->next_method) {
+    for (NodeFn *it = methods->head; it; it = it->next_method) {
         if (sv_eq(it->node.token.sv, name)) {
             return it;
         }
@@ -349,22 +376,30 @@ NodeFn *methods_find(Type type, SV name) {
     return NULL;
 }
 
-void methods_push(Type type, NodeFn *m) {
-    if (!m) {
+void methods_push(Methods *list, Type type, NodeFn *fn, Arena *a) {
+    if (!fn) {
         return;
     }
 
-    assert(type.kind == TYPE_STRUCT);
-    NodeStruct *structt = (NodeStruct *) type.spec_node;
-    if (type.spec_struct_instance) {
-        structt = type.spec_struct_instance->definition;
+    TypeMethods *methods = type_methods_find(list, type);
+    if (!methods) {
+        methods = arena_alloc(a, sizeof(TypeMethods));
+        methods->type = type;
+
+        if (list->tail) {
+            list->tail->next = methods;
+        } else {
+            list->head = methods;
+        }
+
+        list->tail = methods;
     }
 
-    if (structt->methods_tail) {
-        structt->methods_tail->next_method = m;
+    if (methods->tail) {
+        methods->tail->next_method = fn;
     } else {
-        structt->methods_head = m;
+        methods->head = fn;
     }
 
-    structt->methods_tail = m;
+    methods->tail = fn;
 }
