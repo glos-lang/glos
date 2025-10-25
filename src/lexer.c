@@ -536,7 +536,9 @@ Token lexer_expect_impl(Lexer *l, const TokenKind *kinds) {
 
 Token lexer_split_token(Lexer *l, Token token) {
     switch (token.kind) {
+    case TOKEN_GE:
     case TOKEN_SHR:
+    case TOKEN_SHR_SET:
         token.kind = TOKEN_GT;
         break;
 
@@ -547,10 +549,14 @@ Token lexer_split_token(Lexer *l, Token token) {
     default:
         unreachable();
     }
+
+    assert(!l->peeked);
+    assert(token.sv.data + token.sv.count == l->sv.data);
+    const size_t offset = token.sv.count - 1;
     token.sv.count = 1;
 
-    Token remainder = token;
-    remainder.pos.col++;
-    lexer_buffer(l, remainder);
+    l->sv.data -= offset;
+    l->sv.count += offset;
+    l->pos.col -= offset;
     return token;
 }

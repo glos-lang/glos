@@ -86,7 +86,30 @@ typedef enum {
     PF_CONSTANT_EXPR = 1 << 1
 } ParseFlags;
 
+static Node *parse_type(Parser *p);
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
+
+static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
+    Token token = {0};
+    do {
+        nodes_push(generics, parse_type(p));
+        (*generics_count)++;
+
+        token = lexer_peek(&p->lexer);
+        switch (token.kind) {
+        case TOKEN_GE:
+        case TOKEN_SHR:
+        case TOKEN_SHR_SET:
+            lexer_unbuffer(&p->lexer);
+            token = lexer_split_token(&p->lexer, p->lexer.buffer);
+            break;
+
+        default:
+            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
+            break;
+        }
+    } while (token.kind != TOKEN_GT);
+}
 
 static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_type(Parser *p) {
@@ -117,17 +140,7 @@ static Node *parse_type(Parser *p) {
 
         if (token.kind == TOKEN_LT && !token.newlines) {
             lexer_unbuffer(&p->lexer);
-
-            do {
-                nodes_push(&atom->generics, parse_type(p));
-                atom->generics_count++;
-
-                if (lexer_read(&p->lexer, TOKEN_SHR)) {
-                    token = lexer_split_token(&p->lexer, p->lexer.buffer);
-                } else {
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                }
-            } while (token.kind != TOKEN_GT);
+            parse_generics(p, &atom->generics, &atom->generics_count);
         }
 
         node = (Node *) atom;
@@ -378,11 +391,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                     exit(1);
                 }
 
-                do {
-                    nodes_push(&atom->generics, parse_type(p));
-                    atom->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                } while (token.kind != TOKEN_GT);
+                parse_generics(p, &atom->generics, &atom->generics_count);
             }
         }
 
@@ -538,11 +547,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
                 lexer_expect(&p->lexer, TOKEN_LT);
-                do {
-                    nodes_push(&member->generics, parse_type(p));
-                    member->generics_count++;
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_GT);
-                } while (token.kind != TOKEN_GT);
+                parse_generics(p, &member->generics, &member->generics_count);
             }
 
             node = (Node *) member;
