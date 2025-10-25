@@ -349,6 +349,7 @@ Instantiation *instantiations_get(Instantiations *instantiations, Node *generics
 
     Instantiation *instantiation = instantiations_find(*instantiations, types, generics_count);
     if (instantiation) {
+        temp_reset(types);
         return instantiation;
     }
 
