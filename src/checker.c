@@ -2354,7 +2354,7 @@ static void check_toplevel(Compiler *c, Node *n) {
 
         if (fn->is_method) {
             Type  self = fn->args.head->type;
-            Node *previous = (Node *) methods_find(&c->context.methods, self, n->token.sv);
+            Node *previous = (Node *) methods_push(&c->context.methods, self, fn, c->context.arena);
             if (previous) {
                 error_redefinition(n, previous, "method");
             } else if (self.kind == TYPE_STRUCT) {
@@ -2372,8 +2372,6 @@ static void check_toplevel(Compiler *c, Node *n) {
                     error_redefinition(n, NULL, "field");
                 }
             }
-
-            methods_push(&c->context.methods, fn->args.head->type, fn, c->context.arena);
         }
 
         check_type(c, fn->ret, true, fn->generics.head);
@@ -2471,15 +2469,7 @@ void check_packages(Compiler *c, Packages ps) {
 
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
-            if (it->kind == NODE_FN && ((NodeFn *) it)->generics_count) {
-                check_toplevel(c, it);
-            }
-        }
-    }
-
-    for (Package *p = ps.head; p; p = p->next) {
-        for (Node *it = p->nodes.head; it; it = it->next) {
-            if (it->kind == NODE_FN && !((NodeFn *) it)->generics_count) {
+            if (it->kind == NODE_FN) {
                 check_toplevel(c, it);
             }
         }

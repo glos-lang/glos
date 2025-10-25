@@ -418,6 +418,6 @@ typedef struct {
 } Methods;
 
 NodeFn *methods_find(Methods *list, Type type, SV name);
-void    methods_push(Methods *list, Type type, NodeFn *fn, Arena *a);
+NodeFn *methods_push(Methods *list, Type type, NodeFn *fn, Arena *a);
 
 #endif // NODE_H

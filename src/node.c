@@ -151,10 +151,20 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
+typedef enum {
+    TYPE_MATCH_STRICT,
+    TYPE_MATCH_BESTFIT_UNI,
+    TYPE_MATCH_BESTFIT_BI,
+} TypeMatchLevel;
+
 static_assert(COUNT_TYPES == 18, "");
-static bool type_matches(Type a, Type b, bool strict) {
-    if (!strict && a.kind == TYPE_GENERIC) {
+static bool type_matches(Type a, Type b, TypeMatchLevel level) {
+    if (level != TYPE_MATCH_STRICT && a.kind == TYPE_GENERIC) {
         return b.ref >= a.ref;
+    }
+
+    if (level == TYPE_MATCH_BESTFIT_BI && b.kind == TYPE_GENERIC) {
+        return a.ref >= b.ref;
     }
 
     if (a.kind != b.kind || a.ref != b.ref) {
@@ -171,24 +181,24 @@ static bool type_matches(Type a, Type b, bool strict) {
         }
 
         for (const Node *a = a_spec->args.head, *b = b_spec->args.head; a; a = a->next, b = b->next) {
-            if (!type_matches(a->type, b->type, strict)) {
+            if (!type_matches(a->type, b->type, level)) {
                 return false;
             }
         }
 
-        return type_matches(node_fn_return_type(a_spec), node_fn_return_type(b_spec), strict);
+        return type_matches(node_fn_return_type(a_spec), node_fn_return_type(b_spec), level);
     } break;
 
     case TYPE_SLICE:
     case TYPE_DSLICE:
         assert(a.spec_type);
         assert(b.spec_type);
-        return type_matches(*a.spec_type, *b.spec_type, strict);
+        return type_matches(*a.spec_type, *b.spec_type, level);
 
     case TYPE_ARRAY:
         assert(a.spec_type);
         assert(b.spec_type);
-        return type_matches(*a.spec_type, *b.spec_type, strict) && a.spec_count == b.spec_count;
+        return type_matches(*a.spec_type, *b.spec_type, level) && a.spec_count == b.spec_count;
 
     case TYPE_STRUCT:
         if (a.spec_struct_instance) {
@@ -207,7 +217,7 @@ static bool type_matches(Type a, Type b, bool strict) {
             while (a_it && b_it) {
                 assert(a_it);
                 assert(b_it);
-                if (!type_matches(a_it->type, b_it->type, strict)) {
+                if (!type_matches(a_it->type, b_it->type, level)) {
                     return false;
                 }
 
@@ -230,7 +240,7 @@ static bool type_matches(Type a, Type b, bool strict) {
 
 static_assert(COUNT_TYPES == 18, "");
 bool type_eq(Type a, Type b) {
-    return type_matches(a, b, true);
+    return type_matches(a, b, TYPE_MATCH_STRICT);
 }
 
 static_assert(COUNT_TYPES == 18, "");
@@ -383,10 +393,10 @@ struct TypeMethods {
     TypeMethods *next;
 };
 
-static TypeMethods *type_methods_find(Methods *list, Type type) {
+static TypeMethods *type_methods_find(Methods *list, Type type, TypeMatchLevel level) {
     type = type_remove_ref(type);
     for (TypeMethods *it = list->head; it; it = it->next) {
-        if (type_matches(type_remove_ref(it->type), type, false)) {
+        if (type_matches(type_remove_ref(it->type), type, level)) {
             return it;
         }
     }
@@ -394,7 +404,7 @@ static TypeMethods *type_methods_find(Methods *list, Type type) {
 }
 
 NodeFn *methods_find(Methods *list, Type type, SV name) {
-    TypeMethods *methods = type_methods_find(list, type);
+    TypeMethods *methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_UNI);
     if (!methods) {
         return NULL;
     }
@@ -408,12 +418,24 @@ NodeFn *methods_find(Methods *list, Type type, SV name) {
     return NULL;
 }
 
-void methods_push(Methods *list, Type type, NodeFn *fn, Arena *a) {
+NodeFn *methods_push(Methods *list, Type type, NodeFn *fn, Arena *a) {
     if (!fn) {
-        return;
+        return NULL;
     }
 
-    TypeMethods *methods = type_methods_find(list, type);
+    TypeMethods *methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_BI);
+    if (methods) {
+        for (NodeFn *it = methods->head; it; it = it->next_method) {
+            if (sv_eq(it->node.token.sv, fn->node.token.sv)) {
+                return it;
+            }
+        }
+    }
+
+    if (!methods || !type_matches(type_remove_ref(methods->type), type_remove_ref(type), TYPE_MATCH_BESTFIT_UNI)) {
+        methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_UNI);
+    }
+
     if (!methods) {
         methods = arena_alloc(a, sizeof(TypeMethods));
         methods->type = type;
@@ -434,4 +456,5 @@ void methods_push(Methods *list, Type type, NodeFn *fn, Arena *a) {
     }
 
     methods->tail = fn;
+    return NULL;
 }

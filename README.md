@@ -29,7 +29,7 @@ import "da"
 fn main() {
 	var xs [..]i64
 	for var i = 0; i < 10; i += 1 {
-		da::push(&xs, i * 2)
+		xs.push(i * 2)
 	}
 
 	for var i = 0; i < len(xs); i += 1 {
