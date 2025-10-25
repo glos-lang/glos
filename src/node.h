@@ -94,8 +94,8 @@ struct Instantiation {
     QbeNode *qbe;
 
     // For type checking generic structures
-    bool structt_ok;
-    Type structt_type;
+    bool instantiated_ok;
+    Type instantiated_type;
 
     Instantiation *next;
 };

@@ -718,11 +718,25 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
     case TYPE_FN: {
         assert(type.spec_node);
         NodeFn *from = (NodeFn *) type.spec_node;
+
+        Instantiation *instantiation =
+            instantiations_get(&from->instantiations, generics, generics_count, c->context.arena);
+
+        if (instantiation->instantiated_ok) {
+            Type result = instantiation->instantiated_type;
+            result.ref = type.ref;
+            return result;
+        }
+
         NodeFn *to = arena_alloc(c->context.arena, sizeof(NodeFn));
         to->node = from->node;
         to->node.type.spec_node = (Node *) to;
-
         to->arity = from->arity;
+
+        type.spec_node = (Node *) to;
+        instantiation->instantiated_ok = true;
+        instantiation->instantiated_type = type_remove_ref(type);
+
         for (Node *it = from->args.head; it; it = it->next) {
             NodeVar *arg = arena_alloc(c->context.arena, sizeof(NodeVar));
             arg->node = *it;
@@ -735,7 +749,6 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
             to->ret->type = instantiate_type(c, to->ret->type, generics, generics_count);
         }
 
-        type.spec_node = (Node *) to;
         return type;
     }
 
@@ -759,8 +772,8 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
         Instantiation *instantiation =
             instantiations_get(&from->instantiations, generics, generics_count, c->context.arena);
 
-        if (instantiation->structt_ok) {
-            Type result = instantiation->structt_type;
+        if (instantiation->instantiated_ok) {
+            Type result = instantiation->instantiated_type;
             result.ref = type.ref;
             return result;
         }
@@ -777,8 +790,8 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
 
         type.spec_node = (Node *) to;
         type.spec_struct_instance = arena_clone(c->context.arena, &instance, sizeof(instance));
-        instantiation->structt_ok = true;
-        instantiation->structt_type = type_remove_ref(type);
+        instantiation->instantiated_ok = true;
+        instantiation->instantiated_type = type_remove_ref(type);
 
         for (Node *it = from->fields.head; it; it = it->next) {
             NodeField *field = arena_alloc(c->context.arena, sizeof(NodeField));
