@@ -87,9 +87,15 @@ Type type_remove_ref(Type type);
 typedef struct Instantiation Instantiation;
 
 struct Instantiation {
-    Type    *types;
-    size_t   count;
+    Type  *types;
+    size_t count;
+
+    // For compiling generic functions
     QbeNode *qbe;
+
+    // For type checking generic structures
+    bool structt_ok;
+    Type structt_type;
 
     Instantiation *next;
 };
@@ -101,6 +107,7 @@ typedef struct {
 
 void           instantiations_push(Instantiations *is, Instantiation *i);
 Instantiation *instantiations_find(Instantiations is, Type *types, size_t count);
+Instantiation *instantiations_get(Instantiations *instantiations, Node *generics, size_t generics_count, Arena *a);
 
 typedef enum {
     CHECK_STATUS_TODO,
@@ -382,8 +389,9 @@ struct NodeStruct {
     bool local;
     bool is_public;
 
-    Nodes  generics;
-    size_t generics_count;
+    Nodes          generics;
+    size_t         generics_count;
+    Instantiations instantiations;
 
     Package    *package;
     CheckStatus check_status;

@@ -320,6 +320,38 @@ Instantiation *instantiations_find(Instantiations is, Type *types, size_t count)
     return NULL;
 }
 
+Instantiation *instantiations_get(Instantiations *instantiations, Node *generics, size_t generics_count, Arena *a) {
+    Type *types = temp_alloc(generics_count * sizeof(Type));
+    {
+        Node *generic = generics;
+        for (size_t i = 0; i < generics_count; i++) {
+            assert(generic);
+
+            Type type = generic->type;
+            while (type.kind == TYPE_GENERIC && type.spec_node->type.spec_type) {
+                type = *type.spec_node->type.spec_type;
+            }
+            types[i] = type;
+
+            generic = generic->next;
+        }
+    }
+
+    Instantiation *instantiation = instantiations_find(*instantiations, types, generics_count);
+    if (instantiation) {
+        return instantiation;
+    }
+
+    instantiation = arena_alloc(a, sizeof(Instantiation));
+    instantiation->count = generics_count;
+    instantiation->types = arena_clone(a, types, generics_count * sizeof(Type));
+
+    instantiations_push(instantiations, instantiation);
+    temp_reset(types);
+
+    return instantiation;
+}
+
 void nodes_push(Nodes *ns, Node *n) {
     if (!n) {
         return;
