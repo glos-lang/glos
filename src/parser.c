@@ -735,6 +735,11 @@ static void do_import(Parser *p, Token token, SV as) {
         }
     }
 
+    if (sv_match(package->name.sv, "main")) {
+        error_full(ERROR, token.pos, "Package 'main' is a separate program and cannot be imported");
+        exit(1);
+    }
+
     Import *import = arena_alloc(p->arena, sizeof(*import));
     import->as = as;
     import->token = token;
