@@ -1,4 +1,3 @@
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "checker.h"
@@ -700,7 +699,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_TYPES == 18, "");
-static Type instantiate_type(Compiler *c, Type type, Node *generics) {
+static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t generics_count) {
     switch (type.kind) {
     case TYPE_UNIT:
     case TYPE_BOOL:
@@ -719,31 +718,44 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
     case TYPE_FN: {
         assert(type.spec_node);
         NodeFn *from = (NodeFn *) type.spec_node;
+
+        Instantiation *instantiation =
+            instantiations_get(&from->instantiations, generics, generics_count, c->context.arena);
+
+        if (instantiation->instantiated_ok) {
+            Type result = instantiation->instantiated_type;
+            result.ref = type.ref;
+            return result;
+        }
+
         NodeFn *to = arena_alloc(c->context.arena, sizeof(NodeFn));
         to->node = from->node;
         to->node.type.spec_node = (Node *) to;
-
         to->arity = from->arity;
+
+        type.spec_node = (Node *) to;
+        instantiation->instantiated_ok = true;
+        instantiation->instantiated_type = type_remove_ref(type);
+
         for (Node *it = from->args.head; it; it = it->next) {
             NodeVar *arg = arena_alloc(c->context.arena, sizeof(NodeVar));
             arg->node = *it;
-            arg->node.type = instantiate_type(c, it->type, generics);
+            arg->node.type = instantiate_type(c, it->type, generics, generics_count);
             nodes_push(&to->args, (Node *) arg);
         }
 
         if (from->ret) {
             to->ret = arena_clone(c->context.arena, from->ret, sizeof(*from->ret));
-            to->ret->type = instantiate_type(c, to->ret->type, generics);
+            to->ret->type = instantiate_type(c, to->ret->type, generics, generics_count);
         }
 
-        type.spec_node = (Node *) to;
         return type;
     }
 
     case TYPE_ARRAY:
     case TYPE_SLICE:
     case TYPE_DSLICE: {
-        const Type base = instantiate_type(c, *type.spec_type, generics);
+        const Type base = instantiate_type(c, *type.spec_type, generics, generics_count);
         type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
         return type;
     }
@@ -756,26 +768,38 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics) {
         }
 
         NodeStruct *from = (NodeStruct *) type.spec_node;
+
+        Instantiation *instantiation =
+            instantiations_get(&from->instantiations, generics, generics_count, c->context.arena);
+
+        if (instantiation->instantiated_ok) {
+            Type result = instantiation->instantiated_type;
+            result.ref = type.ref;
+            return result;
+        }
+
         NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
         to->node = from->node;
         to->package = from->package;
         to->node.type.spec_node = (Node *) to;
-
-        for (Node *it = from->fields.head; it; it = it->next) {
-            NodeField *field = arena_alloc(c->context.arena, sizeof(NodeField));
-            field->node = *it;
-            field->node.type = instantiate_type(c, it->type, generics);
-            nodes_push(&to->fields, (Node *) field);
-        }
-
-        type.spec_node = (Node *) to;
 
         const StructInstanace instance = {
             .generics = generics,
             .definition = from,
         };
 
+        type.spec_node = (Node *) to;
         type.spec_struct_instance = arena_clone(c->context.arena, &instance, sizeof(instance));
+        instantiation->instantiated_ok = true;
+        instantiation->instantiated_type = type_remove_ref(type);
+
+        for (Node *it = from->fields.head; it; it = it->next) {
+            NodeField *field = arena_alloc(c->context.arena, sizeof(NodeField));
+            field->node = *it;
+            field->node.type = instantiate_type(c, it->type, generics, generics_count);
+            nodes_push(&to->fields, (Node *) field);
+        }
+
         return type;
     }
 
@@ -862,7 +886,8 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
             case NODE_STRUCT: {
                 NodeStruct *structt = (NodeStruct *) definition;
-                if (structt->check_status != CHECK_STATUS_DONE && need_full_definition) {
+                if ((structt->check_status != CHECK_STATUS_DONE && need_full_definition) ||
+                    (structt->check_status == CHECK_STATUS_TODO && structt->generics_count)) {
                     check_stmt(c, definition);
                 }
 
@@ -896,7 +921,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                     check_type(c, it, true, extra_generic_context);
                 }
 
-                n->type = instantiate_type(c, n->type, atom->generics.head);
+                n->type = instantiate_type(c, n->type, atom->generics.head, atom->generics_count);
             } else {
                 if (definition_generics_count) {
                     error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
@@ -1115,7 +1140,7 @@ static void check_generics(Compiler *c, Node *n, Node *generics_head, size_t gen
         }
 
         if (!*generics_incomplete) {
-            n->type = instantiate_type(c, n->type, generics_head);
+            n->type = instantiate_type(c, n->type, generics_head, generics_count);
         }
     } else {
         if (definition->kind == NODE_FN && !*will_be_called) {
@@ -1283,13 +1308,13 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     }
                 }
 
-                call->fn->type = instantiate_type(c, call->fn->type, generics->head);
+                call->fn->type = instantiate_type(c, call->fn->type, generics->head, *generics_count);
                 expected = (const NodeFn *) fn_type->spec_node;
             }
         }
 
         for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
-            if (!inferred) {
+            if (!inferred && (!is_method || a != call->args.head)) {
                 check_expr(c, a, REF_NONE);
             }
 
@@ -1598,61 +1623,77 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
-
         check_expr(c, member->lhs, ref);
-        if (member->lhs->type.kind == TYPE_STRUCT) {
+
+        if (member->lhs->type.kind == TYPE_INT) {
+            member->lhs->type.kind = TYPE_I64;
+        }
+
+        member->definition = (Node *) methods_find(&c->context.methods, member->lhs->type, n->token.sv);
+        if (member->definition) {
+            member->is_method = true;
+
+            NodeFn *definition = (NodeFn *) member->definition;
+            if (definition->package != member->package && !definition->is_public) {
+                error_use_of_private(&n->token, member->definition, "method");
+            }
+
+            const size_t actual_ref = member->lhs->type.ref;
+            const size_t expected_ref = definition->args.head->type.ref;
+            if (actual_ref == expected_ref) {
+                // OK
+            } else if (actual_ref + 1 == expected_ref) {
+                if (!member->lhs->allow_ref) {
+                    error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
+                    exit(1);
+                }
+
+                NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                unary->node.kind = NODE_UNARY;
+                unary->node.token.kind = TOKEN_BAND;
+                unary->node.token.sv = member->lhs->token.sv;
+                unary->node.token.pos = member->lhs->token.pos;
+
+                unary->operand = member->lhs;
+                unary->node.type = member->lhs->type;
+                unary->node.type.ref++;
+
+                member->lhs = (Node *) unary;
+            } else if (actual_ref > expected_ref) {
+                NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                unary->node.kind = NODE_UNARY;
+                unary->node.token.kind = TOKEN_MUL;
+                unary->node.token.sv = member->lhs->token.sv;
+                unary->node.token.pos = member->lhs->token.pos;
+                unary->node.token.as.integer = actual_ref - expected_ref;
+
+                unary->operand = member->lhs;
+                unary->node.type = member->lhs->type;
+                unary->node.type.ref = expected_ref;
+
+                member->lhs = (Node *) unary;
+            } else {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Method requires self to be '%s', got '%s'",
+                    type_to_cstr(definition->args.head->type),
+                    type_to_cstr(member->lhs->type));
+
+                exit(1);
+            }
+
+            n->type = member->definition->type;
+            check_generics(c, n, member->generics.head, member->generics_count, member->definition);
+        } else if (member->lhs->type.kind == TYPE_STRUCT) {
             NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
 
             member->definition = nodes_find(structt->fields, n->token.sv, NULL);
             if (!member->definition) {
-                member->is_method = true;
-                member->definition = (Node *) methods_find(member->lhs->type, n->token.sv);
-            }
-
-            if (!member->definition) {
                 error_undefined(n, "field or method");
             }
 
-            if (member->is_method) {
-                NodeFn *definition = (NodeFn *) member->definition;
-                if (definition->package != member->package && !definition->is_public) {
-                    error_use_of_private(&n->token, member->definition, "method");
-                }
-
-                const size_t actual_ref = member->lhs->type.ref;
-                const size_t expected_ref = definition->args.head->type.ref;
-                if (actual_ref == expected_ref) {
-                    // OK
-                } else if (actual_ref + 1 == expected_ref) {
-                    if (!member->lhs->allow_ref) {
-                        error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
-                        exit(1);
-                    }
-
-                    NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
-                    unary->node.kind = NODE_UNARY;
-                    unary->node.token.kind = TOKEN_BAND;
-                    unary->node.token.sv = member->lhs->token.sv;
-                    unary->node.token.pos = member->lhs->token.pos;
-
-                    unary->operand = member->lhs;
-                    unary->node.type = member->lhs->type;
-                    unary->node.type.ref++;
-
-                    member->lhs = (Node *) unary;
-                } else {
-                    error_full(
-                        ERROR,
-                        n->token.pos,
-                        "Method requires self to be '%s', got '%s'",
-                        type_to_cstr(definition->args.head->type),
-                        type_to_cstr(member->lhs->type));
-
-                    exit(1);
-                }
-            }
-
-            n->allow_ref = !member->is_method;
+            n->allow_ref = true;
             n->type = member->definition->type;
         } else if (member->lhs->type.kind == TYPE_SLICE || member->lhs->type.kind == TYPE_DSLICE) {
             if (sv_match(n->token.sv, "data")) {
@@ -1671,14 +1712,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->allow_ref = true;
         } else {
-            error_full(
-                ERROR, member->lhs->token.pos, "Expected structure type, got '%s'", type_to_cstr(member->lhs->type));
-
-            exit(1);
-        }
-
-        if (member->is_method) {
-            check_generics(c, n, member->generics.head, member->generics_count, member->definition);
+            error_undefined(n, "field or method");
         }
     } break;
 
@@ -1810,8 +1844,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
 static void error_redefinition(const Node *n, const Node *previous, const char *label) {
     error_full(ERROR, n->token.pos, "Redefinition of %s '" SVFmt "'", label, SVArg(n->token.sv));
-    fprintf(stderr, "\n");
-    error_full(NOTE, previous->token.pos, "Defined here");
+    if (previous) {
+        fprintf(stderr, "\n");
+        error_full(NOTE, previous->token.pos, "Defined here");
+    }
     exit(1);
 }
 
@@ -2290,6 +2326,10 @@ static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
+        if (fn->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
         if (fn->check_status == CHECK_STATUS_DOING) {
             error_full(ERROR, n->token.pos, "Reference loop");
             exit(1);
@@ -2327,29 +2367,25 @@ static void check_toplevel(Compiler *c, Node *n) {
         }
 
         if (fn->is_method) {
-            if (fn->args.head->type.kind != TYPE_STRUCT) {
-                NodeVar *self = (NodeVar *) fn->args.head;
-                error_full(ERROR, self->type->token.pos, "Can only define methods for structures");
-                exit(1);
-            }
-            NodeStruct *structt = (NodeStruct *) fn->args.head->type.spec_node;
-
-            if (structt->package != fn->package) {
-                error_full(ERROR, n->token.pos, "Cannot define methods for structure outside of its package");
-                exit(1);
-            }
-
-            Node *previous = (Node *) methods_find(fn->args.head->type, n->token.sv);
+            Type  self = fn->args.head->type;
+            Node *previous = (Node *) methods_push(&c->context.methods, self, fn, c->context.arena);
             if (previous) {
                 error_redefinition(n, previous, "method");
-            } else if (fn->args.head->type.kind == TYPE_STRUCT) {
-                previous = nodes_find(structt->fields, n->token.sv, NULL);
+            } else if (self.kind == TYPE_STRUCT) {
+                previous = nodes_find(((NodeStruct *) self.spec_node)->fields, n->token.sv, NULL);
                 if (previous) {
                     error_redefinition(n, previous, "field");
                 }
+            } else if (self.kind == TYPE_SLICE) {
+                if (sv_match(n->token.sv, "data") || sv_match(n->token.sv, "count")) {
+                    error_redefinition(n, NULL, "field");
+                }
+            } else if (self.kind == TYPE_DSLICE) {
+                if (sv_match(n->token.sv, "data") || sv_match(n->token.sv, "count") ||
+                    sv_match(n->token.sv, "capacity")) {
+                    error_redefinition(n, NULL, "field");
+                }
             }
-
-            methods_push(fn->args.head->type, fn);
         }
 
         check_type(c, fn->ret, true, fn->generics.head);

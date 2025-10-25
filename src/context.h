@@ -19,6 +19,8 @@ typedef struct {
     Scope     locals;
     Scope     statics;
 
+    Methods methods;
+
     bool in_extern;
     bool checking_toplevels;
 

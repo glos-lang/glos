@@ -87,9 +87,15 @@ Type type_remove_ref(Type type);
 typedef struct Instantiation Instantiation;
 
 struct Instantiation {
-    Type    *types;
-    size_t   count;
+    Type  *types;
+    size_t count;
+
+    // For compiling generic functions
     QbeNode *qbe;
+
+    // For type checking generic structures
+    bool instantiated_ok;
+    Type instantiated_type;
 
     Instantiation *next;
 };
@@ -101,6 +107,7 @@ typedef struct {
 
 void           instantiations_push(Instantiations *is, Instantiation *i);
 Instantiation *instantiations_find(Instantiations is, Type *types, size_t count);
+Instantiation *instantiations_get(Instantiations *instantiations, Node *generics, size_t generics_count, Arena *a);
 
 typedef enum {
     CHECK_STATUS_TODO,
@@ -379,23 +386,18 @@ struct NodeStruct {
     Node  node;
     Nodes fields;
 
-    NodeFn *methods_head;
-    NodeFn *methods_tail;
-
     bool local;
     bool is_public;
 
-    Nodes  generics;
-    size_t generics_count;
+    Nodes          generics;
+    size_t         generics_count;
+    Instantiations instantiations;
 
     Package    *package;
     CheckStatus check_status;
 
     QbeStruct *qbe;
 };
-
-NodeFn *methods_find(Type type, SV name);
-void    methods_push(Type type, NodeFn *m);
 
 typedef struct {
     Node  node;
@@ -407,5 +409,15 @@ typedef struct {
     Node  node;
     Node *operand;
 } NodePrint;
+
+typedef struct TypeMethods TypeMethods;
+
+typedef struct {
+    TypeMethods *head;
+    TypeMethods *tail;
+} Methods;
+
+NodeFn *methods_find(Methods *list, Type type, SV name);
+NodeFn *methods_push(Methods *list, Type type, NodeFn *fn, Arena *a);
 
 #endif // NODE_H

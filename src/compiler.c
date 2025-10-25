@@ -355,34 +355,13 @@ static void clear_qbe(Node *n) {
 static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Node *caller_generics_head, size_t caller_generics_count) {
     if (fn->generics.head) {
         assert(fn->generics_count == caller_generics_count);
-        Type *types = temp_alloc(caller_generics_count * sizeof(Type));
-        {
-            Node *generic = caller_generics_head;
-            for (size_t i = 0; i < caller_generics_count; i++) {
-                assert(generic);
 
-                Type type = generic->type;
-                while (type.kind == TYPE_GENERIC) {
-                    assert(type.spec_node->type.spec_type);
-                    type = *type.spec_node->type.spec_type;
-                }
-                types[i] = type;
+        Instantiation *instantiation =
+            instantiations_get(&fn->instantiations, caller_generics_head, caller_generics_count, c->context.arena);
 
-                generic = generic->next;
-            }
-        }
-
-        Instantiation *instantiation = instantiations_find(fn->instantiations, types, caller_generics_count);
-        if (instantiation) {
+        if (instantiation->qbe) {
             return instantiation->qbe;
         }
-
-        instantiation = arena_alloc(c->context.arena, sizeof(Instantiation));
-        instantiation->count = caller_generics_count;
-        instantiation->types = arena_clone(c->context.arena, types, caller_generics_count * sizeof(Type));
-
-        instantiations_push(&fn->instantiations, instantiation);
-        temp_reset(types);
 
         Type **save = temp_alloc(caller_generics_count * sizeof(Type *));
         {
@@ -544,10 +523,17 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_MUL: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
-            if (ref) {
-                return operand;
+
+            size_t count = n->token.as.integer;
+            if (!count) {
+                count = 1;
             }
-            return qbe_build_load(c->qbe, c->fn, operand, n->type.qbe, type_is_signed(n->type));
+
+            for (size_t i = ref; i < count; i++) {
+                operand = qbe_build_load(c->qbe, c->fn, operand, n->type.qbe, type_is_signed(n->type));
+            }
+
+            return operand;
         }
 
         case TOKEN_BAND:
