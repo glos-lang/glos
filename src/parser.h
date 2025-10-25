@@ -24,6 +24,7 @@ typedef struct {
     Paths paths;
 } Parser;
 
+void parser_load_builtin(Parser *p);
 void parser_free(Parser *p);
 
 bool parse_file(Parser *p, const char *path);
@@ -34,6 +35,12 @@ typedef enum {
     PDE_FAILED,
 } ParseDirError;
 
-ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std);
+typedef enum {
+    PDS_NO,
+    PDS_YES,
+    PDS_ONLY,
+} ParseDirStd;
+
+ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds);
 
 #endif // PARSER_H

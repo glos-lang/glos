@@ -24,8 +24,6 @@ fn main() {
 ```go
 package main
 
-import "da"
-
 fn main() {
 	var xs [..]i64
 	for var i = 0; i < 10; i += 1 {

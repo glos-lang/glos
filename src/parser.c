@@ -669,7 +669,7 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static void do_import(Parser *p, Token token, SV as) {
+static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     char *path_start = temp_alloc(0);
     if (p->root) {
         path_start = temp_sprintf("%s/", p->root);
@@ -700,7 +700,6 @@ static void do_import(Parser *p, Token token, SV as) {
             error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
-        // TODO: Also check whether the same package is imported under a different namespace
 
         Import *import = arena_alloc(p->arena, sizeof(*import));
         if (as.count) {
@@ -723,7 +722,7 @@ static void do_import(Parser *p, Token token, SV as) {
     packages_push(p->packages, package);
 
     if (!p->formatter) {
-        ParseDirError pde = parse_dir(p, path, true);
+        ParseDirError pde = parse_dir(p, path, pds);
         if (pde == PDE_FAILED) {
             error_full(ERROR, token.pos, "Could not import package '%s'", path);
             exit(1);
@@ -1134,7 +1133,7 @@ static Node *parse_stmt(Parser *p) {
                     token = lexer_expect(&p->lexer, TOKEN_STR);
                 }
 
-                do_import(p, token, as);
+                do_import(p, token, as, PDS_YES);
                 lexer_read(&p->lexer, TOKEN_COMMA);
             }
         } else {
@@ -1144,7 +1143,7 @@ static Node *parse_stmt(Parser *p) {
                 token = lexer_expect(&p->lexer, TOKEN_STR);
             }
 
-            do_import(p, token, as);
+            do_import(p, token, as, PDS_YES);
         }
     } break;
 
@@ -1306,13 +1305,13 @@ bool parse_file(Parser *p, const char *path) {
     return true;
 }
 
-ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
+ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
     assert(p->arena);
 
     const SV     suffix = sv_from_cstr(".glos");
     const size_t start = p->paths.count;
-    if (!read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
-        if (!check_in_std) {
+    if (pds == PDS_ONLY || !read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
+        if (!pds) {
             return PDE_FAILED;
         }
 
@@ -1346,4 +1345,11 @@ ParseDirError parse_dir(Parser *p, const char *path, bool check_in_std) {
         return PDE_EMPTY;
     }
     return PDE_NONE;
+}
+
+void parser_load_builtin(Parser *p) {
+    Token builtin = {0};
+    builtin.sv = sv_from_cstr("\"builtin\"");
+    builtin.as.integer = strlen("builtin");
+    do_import(p, builtin, (SV) {0}, PDS_ONLY);
 }

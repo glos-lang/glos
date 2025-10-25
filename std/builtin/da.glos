@@ -1,4 +1,4 @@
-package da
+package builtin
 
 pub fn (xs &[..]T) push<T>(x T) {
 	extern {

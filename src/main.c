@@ -194,9 +194,11 @@ int main(int argc, char **argv) {
     };
     packages_push(&packages, &package);
 
+    parser_load_builtin(&parser);
+
     if (is_dir(input)) {
         parser.root = input;
-        if (parse_dir(&parser, input, false) == PDE_EMPTY) {
+        if (parse_dir(&parser, input, PDS_NO) == PDE_EMPTY) {
             error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
             exit(1);
         }
