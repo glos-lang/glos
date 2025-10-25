@@ -1884,6 +1884,12 @@ static bool loop_breaks(Node *n) {
 static_assert(COUNT_NODES == 23, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
+    case NODE_ASSERT: {
+        NodeAssert *assertt = (NodeAssert *) n;
+        return assertt->expr->kind == NODE_ATOM && assertt->expr->token.kind == TOKEN_BOOL &&
+               !assertt->expr->token.as.boolean;
+    }
+
     case NODE_BLOCK: {
         NodeBlock *block = (NodeBlock *) n;
         for (Node *it = block->body.head; it; it = it->next) {
