@@ -873,7 +873,8 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
             case NODE_STRUCT: {
                 NodeStruct *structt = (NodeStruct *) definition;
-                if (structt->check_status != CHECK_STATUS_DONE && need_full_definition) {
+                if ((structt->check_status != CHECK_STATUS_DONE && need_full_definition) ||
+                    (structt->check_status == CHECK_STATUS_TODO && structt->generics_count)) {
                     check_stmt(c, definition);
                 }
 
@@ -2461,17 +2462,7 @@ void check_packages(Compiler *c, Packages ps) {
     c->context.checking_toplevels = true;
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
-            if (it->kind != NODE_FN) {
-                check_toplevel(c, it);
-            }
-        }
-    }
-
-    for (Package *p = ps.head; p; p = p->next) {
-        for (Node *it = p->nodes.head; it; it = it->next) {
-            if (it->kind == NODE_FN) {
-                check_toplevel(c, it);
-            }
+            check_toplevel(c, it);
         }
     }
     c->context.checking_toplevels = false;
