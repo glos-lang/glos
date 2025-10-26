@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn foo(x bool) bool {
     print 69

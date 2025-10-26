@@ -1,5 +1,5 @@
-#ifndef PACKAGE_H
-#define PACKAGE_H
+#ifndef MODULE_H
+#define MODULE_H
 
 #include "node.h"
 
@@ -9,8 +9,8 @@ struct Import {
     SV   as;
     bool aliased;
 
-    Token    token;
-    Package *package;
+    Token   token;
+    Module *module;
 
     Import *next;
 };
@@ -24,7 +24,7 @@ void imports_push(Imports *is, Import *i);
 
 typedef DynamicArray(Node *) Scope;
 
-struct Package {
+struct Module {
     SV    path;
     Token name;
 
@@ -35,19 +35,19 @@ struct Package {
     Scope   globals;
     Imports imports;
 
-    Package *next;
+    Module *next;
 };
 
 typedef struct {
-    Package *head;
-    Package *tail;
-    Package *current;
-} Packages;
+    Module *head;
+    Module *tail;
+    Module *current;
+} Modules;
 
-void packages_free(Packages *ps);
-void packages_push(Packages *ps, Package *p);
+void modules_free(Modules *ps);
+void modules_push(Modules *ps, Module *p);
 
-Package *packages_find_by_name(Packages ps, SV name);
-Package *packages_find_by_path(Packages ps, SV name);
+Module *modules_find_by_name(Modules ps, SV name);
+Module *modules_find_by_path(Modules ps, SV name);
 
-#endif // PACKAGE_H
+#endif // MODULE_H

@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn zero<T>(ptr &T) {
 	extern {

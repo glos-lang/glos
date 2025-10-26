@@ -119,7 +119,7 @@ static Node *parse_type(Parser *p) {
     switch (token.kind) {
     case TOKEN_IDENT: {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
-        atom->package = p->packages->current;
+        atom->module = p->modules->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
             token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
@@ -373,7 +373,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
     case TOKEN_IDENT: {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
-        atom->package = p->packages->current;
+        atom->module = p->modules->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
             token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LT);
@@ -543,7 +543,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
-            member->package = p->packages->current;
+            member->module = p->modules->current;
 
             if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
                 lexer_expect(&p->lexer, TOKEN_LT);
@@ -686,16 +686,16 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     temp_reset(path_start);
 
     if (!p->formatter && !strcmp(path, ".")) {
-        error_full(ERROR, token.pos, "Cannot import package 'main'");
+        error_full(ERROR, token.pos, "Cannot import module 'main'");
         exit(1);
     }
     path_sv = sv_from_cstr(path);
 
-    Package *previous = packages_find_by_path(*p->packages, path_sv);
+    Module *previous = modules_find_by_path(*p->modules, path_sv);
     if (previous) {
-        Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
+        Import *previous_import = imports_find(p->modules->current->imports, previous->name.sv);
         if (previous_import && !p->formatter) {
-            error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
+            error_full(ERROR, token.pos, "Duplicate import of module '" SVFmt "'", SVArg(previous_import->as));
             fprintf(stderr, "\n");
             error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
@@ -710,21 +710,21 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
         }
 
         import->token = token;
-        import->package = previous;
-        imports_push(&p->packages->current->imports, import);
+        import->module = previous;
+        imports_push(&p->modules->current->imports, import);
         return;
     }
 
-    Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
-    package->path = path_sv;
+    Module *module = arena_alloc(p->arena, sizeof(*p->modules->current));
+    module->path = path_sv;
 
-    Package *packages_current_save = p->packages->current;
-    packages_push(p->packages, package);
+    Module *modules_current_save = p->modules->current;
+    modules_push(p->modules, module);
 
     if (!p->formatter) {
         ParseDirError pde = parse_dir(p, path, pds);
         if (pde == PDE_FAILED) {
-            error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            error_full(ERROR, token.pos, "Could not import module '%s'", path);
             exit(1);
         }
 
@@ -734,34 +734,34 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
         }
     }
 
-    if (sv_match(package->name.sv, "main")) {
-        error_full(ERROR, token.pos, "Package 'main' is a separate program and cannot be imported");
+    if (sv_match(module->name.sv, "main")) {
+        error_full(ERROR, token.pos, "Module 'main' is a separate program and cannot be imported");
         exit(1);
     }
 
     Import *import = arena_alloc(p->arena, sizeof(*import));
     import->as = as;
     import->token = token;
-    import->package = package;
+    import->module = module;
 
     if (import->as.count) {
         import->aliased = true;
     } else {
-        import->as = package->name.sv;
+        import->as = module->name.sv;
     }
 
-    p->packages->current = packages_current_save;
+    p->modules->current = modules_current_save;
     if (!p->formatter) {
-        Import *previous_import = imports_find(p->packages->current->imports, import->as);
+        Import *previous_import = imports_find(p->modules->current->imports, import->as);
         if (previous_import) {
-            error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
+            error_full(ERROR, token.pos, "Duplicate import of module '" SVFmt "'", SVArg(import->as));
             fprintf(stderr, "\n");
             error_full(NOTE, previous_import->token.pos, "Imported here");
             exit(1);
         }
     }
 
-    imports_push(&p->packages->current->imports, import);
+    imports_push(&p->modules->current->imports, import);
 }
 
 static_assert(COUNT_TOKENS == 69, "");
@@ -918,7 +918,7 @@ static Node *parse_stmt(Parser *p) {
             var->kind = NODE_VAR_GLOBAL;
         }
 
-        var->package = p->packages->current;
+        var->module = p->modules->current;
         node = (Node *) var;
     } break;
 
@@ -939,7 +939,7 @@ static Node *parse_stmt(Parser *p) {
 
         type->local = p->local;
         type->definition = parse_type(p);
-        type->package = p->packages->current;
+        type->module = p->modules->current;
         node = (Node *) type;
     } break;
 
@@ -953,7 +953,7 @@ static Node *parse_stmt(Parser *p) {
 
         constt->expr = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED | PF_CONSTANT_EXPR);
         constt->local = p->local;
-        constt->package = p->packages->current;
+        constt->module = p->modules->current;
         node = (Node *) constt;
     } break;
 
@@ -994,7 +994,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        structt->package = p->packages->current;
+        structt->module = p->modules->current;
         node = (Node *) structt;
     } break;
 
@@ -1236,7 +1236,7 @@ static Node *parse_fn(Parser *p, Token token) {
 
     p->local = local_save;
     p->in_loop = in_loop_save;
-    fn->package = p->packages->current;
+    fn->module = p->modules->current;
     return (Node *) fn;
 }
 
@@ -1250,36 +1250,36 @@ bool parse_file(Parser *p, const char *path) {
         p->lexer.comments = &p->formatter->comments;
     }
 
-    lexer_expect(&p->lexer, TOKEN_PACKAGE);
+    lexer_expect(&p->lexer, TOKEN_MODULE);
     const Token name = lexer_expect(&p->lexer, TOKEN_IDENT);
 
-    Package *package = p->packages->current;
-    if (!sv_eq(name.sv, package->name.sv)) {
-        if (!p->formatter && package->name.sv.count) {
+    Module *module = p->modules->current;
+    if (!sv_eq(name.sv, module->name.sv)) {
+        if (!p->formatter && module->name.sv.count) {
             error_full(
                 ERROR,
                 name.pos,
-                "Expected package '" SVFmt "', got '" SVFmt "'",
-                SVArg(package->name.sv),
+                "Expected module '" SVFmt "', got '" SVFmt "'",
+                SVArg(module->name.sv),
                 SVArg(name.sv));
 
-            if (package->name.pos.path) {
+            if (module->name.pos.path) {
                 fprintf(stderr, "\n");
-                error_full(NOTE, package->name.pos, "Package first set here");
+                error_full(NOTE, module->name.pos, "Module first set here");
             }
 
             exit(1);
         }
 
-        package->name = name;
+        module->name = name;
     }
 
-    if (!package->name.pos.path) {
-        package->name.pos = name.pos;
+    if (!module->name.pos.path) {
+        module->name.pos = name.pos;
     }
 
     Nodes   nodes = {0};
-    Import *imports = p->packages->current->imports.tail;
+    Import *imports = p->modules->current->imports.tail;
 
     while (true) {
         consume(p, TOKEN_EOL);
@@ -1292,7 +1292,7 @@ bool parse_file(Parser *p, const char *path) {
 
     if (p->formatter) {
         if (!imports) {
-            imports = p->packages->current->imports.head;
+            imports = p->modules->current->imports.head;
         }
 
         if (!format_file(p->formatter, path, name, imports, nodes.head)) {
@@ -1300,7 +1300,7 @@ bool parse_file(Parser *p, const char *path) {
             error_standalone(ERROR, "Could not format file '%s'", path);
         }
     } else {
-        nodes_append(&package->nodes, &nodes);
+        nodes_append(&module->nodes, &nodes);
     }
     return true;
 }
@@ -1320,7 +1320,7 @@ ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
             return PDE_FAILED;
         }
     }
-    p->packages->current->real_path = path;
+    p->modules->current->real_path = path;
 
     bool empty = true;
 

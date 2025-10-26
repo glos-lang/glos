@@ -4,8 +4,8 @@
 #include "formatter.h"
 
 typedef struct {
-    Arena    *arena;
-    Packages *packages;
+    Arena   *arena;
+    Modules *modules;
 
     const char *cwd;
     const char *std;

@@ -1,4 +1,4 @@
-package main
+mod main
 
 import "io"
 

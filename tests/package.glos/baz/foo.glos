@@ -1,4 +1,4 @@
-package baz
+mod baz
 
 pub fn foo() {
     print 1337

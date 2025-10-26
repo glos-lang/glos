@@ -1369,10 +1369,10 @@ static void compile_stmt(Compiler *c, Node *n) {
 }
 
 static NodeFn *get_main(Context *c) {
-    Package *package = packages_find_by_name(*c->packages, sv_from_cstr("main"));
-    assert(package);
+    Module *module = modules_find_by_name(*c->modules, sv_from_cstr("main"));
+    assert(module);
 
-    Node *main = scope_find(package->globals, sv_from_cstr("main"), false);
+    Node *main = scope_find(module->globals, sv_from_cstr("main"), false);
     if (!main) {
         write_message(stderr, MESSAGE_ATTRIB_BOLD | MESSAGE_FG_RED, "ERROR: ");
         write_message(stderr, 0, "Function 'main' is not defined\n\n");
@@ -1440,7 +1440,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
     assert(c->context.arena);
 
     NodeFn *main = get_main(&c->context);
-    for (Package *p = c->context.packages->head; p; p = p->next) {
+    for (Module *p = c->context.modules->head; p; p = p->next) {
         for (size_t i = 0; i < p->globals.count; i++) {
             compile_stmt(c, p->globals.data[i]);
         }
@@ -1450,7 +1450,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
     c->fn = qbe_fn_new(c->qbe, qbe_sv_from_cstr("main"), qbe_type_basic(QBE_TYPE_I32));
     qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr("glos_start_call_main.h"), 1);
 
-    for (Package *p = c->context.packages->head; p; p = p->next) {
+    for (Module *p = c->context.modules->head; p; p = p->next) {
         for (size_t i = 0; i < p->globals.count; i++) {
             compile_global_var_assignment(c, p->globals.data[i]);
         }

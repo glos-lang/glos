@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn bar() i64 {
     return 69

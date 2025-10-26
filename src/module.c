@@ -1,4 +1,4 @@
-#include "package.h"
+#include "module.h"
 
 void imports_push(Imports *is, Import *i) {
     if (!i) {
@@ -14,13 +14,13 @@ void imports_push(Imports *is, Import *i) {
     is->tail = i;
 }
 
-void packages_free(Packages *ps) {
-    for (Package *p = ps->head; p; p = p->next) {
+void modules_free(Modules *ps) {
+    for (Module *p = ps->head; p; p = p->next) {
         da_free(&p->globals);
     }
 }
 
-void packages_push(Packages *ps, Package *p) {
+void modules_push(Modules *ps, Module *p) {
     if (!p) {
         return;
     }
@@ -35,8 +35,8 @@ void packages_push(Packages *ps, Package *p) {
     ps->current = p;
 }
 
-Package *packages_find_by_name(Packages ps, SV name) {
-    for (Package *it = ps.head; it; it = it->next) {
+Module *modules_find_by_name(Modules ps, SV name) {
+    for (Module *it = ps.head; it; it = it->next) {
         if (sv_eq(it->name.sv, name)) {
             return it;
         }
@@ -45,8 +45,8 @@ Package *packages_find_by_name(Packages ps, SV name) {
     return NULL;
 }
 
-Package *packages_find_by_path(Packages ps, SV path) {
-    for (Package *it = ps.head; it; it = it->next) {
+Module *modules_find_by_path(Modules ps, SV path) {
+    for (Module *it = ps.head; it; it = it->next) {
         if (sv_eq(it->path, path)) {
             return it;
         }

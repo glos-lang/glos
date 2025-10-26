@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn main() {
     [1]i64 {69, 420}

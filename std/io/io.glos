@@ -1,4 +1,4 @@
-package io
+mod io
 
 pub fn write(s []u8) {
     extern {

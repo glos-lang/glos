@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn println(s []u8) {
     extern {

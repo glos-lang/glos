@@ -205,13 +205,13 @@ static void error_undefined(const Node *n, const char *label) {
 }
 
 static void error_use_of_private(const Token *token, const Node *defined, const char *label) {
-    error_full(ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its package", label, SVArg(token->sv));
+    error_full(ERROR, token->pos, "Cannot use private %s '" SVFmt "' outside its module", label, SVArg(token->sv));
     fprintf(stderr, "\n");
     error_full(NOTE, defined->token.pos, "Defined here");
     exit(1);
 }
 
-static Node *ident_find(const Context *c, Package *package, const Token *token, bool is_type, bool is_imported) {
+static Node *ident_find(const Context *c, Module *module, const Token *token, bool is_type, bool is_imported) {
     if (c->fn.fn) {
         Node *n = context_fn_find(c->fn, c->locals, token->sv, is_type);
         if (n) {
@@ -219,7 +219,7 @@ static Node *ident_find(const Context *c, Package *package, const Token *token, 
         }
     }
 
-    Node *global = scope_find(package->globals, token->sv, is_type);
+    Node *global = scope_find(module->globals, token->sv, is_type);
     if (global && is_imported) {
         bool        is_public = false;
         const char *label = NULL;
@@ -283,7 +283,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
-static void resolve_ident_package(Node *n) {
+static void resolve_ident_module(Node *n) {
     assert(n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT);
 
     NodeAtom *atom = (NodeAtom *) n;
@@ -292,14 +292,14 @@ static void resolve_ident_package(Node *n) {
     }
     atom->scope_resolved = true;
 
-    for (Import *i = atom->package->imports.head; i; i = i->next) {
+    for (Import *i = atom->module->imports.head; i; i = i->next) {
         if (sv_eq(i->as, atom->scope.sv)) {
-            atom->package = i->package;
+            atom->module = i->module;
             return;
         }
     }
 
-    error_full(ERROR, atom->scope.pos, "Package '" SVFmt "' not imported", SVArg(atom->scope.sv));
+    error_full(ERROR, atom->scope.pos, "Module '" SVFmt "' not imported", SVArg(atom->scope.sv));
     exit(1);
 }
 
@@ -336,9 +336,9 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_int(n->token.as.integer);
 
         case TOKEN_IDENT:
-            resolve_ident_package(n);
+            resolve_ident_module(n);
 
-            atom->definition = ident_find(&c->context, atom->package, &n->token, false, atom->scope_resolved);
+            atom->definition = ident_find(&c->context, atom->module, &n->token, false, atom->scope_resolved);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -780,7 +780,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
 
         NodeStruct *to = arena_alloc(c->context.arena, sizeof(NodeStruct));
         to->node = from->node;
-        to->package = from->package;
+        to->module = from->module;
         to->node.type.spec_node = (Node *) to;
 
         const StructInstanace instance = {
@@ -855,7 +855,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
-            resolve_ident_package(n);
+            resolve_ident_module(n);
 
             if (extra_generic_context) {
                 for (Node *it = extra_generic_context; it; it = it->next) {
@@ -867,7 +867,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
             }
 
             NodeAtom *atom = (NodeAtom *) n;
-            Node     *definition = ident_find(&c->context, atom->package, &n->token, true, atom->scope_resolved);
+            Node     *definition = ident_find(&c->context, atom->module, &n->token, true, atom->scope_resolved);
             if (!definition) {
                 error_undefined(n, "type");
             }
@@ -1180,10 +1180,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             break;
 
         case TOKEN_IDENT: {
-            resolve_ident_package(n);
+            resolve_ident_module(n);
 
             NodeAtom *atom = (NodeAtom *) n;
-            atom->definition = ident_find(&c->context, atom->package, &n->token, false, atom->scope_resolved);
+            atom->definition = ident_find(&c->context, atom->module, &n->token, false, atom->scope_resolved);
             if (!atom->definition) {
                 error_undefined(n, "identifier");
             }
@@ -1634,7 +1634,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             member->is_method = true;
 
             NodeFn *definition = (NodeFn *) member->definition;
-            if (definition->package != member->package && !definition->is_public) {
+            if (definition->module != member->module && !definition->is_public) {
                 error_use_of_private(&n->token, member->definition, "method");
             }
 
@@ -2255,60 +2255,60 @@ static void define_toplevel(Node *n) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
         if (!fn->is_method) {
-            Package *package = fn->package;
+            Module *module = fn->module;
 
-            const Node *previous = scope_find(package->globals, n->token.sv, false);
+            const Node *previous = scope_find(module->globals, n->token.sv, false);
             if (previous) {
                 error_redefinition(n, previous, "identifier");
             }
 
-            da_push(&package->globals, n);
+            da_push(&module->globals, n);
         }
     } break;
 
     case NODE_VAR: {
-        Package *package = ((NodeVar *) n)->package;
+        Module *module = ((NodeVar *) n)->module;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        const Node *previous = scope_find(module->globals, n->token.sv, false);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
 
-        da_push(&package->globals, n);
+        da_push(&module->globals, n);
     } break;
 
     case NODE_CONST: {
-        Package *package = ((NodeConst *) n)->package;
+        Module *module = ((NodeConst *) n)->module;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, false);
+        const Node *previous = scope_find(module->globals, n->token.sv, false);
         if (previous) {
             error_redefinition(n, previous, "identifier");
         }
 
-        da_push(&package->globals, n);
+        da_push(&module->globals, n);
     } break;
 
     case NODE_TYPE: {
-        Package *package = ((NodeType *) n)->package;
+        Module *module = ((NodeType *) n)->module;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, true);
+        const Node *previous = scope_find(module->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
-        da_push(&package->globals, n);
+        da_push(&module->globals, n);
     } break;
 
     case NODE_STRUCT: {
-        Package *package = ((NodeStruct *) n)->package;
+        Module *module = ((NodeStruct *) n)->module;
 
-        const Node *previous = scope_find(package->globals, n->token.sv, true);
+        const Node *previous = scope_find(module->globals, n->token.sv, true);
         if (previous) {
             error_redefinition(n, previous, "type");
         }
 
         n->type = (Type) {.kind = TYPE_STRUCT, .spec_node = n};
-        da_push(&package->globals, n);
+        da_push(&module->globals, n);
     } break;
 
     case NODE_EXTERN: {
@@ -2463,7 +2463,7 @@ static void check_fn(Compiler *c, Node *n) {
     context_fn_end(&c->context, context_fn_save);
 }
 
-void check_packages(Compiler *c, Packages ps) {
+void check_modules(Compiler *c, Modules ps) {
     assert(c->context.arena);
 
     const Type u8_type = {.kind = TYPE_U8};
@@ -2472,21 +2472,21 @@ void check_packages(Compiler *c, Packages ps) {
         .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
     };
 
-    for (Package *p = ps.head; p; p = p->next) {
+    for (Module *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             define_toplevel(it);
         }
     }
 
     c->context.checking_toplevels = true;
-    for (Package *p = ps.head; p; p = p->next) {
+    for (Module *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             check_toplevel(c, it);
         }
     }
     c->context.checking_toplevels = false;
 
-    for (Package *p = ps.head; p; p = p->next) {
+    for (Module *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             if (it->kind == NODE_FN) {
                 check_stmt(c, it);

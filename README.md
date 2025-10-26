@@ -10,8 +10,8 @@ $ make
 
 ## Examples
 ### Hello, world!
-```go
-package main
+```rust
+mod main
 
 import "io"
 
@@ -21,8 +21,8 @@ fn main() {
 ```
 
 ### Dynamic Arrays
-```go
-package main
+```rust
+mod main
 
 fn main() {
 	var xs [..]i64

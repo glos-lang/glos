@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn main() {
     fn foo() {

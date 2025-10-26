@@ -97,18 +97,18 @@ static const char *get_std_path(Arena *a) {
 }
 
 int main(int argc, char **argv) {
-    int      result = 0;
-    Arena    arena = {0};
-    Packages packages = {0};
+    int     result = 0;
+    Arena   arena = {0};
+    Modules modules = {0};
 
     Parser parser = {
         .arena = &arena,
-        .packages = &packages,
+        .modules = &modules,
     };
 
     Compiler compiler = {
         .context.arena = &arena,
-        .context.packages = &packages,
+        .context.modules = &modules,
     };
 
     bool        run = false;
@@ -188,11 +188,11 @@ int main(int argc, char **argv) {
         input = ".";
     }
 
-    Package package = {
+    Module module = {
         .path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
-    packages_push(&packages, &package);
+    modules_push(&modules, &module);
 
     parser_load_builtin(&parser);
 
@@ -203,14 +203,14 @@ int main(int argc, char **argv) {
             exit(1);
         }
     } else {
-        package.is_file = true;
+        module.is_file = true;
         if (!parse_file(&parser, input)) {
             error_standalone(ERROR, "Could not read '%s'", input);
             exit(1);
         }
     }
 
-    for (Package *it = packages.head; it; it = it->next) {
+    for (Module *it = modules.head; it; it = it->next) {
         if (!it->is_file) {
             da_push(&compiler.link_flags, "-L");
             da_push(&compiler.link_flags, it->real_path);
@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
     }
 
     compiler_init(&compiler);
-    check_packages(&compiler, packages);
+    check_modules(&compiler, modules);
 
     da_push_many(&compiler.link_flags, link_flags.data, link_flags.count);
     da_free(&link_flags);
@@ -277,7 +277,7 @@ int main(int argc, char **argv) {
 
 defer:
     parser_free(&parser);
-    packages_free(&packages);
+    modules_free(&modules);
     formatter_free(&formatter);
     arena_free(&arena);
     da_free(&cmd);

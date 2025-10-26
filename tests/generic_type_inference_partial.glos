@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn foo<A, B>(b B) {
 	print sizeof<A>

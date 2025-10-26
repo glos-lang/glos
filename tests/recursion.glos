@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn factorial(n i64) i64 {
     if n < 2 {

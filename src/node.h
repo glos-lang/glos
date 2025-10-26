@@ -8,7 +8,7 @@ typedef struct Node       Node;
 typedef struct NodeFn     NodeFn;
 typedef struct NodeStruct NodeStruct;
 
-typedef struct Package Package;
+typedef struct Module Module;
 
 typedef struct {
     Node *head;
@@ -182,7 +182,7 @@ typedef struct {
     bool   generics_incomplete;
     bool   will_be_called;
 
-    Package *package;
+    Module *module;
 } NodeAtom;
 
 typedef struct {
@@ -235,7 +235,7 @@ typedef struct {
     bool   generics_incomplete;
     bool   will_be_called;
 
-    Package *package;
+    Module *module;
 
     QbeNode *lhs_qbe;
 } NodeMember;
@@ -312,7 +312,7 @@ struct NodeFn {
     bool    is_method;
     NodeFn *next_method;
 
-    Package    *package;
+    Module     *module;
     CheckStatus check_status;
 
     QbeNode *qbe;
@@ -340,7 +340,7 @@ typedef struct {
     bool is_static;
     bool is_public;
 
-    Package    *package;
+    Module     *module;
     NodeVarKind kind;
     CheckStatus check_status;
 
@@ -357,7 +357,7 @@ typedef struct {
     Nodes  generics;
     size_t generics_count;
 
-    Package    *package;
+    Module     *module;
     CheckStatus check_status;
 } NodeType;
 
@@ -369,7 +369,7 @@ typedef struct {
     bool  local;
     bool  is_public;
 
-    Package    *package;
+    Module     *module;
     ConstValue  value;
     CheckStatus check_status;
 
@@ -393,7 +393,7 @@ struct NodeStruct {
     size_t         generics_count;
     Instantiations instantiations;
 
-    Package    *package;
+    Module     *module;
     CheckStatus check_status;
 
     QbeStruct *qbe;

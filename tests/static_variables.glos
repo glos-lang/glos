@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn iota() i64 {
     static var n i64

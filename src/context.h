@@ -1,7 +1,7 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#include "package.h"
+#include "module.h"
 
 Node *scope_find(Scope s, SV name, bool is_type);
 
@@ -12,8 +12,8 @@ typedef struct {
 
 // TODO: Remove this artificial construct and spill into Compiler
 typedef struct {
-    Arena    *arena;
-    Packages *packages;
+    Arena   *arena;
+    Modules *modules;
 
     ContextFn fn;
     Scope     locals;

@@ -1,4 +1,4 @@
-package main
+mod main
 
 struct Vec2 {
     v Vec2

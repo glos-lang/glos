@@ -1,4 +1,4 @@
-package main
+mod main
 
 var a = <&i64> 0
 var b = <&i64> <u64> 0

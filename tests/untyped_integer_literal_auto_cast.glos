@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn a(x i8)  { print x }
 fn b(x i16) { print x }

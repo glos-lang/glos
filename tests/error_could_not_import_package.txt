@@ -1,8 +1,8 @@
 EXIT 1
 STDOUT 0
 
-STDERR 118
-error_could_not_import_package.glos:3:8: ERROR: Could not import package 'foo'
+STDERR 117
+error_could_not_import_package.glos:3:8: ERROR: Could not import module 'foo'
 
     3 | import "foo"
       |        ^

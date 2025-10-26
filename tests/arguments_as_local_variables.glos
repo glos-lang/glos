@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn foo(x i64) {
     print x

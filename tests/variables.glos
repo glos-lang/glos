@@ -1,4 +1,4 @@
-package main
+mod main
 
 var first = 69
 var second i64 = 420

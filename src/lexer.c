@@ -294,8 +294,8 @@ Token lexer_next(Lexer *l) {
             token.kind = TOKEN_PUB;
         } else if (sv_match(token.sv, "import")) {
             token.kind = TOKEN_IMPORT;
-        } else if (sv_match(token.sv, "package")) {
-            token.kind = TOKEN_PACKAGE;
+        } else if (sv_match(token.sv, "mod")) {
+            token.kind = TOKEN_MODULE;
         } else if (sv_match(token.sv, "print")) {
             token.kind = TOKEN_PRINT;
         } else {

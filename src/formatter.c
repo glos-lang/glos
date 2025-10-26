@@ -922,7 +922,7 @@ void formatter_free(Formatter *f) {
     da_free(&f->comments);
 }
 
-bool format_file(Formatter *f, const char *path, Token package, Import *imports, Node *nodes) {
+bool format_file(Formatter *f, const char *path, Token module, Import *imports, Node *nodes) {
     const size_t start = f->sb.count;
 
     if (f->comments.count && f->comments.data[0].shebang) {
@@ -930,8 +930,8 @@ bool format_file(Formatter *f, const char *path, Token package, Import *imports,
         f->comments_synced++;
     }
 
-    format_sync_comments(f, &package.pos, true);
-    sb_sprintf(&f->sb, "package " SVFmt "\n", SVArg(package.sv));
+    format_sync_comments(f, &module.pos, true);
+    sb_sprintf(&f->sb, "mod " SVFmt "\n", SVArg(module.sv));
 
     if (imports) {
         sb_sprintf(&f->sb, "\nimport ");

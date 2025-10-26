@@ -2,7 +2,7 @@
 #define FORMATTER_H
 
 #include "lexer.h"
-#include "package.h"
+#include "module.h"
 
 typedef struct {
     SB sb;
@@ -15,6 +15,6 @@ typedef struct {
 
 void formatter_free(Formatter *f);
 
-bool format_file(Formatter *f, const char *path, Token package, Import *imports, Node *nodes);
+bool format_file(Formatter *f, const char *path, Token module, Import *imports, Node *nodes);
 
 #endif // FORMATTER_H

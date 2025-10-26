@@ -1,4 +1,4 @@
-package main
+mod main
 
 var x i64
 var x i64

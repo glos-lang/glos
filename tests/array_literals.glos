@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn print_i64s(xs []i64) {
     for var i = 0; i < len(xs); i += 1 {

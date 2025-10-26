@@ -1,4 +1,4 @@
-package main
+mod main
 
 fn print_i64(x i64)   { print x }
 fn print_bool(x bool) { print x }

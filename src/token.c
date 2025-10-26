@@ -201,8 +201,8 @@ const char *token_kind_to_cstr(TokenKind kind) {
     case TOKEN_IMPORT:
         return "'import'";
 
-    case TOKEN_PACKAGE:
-        return "'package'";
+    case TOKEN_MODULE:
+        return "'module'";
 
     case TOKEN_LINK:
         return "'#link'";

@@ -2,9 +2,9 @@
 #define CHECKER_H
 
 #include "compiler.h"
-#include "package.h"
+#include "module.h"
 
 void check_int_limit(Node *n, size_t value);
-void check_packages(Compiler *c, Packages ps);
+void check_modules(Compiler *c, Modules ps);
 
 #endif // CHECKER_H
