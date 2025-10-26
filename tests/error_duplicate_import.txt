@@ -1,14 +1,14 @@
 EXIT 1
 STDOUT 0
 
-STDERR 225
-error_duplicate_import.glos/main.glos:4:8: ERROR: Duplicate import of module 'foo'
+STDERR 213
+error_duplicate_import.glos/main.glos:4:5: ERROR: Duplicate import of module 'foo'
 
-    4 | import "foo"
-      |        ^
+    4 | use "foo"
+      |     ^
 
-error_duplicate_import.glos/main.glos:3:8: NOTE: Imported here
+error_duplicate_import.glos/main.glos:3:5: NOTE: Imported here
 
-    3 | import "foo"
-      |        ^
+    3 | use "foo"
+      |     ^
 

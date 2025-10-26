@@ -934,7 +934,7 @@ bool format_file(Formatter *f, const char *path, Token module, Import *imports, 
     sb_sprintf(&f->sb, "mod " SVFmt "\n", SVArg(module.sv));
 
     if (imports) {
-        sb_sprintf(&f->sb, "\nimport ");
+        sb_sprintf(&f->sb, "\nuse ");
         if (imports->next) {
             imports = sort_imports(imports);
 

@@ -1,8 +1,8 @@
 mod main
 
-import "bar"
-import "baz"
-import lmao "lol"
+use "bar"
+use "baz"
+use lmao "lol"
 
 fn main() {
     foo()

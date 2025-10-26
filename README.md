@@ -13,7 +13,7 @@ $ make
 ```rust
 mod main
 
-import "io"
+use "io"
 
 fn main() {
     io::write("Hello, world!\n")

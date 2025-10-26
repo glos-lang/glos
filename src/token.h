@@ -92,7 +92,7 @@ typedef enum {
     TOKEN_STATIC,
 
     TOKEN_PUB,
-    TOKEN_IMPORT,
+    TOKEN_USE,
     TOKEN_MODULE,
 
     TOKEN_LINK,

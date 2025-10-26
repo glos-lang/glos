@@ -1,4 +1,4 @@
 mod main
 
-import "foo"
-import "foo"
+use "foo"
+use "foo"

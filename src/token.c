@@ -198,8 +198,8 @@ const char *token_kind_to_cstr(TokenKind kind) {
     case TOKEN_PUB:
         return "'pub'";
 
-    case TOKEN_IMPORT:
-        return "'import'";
+    case TOKEN_USE:
+        return "'use'";
 
     case TOKEN_MODULE:
         return "'module'";

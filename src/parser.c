@@ -1119,7 +1119,7 @@ static Node *parse_stmt(Parser *p) {
         }
     } break;
 
-    case TOKEN_IMPORT: {
+    case TOKEN_USE: {
         local_assert(p, token, false);
 
         token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT, TOKEN_LPAREN);

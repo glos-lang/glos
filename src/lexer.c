@@ -292,8 +292,8 @@ Token lexer_next(Lexer *l) {
             token.kind = TOKEN_STATIC;
         } else if (sv_match(token.sv, "pub")) {
             token.kind = TOKEN_PUB;
-        } else if (sv_match(token.sv, "import")) {
-            token.kind = TOKEN_IMPORT;
+        } else if (sv_match(token.sv, "use")) {
+            token.kind = TOKEN_USE;
         } else if (sv_match(token.sv, "mod")) {
             token.kind = TOKEN_MODULE;
         } else if (sv_match(token.sv, "print")) {
