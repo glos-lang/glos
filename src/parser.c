@@ -112,6 +112,55 @@ static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
     } while (token.kind != TOKEN_GT);
 }
 
+static NodeFn *parse_fn_signature(Parser *p, Token token) {
+    const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
+
+    NodeFn *fn = node_alloc(p, NODE_FN, token);
+    while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+        const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
+
+        NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
+
+        arg->node.token = lexer_peek(&p->lexer);
+        if (arg->node.token.kind == TOKEN_IDENT) {
+            lexer_unbuffer(&p->lexer);
+
+            token = lexer_peek(&p->lexer);
+            if (token.kind == TOKEN_COMMA || token.kind == TOKEN_RPAREN) {
+                arg->type = node_alloc(p, NODE_ATOM, arg->node.token);
+                ((NodeAtom *) arg->type)->package = p->packages->current;
+
+                arg->node.token = (Token) {0};
+            } else {
+                arg->type = parse_type(p);
+            }
+        } else {
+            arg->type = parse_type(p);
+            arg->node.token = (Token) {0};
+        }
+
+        nodes_push(&fn->args, (Node *) arg);
+        fn->args.tail->fmt_newline = fmt_newline;
+        fn->arity++;
+
+        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
+        if (token.kind != TOKEN_COMMA) {
+            break;
+        }
+    }
+
+    if (p->lexer.pos.row != starting_row) {
+        fn->fmt_multiline = true;
+    }
+
+    token = lexer_peek(&p->lexer);
+    if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
+        fn->ret = parse_type(p);
+    }
+
+    return fn;
+}
+
 static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
@@ -178,37 +227,9 @@ static Node *parse_type(Parser *p) {
         node = (Node *) unary;
     } break;
 
-    case TOKEN_FN: {
-        const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
-
-        NodeFn *fn = node_alloc(p, NODE_FN, token);
-        while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
-            const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
-
-            NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
-            arg->type = parse_type(p);
-
-            nodes_push(&fn->args, (Node *) arg);
-            fn->args.tail->fmt_newline = fmt_newline;
-            fn->arity++;
-
-            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
-            if (token.kind != TOKEN_COMMA) {
-                break;
-            }
-        }
-
-        if (p->lexer.pos.row != starting_row) {
-            fn->fmt_multiline = true;
-        }
-
-        token = lexer_peek(&p->lexer);
-        if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
-            fn->ret = parse_type(p);
-        }
-
-        node = (Node *) fn;
-    } break;
+    case TOKEN_FN:
+        node = (Node *) parse_fn_signature(p, token);
+        break;
 
     default:
         error_unexpected(token);
@@ -226,7 +247,7 @@ static bool node_is_compound_literal_type(Node *n) {
     return false;
 }
 
-static Node *parse_fn(Parser *p, Token name, bool dont_parse_body);
+static Node *parse_fn(Parser *p, Token name);
 
 static_assert(COUNT_NODES == 24, "");
 static void ensure_const_expr(Node *n) {
@@ -516,7 +537,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             exit(1);
         }
 
-        node = parse_fn(p, token, false);
+        node = parse_fn(p, token);
         break;
 
     default:
@@ -885,7 +906,7 @@ static Node *parse_stmt(Parser *p) {
             self->type = parse_type(p);
 
             lexer_expect(&p->lexer, TOKEN_RPAREN);
-            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT), false);
+            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
 
             NodeFn *fn = (NodeFn *) node;
             self->node.next = fn->args.head;
@@ -893,7 +914,7 @@ static Node *parse_stmt(Parser *p) {
             fn->arity++;
             fn->is_method = true;
         } else {
-            node = parse_fn(p, token, false);
+            node = parse_fn(p, token);
         }
     } break;
 
@@ -969,7 +990,10 @@ static Node *parse_stmt(Parser *p) {
 
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            NodeFn *fn = (NodeFn *) parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT), true);
+            NodeFn *fn = parse_fn_signature(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+            if (trait->fns.head) {
+                fn->node.fmt_newline = fn->node.token.newlines > 1;
+            }
 
             NodeVar *self = node_alloc(p, NODE_VAR, (Token) {.kind = TOKEN_IDENT});
             self->type = (Node *) self_type;
@@ -1206,7 +1230,7 @@ static Node *parse_stmt(Parser *p) {
     return node;
 }
 
-static Node *parse_fn(Parser *p, Token token, bool dont_parse_body) {
+static Node *parse_fn(Parser *p, Token token) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
 
@@ -1264,7 +1288,7 @@ static Node *parse_fn(Parser *p, Token token, bool dont_parse_body) {
         fn->ret = parse_type(p);
     }
 
-    if (!p->in_extern && !dont_parse_body) {
+    if (!p->in_extern) {
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
         fn->body = parse_stmt(p);
     }
@@ -1383,8 +1407,10 @@ ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
 }
 
 void parser_load_builtin(Parser *p) {
-    Token builtin = {0};
-    builtin.sv = sv_from_cstr("\"builtin\"");
-    builtin.as.integer = strlen("builtin");
-    do_import(p, builtin, (SV) {0}, PDS_ONLY);
+    if (!p->formatter) {
+        Token builtin = {0};
+        builtin.sv = sv_from_cstr("\"builtin\"");
+        builtin.as.integer = strlen("builtin");
+        do_import(p, builtin, (SV) {0}, PDS_ONLY);
+    }
 }
