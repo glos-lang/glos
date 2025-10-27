@@ -1190,8 +1190,17 @@ static void pretty_print_method_signature(NodeFn *fn, Type self) {
 }
 
 static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_type) {
+    if (type_eq(n->type, trait_type)) {
+        // It has already been turned into a trait, no need to do it again
+        return NULL;
+    }
+
     assert(trait_type.spec_node);
     NodeTrait *trait = (NodeTrait *) trait_type.spec_node;
+
+    if (n->type.kind == TYPE_INT) {
+        n->type.kind = TYPE_I64;
+    }
 
     const Type n_type_base = type_remove_ref(n->type);
     for (TraitImpl *it = trait->impls.head; it; it = it->next) {
@@ -1544,7 +1553,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 check_expr(c, a, REF_NONE);
             }
 
-            if (e->type.kind == TYPE_TRAIT && !e->type.ref && !type_eq(a->type, e->type)) {
+            if (e->type.kind == TYPE_TRAIT && !e->type.ref) {
                 a->trait_impl = check_node_satisfies_trait(c, a, e->type);
             } else {
                 type_assert(c, a, e->type);
@@ -1615,8 +1624,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             cast->slice_lowering = true;
-        } else if (
-            cast->to->type.kind == TYPE_TRAIT && !cast->to->type.ref && !type_eq(cast->from->type, cast->to->type)) {
+        } else if (cast->to->type.kind == TYPE_TRAIT && !cast->to->type.ref) {
             cast->from->trait_impl = check_node_satisfies_trait(c, cast->from, cast->to->type);
         } else {
             const Type from = type_assert_scalar(cast->from);
