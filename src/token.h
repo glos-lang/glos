@@ -87,6 +87,7 @@ typedef enum {
     TOKEN_VAR,
     TOKEN_TYPE,
     TOKEN_CONST,
+    TOKEN_TRAIT,
     TOKEN_STRUCT,
     TOKEN_EXTERN,
     TOKEN_STATIC,

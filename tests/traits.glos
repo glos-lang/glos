@@ -1,0 +1,18 @@
+package main
+
+trait Show {
+	show()
+}
+
+fn (x &i64) show() {
+	print *x
+}
+
+fn display(s Show) {
+	s.show()
+}
+
+fn main() {
+	var x = 69
+	display(x)
+}

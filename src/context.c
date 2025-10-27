@@ -4,7 +4,7 @@ static Node *scope_find_impl(Scope s, SV name, bool is_type, size_t base) {
     assert(base <= s.count);
     for (size_t i = s.count; i > 0; i--) {
         Node *it = s.data[i - 1];
-        if (is_type != (it->kind == NODE_TYPE || it->kind == NODE_STRUCT)) {
+        if (is_type != (it->kind == NODE_TYPE || it->kind == NODE_TRAIT || it->kind == NODE_STRUCT)) {
             continue;
         }
 

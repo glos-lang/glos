@@ -20,7 +20,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -45,6 +45,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_VAR] = sizeof(NodeVar),
         [NODE_TYPE] = sizeof(NodeType),
         [NODE_CONST] = sizeof(NodeConst),
+        [NODE_TRAIT] = sizeof(NodeTrait),
         [NODE_FIELD] = sizeof(NodeField),
         [NODE_STRUCT] = sizeof(NodeStruct),
         [NODE_EXTERN] = sizeof(NodeExtern),
@@ -66,7 +67,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -111,7 +112,56 @@ static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
     } while (token.kind != TOKEN_GT);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static NodeFn *parse_fn_signature(Parser *p, Token token) {
+    const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
+
+    NodeFn *fn = node_alloc(p, NODE_FN, token);
+    while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+        const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
+
+        NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
+
+        arg->node.token = lexer_peek(&p->lexer);
+        if (arg->node.token.kind == TOKEN_IDENT) {
+            lexer_unbuffer(&p->lexer);
+
+            token = lexer_peek(&p->lexer);
+            if (token.kind == TOKEN_COMMA || token.kind == TOKEN_RPAREN) {
+                arg->type = node_alloc(p, NODE_ATOM, arg->node.token);
+                ((NodeAtom *) arg->type)->package = p->packages->current;
+
+                arg->node.token = (Token) {0};
+            } else {
+                arg->type = parse_type(p);
+            }
+        } else {
+            arg->type = parse_type(p);
+            arg->node.token = (Token) {0};
+        }
+
+        nodes_push(&fn->args, (Node *) arg);
+        fn->args.tail->fmt_newline = fmt_newline;
+        fn->arity++;
+
+        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
+        if (token.kind != TOKEN_COMMA) {
+            break;
+        }
+    }
+
+    if (p->lexer.pos.row != starting_row) {
+        fn->fmt_multiline = true;
+    }
+
+    token = lexer_peek(&p->lexer);
+    if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
+        fn->ret = parse_type(p);
+    }
+
+    return fn;
+}
+
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -177,37 +227,9 @@ static Node *parse_type(Parser *p) {
         node = (Node *) unary;
     } break;
 
-    case TOKEN_FN: {
-        const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
-
-        NodeFn *fn = node_alloc(p, NODE_FN, token);
-        while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
-            const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
-
-            NodeVar *arg = node_alloc(p, NODE_VAR, fn->node.token);
-            arg->type = parse_type(p);
-
-            nodes_push(&fn->args, (Node *) arg);
-            fn->args.tail->fmt_newline = fmt_newline;
-            fn->arity++;
-
-            token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
-            if (token.kind != TOKEN_COMMA) {
-                break;
-            }
-        }
-
-        if (p->lexer.pos.row != starting_row) {
-            fn->fmt_multiline = true;
-        }
-
-        token = lexer_peek(&p->lexer);
-        if (!token.newlines && token_kind_is_start_of_type(token.kind)) {
-            fn->ret = parse_type(p);
-        }
-
-        node = (Node *) fn;
-    } break;
+    case TOKEN_FN:
+        node = (Node *) parse_fn_signature(p, token);
+        break;
 
     default:
         error_unexpected(token);
@@ -227,7 +249,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -358,7 +380,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -764,7 +786,7 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -955,6 +977,43 @@ static Node *parse_stmt(Parser *p) {
         constt->local = p->local;
         constt->package = p->packages->current;
         node = (Node *) constt;
+    } break;
+
+    case TOKEN_TRAIT: {
+        local_assert(p, token, false);
+
+        token = lexer_expect(&p->lexer, TOKEN_IDENT);
+        NodeTrait *trait = node_alloc(p, NODE_TRAIT, token);
+
+        NodeAtom *self_type = node_alloc(p, NODE_ATOM, token);
+        self_type->package = p->packages->current;
+
+        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            NodeFn *fn = parse_fn_signature(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+            if (trait->fns.head) {
+                fn->node.fmt_newline = fn->node.token.newlines > 1;
+            }
+
+            NodeVar *self = node_alloc(p, NODE_VAR, (Token) {.kind = TOKEN_IDENT});
+            self->type = (Node *) self_type;
+            self->node.next = fn->args.head;
+            fn->args.head = (Node *) self;
+            fn->arity++;
+            fn->is_method = true;
+
+            nodes_push(&trait->fns, (Node *) fn);
+            fn->node.token.as.integer = trait->fns_count++;
+        }
+
+        if (!trait->fns.head) {
+            assert(p->lexer.buffer.kind == TOKEN_RBRACE);
+            error_full(ERROR, p->lexer.buffer.pos, "Empty traits are not allowed");
+            exit(1);
+        }
+
+        trait->package = p->packages->current;
+        node = (Node *) trait;
     } break;
 
     case TOKEN_STRUCT: {
@@ -1348,8 +1407,10 @@ ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
 }
 
 void parser_load_builtin(Parser *p) {
-    Token builtin = {0};
-    builtin.sv = sv_from_cstr("\"builtin\"");
-    builtin.as.integer = strlen("builtin");
-    do_import(p, builtin, (SV) {0}, PDS_ONLY);
+    if (!p->formatter) {
+        Token builtin = {0};
+        builtin.sv = sv_from_cstr("\"builtin\"");
+        builtin.as.integer = strlen("builtin");
+        do_import(p, builtin, (SV) {0}, PDS_ONLY);
+    }
 }

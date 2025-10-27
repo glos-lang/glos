@@ -120,7 +120,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -166,12 +166,17 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
 
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
-        sb_sprintf(&f->sb, "fn (");
+        sb_sprintf(&f->sb, SVFmt "(", SVArg(n->token.sv));
         if (fn->fmt_multiline) {
             f->depth++;
         }
 
         for (Node *it = fn->args.head; it; it = it->next) {
+            if (fn->is_method && it == fn->args.head) {
+                // This will only be true when formatting the signature of a trait method
+                continue;
+            }
+
             if (it->fmt_newline) {
                 sb_push(&f->sb, '\n');
             }
@@ -179,6 +184,10 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
             if (fn->fmt_multiline) {
                 sb_push(&f->sb, '\n');
                 format_indent(f);
+            }
+
+            if (it->token.sv.count) {
+                sb_sprintf(&f->sb, SVFmt " ", SVArg(it->token.sv));
             }
 
             format_type(f, ((NodeVar *) it)->type, false);
@@ -311,6 +320,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 }
 
+static_assert(COUNT_NODES == 24, "");
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
@@ -571,7 +581,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -760,6 +770,24 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         sb_sprintf(&f->sb, " = ");
         format_expr(f, constt->expr, true);
+    } break;
+
+    case NODE_TRAIT: {
+        NodeTrait *trait = (NodeTrait *) n;
+        sb_sprintf(&f->sb, "trait " SVFmt " {\n", SVArg(n->token.sv));
+        f->depth++;
+        for (Node *it = trait->fns.head; it; it = it->next) {
+            if (it->fmt_newline) {
+                sb_push(&f->sb, '\n');
+            }
+
+            format_indent(f);
+            format_type(f, it, false);
+            sb_push(&f->sb, '\n');
+        }
+        f->depth--;
+        format_indent(f);
+        sb_sprintf(&f->sb, "}");
     } break;
 
     case NODE_FIELD:
