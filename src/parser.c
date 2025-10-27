@@ -20,7 +20,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -45,6 +45,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_VAR] = sizeof(NodeVar),
         [NODE_TYPE] = sizeof(NodeType),
         [NODE_CONST] = sizeof(NodeConst),
+        [NODE_TRAIT] = sizeof(NodeTrait),
         [NODE_FIELD] = sizeof(NodeField),
         [NODE_STRUCT] = sizeof(NodeStruct),
         [NODE_EXTERN] = sizeof(NodeExtern),
@@ -66,7 +67,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -111,7 +112,7 @@ static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
     } while (token.kind != TOKEN_GT);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -225,9 +226,9 @@ static bool node_is_compound_literal_type(Node *n) {
     return false;
 }
 
-static Node *parse_fn(Parser *p, Token name);
+static Node *parse_fn(Parser *p, Token name, bool dont_parse_body);
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -358,7 +359,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -515,7 +516,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             exit(1);
         }
 
-        node = parse_fn(p, token);
+        node = parse_fn(p, token, false);
         break;
 
     default:
@@ -764,7 +765,7 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -884,7 +885,7 @@ static Node *parse_stmt(Parser *p) {
             self->type = parse_type(p);
 
             lexer_expect(&p->lexer, TOKEN_RPAREN);
-            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT), false);
 
             NodeFn *fn = (NodeFn *) node;
             self->node.next = fn->args.head;
@@ -892,7 +893,7 @@ static Node *parse_stmt(Parser *p) {
             fn->arity++;
             fn->is_method = true;
         } else {
-            node = parse_fn(p, token);
+            node = parse_fn(p, token, false);
         }
     } break;
 
@@ -955,6 +956,40 @@ static Node *parse_stmt(Parser *p) {
         constt->local = p->local;
         constt->package = p->packages->current;
         node = (Node *) constt;
+    } break;
+
+    case TOKEN_TRAIT: {
+        local_assert(p, token, false);
+
+        token = lexer_expect(&p->lexer, TOKEN_IDENT);
+        NodeTrait *trait = node_alloc(p, NODE_TRAIT, token);
+
+        NodeAtom *self_type = node_alloc(p, NODE_ATOM, token);
+        self_type->package = p->packages->current;
+
+        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            NodeFn *fn = (NodeFn *) parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT), true);
+
+            NodeVar *self = node_alloc(p, NODE_VAR, (Token) {.kind = TOKEN_IDENT});
+            self->type = (Node *) self_type;
+            self->node.next = fn->args.head;
+            fn->args.head = (Node *) self;
+            fn->arity++;
+            fn->is_method = true;
+
+            nodes_push(&trait->fns, (Node *) fn);
+            fn->node.token.as.integer = trait->fns_count++;
+        }
+
+        if (!trait->fns.head) {
+            assert(p->lexer.buffer.kind == TOKEN_RBRACE);
+            error_full(ERROR, p->lexer.buffer.pos, "Empty traits are not allowed");
+            exit(1);
+        }
+
+        trait->package = p->packages->current;
+        node = (Node *) trait;
     } break;
 
     case TOKEN_STRUCT: {
@@ -1171,7 +1206,7 @@ static Node *parse_stmt(Parser *p) {
     return node;
 }
 
-static Node *parse_fn(Parser *p, Token token) {
+static Node *parse_fn(Parser *p, Token token, bool dont_parse_body) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
 
@@ -1229,7 +1264,7 @@ static Node *parse_fn(Parser *p, Token token) {
         fn->ret = parse_type(p);
     }
 
-    if (!p->in_extern) {
+    if (!p->in_extern && !dont_parse_body) {
         lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
         fn->body = parse_stmt(p);
     }

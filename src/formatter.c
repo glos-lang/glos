@@ -120,7 +120,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -311,6 +311,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 }
 
+static_assert(COUNT_NODES == 24, "");
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
@@ -571,7 +572,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -760,6 +761,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         sb_sprintf(&f->sb, " = ");
         format_expr(f, constt->expr, true);
+    } break;
+
+    case NODE_TRAIT: {
+        todo();
     } break;
 
     case NODE_FIELD:

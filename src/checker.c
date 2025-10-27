@@ -4,7 +4,7 @@
 #include "message.h"
 
 void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 18, "");
+    static_assert(COUNT_TYPES == 19, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -25,7 +25,7 @@ void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -303,7 +303,7 @@ static void resolve_ident_package(Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
@@ -317,7 +317,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -384,7 +384,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -487,7 +487,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -550,7 +550,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -698,7 +698,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t generics_count) {
     switch (type.kind) {
     case TYPE_UNIT:
@@ -759,6 +759,9 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
         type.spec_type = arena_clone(c->context.arena, &base, sizeof(base));
         return type;
     }
+
+    case TYPE_TRAIT:
+        return type;
 
     case TYPE_STRUCT: {
         assert(type.spec_node);
@@ -825,8 +828,8 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_TYPES == 19, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
         return;
@@ -883,6 +886,10 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 n->type = definition->type;
                 definition_generics_count = type->generics_count;
             } break;
+
+            case NODE_TRAIT:
+                n->type = definition->type;
+                break;
 
             case NODE_STRUCT: {
                 NodeStruct *structt = (NodeStruct *) definition;
@@ -971,6 +978,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
     case NODE_FN: {
         NodeFn *spec = (NodeFn *) n;
+
         for (Node *it = spec->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
             check_type(c, arg->type, true, extra_generic_context);
@@ -997,7 +1005,7 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 static void infer_generic_type(Type actual, Type expected, Node *generics) {
     switch (expected.kind) {
     case TYPE_UNIT:
@@ -1041,6 +1049,10 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
             assert(expected.spec_type);
             infer_generic_type(*actual.spec_type, *expected.spec_type, generics);
         }
+        break;
+
+    case TYPE_TRAIT:
+        // Pass
         break;
 
     case TYPE_STRUCT:
@@ -1153,7 +1165,188 @@ static void check_generics(Compiler *c, Node *n, Node *generics_head, size_t gen
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static void pretty_print_method_signature(NodeFn *fn, Type self) {
+    write_message(stderr, MESSAGE_FG_RED, "fn ");
+    write_message(stderr, 0, "(");
+    write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(self));
+    write_message(stderr, 0, ") ");
+    write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(fn->node.token.sv));
+
+    assert(fn->args.head);
+    write_message(stderr, 0, "(");
+    for (Node *arg = fn->args.head->next; arg; arg = arg->next) {
+        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(arg->type));
+        if (arg->next) {
+            write_message(stderr, 0, ", ");
+        }
+    }
+    write_message(stderr, 0, ")");
+
+    if (fn->ret) {
+        write_message(stderr, 0, " ");
+        write_message(stderr, MESSAGE_FG_YELLOW, "&%s", type_to_cstr(fn->ret->type));
+    }
+    write_message(stderr, 0, " {}\n");
+}
+
+static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_type) {
+    Type n_type_base = type_remove_ref(n->type);
+
+    assert(trait_type.spec_node);
+    NodeTrait *trait = (NodeTrait *) trait_type.spec_node;
+
+    for (TraitImpl *it = trait->impls.head; it; it = it->next) {
+        if (type_eq(it->type, n_type_base)) {
+            return it;
+        }
+    }
+
+    // TODO: Generics not allowed
+    typedef enum {
+        NOT_DEFINED,
+        INCORRECT_SIGNATURE,
+        SELF_IS_NOT_POINTER,
+        SELF_IS_TOO_POINTER,
+    } ProblemKind;
+
+    typedef struct {
+        ProblemKind kind;
+        NodeFn     *actual;
+        NodeFn     *expected;
+    } Problem;
+
+    NodeFn **impl_fns = arena_alloc(c->context.arena, trait->fns_count * sizeof(NodeFn *));
+    size_t   impl_fns_count = 0;
+
+    Problem *problems = temp_alloc(trait->fns_count * sizeof(Problem));
+    size_t   problems_count = 0;
+
+    for (Node *it = trait->fns.head; it; it = it->next) {
+        Problem p = {
+            .expected = (NodeFn *) it,
+            .actual = methods_find(&c->context.methods, n->type, it->token.sv),
+        };
+        impl_fns[impl_fns_count++] = p.actual;
+
+        if (!p.actual) {
+            p.kind = NOT_DEFINED;
+            problems[problems_count++] = p;
+            continue;
+        }
+
+        assert(p.actual->is_method);
+        if (p.actual->arity != p.expected->arity) {
+            p.kind = INCORRECT_SIGNATURE;
+            problems[problems_count++] = p;
+            continue;
+        }
+
+        const Type actual_self_type = p.actual->args.head->type;
+        if (!actual_self_type.ref) {
+            p.kind = SELF_IS_NOT_POINTER;
+            problems[problems_count++] = p;
+            continue;
+        }
+
+        if (actual_self_type.ref > n->type.ref + 1) {
+            p.kind = SELF_IS_TOO_POINTER;
+            problems[problems_count++] = p;
+            continue;
+        }
+
+        if (!type_eq(node_fn_return_type(p.actual), node_fn_return_type(p.expected))) {
+            p.kind = INCORRECT_SIGNATURE;
+            problems[problems_count++] = p;
+            continue;
+        }
+
+        assert(p.actual->arity);
+        assert(p.expected->arity);
+        for (Node *a = p.actual->args.head->next, *e = p.expected->args.head->next; e && a; e = e->next, a = a->next) {
+            if (!type_eq(a->type, e->type)) {
+                p.kind = INCORRECT_SIGNATURE;
+                problems[problems_count++] = p;
+                break;
+            }
+        }
+    }
+
+    if (!problems_count) {
+        temp_reset(problems);
+
+        TraitImpl *impl = arena_alloc(c->context.arena, sizeof(TraitImpl));
+        impl->type = n_type_base;
+        impl->fns = impl_fns;
+        impl->fns_count = impl_fns_count;
+
+        if (trait->impls.tail) {
+            trait->impls.tail->next = impl;
+        } else {
+            trait->impls.head = impl;
+        }
+
+        trait->impls.tail = impl;
+        return impl;
+    }
+
+    error_full(
+        ERROR,
+        n->token.pos,
+        "Type '%s' does not satisfy trait '" SVFmt "'",
+        type_to_cstr(n->type),
+        SVArg(trait->node.token.sv));
+
+    n_type_base.ref++;
+    for (size_t i = 0; i < problems_count; i++) {
+        fprintf(stderr, "\n");
+
+        Problem p = problems[i];
+        switch (p.kind) {
+        case NOT_DEFINED:
+            error_begin(NOTE, p.expected->node.token.pos);
+            fprintf(stderr, "Method '" SVFmt "' is not defined\n\n", SVArg(p.expected->node.token.sv));
+            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
+            pretty_print_method_signature(p.expected, n_type_base);
+            break;
+
+        case INCORRECT_SIGNATURE:
+            error_begin(NOTE, p.actual->node.token.pos);
+            fprintf(stderr, "Method '" SVFmt "' has incorrect signature\n\n", SVArg(p.expected->node.token.sv));
+            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
+            pretty_print_method_signature(p.expected, n_type_base);
+            write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
+            pretty_print_method_signature(p.actual, p.actual->args.head->type);
+            break;
+
+        case SELF_IS_NOT_POINTER:
+            error_begin(NOTE, p.actual->node.token.pos);
+            fprintf(stderr, "Self must be a pointer\n\n");
+            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
+            pretty_print_method_signature(p.expected, n_type_base);
+            write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
+            pretty_print_method_signature(p.actual, p.actual->args.head->type);
+            break;
+
+        case SELF_IS_TOO_POINTER:
+            error_begin(NOTE, p.actual->node.token.pos);
+            fprintf(
+                stderr,
+                "Self is of type '%s', which is more than one level of reference than '%s'\n\n",
+                type_to_cstr(p.actual->args.head->type),
+                type_to_cstr(n->type));
+
+            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
+            pretty_print_method_signature(p.expected, n_type_base);
+            write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
+            pretty_print_method_signature(p.actual, p.actual->args.head->type);
+            break;
+        }
+    }
+
+    exit(1);
+}
+
+static_assert(COUNT_NODES == 24, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
@@ -1161,7 +1354,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1318,7 +1511,11 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 check_expr(c, a, REF_NONE);
             }
 
-            type_assert(c, a, e->type);
+            if (e->type.kind == TYPE_TRAIT && !e->type.ref && !type_eq(a->type, e->type)) {
+                a->trait_impl = check_node_satisfies_trait(c, a, e->type);
+            } else {
+                type_assert(c, a, e->type);
+            }
         }
 
         if (inferred_left) {
@@ -1385,6 +1582,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
 
             cast->slice_lowering = true;
+        } else if (
+            cast->to->type.kind == TYPE_TRAIT && !cast->to->type.ref && !type_eq(cast->from->type, cast->to->type)) {
+            cast->from->trait_impl = check_node_satisfies_trait(c, cast->from, cast->to->type);
         } else {
             const Type from = type_assert_scalar(cast->from);
             const Type to = type_assert_scalar(cast->to);
@@ -1401,7 +1601,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1533,7 +1733,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1695,6 +1895,16 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
             n->allow_ref = true;
             n->type = member->definition->type;
+        } else if (member->lhs->type.kind == TYPE_TRAIT) {
+            NodeTrait *trait = (NodeTrait *) member->lhs->type.spec_node;
+
+            member->definition = nodes_find(trait->fns, n->token.sv, NULL);
+            if (!member->definition) {
+                error_undefined(n, "method");
+            }
+
+            n->type = member->definition->type;
+            member->is_method = true;
         } else if (member->lhs->type.kind == TYPE_SLICE || member->lhs->type.kind == TYPE_DSLICE) {
             if (sv_match(n->token.sv, "data")) {
                 n->type = *member->lhs->type.spec_type;
@@ -1851,7 +2061,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -1881,7 +2091,7 @@ static bool loop_breaks(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static bool always_returns(Node *n) {
     switch (n->kind) {
     case NODE_ASSERT: {
@@ -1946,7 +2156,7 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -2173,6 +2383,18 @@ static void check_stmt(Compiler *c, Node *n) {
         }
     } break;
 
+    case NODE_TRAIT: {
+        NodeTrait *trait = (NodeTrait *) n;
+        if (trait->check_status == CHECK_STATUS_DONE) {
+            return;
+        }
+
+        trait->check_status = CHECK_STATUS_DONE;
+        for (Node *fn = trait->fns.head; fn; fn = fn->next) {
+            check_type(c, fn, true, NULL);
+        }
+    } break;
+
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
         if (structt->check_status == CHECK_STATUS_DONE) {
@@ -2249,7 +2471,7 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void define_toplevel(Node *n) {
     switch (n->kind) {
     case NODE_FN: {
@@ -2299,6 +2521,18 @@ static void define_toplevel(Node *n) {
         da_push(&package->globals, n);
     } break;
 
+    case NODE_TRAIT: {
+        Package *package = ((NodeTrait *) n)->package;
+
+        const Node *previous = scope_find(package->globals, n->token.sv, true);
+        if (previous) {
+            error_redefinition(n, previous, "type");
+        }
+
+        n->type = (Type) {.kind = TYPE_TRAIT, .spec_node = n};
+        da_push(&package->globals, n);
+    } break;
+
     case NODE_STRUCT: {
         Package *package = ((NodeStruct *) n)->package;
 
@@ -2327,7 +2561,7 @@ static void define_toplevel(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
@@ -2373,7 +2607,12 @@ static void check_toplevel(Compiler *c, Node *n) {
         }
 
         if (fn->is_method) {
-            Type  self = fn->args.head->type;
+            Type self = fn->args.head->type;
+            if (self.kind == TYPE_TRAIT) {
+                error_full(ERROR, n->token.pos, "Cannot define method on trait type");
+                exit(1);
+            }
+
             Node *previous = (Node *) methods_push(&c->context.methods, self, fn, c->context.arena);
             if (previous) {
                 error_redefinition(n, previous, "method");

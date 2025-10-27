@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
@@ -119,6 +119,10 @@ const char *type_to_cstr(Type type) {
         type_to_cstr(*type.spec_type);
         break;
 
+    case TYPE_TRAIT:
+        temp_sv_to_cstr(type.spec_node->token.sv);
+        break;
+
     case TYPE_STRUCT:
         temp_sv_to_cstr(type.spec_node->token.sv);
         if (type.spec_struct_instance) {
@@ -157,7 +161,7 @@ typedef enum {
     TYPE_MATCH_BESTFIT_BI,
 } TypeMatchLevel;
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     if (level != TYPE_MATCH_STRICT && a.kind == TYPE_GENERIC) {
         return b.ref >= a.ref;
@@ -200,6 +204,9 @@ static bool type_matches(Type a, Type b, TypeMatchLevel level) {
         assert(b.spec_type);
         return type_matches(*a.spec_type, *b.spec_type, level) && a.spec_count == b.spec_count;
 
+    case TYPE_TRAIT:
+        return a.spec_node == b.spec_node;
+
     case TYPE_STRUCT:
         if (a.spec_struct_instance) {
             if (!b.spec_struct_instance) {
@@ -238,12 +245,12 @@ static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     }
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_eq(Type a, Type b) {
     return type_matches(a, b, TYPE_MATCH_STRICT);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -262,7 +269,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;

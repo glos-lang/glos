@@ -37,6 +37,7 @@ typedef enum {
     TYPE_SLICE,
     TYPE_DSLICE,
 
+    TYPE_TRAIT,
     TYPE_STRUCT,
     TYPE_GENERIC,
 
@@ -147,6 +148,7 @@ typedef enum {
     NODE_VAR,
     NODE_TYPE,
     NODE_CONST,
+    NODE_TRAIT,
     NODE_FIELD,
     NODE_STRUCT,
     NODE_EXTERN,
@@ -155,13 +157,25 @@ typedef enum {
     COUNT_NODES
 } NodeKind;
 
+typedef struct TraitImpl TraitImpl;
+
+struct TraitImpl {
+    Type     type;
+    NodeFn **fns;
+    size_t   fns_count;
+
+    QbeNode   *qbe;
+    TraitImpl *next;
+};
+
 struct Node {
     NodeKind kind;
     Type     type;
     Token    token;
     Node    *next;
 
-    bool allow_ref;
+    bool       allow_ref;
+    TraitImpl *trait_impl;
 
     // Formatter metadata
     bool fmt_newline;
@@ -201,8 +215,7 @@ typedef struct {
     Node  node;
     Node *from;
     Node *to;
-
-    bool slice_lowering;
+    bool  slice_lowering;
 } NodeCast;
 
 typedef struct {
@@ -375,6 +388,22 @@ typedef struct {
 
     QbeNode *qbe;
 } NodeConst;
+
+typedef struct {
+    TraitImpl *head;
+    TraitImpl *tail;
+} TraitImpls;
+
+typedef struct {
+    Node   node;
+    Nodes  fns;
+    size_t fns_count;
+
+    Package    *package;
+    CheckStatus check_status;
+
+    TraitImpls impls;
+} NodeTrait;
 
 typedef struct {
     Node      node;
