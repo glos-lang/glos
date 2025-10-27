@@ -1190,23 +1190,21 @@ static void pretty_print_method_signature(NodeFn *fn, Type self) {
 }
 
 static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_type) {
-    Type n_type_base = type_remove_ref(n->type);
-
     assert(trait_type.spec_node);
     NodeTrait *trait = (NodeTrait *) trait_type.spec_node;
 
+    const Type n_type_base = type_remove_ref(n->type);
     for (TraitImpl *it = trait->impls.head; it; it = it->next) {
         if (type_eq(it->type, n_type_base)) {
             return it;
         }
     }
 
-    // TODO: Generics not allowed
     typedef enum {
         NOT_DEFINED,
+        INCORRECT_SELF_REF,
         INCORRECT_SIGNATURE,
-        SELF_IS_NOT_POINTER,
-        SELF_IS_TOO_POINTER,
+        GENERICS_NOT_ALLOWED,
     } ProblemKind;
 
     typedef struct {
@@ -1234,6 +1232,12 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
             continue;
         }
 
+        if (p.actual->generics_count) {
+            p.kind = GENERICS_NOT_ALLOWED;
+            problems[problems_count++] = p;
+            continue;
+        }
+
         assert(p.actual->is_method);
         if (p.actual->arity != p.expected->arity) {
             p.kind = INCORRECT_SIGNATURE;
@@ -1241,16 +1245,19 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
             continue;
         }
 
-        const Type actual_self_type = p.actual->args.head->type;
-        if (!actual_self_type.ref) {
-            p.kind = SELF_IS_NOT_POINTER;
-            problems[problems_count++] = p;
-            continue;
+        bool ok = true;
+        assert(p.actual->arity);
+        assert(p.expected->arity);
+        for (Node *a = p.actual->args.head->next, *e = p.expected->args.head->next; e && a; e = e->next, a = a->next) {
+            if (!type_eq(a->type, e->type)) {
+                ok = false;
+                p.kind = INCORRECT_SIGNATURE;
+                problems[problems_count++] = p;
+                break;
+            }
         }
 
-        if (actual_self_type.ref > n->type.ref + 1) {
-            p.kind = SELF_IS_TOO_POINTER;
-            problems[problems_count++] = p;
+        if (!ok) {
             continue;
         }
 
@@ -1260,14 +1267,11 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
             continue;
         }
 
-        assert(p.actual->arity);
-        assert(p.expected->arity);
-        for (Node *a = p.actual->args.head->next, *e = p.expected->args.head->next; e && a; e = e->next, a = a->next) {
-            if (!type_eq(a->type, e->type)) {
-                p.kind = INCORRECT_SIGNATURE;
-                problems[problems_count++] = p;
-                break;
-            }
+        const Type actual_self_type = p.actual->args.head->type;
+        if (actual_self_type.ref != n->type.ref + 1) {
+            p.kind = INCORRECT_SELF_REF;
+            problems[problems_count++] = p;
+            continue;
         }
     }
 
@@ -1296,7 +1300,45 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
         type_to_cstr(n->type),
         SVArg(trait->node.token.sv));
 
-    n_type_base.ref++;
+    n->type.ref++;
+
+    {
+        size_t ref = 0;
+        bool   all_ref_problem = true;
+        for (size_t i = 0; i < problems_count; i++) {
+            if (problems[i].kind != INCORRECT_SELF_REF) {
+                all_ref_problem = false;
+                break;
+            }
+
+            const size_t this_ref = problems[i].actual->args.head->type.ref;
+            if (!ref) {
+                ref = this_ref;
+                if (!ref) {
+                    all_ref_problem = false;
+                    break;
+                }
+            } else if (this_ref != ref) {
+                all_ref_problem = false;
+                break;
+            }
+        }
+
+        if (all_ref_problem) {
+            Type defined_for = n->type;
+            defined_for.ref = ref - 1;
+            fprintf(stderr, "\n");
+            error_standalone(
+                NOTE,
+                "It seems the trait '" SVFmt "' is defined for type '%s', try %s it?",
+                SVArg(trait->node.token.sv),
+                type_to_cstr(defined_for),
+                defined_for.ref > n->type.ref ? "referencing" : "dereferencing");
+
+            exit(1);
+        }
+    }
+
     for (size_t i = 0; i < problems_count; i++) {
         fprintf(stderr, "\n");
 
@@ -1306,39 +1348,30 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
             error_begin(NOTE, p.expected->node.token.pos);
             fprintf(stderr, "Method '" SVFmt "' is not defined\n\n", SVArg(p.expected->node.token.sv));
             write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
-            pretty_print_method_signature(p.expected, n_type_base);
+            pretty_print_method_signature(p.expected, n->type);
             break;
 
         case INCORRECT_SIGNATURE:
             error_begin(NOTE, p.actual->node.token.pos);
             fprintf(stderr, "Method '" SVFmt "' has incorrect signature\n\n", SVArg(p.expected->node.token.sv));
             write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
-            pretty_print_method_signature(p.expected, n_type_base);
+            pretty_print_method_signature(p.expected, n->type);
             write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
             pretty_print_method_signature(p.actual, p.actual->args.head->type);
             break;
 
-        case SELF_IS_NOT_POINTER:
-            error_begin(NOTE, p.actual->node.token.pos);
-            fprintf(stderr, "Self must be a pointer\n\n");
-            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
-            pretty_print_method_signature(p.expected, n_type_base);
-            write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
-            pretty_print_method_signature(p.actual, p.actual->args.head->type);
+        case INCORRECT_SELF_REF:
+            error_full(
+                NOTE,
+                p.actual->node.token.pos,
+                "Method '" SVFmt "' requires self to be '%s', got '%s'",
+                SVArg(p.expected->node.token.sv),
+                type_to_cstr(n->type),
+                type_to_cstr(p.actual->args.head->type));
             break;
 
-        case SELF_IS_TOO_POINTER:
-            error_begin(NOTE, p.actual->node.token.pos);
-            fprintf(
-                stderr,
-                "Self is of type '%s', which is more than one level of reference than '%s'\n\n",
-                type_to_cstr(p.actual->args.head->type),
-                type_to_cstr(n->type));
-
-            write_message(stderr, MESSAGE_FG_BLUE, "    Expected: ");
-            pretty_print_method_signature(p.expected, n_type_base);
-            write_message(stderr, MESSAGE_FG_BLUE, "    Actual:   ");
-            pretty_print_method_signature(p.actual, p.actual->args.head->type);
+        case GENERICS_NOT_ALLOWED:
+            error_full(NOTE, p.actual->node.token.pos, "Trait methods cannot be generic");
             break;
         }
     }
