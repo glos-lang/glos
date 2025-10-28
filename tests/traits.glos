@@ -4,8 +4,8 @@ trait Show {
 	show()
 }
 
-fn (x &i64) show() {
-	print *x
+fn (x i64) show() {
+	print x
 }
 
 fn display(s Show) {

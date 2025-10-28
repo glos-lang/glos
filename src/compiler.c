@@ -177,6 +177,10 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
         link_as.count = link.count;
     }
 
+    Type return_type = node_fn_return_type(fn);
+    compile_type(c, &return_type);
+    fn->return_type_qbe = return_type.qbe;
+
     if (!fn->body) {
         if (!link_as.data) {
             link_as.data = fn->node.token.sv.data;
@@ -189,9 +193,6 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
         }
         return fn->qbe;
     }
-
-    Type return_type = node_fn_return_type(fn);
-    compile_type(c, &return_type);
 
     QbeFn *fn_save = c->fn;
     c->fn = qbe_fn_new(c->qbe, link_as, return_type.qbe);
@@ -414,7 +415,34 @@ static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
             c->qbe, (QbeSV) {0}, qbe_type_array(c->qbe, qbe_type_basic(QBE_TYPE_I64), n->trait_impl->fns_count));
 
         for (size_t i = 0; i < n->trait_impl->fns_count; i++) {
-            qbe_var_init_add_node(c->qbe, impl, node_fn_get_qbe(c, n->trait_impl->fns[i], NULL, 0));
+            NodeFn *fn = n->trait_impl->fns[i];
+            if (!fn->shim) {
+                QbeNode *fn_qbe = node_fn_get_qbe(c, fn, NULL, 0);
+
+                QbeFn *fn_save = c->fn;
+                c->fn = qbe_fn_new(c->qbe, (QbeSV) {0}, fn->return_type_qbe);
+
+                assert(fn->arity);
+                QbeNode *self = qbe_fn_add_arg(c->qbe, c->fn, qbe_type_basic(QBE_TYPE_I64));
+
+                QbeCall *shim = qbe_call_new(c->qbe, fn_qbe, fn->return_type_qbe);
+                qbe_call_add_arg(
+                    c->qbe,
+                    shim,
+                    qbe_build_load(c->qbe, c->fn, self, fn->args.head->type.qbe, type_is_signed(fn->args.head->type)));
+
+                for (Node *it = fn->args.head->next; it; it = it->next) {
+                    qbe_call_add_arg(c->qbe, shim, qbe_fn_add_arg(c->qbe, c->fn, it->type.qbe));
+                }
+
+                qbe_build_call(c->qbe, c->fn, shim);
+                qbe_build_return(c->qbe, c->fn, fn->ret ? (QbeNode *) shim : NULL);
+
+                fn->shim = (QbeNode *) c->fn;
+                c->fn = fn_save;
+            }
+
+            qbe_var_init_add_node(c->qbe, impl, fn->shim);
         }
 
         n->trait_impl->qbe = (QbeNode *) impl;
