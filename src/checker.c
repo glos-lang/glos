@@ -1899,6 +1899,16 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 unary->node.type = member->lhs->type;
                 unary->node.type.ref++;
 
+                if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
+                    NodeAtom *atom = (NodeAtom *) member->lhs;
+                    if (atom->definition->kind == NODE_VAR) {
+                        NodeVar *var = (NodeVar *) atom->definition;
+                        if (var->kind == NODE_VAR_ARG) {
+                            var->kind = NODE_VAR_LOCAL;
+                        }
+                    }
+                }
+
                 member->lhs = (Node *) unary;
             } else if (actual_ref > expected_ref) {
                 NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));

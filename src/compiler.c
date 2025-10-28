@@ -455,9 +455,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
 
-        case TOKEN_STR: {
+        case TOKEN_STR:
             return compile_str(c, resolve_str_token(n->token, c->context.arena), ref);
-        } break;
 
         case TOKEN_BOOL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I8, n->token.as.boolean);
