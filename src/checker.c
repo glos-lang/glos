@@ -1310,21 +1310,17 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
         SVArg(trait->node.token.sv));
 
     {
-        size_t ref = 0;
-        bool   all_ref_problem = true;
+        long ref = -1;
+        bool all_ref_problem = true;
         for (size_t i = 0; i < problems_count; i++) {
             if (problems[i].kind != INCORRECT_SELF_REF) {
                 all_ref_problem = false;
                 break;
             }
 
-            const size_t this_ref = problems[i].actual->args.head->type.ref;
-            if (!ref) {
+            const long this_ref = problems[i].actual->args.head->type.ref;
+            if (ref == -1) {
                 ref = this_ref;
-                if (!ref) {
-                    all_ref_problem = false;
-                    break;
-                }
             } else if (this_ref != ref) {
                 all_ref_problem = false;
                 break;
