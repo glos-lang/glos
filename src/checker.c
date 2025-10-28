@@ -1277,7 +1277,7 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
         }
 
         const Type actual_self_type = p.actual->args.head->type;
-        if (actual_self_type.ref != n->type.ref + 1) {
+        if (actual_self_type.ref != n->type.ref) {
             p.kind = INCORRECT_SELF_REF;
             problems[problems_count++] = p;
             continue;
@@ -1309,24 +1309,18 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
         type_to_cstr(n->type),
         SVArg(trait->node.token.sv));
 
-    n->type.ref++;
-
     {
-        size_t ref = 0;
-        bool   all_ref_problem = true;
+        long ref = -1;
+        bool all_ref_problem = true;
         for (size_t i = 0; i < problems_count; i++) {
             if (problems[i].kind != INCORRECT_SELF_REF) {
                 all_ref_problem = false;
                 break;
             }
 
-            const size_t this_ref = problems[i].actual->args.head->type.ref;
-            if (!ref) {
+            const long this_ref = problems[i].actual->args.head->type.ref;
+            if (ref == -1) {
                 ref = this_ref;
-                if (!ref) {
-                    all_ref_problem = false;
-                    break;
-                }
             } else if (this_ref != ref) {
                 all_ref_problem = false;
                 break;
@@ -1335,7 +1329,7 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
 
         if (all_ref_problem) {
             Type defined_for = n->type;
-            defined_for.ref = ref - 1;
+            defined_for.ref = ref;
             fprintf(stderr, "\n");
             error_standalone(
                 NOTE,

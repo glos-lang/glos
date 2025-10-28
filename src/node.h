@@ -329,6 +329,8 @@ struct NodeFn {
     CheckStatus check_status;
 
     QbeNode *qbe;
+    QbeNode *shim;
+    QbeType  return_type_qbe;
 
     // Formatter metadata
     bool fmt_multiline;
