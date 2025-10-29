@@ -1,18 +1,14 @@
 package io
 
 pub fn write(s []u8) {
-	when #OS == "Linux" {
-		extern {
+	extern {
+		when #OS == "Linux" {
 			var stdout rawptr
-		}
-	} else {
-		extern {
+		} else {
 			#link "__stdoutp"
 			var stdout rawptr
 		}
-	}
 
-	extern {
 		fn fwrite(data rawptr, count i64, size i64, stream rawptr) i64
 	}
 

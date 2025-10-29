@@ -828,7 +828,13 @@ static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
-    Token      token = lexer_next(&p->lexer);
+    Token token;
+    if (p->in_extern) {
+        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_WHEN, TOKEN_PROP_LINK);
+    } else {
+        token = lexer_next(&p->lexer);
+    }
+
     const bool fmt_toplevel_newline = !p->local && token.newlines > 1;
 
     switch (token.kind) {
@@ -1103,8 +1109,6 @@ static Node *parse_stmt(Parser *p) {
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_PROP_LINK);
-            lexer_buffer(&p->lexer, token);
             nodes_push(&externn->definitions, parse_stmt(p));
         }
 
