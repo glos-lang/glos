@@ -25,7 +25,7 @@ void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -303,7 +303,7 @@ static void resolve_ident_package(Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
@@ -317,7 +317,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -384,7 +384,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -487,7 +487,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -550,7 +550,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -828,7 +828,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static_assert(COUNT_TYPES == 19, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
@@ -1382,7 +1382,7 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
     exit(1);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
@@ -1390,7 +1390,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1636,7 +1636,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1768,7 +1768,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2106,7 +2106,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -2131,13 +2131,20 @@ static bool loop_breaks(Node *n) {
     case NODE_JUMP:
         return n->token.kind == TOKEN_BREAK;
 
+    case NODE_WHEN:
+        return loop_breaks(((NodeWhen *) n)->real);
+
     default:
         return false;
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool always_returns(Node *n) {
+    if (!n) {
+        return false;
+    }
+
     switch (n->kind) {
     case NODE_ASSERT: {
         NodeAssert *assertt = (NodeAssert *) n;
@@ -2188,6 +2195,9 @@ static bool always_returns(Node *n) {
     case NODE_RETURN:
         return true;
 
+    case NODE_WHEN:
+        return always_returns(((NodeWhen *) n)->real);
+
     default:
         return false;
     }
@@ -2201,7 +2211,7 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -2504,6 +2514,30 @@ static void check_stmt(Compiler *c, Node *n) {
         collect_extern_libraries(c, externn);
     } break;
 
+    case NODE_WHEN: {
+        NodeWhen *when = (NodeWhen *) n;
+        if (!when->evaluated) {
+            ConstValue value = eval_const_expr(c, when->condition);
+            type_assert(c, when->condition, (Type) {.kind = TYPE_BOOL});
+            when->real = value.as.boolean ? when->consequence : when->antecedence;
+            when->evaluated = true;
+        }
+
+        if (!when->checked) {
+            if (when->real->kind == NODE_WHEN) {
+                check_stmt(c, when->real);
+            } else {
+                NodeBlock *block = (NodeBlock *) when->real;
+                if (when->real) {
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        check_stmt(c, it);
+                    }
+                }
+            }
+            when->checked = true;
+        }
+    } break;
+
     case NODE_PRINT: {
         NodePrint *print = (NodePrint *) n;
         check_expr(c, print->operand, REF_NONE);
@@ -2516,8 +2550,8 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
-static void define_toplevel(Node *n) {
+static_assert(COUNT_NODES == 25, "");
+static void define_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
         NodeFn *fn = (NodeFn *) n;
@@ -2593,7 +2627,7 @@ static void define_toplevel(Node *n) {
     case NODE_EXTERN: {
         NodeExtern *externn = (NodeExtern *) n;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            define_toplevel(it);
+            define_toplevel(c, it);
         }
     } break;
 
@@ -2601,12 +2635,32 @@ static void define_toplevel(Node *n) {
         // Pass
         break;
 
+    case NODE_WHEN: {
+        NodeWhen  *when = (NodeWhen *) n;
+        ConstValue value = eval_const_expr(c, when->condition);
+        type_assert(c, when->condition, (Type) {.kind = TYPE_BOOL});
+
+        when->real = value.as.boolean ? when->consequence : when->antecedence;
+        when->evaluated = true;
+
+        if (when->real) {
+            if (when->real->kind == NODE_WHEN) {
+                define_toplevel(c, when->real);
+            } else {
+                NodeBlock *block = (NodeBlock *) when->real;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    define_toplevel(c, it);
+                }
+            }
+        }
+    } break;
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
@@ -2691,6 +2745,20 @@ static void check_toplevel(Compiler *c, Node *n) {
         collect_extern_libraries(c, externn);
     } break;
 
+    case NODE_WHEN: {
+        NodeWhen *when = (NodeWhen *) n;
+        if (when->real) {
+            if (when->real->kind == NODE_WHEN) {
+                check_toplevel(c, when->real);
+            } else {
+                NodeBlock *block = (NodeBlock *) when->real;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    check_toplevel(c, it);
+                }
+            }
+        }
+    } break;
+
     default:
         check_stmt(c, n);
         break;
@@ -2747,6 +2815,24 @@ static void check_fn(Compiler *c, Node *n) {
     context_fn_end(&c->context, context_fn_save);
 }
 
+static void only_check_fn(Compiler *c, Node *n) {
+    if (n->kind == NODE_FN) {
+        check_stmt(c, n);
+    } else if (n->kind == NODE_WHEN) {
+        NodeWhen *when = (NodeWhen *) n;
+        if (when->real) {
+            if (when->real->kind == NODE_WHEN) {
+                only_check_fn(c, when->real);
+            } else {
+                NodeBlock *block = (NodeBlock *) when->real;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    only_check_fn(c, it);
+                }
+            }
+        }
+    }
+}
+
 void check_packages(Compiler *c, Packages ps) {
     assert(c->context.arena);
 
@@ -2756,13 +2842,13 @@ void check_packages(Compiler *c, Packages ps) {
         .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
     };
 
+    c->context.checking_toplevels = true;
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
-            define_toplevel(it);
+            define_toplevel(c, it);
         }
     }
 
-    c->context.checking_toplevels = true;
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             check_toplevel(c, it);
@@ -2772,9 +2858,7 @@ void check_packages(Compiler *c, Packages ps) {
 
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
-            if (it->kind == NODE_FN) {
-                check_stmt(c, it);
-            }
+            only_check_fn(c, it);
         }
     }
 }

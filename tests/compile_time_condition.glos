@@ -1,0 +1,27 @@
+package main
+
+when true {
+	fn main() {
+		print foo()
+	}
+}
+
+when false {
+	fn main() {
+		print "This does not get checked or compiled"
+	}
+} else {
+	fn foo() i64 {
+		return bar()
+	}
+}
+
+when false {
+	fn bar() []u8 {
+		return "Urmom"
+	}
+} else when true {
+	fn bar() i64 {
+		return 69
+	}
+}

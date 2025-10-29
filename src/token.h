@@ -97,6 +97,7 @@ typedef enum {
     TOKEN_PACKAGE,
 
     TOKEN_LINK,
+    TOKEN_WHEN,
     TOKEN_PRINT,
     COUNT_TOKENS
 } TokenKind;
