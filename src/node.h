@@ -307,11 +307,20 @@ typedef struct {
     Node *value;
 } NodeReturn;
 
+typedef enum {
+    VARIADIC_NONE,
+    VARIADIC_TYPED,
+    VARIADIC_UNTYPED
+} Variadic;
+
 struct NodeFn {
     Node node;
 
     Nodes  args;
     size_t arity;
+
+    Variadic variadic;
+    bool     variadic_converted;
 
     Nodes          generics;
     size_t         generics_count;

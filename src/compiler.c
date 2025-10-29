@@ -476,7 +476,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -545,6 +545,23 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
+        NodeFn *spec = (NodeFn *) call->fn->type.spec_node;
+
+        size_t iota = 0;
+        size_t arity = spec->arity;
+        bool   started_variadic = false;
+
+        QbeType  variadic_type = {0};
+        QbeNode *variadic_array = NULL;
+        if (spec->variadic == VARIADIC_TYPED) {
+            const size_t extra = call->arity - arity;
+            if (extra) {
+                compile_type(c, spec->args.tail->type.spec_type);
+                variadic_type = spec->args.tail->type.spec_type->qbe;
+                variadic_array = qbe_fn_add_var(c->qbe, c->fn, qbe_type_array(c->qbe, variadic_type, extra));
+            }
+        }
+
         QbeCall *fn_call = qbe_call_new(c->qbe, fn, n->type.qbe);
         for (Node *it = call->args.head; it; it = it->next) {
             QbeNode *arg = NULL;
@@ -557,7 +574,51 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                     arg = compile_trait_impl(c, it, arg);
                 }
             }
-            qbe_call_add_arg(c->qbe, fn_call, arg);
+
+            if (iota >= arity && !started_variadic) {
+                if (spec->variadic == VARIADIC_UNTYPED) {
+                    qbe_call_start_variadic(c->qbe, fn_call);
+                }
+                started_variadic = true;
+            }
+
+            if (started_variadic && variadic_array) {
+                QbeNode *ptr = variadic_array;
+                if (iota > arity) {
+                    ptr = qbe_build_binary(
+                        c->qbe,
+                        c->fn,
+                        QBE_BINARY_ADD,
+                        qbe_type_basic(QBE_TYPE_I64),
+                        ptr,
+                        qbe_atom_int(c->qbe, QBE_TYPE_I64, (iota - arity) * qbe_sizeof(variadic_type)));
+                }
+                qbe_build_store(c->qbe, c->fn, ptr, arg);
+            } else {
+                qbe_call_add_arg(c->qbe, fn_call, arg);
+            }
+            iota++;
+        }
+
+        if (spec->variadic == VARIADIC_TYPED) {
+            QbeNode *slice = qbe_fn_add_var(c->qbe, c->fn, c->slice_type);
+            if (variadic_array) {
+                qbe_build_store(c->qbe, c->fn, slice, variadic_array);
+                qbe_build_store(
+                    c->qbe,
+                    c->fn,
+                    qbe_build_binary(
+                        c->qbe,
+                        c->fn,
+                        QBE_BINARY_ADD,
+                        qbe_type_basic(QBE_TYPE_I64),
+                        slice,
+                        qbe_atom_int(c->qbe, QBE_TYPE_I64, sizeof(void *))),
+                    qbe_atom_int(c->qbe, QBE_TYPE_I64, call->arity - arity));
+            } else {
+                qbe_build_store_zero(c->qbe, c->fn, slice, c->slice_type);
+            }
+            qbe_call_add_arg(c->qbe, fn_call, qbe_build_load(c->qbe, c->fn, slice, c->slice_type, false));
         }
 
         qbe_build_call(c->qbe, c->fn, fn_call);
@@ -586,7 +647,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -887,7 +948,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -920,7 +981,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -951,7 +1012,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);

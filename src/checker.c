@@ -322,7 +322,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -397,7 +397,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -500,7 +500,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -569,7 +569,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -759,6 +759,7 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
         to->node = from->node;
         to->node.type.spec_node = (Node *) to;
         to->arity = from->arity;
+        to->variadic = from->variadic;
 
         type.spec_node = (Node *) to;
         instantiation->instantiated_ok = true;
@@ -852,6 +853,17 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
     default:
         unreachable();
         break;
+    }
+}
+
+static void convert_variadic_arg(Compiler *c, NodeFn *fn, Node *arg) {
+    if (!arg->next && fn->variadic == VARIADIC_TYPED && !fn->variadic_converted) {
+        const Type slice = {
+            .kind = TYPE_SLICE,
+            .spec_type = arena_clone(c->context.arena, &arg->type, sizeof(arg->type)),
+        };
+        arg->type = slice;
+        fn->variadic_converted = true;
     }
 }
 
@@ -1010,6 +1022,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
             NodeVar *arg = (NodeVar *) it;
             check_type(c, arg->type, true, extra_generic_context);
             it->type = arg->type->type;
+            convert_variadic_arg(c, spec, it);
         }
 
         check_type(c, spec->ret, true, extra_generic_context);
@@ -1202,11 +1215,26 @@ static void pretty_print_method_signature(NodeFn *fn, Type self) {
     assert(fn->args.head);
     write_message(stderr, 0, "(");
     for (Node *arg = fn->args.head->next; arg; arg = arg->next) {
-        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(arg->type));
+        if (!arg->next && fn->variadic == VARIADIC_TYPED) {
+            assert(arg->type.kind == TYPE_SLICE);
+            write_message(stderr, 0, "...");
+            write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(*arg->type.spec_type));
+        } else {
+            write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(arg->type));
+        }
+
         if (arg->next) {
             write_message(stderr, 0, ", ");
         }
     }
+
+    if (fn->variadic == VARIADIC_UNTYPED) {
+        if (fn->args.head->next) {
+            write_message(stderr, 0, ", ");
+        }
+        write_message(stderr, 0, "...");
+    }
+
     write_message(stderr, 0, ")");
 
     if (fn->ret) {
@@ -1275,7 +1303,7 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
         }
 
         assert(p.actual->is_method);
-        if (p.actual->arity != p.expected->arity) {
+        if (p.actual->arity != p.expected->arity || p.actual->variadic != p.expected->variadic) {
             p.kind = INCORRECT_SIGNATURE;
             problems[problems_count++] = p;
             continue;
@@ -1417,7 +1445,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1510,16 +1538,30 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 }
             }
 
-            if (call->arity != expected_arity) {
-                error_full(
-                    ERROR,
-                    n->token.pos,
-                    "Expected %zu argument%s, got %zu",
-                    expected_arity,
-                    expected_arity == 1 ? "" : "s",
-                    call->arity);
+            if (expected->variadic) {
+                if (call->arity < expected_arity) {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Expected minimum %zu argument%s, got %zu",
+                        expected_arity,
+                        expected_arity == 1 ? "" : "s",
+                        call->arity);
 
-                exit(1);
+                    exit(1);
+                }
+            } else {
+                if (call->arity != expected_arity) {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Expected %zu argument%s, got %zu",
+                        expected_arity,
+                        expected_arity == 1 ? "" : "s",
+                        call->arity);
+
+                    exit(1);
+                }
             }
         }
 
@@ -1551,11 +1593,22 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 }
                 *generics_count = expected->generics_count;
 
-                for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
+                for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next) {
                     if (!is_method || a != call->args.head) {
                         check_expr(c, a, REF_NONE);
                     }
-                    infer_generic_type(a->type, e->type, generics->head);
+
+                    if (e) {
+                        Type expected_type = e->type;
+                        if (!e->next && expected->variadic == VARIADIC_TYPED) {
+                            assert(expected_type.kind == TYPE_SLICE);
+                            expected_type = *expected_type.spec_type;
+                        } else {
+                            e = e->next;
+                        }
+
+                        infer_generic_type(a->type, expected_type, generics->head);
+                    }
                 }
 
                 for (Node *it = generics->head; it; it = it->next) {
@@ -1570,15 +1623,25 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             }
         }
 
-        for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next, e = e->next) {
+        for (Node *a = call->args.head, *e = expected->args.head; a; a = a->next) {
             if (!inferred && (!is_method || a != call->args.head)) {
                 check_expr(c, a, REF_NONE);
             }
 
-            if (e->type.kind == TYPE_TRAIT && !e->type.ref) {
-                a->trait_impl = check_node_satisfies_trait(c, a, e->type);
-            } else {
-                type_assert(c, a, e->type);
+            if (e) {
+                Type expected_type = e->type;
+                if (!e->next && expected->variadic == VARIADIC_TYPED) {
+                    assert(expected_type.kind == TYPE_SLICE);
+                    expected_type = *expected_type.spec_type;
+                } else {
+                    e = e->next;
+                }
+
+                if (expected_type.kind == TYPE_TRAIT && !expected_type.ref) {
+                    a->trait_impl = check_node_satisfies_trait(c, a, expected_type);
+                } else {
+                    type_assert(c, a, expected_type);
+                }
             }
         }
 
@@ -1664,7 +1727,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1796,7 +1859,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2731,6 +2794,7 @@ static void check_toplevel(Compiler *c, Node *n) {
             assert(var->type);
             check_type(c, var->type, true, fn->generics.head);
             it->type = var->type->type;
+            convert_variadic_arg(c, fn, it);
         }
 
         if (fn->is_method) {
@@ -2825,6 +2889,7 @@ static void check_fn(Compiler *c, Node *n) {
         }
 
         check_stmt(c, it);
+        convert_variadic_arg(c, fn, it);
     }
 
     if (fn->local) {
