@@ -1357,7 +1357,12 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
                 exit(1);
             }
 
-            if (!fn->arity && !will_be_method) {
+            if (will_be_method) {
+                error_full(ERROR, p->lexer.buffer.pos, "Variadic parameter cannot be used in an external method");
+                exit(1);
+            }
+
+            if (!fn->arity) {
                 error_full(
                     ERROR,
                     p->lexer.buffer.pos,

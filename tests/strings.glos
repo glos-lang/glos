@@ -1,7 +1,7 @@
 package main
 
-import "io"
+import "fmt"
 
 fn main() {
-	io::write("Hello, world!\n")
+	fmt::print("Hello, world!\n")
 }

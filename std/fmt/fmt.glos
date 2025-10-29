@@ -58,4 +58,30 @@ pub fn println(shows ...Show) {
 	io::stdout.write("\n")
 }
 
+pub fn eprint(shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(&io::stderr)
+	}
+}
+
+pub fn eprintln(shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(&io::stderr)
+	}
+	io::stderr.write("\n")
+}
+
+pub fn write(w Writer, shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(w)
+	}
+}
+
+pub fn writeln(w Writer, shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(w)
+	}
+	w.write("\n")
+}
+
 // TODO: Flesh out this package

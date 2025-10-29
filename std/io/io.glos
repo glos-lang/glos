@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-pub fn write(s []u8) {
-	C::fwrite(<rawptr> s.data, s.count, sizeof<u8>, C::stdout)
-}
-
 struct File {
 	c rawptr
 }
@@ -18,3 +14,4 @@ pub fn (f &File) write(bytes []u8) {
 }
 
 pub var stdout = File {c: C::stdout}
+pub var stderr = File {c: C::stderr}

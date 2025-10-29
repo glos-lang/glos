@@ -168,14 +168,19 @@ const char *type_to_cstr(Type type) {
 }
 
 typedef enum {
-    TYPE_MATCH_STRICT,
-    TYPE_MATCH_BESTFIT_UNI,
-    TYPE_MATCH_BESTFIT_BI,
+    TYPE_MATCH_STRICT,      // Absolute equality
+    TYPE_MATCH_BESTFIT_SEM, // Same as above, but generic types of same indirection are also considered equal
+    TYPE_MATCH_BESTFIT_UNI, // Same as above, but if lhs is generic, and rhs.ref >= lhs.ref, then it is equal
+    TYPE_MATCH_BESTFIT_BI,  // Same as above, except it goes both ways
 } TypeMatchLevel;
 
 static_assert(COUNT_TYPES == 19, "");
 static bool type_matches(Type a, Type b, TypeMatchLevel level) {
-    if (level != TYPE_MATCH_STRICT && a.kind == TYPE_GENERIC) {
+    if (level == TYPE_MATCH_BESTFIT_SEM && a.kind == TYPE_GENERIC && b.kind == TYPE_GENERIC && a.ref == b.ref) {
+        return true;
+    }
+
+    if ((level == TYPE_MATCH_BESTFIT_UNI || level == TYPE_MATCH_BESTFIT_BI) && a.kind == TYPE_GENERIC) {
         return b.ref >= a.ref;
     }
 
@@ -417,9 +422,9 @@ struct TypeMethods {
     TypeMethods *next;
 };
 
-static TypeMethods *type_methods_find(Methods *list, Type type, TypeMatchLevel level) {
+static TypeMethods *type_methods_find(Methods *list, TypeMethods *from, Type type, TypeMatchLevel level) {
     type = type_remove_ref(type);
-    for (TypeMethods *it = list->head; it; it = it->next) {
+    for (TypeMethods *it = from ? from : list->head; it; it = it->next) {
         if (type_matches(type_remove_ref(it->type), type, level)) {
             return it;
         }
@@ -428,14 +433,18 @@ static TypeMethods *type_methods_find(Methods *list, Type type, TypeMatchLevel l
 }
 
 NodeFn *methods_find(Methods *list, Type type, SV name) {
-    TypeMethods *methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_UNI);
-    if (!methods) {
-        return NULL;
-    }
+    TypeMethods *methods = type_methods_find(list, NULL, type, TYPE_MATCH_BESTFIT_UNI);
+    while (methods) {
+        for (NodeFn *it = methods->head; it; it = it->next_method) {
+            if (sv_eq(it->node.token.sv, name)) {
+                return it;
+            }
+        }
 
-    for (NodeFn *it = methods->head; it; it = it->next_method) {
-        if (sv_eq(it->node.token.sv, name)) {
-            return it;
+        if (methods->next) {
+            methods = type_methods_find(list, methods->next, type, TYPE_MATCH_BESTFIT_UNI);
+        } else {
+            break;
         }
     }
 
@@ -447,17 +456,25 @@ NodeFn *methods_push(Methods *list, Type type, NodeFn *fn, Arena *a) {
         return NULL;
     }
 
-    TypeMethods *methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_BI);
-    if (methods) {
-        for (NodeFn *it = methods->head; it; it = it->next_method) {
+    TypeMethods *methods = NULL;
+    TypeMethods *iter = type_methods_find(list, NULL, type, TYPE_MATCH_BESTFIT_BI);
+    while (iter) {
+        for (NodeFn *it = iter->head; it; it = it->next_method) {
             if (sv_eq(it->node.token.sv, fn->node.token.sv)) {
                 return it;
             }
         }
-    }
 
-    if (!methods || !type_matches(type_remove_ref(methods->type), type_remove_ref(type), TYPE_MATCH_BESTFIT_UNI)) {
-        methods = type_methods_find(list, type, TYPE_MATCH_BESTFIT_UNI);
+        if (type_matches(type_remove_ref(iter->type), type_remove_ref(type), TYPE_MATCH_BESTFIT_SEM)) {
+            assert(!methods);
+            methods = iter;
+        }
+
+        if (iter->next) {
+            iter = type_methods_find(list, iter->next, type, TYPE_MATCH_BESTFIT_BI);
+        } else {
+            break;
+        }
     }
 
     if (!methods) {
