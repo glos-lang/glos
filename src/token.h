@@ -95,8 +95,11 @@ typedef enum {
     TOKEN_PUB,
     TOKEN_IMPORT,
     TOKEN_PACKAGE,
+    TOKEN_WHEN,
 
-    TOKEN_LINK,
+    TOKEN_PROP_OS,
+    TOKEN_PROP_LINK,
+
     TOKEN_PRINT,
     COUNT_TOKENS
 } TokenKind;

@@ -120,7 +120,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -320,7 +320,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
@@ -581,7 +581,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -898,6 +898,19 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             format_indent(f);
         }
         sb_push(&f->sb, '}');
+    } break;
+
+    case NODE_WHEN: {
+        NodeWhen *when = (NodeWhen *) n;
+        sb_sprintf(&f->sb, "when ");
+        format_expr(f, when->condition, true);
+        sb_push(&f->sb, ' ');
+        format_stmt(f, when->consequence, true);
+
+        if (when->antecedence) {
+            sb_sprintf(&f->sb, " else ");
+            format_stmt(f, when->antecedence, true);
+        }
     } break;
 
     case NODE_PRINT: {

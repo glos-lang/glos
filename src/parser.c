@@ -20,7 +20,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -50,6 +50,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_STRUCT] = sizeof(NodeStruct),
         [NODE_EXTERN] = sizeof(NodeExtern),
 
+        [NODE_WHEN] = sizeof(NodeWhen),
         [NODE_PRINT] = sizeof(NodePrint),
     };
 
@@ -67,7 +68,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 70, "");
+static_assert(COUNT_TOKENS == 72, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -161,7 +162,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 70, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -249,7 +250,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name);
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -380,7 +381,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 70, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -390,6 +391,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_STR:
     case TOKEN_BOOL:
     case TOKEN_CHAR:
+    case TOKEN_PROP_OS:
         node = node_alloc(p, NODE_ATOM, token);
         break;
 
@@ -786,28 +788,60 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     imports_push(&p->packages->current->imports, import);
 }
 
-static_assert(COUNT_TOKENS == 70, "");
+static Node *parse_stmt(Parser *p);
+
+static Node *parse_block(Parser *p, Token token) {
+    NodeBlock *block = node_alloc(p, NODE_BLOCK, token);
+    while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+        const bool fmt_newline = block->body.head && lexer_peek(&p->lexer).newlines > 1;
+        nodes_push(&block->body, parse_stmt(p));
+        block->body.tail->fmt_newline = fmt_newline;
+    }
+
+    assert(p->lexer.buffer.kind == TOKEN_RBRACE);
+    block->rbrace_pos = p->lexer.buffer.pos;
+    return (Node *) block;
+}
+
+static Node *parse_when(Parser *p, Token token) {
+    NodeWhen *when = node_alloc(p, NODE_WHEN, token);
+
+    const bool in_when_save = p->in_when;
+    p->in_when = true;
+
+    when->condition = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+    when->consequence = parse_block(p, lexer_expect(&p->lexer, TOKEN_LBRACE));
+    if (lexer_read(&p->lexer, TOKEN_ELSE)) {
+        token = lexer_expect(&p->lexer, TOKEN_LBRACE, TOKEN_WHEN);
+        if (token.kind == TOKEN_LBRACE) {
+            when->antecedence = parse_block(p, token);
+        } else {
+            when->antecedence = parse_when(p, token);
+        }
+    }
+
+    p->in_when = in_when_save;
+    return (Node *) when;
+}
+
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
-    Token      token = lexer_next(&p->lexer);
+    Token token;
+    if (p->in_extern) {
+        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_WHEN, TOKEN_PROP_LINK);
+    } else {
+        token = lexer_next(&p->lexer);
+    }
+
     const bool fmt_toplevel_newline = !p->local && token.newlines > 1;
 
     switch (token.kind) {
-    case TOKEN_LBRACE: {
+    case TOKEN_LBRACE:
         local_assert(p, token, true);
-        NodeBlock *block = node_alloc(p, NODE_BLOCK, token);
-        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            const bool fmt_newline = block->body.head && lexer_peek(&p->lexer).newlines > 1;
-            nodes_push(&block->body, parse_stmt(p));
-            block->body.tail->fmt_newline = fmt_newline;
-        }
-
-        assert(p->lexer.buffer.kind == TOKEN_RBRACE);
-        block->rbrace_pos = p->lexer.buffer.pos;
-
-        node = (Node *) block;
-    } break;
+        node = parse_block(p, token);
+        break;
 
     case TOKEN_ASSERT:
         local_assert(p, token, true);
@@ -1075,8 +1109,6 @@ static Node *parse_stmt(Parser *p) {
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_LINK);
-            lexer_buffer(&p->lexer, token);
             nodes_push(&externn->definitions, parse_stmt(p));
         }
 
@@ -1099,7 +1131,7 @@ static Node *parse_stmt(Parser *p) {
         }
     } break;
 
-    case TOKEN_LINK: {
+    case TOKEN_PROP_LINK: {
         if (!p->in_extern) {
             local_assert(p, token, false);
         }
@@ -1181,6 +1213,11 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_IMPORT: {
         local_assert(p, token, false);
 
+        if (p->in_when) {
+            error_full(ERROR, token.pos, "Unexpected 'import' inside 'when'");
+            exit(1);
+        }
+
         token = lexer_expect(&p->lexer, TOKEN_STR, TOKEN_IDENT, TOKEN_LPAREN);
         if (token.kind == TOKEN_LPAREN) {
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
@@ -1205,6 +1242,10 @@ static Node *parse_stmt(Parser *p) {
             do_import(p, token, as, PDS_YES);
         }
     } break;
+
+    case TOKEN_WHEN:
+        node = parse_when(p, token);
+        break;
 
     case TOKEN_PRINT: {
         local_assert(p, token, true);

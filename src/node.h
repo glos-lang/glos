@@ -153,6 +153,7 @@ typedef enum {
     NODE_STRUCT,
     NODE_EXTERN,
 
+    NODE_WHEN,
     NODE_PRINT,
     COUNT_NODES
 } NodeKind;
@@ -435,6 +436,16 @@ typedef struct {
     Nodes libraries;
     Nodes definitions;
 } NodeExtern;
+
+typedef struct {
+    Node  node;
+    Node *condition;
+    Node *consequence;
+    Node *antecedence;
+    Node *real;
+    bool  evaluated;
+    bool  checked;
+} NodeWhen;
 
 typedef struct {
     Node  node;
