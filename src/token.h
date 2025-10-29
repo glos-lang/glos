@@ -100,8 +100,6 @@ typedef enum {
 
     TOKEN_PROP_OS,
     TOKEN_PROP_LINK,
-
-    TOKEN_PRINT,
     COUNT_TOKENS
 } TokenKind;
 

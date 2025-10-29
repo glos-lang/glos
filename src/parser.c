@@ -21,7 +21,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -52,7 +52,6 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_EXTERN] = sizeof(NodeExtern),
 
         [NODE_WHEN] = sizeof(NodeWhen),
-        [NODE_PRINT] = sizeof(NodePrint),
     };
 
     assert(kind >= NODE_ATOM && kind < COUNT_NODES);
@@ -69,7 +68,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 72, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -193,7 +192,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -281,7 +280,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name, bool will_be_method);
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -412,7 +411,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -877,7 +876,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1298,13 +1297,6 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_WHEN:
         node = parse_when(p, token);
         break;
-
-    case TOKEN_PRINT: {
-        local_assert(p, token, true);
-        NodePrint *print = node_alloc(p, NODE_PRINT, token);
-        print->operand = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
-        node = (Node *) print;
-    } break;
 
     default:
         local_assert(p, token, true);

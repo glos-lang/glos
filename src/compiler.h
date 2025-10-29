@@ -14,10 +14,6 @@ typedef struct {
     QbeBlock *loop_break;
     QbeBlock *loop_continue;
 
-    QbeNode *print_fn;
-    QbeNode *print_sfmt;
-    QbeNode *print_ufmt;
-
     QbeType slice_type;
     QbeType dslice_type;
 
