@@ -626,10 +626,19 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
                 const bool fmt_newline = call->args.head && lexer_peek(&p->lexer).newlines > 1;
 
+                if (lexer_read(&p->lexer, TOKEN_VARIADIC)) {
+                    call->spread = true;
+                    call->spread_pos = p->lexer.buffer.pos;
+                }
+
                 nodes_push(&call->args, parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED));
                 call->args.tail->fmt_newline = fmt_newline;
-
                 call->arity++;
+
+                if (call->spread) {
+                    lexer_expect(&p->lexer, TOKEN_RPAREN);
+                    break;
+                }
 
                 token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
                 if (token.kind != TOKEN_COMMA) {

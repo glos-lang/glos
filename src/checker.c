@@ -1442,6 +1442,18 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
     exit(1);
 }
 
+static const char *order_of_number(size_t n) {
+    const char *order = "th";
+    if (n == 1) {
+        order = "st";
+    } else if (n == 2) {
+        order = "nd";
+    } else if (n == 3) {
+        order = "rd";
+    }
+    return order;
+}
+
 static_assert(COUNT_NODES == 24, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
@@ -1555,7 +1567,33 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
                     exit(1);
                 }
+
+                if (call->spread) {
+                    if (expected->variadic == VARIADIC_UNTYPED) {
+                        error_full(ERROR, call->spread_pos, "Unexpected spread in untyped variadic function");
+                        exit(1);
+                    }
+
+                    expected_arity++;
+                    if (call->arity != expected_arity) {
+                        error_full(
+                            ERROR,
+                            call->spread_pos,
+                            "Expected spread value to be the %zu%s argument, but it is %zu%s instead",
+                            expected_arity,
+                            order_of_number(expected_arity),
+                            call->arity,
+                            order_of_number(call->arity));
+
+                        exit(1);
+                    }
+                }
             } else {
+                if (call->spread) {
+                    error_full(ERROR, call->spread_pos, "Unexpected spread in non variadic function");
+                    exit(1);
+                }
+
                 if (call->arity != expected_arity) {
                     error_full(
                         ERROR,
@@ -1607,7 +1645,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                         Type expected_type = e->type;
                         if (!e->next && expected->variadic == VARIADIC_TYPED) {
                             assert(expected_type.kind == TYPE_SLICE);
-                            expected_type = *expected_type.spec_type;
+                            if (!call->spread) {
+                                expected_type = *expected_type.spec_type;
+                            }
                         } else {
                             e = e->next;
                         }
@@ -1637,7 +1677,9 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                 Type expected_type = e->type;
                 if (!e->next && expected->variadic == VARIADIC_TYPED) {
                     assert(expected_type.kind == TYPE_SLICE);
-                    expected_type = *expected_type.spec_type;
+                    if (!call->spread) {
+                        expected_type = *expected_type.spec_type;
+                    }
                 } else {
                     e = e->next;
                 }

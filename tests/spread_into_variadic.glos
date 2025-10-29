@@ -1,0 +1,14 @@
+package main
+
+import "fmt"
+
+fn print(xs ...i64) {
+	for var i = 0; i < xs.count; i += 1 {
+		fmt::println(xs[i])
+	}
+}
+
+fn main() {
+	var xs = []i64 {69, 420, 1337}[..]
+	print(...xs)
+}

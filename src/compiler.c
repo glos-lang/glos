@@ -549,7 +549,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         QbeType  variadic_type = {0};
         QbeNode *variadic_array = NULL;
-        if (spec->variadic == VARIADIC_TYPED) {
+        if (spec->variadic == VARIADIC_TYPED && !call->spread) {
             const size_t extra = call->arity - arity;
             if (extra) {
                 compile_type(c, spec->args.tail->type.spec_type);

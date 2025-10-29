@@ -206,6 +206,9 @@ typedef struct {
     Nodes  args;
     size_t arity;
 
+    bool spread;
+    Pos  spread_pos;
+
     // Formatter metadata
     bool fmt_multiline;
     Pos  rparen_pos;
