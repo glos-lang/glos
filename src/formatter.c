@@ -810,6 +810,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_TRAIT: {
         NodeTrait *trait = (NodeTrait *) n;
+        if (trait->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         sb_sprintf(&f->sb, "trait " SVFmt " {\n", SVArg(n->token.sv));
         f->depth++;
         for (Node *it = trait->fns.head; it; it = it->next) {

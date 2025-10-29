@@ -411,6 +411,7 @@ typedef struct {
     Nodes  fns;
     size_t fns_count;
 
+    bool        is_public;
     Package    *package;
     CheckStatus check_status;
 

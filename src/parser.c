@@ -1222,7 +1222,8 @@ static Node *parse_stmt(Parser *p) {
         local_assert(p, token, false);
         lexer_buffer(
             &p->lexer,
-            lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_TYPE, TOKEN_CONST, TOKEN_STRUCT, TOKEN_EXTERN));
+            lexer_expect(
+                &p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_TYPE, TOKEN_CONST, TOKEN_TRAIT, TOKEN_STRUCT, TOKEN_EXTERN));
 
         node = parse_stmt(p);
         switch (node->kind) {
@@ -1240,6 +1241,10 @@ static Node *parse_stmt(Parser *p) {
 
         case NODE_CONST:
             ((NodeConst *) node)->is_public = true;
+            break;
+
+        case NODE_TRAIT:
+            ((NodeTrait *) node)->is_public = true;
             break;
 
         case NODE_STRUCT:

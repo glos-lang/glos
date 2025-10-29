@@ -250,6 +250,11 @@ static Node *ident_find(const Context *c, Package *package, const Token *token, 
             is_public = ((NodeConst *) global)->is_public;
             break;
 
+        case NODE_TRAIT:
+            label = "type";
+            is_public = ((NodeTrait *) global)->is_public;
+            break;
+
         case NODE_STRUCT:
             label = "type";
             is_public = ((NodeStruct *) global)->is_public;

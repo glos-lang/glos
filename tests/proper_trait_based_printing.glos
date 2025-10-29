@@ -1,0 +1,7 @@
+package main
+
+import "fmt"
+
+fn main() {
+	fmt::println("The answer is ", 69)
+}

@@ -1,0 +1,12 @@
+package C
+
+pub extern {
+	when #OS == "Linux" {
+		var stdout rawptr
+	} else {
+		#link "__stdoutp"
+		var stdout rawptr
+	}
+	fn fwrite(data rawptr, count i64, size i64, stream rawptr) i64
+	fn snprintf(buffer &u8, capacity i64, fmt &u8, ...) i32
+}

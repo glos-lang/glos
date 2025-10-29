@@ -1,0 +1,33 @@
+package fmt
+
+import (
+	"C"
+	"io"
+)
+
+pub trait Writer {
+	write([]u8)
+}
+
+pub trait Show {
+	show(Writer)
+}
+
+pub fn (x i64) show(w Writer) {
+	var buffer [32]u8
+	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%ld", x)
+	assert count >= 0
+
+	w.write(buffer[..count])
+}
+
+pub fn (s []u8) show(w Writer) {
+	w.write(s)
+}
+
+pub fn println(shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(&io::stdout)
+	}
+	io::stdout.write("\n")
+}
