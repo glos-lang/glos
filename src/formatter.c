@@ -902,20 +902,14 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_WHEN: {
         NodeWhen *when = (NodeWhen *) n;
-        if (when->condition) {
-            sb_push(&f->sb, '(');
-            format_expr(f, n, false);
-            sb_push(&f->sb, ')');
-        } else {
-            sb_sprintf(&f->sb, "when ");
-            format_expr(f, when->condition, true);
-            sb_push(&f->sb, ' ');
-            format_stmt(f, when->consequence, true);
+        sb_sprintf(&f->sb, "when ");
+        format_expr(f, when->condition, true);
+        sb_push(&f->sb, ' ');
+        format_stmt(f, when->consequence, true);
 
-            if (when->antecedence) {
-                sb_sprintf(&f->sb, " else ");
-                format_stmt(f, when->antecedence, true);
-            }
+        if (when->antecedence) {
+            sb_sprintf(&f->sb, " else ");
+            format_stmt(f, when->antecedence, true);
         }
     } break;
 
