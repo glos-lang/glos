@@ -3,6 +3,6 @@ STDOUT 7
 69
 420
 
-STDERR 82
-assertions_custom_message.glos:8:12: Assertion Failed: Custom message for testing
+STDERR 83
+assertions_custom_message.glos:10:12: Assertion Failed: Custom message for testing
 

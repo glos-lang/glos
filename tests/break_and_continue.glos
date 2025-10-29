@@ -1,12 +1,14 @@
 package main
 
+import "fmt"
+
 fn main() {
 	for var i = 0; i < 6; i += 1 {
 		if i == 4 {
 			continue
 		}
 
-		print i
+		fmt::println(i)
 	}
 
 	for var i = 0; i < 10; i += 1 {
@@ -14,6 +16,6 @@ fn main() {
 			break
 		}
 
-		print i
+		fmt::println(i)
 	}
 }

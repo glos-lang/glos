@@ -1,13 +1,15 @@
 package main
 
+import "fmt"
+
 struct Vec2 {
     x i32
     y i32
 }
 
 fn printVec2(v Vec2) {
-    print v.x
-    print v.y
+    fmt::println(v.x)
+    fmt::println(v.y)
 }
 
 var vec = Vec2 {

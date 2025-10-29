@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn factorial(n i64) i64 {
     if n < 2 {
         return 1
@@ -9,5 +11,5 @@ fn factorial(n i64) i64 {
 }
 
 fn main() {
-    print factorial(5)
+    fmt::println(factorial(5))
 }

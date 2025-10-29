@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 struct Iota {
     x i64
 }
@@ -15,11 +17,11 @@ fn double(i &&Iota) {
 fn main() {
     var iota = Iota {x: 67}
     var ptr = &iota
-    print iota.x
+    fmt::println(iota.x)
 
     single(ptr)
-    print iota.x
+    fmt::println(iota.x)
 
     double(&ptr)
-    print iota.x
+    fmt::println(iota.x)
 }

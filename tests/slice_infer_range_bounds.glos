@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn alloc_i64s(n i64) []i64 {
     extern {
         fn malloc(size u64) rawptr
@@ -11,7 +13,7 @@ fn alloc_i64s(n i64) []i64 {
 
 fn print_i64s(xs []i64) {
     for var i = 0; i < len(xs); i += 1 {
-        print xs[i]
+        fmt::println(xs[i])
     }
 }
 

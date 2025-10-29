@@ -1,21 +1,21 @@
 EXIT 0
-STDOUT 32
-1
-0
-0
-1
-1
-0
-1
-0
-0
-1
-1
-0
-1
-0
-1
-0
+STDOUT 88
+true
+false
+false
+true
+true
+false
+true
+false
+false
+true
+true
+false
+true
+false
+true
+false
 
 STDERR 0
 

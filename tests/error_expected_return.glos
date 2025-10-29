@@ -3,5 +3,5 @@ package main
 fn foo() i64 {}
 
 fn main() {
-    print foo()
+    fmt::println(foo())
 }

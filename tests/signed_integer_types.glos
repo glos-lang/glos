@@ -1,20 +1,22 @@
 package main
 
+import "fmt"
+
 fn main() {
     var a = <i8> 69
     var b = <i16> 420
     var c = <i32> 1337
     var d = <i64> 80085
 
-    print a
-    print sizeof(a)
+    fmt::println(a)
+    fmt::println(sizeof(a))
 
-    print b
-    print sizeof(b)
+    fmt::println(b)
+    fmt::println(sizeof(b))
 
-    print c
-    print sizeof(c)
+    fmt::println(c)
+    fmt::println(sizeof(c))
 
-    print d
-    print sizeof(d)
+    fmt::println(d)
+    fmt::println(sizeof(d))
 }

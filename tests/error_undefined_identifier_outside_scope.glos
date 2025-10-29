@@ -1,10 +1,12 @@
 package main
 
+import "fmt"
+
 fn main() {
     {
         var x = 69
-        print x
+        fmt::println(x)
     }
 
-    print x
+    fmt::println(x)
 }

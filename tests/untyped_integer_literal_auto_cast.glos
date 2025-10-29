@@ -1,14 +1,16 @@
 package main
 
-fn a(x i8)  { print x }
-fn b(x i16) { print x }
-fn c(x i32) { print x }
-fn d(x i64) { print x }
+import "fmt"
 
-fn e(x u8)  { print x }
-fn f(x u16) { print x }
-fn g(x u32) { print x }
-fn h(x u64) { print x }
+fn a(x i8)  { fmt::println(x) }
+fn b(x i16) { fmt::println(x) }
+fn c(x i32) { fmt::println(x) }
+fn d(x i64) { fmt::println(x) }
+
+fn e(x u8)  { fmt::println(x) }
+fn f(x u16) { fmt::println(x) }
+fn g(x u32) { fmt::println(x) }
+fn h(x u64) { fmt::println(x) }
 
 fn main() {
     a(69)

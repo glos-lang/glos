@@ -1,19 +1,21 @@
 package main
 
+import "fmt"
+
 fn foo(x bool) {
     if x {
-        print 1337
+        fmt::println(1337)
     } else {
-        print 69
+        fmt::println(69)
     }
     bar(x)
 }
 
 fn bar(x bool) {
     if x {
-        print 80085
+        fmt::println(80085)
     } else {
-        print 420
+        fmt::println(420)
         foo(true)
     }
 }

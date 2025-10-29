@@ -1,11 +1,13 @@
 package main
 
+import "fmt"
+
 fn main() {
     var x i64 = 69
     var y &i64 = &x
     var z &&i64 = &y
 
-    print x
+    fmt::println(x)
     **z = 420
-    print x
+    fmt::println(x)
 }

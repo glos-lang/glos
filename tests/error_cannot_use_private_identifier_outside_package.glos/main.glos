@@ -3,5 +3,5 @@ package main
 import "foo"
 
 fn main() {
-	print foo::bar
+	foo::bar
 }

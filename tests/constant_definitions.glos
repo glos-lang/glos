@@ -1,13 +1,15 @@
 package main
 
+import "fmt"
+
 struct Vec2 {
     x i64
     y i64
 }
 
 fn print_vec2(v Vec2) {
-    print v.x
-    print v.y
+    fmt::println(v.x)
+    fmt::println(v.y)
 }
 
 const X = 34 + 35

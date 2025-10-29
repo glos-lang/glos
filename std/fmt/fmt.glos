@@ -13,11 +13,31 @@ pub trait Show {
 	show(Writer)
 }
 
+pub fn (b bool) show(w Writer) {
+	if b {
+		w.write("true")
+	} else {
+		w.write("false")
+	}
+}
+
+pub fn (x i8)  show(w Writer) { (<i64> x).show(w) }
+pub fn (x i16) show(w Writer) { (<i64> x).show(w) }
+pub fn (x i32) show(w Writer) { (<i64> x).show(w) }
 pub fn (x i64) show(w Writer) {
 	var buffer [32]u8
 	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%ld", x)
 	assert count >= 0
+	w.write(buffer[..count])
+}
 
+pub fn (x u8)  show(w Writer) { (<u64> x).show(w) } // TODO: What about printing characters
+pub fn (x u16) show(w Writer) { (<u64> x).show(w) }
+pub fn (x u32) show(w Writer) { (<u64> x).show(w) }
+pub fn (x u64) show(w Writer) {
+	var buffer [32]u8
+	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%zu", x)
+	assert count >= 0
 	w.write(buffer[..count])
 }
 

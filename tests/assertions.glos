@@ -1,11 +1,13 @@
 package main
 
+import "fmt"
+
 fn main() {
-    print 69
+    fmt::println(69)
     assert true
 
-    print 420
+    fmt::println(420)
     assert !true
 
-    print 1337
+    fmt::println(1337)
 }

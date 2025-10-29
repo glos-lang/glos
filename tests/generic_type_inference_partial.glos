@@ -1,13 +1,15 @@
 package main
 
+import "fmt"
+
 fn foo<A, B>(b B) {
-	print sizeof<A>
-	print sizeof<B>
+	fmt::println(sizeof<A>)
+	fmt::println(sizeof<B>)
 }
 
 fn bar<A, B>(a A) {
-	print sizeof<A>
-	print sizeof<B>
+	fmt::println(sizeof<A>)
+	fmt::println(sizeof<B>)
 }
 
 fn main() {

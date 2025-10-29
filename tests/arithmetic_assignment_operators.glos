@@ -1,33 +1,35 @@
 package main
 
+import "fmt"
+
 fn main() {
     var acc = 42
-    print acc
+    fmt::println(acc)
 
     acc += 10
-    print acc
+    fmt::println(acc)
 
     acc -= 5
-    print acc
+    fmt::println(acc)
 
     acc *= 2
-    print acc
+    fmt::println(acc)
 
     acc /= 3
-    print acc
+    fmt::println(acc)
 
     acc <<= 1
-    print acc
+    fmt::println(acc)
 
     acc >>= 2
-    print acc
+    fmt::println(acc)
 
     acc |= 8
-    print acc
+    fmt::println(acc)
 
     acc &= 15
-    print acc
+    fmt::println(acc)
 
 	acc %= 4
-	print acc
+	fmt::println(acc)
 }

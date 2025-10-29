@@ -1,9 +1,11 @@
 package main
 
+import "fmt"
+
 fn main() {
     fn foo() {
         var x = 69
     }
 
-    print x
+    fmt::println(x)
 }
