@@ -99,6 +99,7 @@ bool sv_has_prefix(SV a, SV b);
 bool sv_has_suffix(SV a, SV b);
 
 SV sv_from_cstr(const char *cstr);
+SV sv_strip_prefix(SV a, SV b);
 SV sv_strip_suffix(SV a, SV b);
 
 SV sv_trim(SV s, char ch);

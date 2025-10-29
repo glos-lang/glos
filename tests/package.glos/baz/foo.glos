@@ -1,5 +1,7 @@
 package baz
 
+import "fmt"
+
 pub fn foo() {
-    print 1337
+    fmt::println(1337)
 }

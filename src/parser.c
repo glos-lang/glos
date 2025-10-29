@@ -724,7 +724,6 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-// TODO: Broken
 static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     char *path_start = temp_alloc(0);
     if (p->root) {
@@ -1504,7 +1503,21 @@ ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
             return PDE_FAILED;
         }
 
-        path = arena_sprintf(p->arena, "%s%s", p->std, path);
+        if (p->root) {
+            SV path_sv = sv_from_cstr(path);
+            SV root_sv = sv_from_cstr(p->root);
+            if (sv_has_prefix(path_sv, root_sv) && path_sv.count > root_sv.count &&
+                path_sv.data[root_sv.count] == '/') {
+                path_sv = sv_strip_prefix(path_sv, root_sv);
+                sv_drop(&path_sv, 1);
+                path = arena_sprintf(p->arena, "%s" SVFmt, p->std, SVArg(path_sv));
+            } else {
+                path = arena_sprintf(p->arena, "%s%s", p->std, path);
+            }
+        } else {
+            path = arena_sprintf(p->arena, "%s%s", p->std, path);
+        }
+
         if (!read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
             return PDE_FAILED;
         }

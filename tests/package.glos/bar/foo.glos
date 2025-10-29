@@ -1,5 +1,7 @@
 package bar
 
+import "fmt"
+
 pub fn foo() {
-    print 420
+    fmt::println(420)
 }
