@@ -8,7 +8,6 @@ pub fn write(s []u8) {
 			#link "__stdoutp"
 			var stdout rawptr
 		}
-
 		fn fwrite(data rawptr, count i64, size i64, stream rawptr) i64
 	}
 

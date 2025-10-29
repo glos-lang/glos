@@ -824,13 +824,35 @@ static Node *parse_when(Parser *p, Token token) {
     return (Node *) when;
 }
 
+static void set_node_public_in_extern(Node *n) {
+    if (!n) {
+        return;
+    }
+
+    if (n->kind == NODE_FN) {
+        ((NodeFn *) n)->is_public = true;
+    } else if (n->kind == NODE_VAR) {
+        ((NodeVar *) n)->is_public = true;
+    } else if (n->kind == NODE_WHEN) {
+        NodeWhen *when = (NodeWhen *) n;
+        set_node_public_in_extern(when->consequence);
+        set_node_public_in_extern(when->antecedence);
+    } else if (n->kind == NODE_BLOCK) {
+        for (Node *it = ((NodeBlock *) n)->body.head; it; it = it->next) {
+            set_node_public_in_extern(it);
+        }
+    } else {
+        unreachable();
+    }
+}
+
 static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
     Token token;
     if (p->in_extern) {
-        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_WHEN, TOKEN_PROP_LINK);
+        token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_PUB, TOKEN_WHEN, TOKEN_PROP_LINK);
     } else {
         token = lexer_next(&p->lexer);
     }
@@ -1195,13 +1217,7 @@ static Node *parse_stmt(Parser *p) {
 
         case NODE_EXTERN:
             for (Node *it = ((NodeExtern *) node)->definitions.head; it; it = it->next) {
-                if (it->kind == NODE_FN) {
-                    ((NodeFn *) it)->is_public = true;
-                } else if (it->kind == NODE_VAR) {
-                    ((NodeVar *) it)->is_public = true;
-                } else {
-                    unreachable();
-                }
+                set_node_public_in_extern(it);
             }
             break;
 

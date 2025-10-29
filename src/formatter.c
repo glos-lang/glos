@@ -581,6 +581,59 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 }
 
+static bool is_public_in_extern(Node *n) {
+    if (!n) {
+        return true;
+    }
+
+    if (n->kind == NODE_FN) {
+        if (!((NodeFn *) n)->is_public) {
+            return false;
+        }
+    } else if (n->kind == NODE_VAR) {
+        if (!((NodeVar *) n)->is_public) {
+            return false;
+        }
+    } else if (n->kind == NODE_WHEN) {
+        NodeWhen *when = (NodeWhen *) n;
+        return is_public_in_extern(when->consequence) && is_public_in_extern(when->antecedence);
+    } else if (n->kind == NODE_BLOCK) {
+        NodeBlock *block = (NodeBlock *) n;
+        for (Node *it = block->body.head; it; it = it->next) {
+            if (!is_public_in_extern(it)) {
+                return false;
+            }
+        }
+    } else {
+        unreachable();
+    }
+
+    return true;
+}
+
+static void set_not_public_in_extern(Node *n) {
+    if (!n) {
+        return;
+    }
+
+    if (n->kind == NODE_FN) {
+        ((NodeFn *) n)->is_public = false;
+    } else if (n->kind == NODE_VAR) {
+        ((NodeVar *) n)->is_public = false;
+    } else if (n->kind == NODE_WHEN) {
+        NodeWhen *when = (NodeWhen *) n;
+        set_not_public_in_extern(when->consequence);
+        set_not_public_in_extern(when->antecedence);
+    } else if (n->kind == NODE_BLOCK) {
+        NodeBlock *block = (NodeBlock *) n;
+        for (Node *it = block->body.head; it; it = it->next) {
+            set_not_public_in_extern(it);
+        }
+    } else {
+        unreachable();
+    }
+}
+
 static_assert(COUNT_NODES == 25, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
@@ -846,32 +899,16 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
         bool all_public = externn->definitions.head != NULL;
         for (Node *it = externn->definitions.head; it; it = it->next) {
-            if (it->kind == NODE_FN) {
-                if (!((NodeFn *) it)->is_public) {
-                    all_public = false;
-                    break;
-                }
-            } else if (it->kind == NODE_VAR) {
-                if (!((NodeVar *) it)->is_public) {
-                    all_public = false;
-                    break;
-                }
-            } else {
-                unreachable();
+            if (!is_public_in_extern(it)) {
+                all_public = false;
+                break;
             }
         }
 
         if (all_public) {
             for (Node *it = externn->definitions.head; it; it = it->next) {
-                if (it->kind == NODE_FN) {
-                    ((NodeFn *) it)->is_public = false;
-                } else if (it->kind == NODE_VAR) {
-                    ((NodeVar *) it)->is_public = false;
-                } else {
-                    unreachable();
-                }
+                set_not_public_in_extern(it);
             }
-
             sb_sprintf(&f->sb, "pub ");
         }
 
