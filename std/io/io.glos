@@ -1,11 +1,20 @@
 package io
 
 pub fn write(s []u8) {
-    extern {
-        fn putchar(ch i32) i32
-    }
+	when #OS == "Linux" {
+		extern {
+			var stdout rawptr
+		}
+	} else {
+		extern {
+			#link "__stdoutp"
+			var stdout rawptr
+		}
+	}
 
-    for var i = 0; i < len(s); i += 1 {
-        putchar(<i32> s[i])
-    }
+	extern {
+		fn fwrite(data rawptr, count i64, size i64, stream rawptr) i64
+	}
+
+	fwrite(<rawptr> s.data, s.count, sizeof<u8>, stdout)
 }

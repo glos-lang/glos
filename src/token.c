@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 const char *token_kind_to_cstr(TokenKind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -207,11 +207,14 @@ const char *token_kind_to_cstr(TokenKind kind) {
     case TOKEN_PACKAGE:
         return "'package'";
 
-    case TOKEN_LINK:
-        return "'#link'";
-
     case TOKEN_WHEN:
         return "'when'";
+
+    case TOKEN_PROP_OS:
+        return "'#OS'";
+
+    case TOKEN_PROP_LINK:
+        return "'#link'";
 
     case TOKEN_PRINT:
         return "'print'";
@@ -221,7 +224,7 @@ const char *token_kind_to_cstr(TokenKind kind) {
     }
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 Power token_kind_to_power(TokenKind kind) {
     switch (kind) {
     case TOKEN_DOT:

@@ -3,6 +3,11 @@
 #include "checker.h"
 #include "message.h"
 
+bool is_macos(void) {
+    QbeTarget target = qbe_target_default();
+    return target == QBE_TARGET_ARM64_MACOS || target == QBE_TARGET_X86_64_MACOS;
+}
+
 void check_int_limit(Node *n, size_t value) {
     static_assert(COUNT_TYPES == 19, "");
     const size_t int_limits[COUNT_TYPES] = {
@@ -317,7 +322,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -334,6 +339,14 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_CHAR:
             n->type = (Type) {.kind = TYPE_U8};
             return const_int(n->token.as.integer);
+
+        case TOKEN_PROP_OS:
+            n->type = c->context.str_type;
+            if (is_macos()) {
+                return const_str(sv_from_cstr("macOS"));
+            } else {
+                return const_str(sv_from_cstr("Linux"));
+            }
 
         case TOKEN_IDENT:
             resolve_ident_package(n);
@@ -384,7 +397,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -487,7 +500,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -537,11 +550,17 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_GE:
         case TOKEN_LT:
         case TOKEN_LE:
+            lhs = eval_const_expr_impl(c, binary->lhs);
+            rhs = eval_const_expr_impl(c, binary->rhs);
+            type_assert_arith(binary->lhs, true);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_BOOL};
+            break;
+
         case TOKEN_EQ:
         case TOKEN_NE:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
-            type_assert_arith(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
@@ -550,7 +569,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -634,10 +653,18 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
         case TOKEN_EQ:
-            return const_bool(lhs.as.integer == rhs.as.integer);
+            if (lhs.is_string) {
+                return const_bool(sv_eq(lhs.as.sv, rhs.as.sv));
+            } else {
+                return const_bool(lhs.as.integer == rhs.as.integer);
+            }
 
         case TOKEN_NE:
-            return const_bool(lhs.as.integer != rhs.as.integer);
+            if (lhs.is_string) {
+                return const_bool(!sv_eq(lhs.as.sv, rhs.as.sv));
+            } else {
+                return const_bool(lhs.as.integer != rhs.as.integer);
+            }
 
         default:
             unreachable();
@@ -1390,13 +1417,14 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             break;
 
         case TOKEN_STR:
+        case TOKEN_PROP_OS:
             n->type = c->context.str_type;
             break;
 
@@ -1636,7 +1664,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1768,7 +1796,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

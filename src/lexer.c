@@ -199,7 +199,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -353,13 +353,15 @@ Token lexer_next(Lexer *l) {
         }
         token.sv.count -= l->sv.count;
 
-        if (sv_match(token.sv, "#link")) {
-            token.kind = TOKEN_LINK;
+        if (sv_match(token.sv, "#OS")) {
+            token.kind = TOKEN_PROP_OS;
+        } else if (sv_match(token.sv, "#link")) {
+            token.kind = TOKEN_PROP_LINK;
         } else {
             error_full(ERROR, token.pos, "Invalid property '" SVFmt "'", SVArg(token.sv));
             exit(1);
         }
-        break;
+        return token;
 
     case '(':
         token.kind = TOKEN_LPAREN;

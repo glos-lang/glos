@@ -68,7 +68,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -162,7 +162,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -381,7 +381,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -391,6 +391,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_STR:
     case TOKEN_BOOL:
     case TOKEN_CHAR:
+    case TOKEN_PROP_OS:
         node = node_alloc(p, NODE_ATOM, token);
         break;
 
@@ -823,7 +824,7 @@ static Node *parse_when(Parser *p, Token token) {
     return (Node *) when;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1102,7 +1103,7 @@ static Node *parse_stmt(Parser *p) {
         }
 
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_LINK);
+            token = lexer_expect(&p->lexer, TOKEN_FN, TOKEN_VAR, TOKEN_PROP_LINK);
             lexer_buffer(&p->lexer, token);
             nodes_push(&externn->definitions, parse_stmt(p));
         }
@@ -1126,7 +1127,7 @@ static Node *parse_stmt(Parser *p) {
         }
     } break;
 
-    case TOKEN_LINK: {
+    case TOKEN_PROP_LINK: {
         if (!p->in_extern) {
             local_assert(p, token, false);
         }

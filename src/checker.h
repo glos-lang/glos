@@ -4,6 +4,8 @@
 #include "compiler.h"
 #include "package.h"
 
+bool is_macos(void);
+
 void check_int_limit(Node *n, size_t value);
 void check_packages(Compiler *c, Packages ps);
 
