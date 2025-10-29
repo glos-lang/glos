@@ -31,7 +31,7 @@ pub fn (x i64) show(w Writer) {
 	w.write(buffer[..count])
 }
 
-pub fn (x u8)  show(w Writer) { (<u64> x).show(w) } // TODO: What about printing characters
+pub fn (x u8)  show(w Writer) { (<u64> x).show(w) }
 pub fn (x u16) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u32) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u64) show(w Writer) {
@@ -45,9 +45,17 @@ pub fn (s []u8) show(w Writer) {
 	w.write(s)
 }
 
+pub fn print(shows ...Show) {
+	for var i = 0; i < shows.count; i += 1 {
+		shows[i].show(&io::stdout)
+	}
+}
+
 pub fn println(shows ...Show) {
 	for var i = 0; i < shows.count; i += 1 {
 		shows[i].show(&io::stdout)
 	}
 	io::stdout.write("\n")
 }
+
+// TODO: Flesh out this package
