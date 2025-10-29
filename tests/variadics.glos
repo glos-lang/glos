@@ -1,0 +1,16 @@
+package main
+
+fn print_i64s(xs ...i64) {
+	for var i = 0; i < xs.count; i += 1 {
+		print xs[i]
+	}
+}
+
+extern {
+	fn printf(fmt &u8, ...) i32
+}
+
+fn main() {
+	print_i64s(69, 420, 1337)
+	printf(<&u8> "(%ld, %ld)\n", 69, 420)
+}

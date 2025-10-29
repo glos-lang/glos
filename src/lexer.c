@@ -199,7 +199,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -316,7 +316,11 @@ Token lexer_next(Lexer *l) {
 
     case '.':
         if (match_char(l, '.')) {
-            token.kind = TOKEN_RANGE;
+            if (match_char(l, '.')) {
+                token.kind = TOKEN_VARIADIC;
+            } else {
+                token.kind = TOKEN_RANGE;
+            }
         } else {
             token.kind = TOKEN_DOT;
         }

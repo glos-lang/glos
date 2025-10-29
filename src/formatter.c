@@ -119,6 +119,74 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 }
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
+static void format_type(Formatter *f, Node *n, bool in_expr);
+
+static void format_fn_signature(Formatter *f, NodeFn *fn) {
+    sb_push(&f->sb, '(');
+    if (fn->fmt_multiline) {
+        f->depth++;
+    }
+
+    for (Node *it = fn->args.head; it; it = it->next) {
+        if (fn->is_method && it == fn->args.head) {
+            // This will only be true when formatting the signature of a trait method
+            continue;
+        }
+
+        if (it->fmt_newline) {
+            sb_push(&f->sb, '\n');
+        }
+
+        if (fn->fmt_multiline) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+        }
+
+        if (it->token.sv.count) {
+            sb_sprintf(&f->sb, SVFmt " ", SVArg(it->token.sv));
+        }
+
+        if (!it->next && fn->variadic == VARIADIC_TYPED) {
+            sb_sprintf(&f->sb, "...");
+        }
+
+        format_type(f, ((NodeVar *) it)->type, false);
+        if (it->next) {
+            sb_push(&f->sb, ',');
+            if (!fn->fmt_multiline) {
+                sb_push(&f->sb, ' ');
+            }
+        }
+    }
+
+    if (fn->variadic == VARIADIC_UNTYPED) {
+        if (fn->is_method ? fn->arity > 1 : fn->arity != 0) {
+            sb_push(&f->sb, ',');
+            if (!fn->fmt_multiline) {
+                sb_push(&f->sb, ' ');
+            }
+        }
+
+        if (fn->fmt_multiline) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+        }
+
+        sb_sprintf(&f->sb, "...");
+    }
+
+    if (fn->fmt_multiline) {
+        f->depth--;
+        sb_push(&f->sb, '\n');
+        format_indent(f);
+    }
+    sb_push(&f->sb, ')');
+
+    if (fn->ret) {
+        sb_push(&f->sb, ' ');
+        format_type(f, fn->ret, false);
+    }
+}
 
 static_assert(COUNT_NODES == 25, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
@@ -164,53 +232,10 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
         format_type(f, index->base, false);
     } break;
 
-    case NODE_FN: {
-        NodeFn *fn = (NodeFn *) n;
-        sb_sprintf(&f->sb, SVFmt "(", SVArg(n->token.sv));
-        if (fn->fmt_multiline) {
-            f->depth++;
-        }
-
-        for (Node *it = fn->args.head; it; it = it->next) {
-            if (fn->is_method && it == fn->args.head) {
-                // This will only be true when formatting the signature of a trait method
-                continue;
-            }
-
-            if (it->fmt_newline) {
-                sb_push(&f->sb, '\n');
-            }
-
-            if (fn->fmt_multiline) {
-                sb_push(&f->sb, '\n');
-                format_indent(f);
-            }
-
-            if (it->token.sv.count) {
-                sb_sprintf(&f->sb, SVFmt " ", SVArg(it->token.sv));
-            }
-
-            format_type(f, ((NodeVar *) it)->type, false);
-            if (it->next) {
-                sb_push(&f->sb, ',');
-                if (!fn->fmt_multiline) {
-                    sb_push(&f->sb, ' ');
-                }
-            }
-        }
-
-        if (fn->fmt_multiline) {
-            f->depth--;
-            sb_push(&f->sb, '\n');
-            format_indent(f);
-        }
-        sb_push(&f->sb, ')');
-
-        if (fn->ret) {
-            sb_push(&f->sb, ' ');
-            format_type(f, fn->ret, false);
-        }
-    } break;
+    case NODE_FN:
+        sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
+        format_fn_signature(f, (NodeFn *) n);
+        break;
 
     default:
         unreachable();
@@ -271,49 +296,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
         sb_push(&f->sb, '>');
     }
 
-    sb_push(&f->sb, '(');
-    if (fn->fmt_multiline) {
-        f->depth++;
-    }
-
-    for (Node *arg = fn->args.head; arg; arg = arg->next) {
-        if (fn->is_method && arg == fn->args.head) {
-            continue;
-        }
-
-        if (arg->fmt_newline) {
-            sb_push(&f->sb, '\n');
-        }
-
-        if (fn->fmt_multiline) {
-            sb_push(&f->sb, '\n');
-            format_indent(f);
-        }
-
-        sb_sprintf(&f->sb, SVFmt, SVArg(arg->token.sv));
-        sb_push(&f->sb, ' ');
-        format_type(f, ((NodeVar *) arg)->type, false);
-
-        if (arg->next) {
-            sb_push(&f->sb, ',');
-            if (!fn->fmt_multiline) {
-                sb_push(&f->sb, ' ');
-            }
-        }
-    }
-
-    if (fn->fmt_multiline) {
-        f->depth--;
-        sb_push(&f->sb, '\n');
-        format_indent(f);
-    }
-    sb_push(&f->sb, ')');
-
-    if (fn->ret) {
-        sb_push(&f->sb, ' ');
-        format_type(f, fn->ret, false);
-    }
-
+    format_fn_signature(f, fn);
     if (fn->body) {
         sb_push(&f->sb, ' ');
         format_stmt(f, fn->body, true);

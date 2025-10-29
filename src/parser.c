@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "message.h"
+#include "node.h"
 
 static void nodes_append(Nodes *dst, Nodes *src) {
     nodes_push(dst, src->head);
@@ -68,7 +69,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -132,9 +133,39 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
                 ((NodeAtom *) arg->type)->package = p->packages->current;
 
                 arg->node.token = (Token) {0};
+            } else if (token.kind == TOKEN_VARIADIC) {
+                lexer_unbuffer(&p->lexer);
+                fn->variadic = VARIADIC_TYPED;
+                arg->type = parse_type(p);
+
+                nodes_push(&fn->args, (Node *) arg);
+                fn->args.tail->fmt_newline = fmt_newline;
+                lexer_expect(&p->lexer, TOKEN_RPAREN);
+                break;
             } else {
                 arg->type = parse_type(p);
             }
+        } else if (arg->node.token.kind == TOKEN_VARIADIC) {
+            lexer_unbuffer(&p->lexer);
+            fn->variadic = VARIADIC_UNTYPED;
+
+            if (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
+                fn->variadic = VARIADIC_TYPED;
+                arg->type = parse_type(p);
+
+                nodes_push(&fn->args, (Node *) arg);
+                fn->args.tail->fmt_newline = fmt_newline;
+                lexer_expect(&p->lexer, TOKEN_RPAREN);
+            } else if (!fn->arity) {
+                error_full(
+                    ERROR,
+                    arg->node.token.pos,
+                    "Variadic parameter cannot be the first argument in an external function");
+                exit(1);
+            }
+
+            arg->node.token = (Token) {0};
+            break;
         } else {
             arg->type = parse_type(p);
             arg->node.token = (Token) {0};
@@ -162,7 +193,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -248,7 +279,7 @@ static bool node_is_compound_literal_type(Node *n) {
     return false;
 }
 
-static Node *parse_fn(Parser *p, Token name);
+static Node *parse_fn(Parser *p, Token name, bool will_be_method);
 
 static_assert(COUNT_NODES == 25, "");
 static void ensure_const_expr(Node *n) {
@@ -381,7 +412,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -539,7 +570,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             exit(1);
         }
 
-        node = parse_fn(p, token);
+        node = parse_fn(p, token, false);
         break;
 
     default:
@@ -846,7 +877,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -962,7 +993,7 @@ static Node *parse_stmt(Parser *p) {
             self->type = parse_type(p);
 
             lexer_expect(&p->lexer, TOKEN_RPAREN);
-            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+            node = parse_fn(p, lexer_expect(&p->lexer, TOKEN_IDENT), true);
 
             NodeFn *fn = (NodeFn *) node;
             self->node.next = fn->args.head;
@@ -970,7 +1001,7 @@ static Node *parse_stmt(Parser *p) {
             fn->arity++;
             fn->is_method = true;
         } else {
-            node = parse_fn(p, token);
+            node = parse_fn(p, token, false);
         }
     } break;
 
@@ -1287,7 +1318,7 @@ static Node *parse_stmt(Parser *p) {
     return node;
 }
 
-static Node *parse_fn(Parser *p, Token token) {
+static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
     NodeFn *fn = node_alloc(p, NODE_FN, token);
     fn->local = p->local;
 
@@ -1322,9 +1353,45 @@ static Node *parse_fn(Parser *p, Token token) {
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
         const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
 
+        if (lexer_read(&p->lexer, TOKEN_VARIADIC)) {
+            if (!p->in_extern) {
+                error_full(
+                    ERROR, p->lexer.buffer.pos, "Variadic parameter must have a name in a non external function");
+                exit(1);
+            }
+
+            if (!fn->arity && !will_be_method) {
+                error_full(
+                    ERROR,
+                    p->lexer.buffer.pos,
+                    "Variadic parameter cannot be the first argument in an external function");
+                exit(1);
+            }
+
+            fn->variadic = VARIADIC_UNTYPED;
+            lexer_expect(&p->lexer, TOKEN_RPAREN);
+            break;
+        }
+
         NodeVar *arg = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
         arg->kind = NODE_VAR_ARG;
-        arg->type = parse_type(p);
+
+        if (lexer_read(&p->lexer, TOKEN_VARIADIC)) {
+            if (p->in_extern) {
+                error_full(
+                    ERROR, arg->node.token.pos, "Variadic parameter must not have a name in an external function");
+                exit(1);
+            }
+
+            fn->variadic = VARIADIC_TYPED;
+            arg->type = parse_type(p);
+            nodes_push(&fn->args, (Node *) arg);
+            fn->args.tail->fmt_newline = fmt_newline;
+            lexer_expect(&p->lexer, TOKEN_RPAREN);
+            break;
+        } else {
+            arg->type = parse_type(p);
+        }
 
         nodes_push(&fn->args, (Node *) arg);
         fn->args.tail->fmt_newline = fmt_newline;

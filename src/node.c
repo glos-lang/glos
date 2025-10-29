@@ -81,12 +81,24 @@ const char *type_to_cstr(Type type) {
         temp_sprintf("(");
 
         for (const Node *it = spec->args.head; it; it = it->next) {
-            temp_remove_null();
-            type_to_cstr(it->type);
+            if (!it->next && spec->variadic == VARIADIC_TYPED) {
+                temp_remove_null();
+                temp_sprintf("...");
+
+                assert(it->type.kind == TYPE_SLICE);
+                temp_remove_null();
+                type_to_cstr(*it->type.spec_type);
+            } else {
+                temp_remove_null();
+                type_to_cstr(it->type);
+            }
 
             if (it->next) {
                 temp_remove_null();
                 temp_sprintf(", ");
+            } else if (spec->variadic == VARIADIC_UNTYPED) {
+                temp_remove_null();
+                temp_sprintf(", ...");
             }
         }
 
@@ -181,6 +193,10 @@ static bool type_matches(Type a, Type b, TypeMatchLevel level) {
         const NodeFn *b_spec = (const NodeFn *) b.spec_node;
 
         if (a_spec->arity != b_spec->arity) {
+            return false;
+        }
+
+        if (a_spec->variadic != b_spec->variadic) {
             return false;
         }
 
