@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 struct State {
     x i64
 }
@@ -11,5 +13,5 @@ fn f() &State {
 }
 
 fn main() {
-    print f().x
+    fmt::println(f().x)
 }

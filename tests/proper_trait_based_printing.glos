@@ -3,5 +3,5 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println(foo)
+	fmt::println("The answer is ", 69)
 }

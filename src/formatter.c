@@ -188,7 +188,7 @@ static void format_fn_signature(Formatter *f, NodeFn *fn) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -303,7 +303,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
@@ -617,7 +617,7 @@ static void set_not_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -810,6 +810,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
 
     case NODE_TRAIT: {
         NodeTrait *trait = (NodeTrait *) n;
+        if (trait->is_public) {
+            sb_sprintf(&f->sb, "pub ");
+        }
+
         sb_sprintf(&f->sb, "trait " SVFmt " {\n", SVArg(n->token.sv));
         f->depth++;
         for (Node *it = trait->fns.head; it; it = it->next) {
@@ -931,11 +935,6 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             sb_sprintf(&f->sb, " else ");
             format_stmt(f, when->antecedence, true);
         }
-    } break;
-
-    case NODE_PRINT: {
-        sb_sprintf(&f->sb, "print ");
-        format_expr(f, ((NodePrint *) n)->operand, true);
     } break;
 
     default:

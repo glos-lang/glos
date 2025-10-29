@@ -1,29 +1,31 @@
 package main
 
+import "fmt"
+
 fn foo(x bool) bool {
-    print 69
+    fmt::println(69)
     return x
 }
 
 fn bar(x bool) bool {
-    print 420
+    fmt::println(420)
     return x
 }
 
 fn main() {
-    print true
-    print false
+    fmt::println(true)
+    fmt::println(false)
 
-    print !true
-    print !false
+    fmt::println(!true)
+    fmt::println(!false)
 
-    print foo(true)  && bar(true)
-    print foo(true)  && bar(false)
-    print foo(false) && bar(true)
-    print foo(false) && bar(false)
+    fmt::println(foo(true)  && bar(true))
+    fmt::println(foo(true)  && bar(false))
+    fmt::println(foo(false) && bar(true))
+    fmt::println(foo(false) && bar(false))
 
-    print foo(true)  || bar(true)
-    print foo(true)  || bar(false)
-    print foo(false) || bar(true)
-    print foo(false) || bar(false)
+    fmt::println(foo(true)  || bar(true))
+    fmt::println(foo(true)  || bar(false))
+    fmt::println(foo(false) || bar(true))
+    fmt::println(foo(false) || bar(false))
 }

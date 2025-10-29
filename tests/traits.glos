@@ -1,15 +1,17 @@
 package main
 
-trait Show {
-	show()
+import "fmt"
+
+trait MyShow {
+	myshow()
 }
 
-fn (x i64) show() {
-	print x
+fn (x i64) myshow() {
+	fmt::println(x)
 }
 
-fn display(s Show) {
-	s.show()
+fn display(s MyShow) {
+	s.myshow()
 }
 
 fn main() {

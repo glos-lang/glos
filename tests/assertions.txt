@@ -3,6 +3,6 @@ STDOUT 7
 69
 420
 
-STDERR 39
-assertions.glos:8:12: Assertion Failed
+STDERR 40
+assertions.glos:10:12: Assertion Failed
 

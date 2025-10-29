@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 struct Box<T> {
 	v T
 }
@@ -11,5 +13,5 @@ fn (b &Box<T>) set<T>(v T) {
 fn main() {
 	var box Box<i64>
 	box.set(69)
-	print box.v
+	fmt::println(box.v)
 }

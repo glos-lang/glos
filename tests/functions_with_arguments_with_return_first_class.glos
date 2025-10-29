@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn map(x i64, f fn (i64) i64) i64 {
     return f(x)
 }
@@ -9,5 +11,5 @@ fn double(x i64) i64 {
 }
 
 fn main() {
-    print map(210, double)
+    fmt::println(map(210, double))
 }

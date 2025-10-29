@@ -1,31 +1,33 @@
 package main
 
+import "fmt"
+
 fn main() {
     if true {
-        print 69
+        fmt::println(69)
     }
 
     if false {
-        print 69
+        fmt::println(69)
     }
 
     if true {
-        print 420
+        fmt::println(420)
     } else {
-        print 1337
+        fmt::println(1337)
     }
 
     if false {
-        print 420
+        fmt::println(420)
     } else {
-        print 1337
+        fmt::println(1337)
     }
 
     if false {
-        print 420
+        fmt::println(420)
     } else if true {
-        print 80085
+        fmt::println(80085)
     } else {
-        print 8008135
+        fmt::println(8008135)
     }
 }

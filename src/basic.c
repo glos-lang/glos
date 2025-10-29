@@ -41,6 +41,14 @@ SV sv_from_cstr(const char *cstr) {
     return (SV) {.data = cstr, .count = strlen(cstr)};
 }
 
+SV sv_strip_prefix(SV a, SV b) {
+    while (sv_has_prefix(a, b)) {
+        a.data += b.count;
+        a.count -= b.count;
+    }
+    return a;
+}
+
 SV sv_strip_suffix(SV a, SV b) {
     while (sv_has_suffix(a, b)) {
         a.count -= b.count;

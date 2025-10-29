@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 146
-error_nested_functions_outside_identifier_used_inside.glos:7:15: ERROR: Undefined identifier 'x'
+STDERR 161
+error_nested_functions_outside_identifier_used_inside.glos:9:22: ERROR: Undefined identifier 'x'
 
-    7 |         print x
-      |               ^
+    9 |         fmt::println(x)
+      |                      ^
 

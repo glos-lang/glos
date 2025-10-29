@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 struct Array<T> {
 	items &T
 	count i64
@@ -32,6 +34,6 @@ fn main() {
 
 	var xs = slice::<i64>(xs)
 	for var i = 0; i < len(xs); i += 1 {
-		print xs[i]
+		fmt::println(xs[i])
 	}
 }

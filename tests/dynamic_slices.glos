@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn main() {
 	var xs [..]i64
 	for var i = 0; i < 10; i += 1 {
@@ -7,7 +9,7 @@ fn main() {
 	}
 
 	for var i = 0; i < len(xs); i += 1 {
-		print xs[i]
+		fmt::println(xs[i])
 	}
 
 	xs.free()

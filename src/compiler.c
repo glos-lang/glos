@@ -230,7 +230,7 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     return fn->qbe;
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void clear_qbe(Node *n) {
     if (!n) {
         return;
@@ -332,10 +332,6 @@ static void clear_qbe(Node *n) {
 
     case NODE_STRUCT:
         ((NodeStruct *) n)->qbe = NULL;
-        break;
-
-    case NODE_PRINT:
-        clear_qbe(((NodePrint *) n)->operand);
         break;
 
     case NODE_WHEN:
@@ -465,7 +461,7 @@ static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
     return temp;
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -476,7 +472,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
@@ -647,7 +643,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -948,7 +944,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 72, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -981,7 +977,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 72, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -1012,7 +1008,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1284,7 +1280,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 24, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1511,18 +1507,6 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
     } break;
 
-    case NODE_PRINT: {
-        NodePrint *print = (NodePrint *) n;
-
-        QbeNode *operand = compile_expr(c, print->operand, false);
-        QbeCall *call = qbe_call_new(c->qbe, c->print_fn, qbe_type_basic(QBE_TYPE_I32));
-        qbe_call_add_arg(c->qbe, call, type_is_signed(print->operand->type) ? c->print_sfmt : c->print_ufmt);
-        qbe_call_start_variadic(c->qbe, call);
-        qbe_call_add_arg(
-            c->qbe, call, qbe_build_cast(c->qbe, c->fn, operand, QBE_TYPE_I64, type_is_signed(print->operand->type)));
-        qbe_build_call(c->qbe, c->fn, call);
-    } break;
-
     case NODE_WHEN:
         compile_stmt(c, ((NodeWhen *) n)->real);
         break;
@@ -1575,10 +1559,6 @@ static NodeFn *get_main(Context *c) {
 
 void compiler_init(Compiler *c) {
     c->qbe = qbe_new();
-
-    c->print_fn = qbe_atom_extern_fn(c->qbe, qbe_sv_from_cstr("printf"));
-    c->print_sfmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%ld\n"));
-    c->print_ufmt = qbe_str_new(c->qbe, qbe_sv_from_cstr("%zu\n"));
 
     QbeStruct *slice_struct = qbe_struct_new(c->qbe, false);
     qbe_struct_add_field(c->qbe, slice_struct, qbe_type_basic(QBE_TYPE_I64)); // data *T

@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn iota() i64 {
     static var n i64
     n += 1
@@ -7,9 +9,9 @@ fn iota() i64 {
 }
 
 fn main() {
-    print iota()
-    print iota()
-    print iota()
-    print iota()
-    print iota()
+    fmt::println(iota())
+    fmt::println(iota())
+    fmt::println(iota())
+    fmt::println(iota())
+    fmt::println(iota())
 }

@@ -1,15 +1,20 @@
 package io
 
-pub fn write(s []u8) {
-	extern {
-		when #OS == "Linux" {
-			var stdout rawptr
-		} else {
-			#link "__stdoutp"
-			var stdout rawptr
-		}
-		fn fwrite(data rawptr, count i64, size i64, stream rawptr) i64
-	}
+import (
+	"C"
+	"fmt"
+)
 
-	fwrite(<rawptr> s.data, s.count, sizeof<u8>, stdout)
+pub fn write(s []u8) {
+	C::fwrite(<rawptr> s.data, s.count, sizeof<u8>, C::stdout)
 }
+
+struct File {
+	c rawptr
+}
+
+pub fn (f &File) write(bytes []u8) {
+	C::fwrite(<rawptr> bytes.data, bytes.count, sizeof<u8>, f.c)
+}
+
+pub var stdout = File {c: C::stdout}

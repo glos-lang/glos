@@ -154,7 +154,6 @@ typedef enum {
     NODE_EXTERN,
 
     NODE_WHEN,
-    NODE_PRINT,
     COUNT_NODES
 } NodeKind;
 
@@ -411,6 +410,7 @@ typedef struct {
     Nodes  fns;
     size_t fns_count;
 
+    bool        is_public;
     Package    *package;
     CheckStatus check_status;
 
@@ -455,11 +455,6 @@ typedef struct {
     bool  evaluated;
     bool  checked;
 } NodeWhen;
-
-typedef struct {
-    Node  node;
-    Node *operand;
-} NodePrint;
 
 typedef struct TypeMethods TypeMethods;
 

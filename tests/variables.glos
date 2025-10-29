@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 var first = 69
 var second i64 = 420
 var third i64
@@ -7,10 +9,10 @@ var third i64
 fn main() {
     third = 3
 
-    print first
-    print second
-    print first + 8 + second * third
+    fmt::println(first)
+    fmt::println(second)
+    fmt::println(first + 8 + second * third)
 
     var local = 80085
-    print local
+    fmt::println(local)
 }

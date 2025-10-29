@@ -1,7 +1,9 @@
 package main
 
+import "fmt"
+
 fn foo(x u8) {
-    print x
+    fmt::println(x)
 }
 
 fn main() {

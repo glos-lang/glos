@@ -1,8 +1,10 @@
 package main
 
+import "fmt"
+
 fn foo() {
-    print 69
-    print 420
+    fmt::println(69)
+    fmt::println(420)
 }
 
 fn main() {

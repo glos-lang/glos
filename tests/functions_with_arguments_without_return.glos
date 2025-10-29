@@ -1,8 +1,10 @@
 package main
 
+import "fmt"
+
 fn add_and_print(x i64, y i64) {
     var z = x + y
-    print z
+    fmt::println(z)
 }
 
 fn main() {

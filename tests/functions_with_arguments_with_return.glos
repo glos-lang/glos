@@ -1,9 +1,11 @@
 package main
 
+import "fmt"
+
 fn add(x i64, y i64) i64 {
     return x + y
 }
 
 fn main() {
-    print add(34, 35)
+    fmt::println(add(34, 35))
 }

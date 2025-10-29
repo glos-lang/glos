@@ -1,7 +1,9 @@
 package main
 
+import "fmt"
+
 fn foo() {
-    print 1337
+    fmt::println(1337)
 }
 
 fn map(x i64, f fn (i64) i64) i64 {
@@ -9,13 +11,13 @@ fn map(x i64, f fn (i64) i64) i64 {
 }
 
 fn main() {
-    print (fn (x i64, y i64) i64 {
+    fmt::println((fn (x i64, y i64) i64 {
         return x + y
-    })(34, 35)
+    })(34, 35))
 
-    print map(210, fn (x i64) i64 {
+    fmt::println(map(210, fn (x i64) i64 {
         return x * 2
-    })
+    }))
 
     (fn () {
         foo()

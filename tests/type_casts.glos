@@ -1,7 +1,9 @@
 package main
 
-fn print_i64(x i64)   { print x }
-fn print_bool(x bool) { print x }
+import "fmt"
+
+fn print_i64(x i64)   { fmt::println(x) }
+fn print_bool(x bool) { fmt::println(x) }
 
 fn main() {
     var a &&i64 = <&&i64> 0

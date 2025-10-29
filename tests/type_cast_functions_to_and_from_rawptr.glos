@@ -1,7 +1,9 @@
 package main
 
+import "fmt"
+
 fn foo() {
-    print 69
+    fmt::println(69)
 }
 
 fn main() {

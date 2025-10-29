@@ -1,0 +1,6 @@
+EXIT 0
+STDOUT 17
+The answer is 69
+
+STDERR 0
+

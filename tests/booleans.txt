@@ -1,29 +1,29 @@
 EXIT 0
-STDOUT 64
-1
-0
-0
-1
+STDOUT 106
+true
+false
+false
+true
 69
 420
-1
+true
 69
 420
-0
+false
 69
-0
+false
 69
-0
+false
 69
-1
+true
 69
-1
-69
-420
-1
+true
 69
 420
-0
+true
+69
+420
+false
 
 STDERR 0
 

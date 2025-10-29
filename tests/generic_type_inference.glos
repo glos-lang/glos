@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn zero<T>(ptr &T) {
 	extern {
 		fn memset(ptr rawptr, ch i32, count u64) rawptr
@@ -10,8 +12,8 @@ fn zero<T>(ptr &T) {
 
 fn main() {
 	var x = 69
-	print x
+	fmt::println(x)
 
 	zero(&x)
-	print x
+	fmt::println(x)
 }

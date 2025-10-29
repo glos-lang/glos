@@ -1,11 +1,13 @@
 package main
 
+import "fmt"
+
 fn bar() i64 {
     return 69
-    print 420
+    fmt::println(420)
     return 1337
 }
 
 fn main() {
-    print bar()
+    fmt::println(bar())
 }

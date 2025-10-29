@@ -1,6 +1,8 @@
 package main
 
+import "fmt"
+
 fn main() {
-	print if true then 69 else 420
-	print if false then 69 else 420
+	fmt::println(if true then 69 else 420)
+	fmt::println(if false then 69 else 420)
 }

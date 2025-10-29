@@ -1,14 +1,16 @@
 package main
 
-fn main() {
-    print sizeof<bool>
-    print sizeof<i64>
-    print sizeof<fn ()>
-    print sizeof<rawptr>
-    print sizeof<&&bool>
+import "fmt"
 
-    print sizeof(main())
-    print sizeof(69)
-    print sizeof(420 == 1337)
-    print sizeof(<rawptr> 0)
+fn main() {
+    fmt::println(sizeof<bool>)
+    fmt::println(sizeof<i64>)
+    fmt::println(sizeof<fn ()>)
+    fmt::println(sizeof<rawptr>)
+    fmt::println(sizeof<&&bool>)
+
+    fmt::println(sizeof(main()))
+    fmt::println(sizeof(69))
+    fmt::println(sizeof(420 == 1337))
+    fmt::println(sizeof(<rawptr> 0))
 }

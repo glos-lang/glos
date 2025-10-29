@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 fn println(s []u8) {
     extern {
         fn putchar(ch i32) i32
@@ -22,7 +24,7 @@ const E = "HEHE"[1]
 fn main() {
     println(A)
     println(B)
-    print C
+    fmt::println(C)
     println(D)
-    print E
+    fmt::println(E)
 }

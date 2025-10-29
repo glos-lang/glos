@@ -1,12 +1,14 @@
 package main
 
+import "fmt"
+
 fn f() {
     var x = 69
     var p = &x
 
-    print x
+    fmt::println(x)
     *p = 420
-    print x
+    fmt::println(x)
 }
 
 fn g() {
@@ -16,24 +18,24 @@ fn g() {
     var y = &a
     var z = &y
 
-    print a
-    print b
+    fmt::println(a)
+    fmt::println(b)
 
     *y = 420
 
-    print a
-    print b
+    fmt::println(a)
+    fmt::println(b)
 
     *z = &b
     *y = 69
 
-    print a
-    print b
+    fmt::println(a)
+    fmt::println(b)
 
     **z = 1337
 
-    print a
-    print b
+    fmt::println(a)
+    fmt::println(b)
 }
 
 fn main() {

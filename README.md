@@ -13,16 +13,18 @@ $ make
 ```go
 package main
 
-import "io"
+import "fmt"
 
 fn main() {
-    io::write("Hello, world!\n")
+    fmt::println("Hello, world!")
 }
 ```
 
 ### Dynamic Arrays
 ```go
 package main
+
+import "fmt"
 
 fn main() {
 	var xs [..]i64
@@ -31,7 +33,7 @@ fn main() {
 	}
 
 	for var i = 0; i < len(xs); i += 1 {
-		print xs[i]
+		fmt::println(xs[i])
 	}
 }
 ```
