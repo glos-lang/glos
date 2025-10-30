@@ -6,7 +6,7 @@ import (
 )
 
 pub trait Writer {
-	write([]u8)
+	write([]char)
 }
 
 pub trait Show {
@@ -21,12 +21,16 @@ pub fn (b bool) show(w Writer) {
 	}
 }
 
+pub fn (x char) show(w Writer) {
+	w.write((&x)[..1])
+}
+
 pub fn (x i8)  show(w Writer) { (<i64> x).show(w) }
 pub fn (x i16) show(w Writer) { (<i64> x).show(w) }
 pub fn (x i32) show(w Writer) { (<i64> x).show(w) }
 pub fn (x i64) show(w Writer) {
-	var buffer [32]u8
-	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%ld", x)
+	var buffer [32]char
+	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%ld", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
@@ -35,20 +39,20 @@ pub fn (x u8)  show(w Writer) { (<u64> x).show(w) }
 pub fn (x u16) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u32) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u64) show(w Writer) {
-	var buffer [32]u8
-	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%zu", x)
+	var buffer [32]char
+	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%zu", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
 
 pub fn (x rawptr) show(w Writer) {
-	var buffer [32]u8
-	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "0x%zx", x)
+	var buffer [32]char
+	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "0x%zx", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
 
-pub fn (s []u8) show(w Writer) {
+pub fn (s []char) show(w Writer) {
 	w.write(s)
 }
 

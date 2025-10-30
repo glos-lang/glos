@@ -18,6 +18,7 @@ typedef struct {
 typedef enum {
     TYPE_UNIT,
     TYPE_BOOL,
+    TYPE_CHAR,
 
     TYPE_I8,
     TYPE_I16,

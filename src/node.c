@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
@@ -16,6 +16,10 @@ const char *type_to_cstr(Type type) {
 
     case TYPE_BOOL:
         temp_sprintf("bool");
+        break;
+
+    case TYPE_CHAR:
+        temp_sprintf("char");
         break;
 
     case TYPE_I8:
@@ -174,7 +178,7 @@ typedef enum {
     TYPE_MATCH_BESTFIT_BI,  // Same as above, except it goes both ways
 } TypeMatchLevel;
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     if (level == TYPE_MATCH_BESTFIT_SEM && a.kind == TYPE_GENERIC && b.kind == TYPE_GENERIC && a.ref == b.ref) {
         return true;
@@ -266,12 +270,12 @@ static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     }
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_eq(Type a, Type b) {
     return type_matches(a, b, TYPE_MATCH_STRICT);
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -290,13 +294,15 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
     }
 
     switch (type.kind) {
+    case TYPE_CHAR:
+
     case TYPE_I8:
     case TYPE_I16:
     case TYPE_I32:

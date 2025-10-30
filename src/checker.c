@@ -9,8 +9,10 @@ bool is_macos(void) {
 }
 
 void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 20, "");
     const size_t int_limits[COUNT_TYPES] = {
+        [TYPE_CHAR] = UINT8_MAX,
+
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
         [TYPE_I32] = INT32_MAX,
@@ -357,7 +359,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_bool(n->token.as.boolean);
 
         case TOKEN_CHAR:
-            n->type = (Type) {.kind = TYPE_U8};
+            n->type = (Type) {.kind = TYPE_CHAR};
             return const_int(n->token.as.integer);
 
         case TOKEN_PROP_OS:
@@ -743,11 +745,12 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t generics_count) {
     switch (type.kind) {
     case TYPE_UNIT:
     case TYPE_BOOL:
+    case TYPE_CHAR:
     case TYPE_I8:
     case TYPE_I16:
     case TYPE_I32:
@@ -886,7 +889,7 @@ static void convert_variadic_arg(Compiler *c, NodeFn *fn, Node *arg) {
 }
 
 static_assert(COUNT_NODES == 24, "");
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
         return;
@@ -896,6 +899,8 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
     case NODE_ATOM:
         if (sv_match(n->token.sv, "bool")) {
             n->type = (Type) {.kind = TYPE_BOOL};
+        } else if (sv_match(n->token.sv, "char")) {
+            n->type = (Type) {.kind = TYPE_CHAR};
         } else if (sv_match(n->token.sv, "i8")) {
             n->type = (Type) {.kind = TYPE_I8};
         } else if (sv_match(n->token.sv, "i16")) {
@@ -1063,11 +1068,12 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static void infer_generic_type(Type actual, Type expected, Node *generics) {
     switch (expected.kind) {
     case TYPE_UNIT:
     case TYPE_BOOL:
+    case TYPE_CHAR:
     case TYPE_I8:
     case TYPE_I16:
     case TYPE_I32:
@@ -1495,7 +1501,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             break;
 
         case TOKEN_CHAR:
-            n->type = (Type) {.kind = TYPE_U8};
+            n->type = (Type) {.kind = TYPE_CHAR};
             break;
 
         case TOKEN_IDENT: {
@@ -1761,15 +1767,32 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             element_pointer.ref++;
 
             if (!type_eq(cast->to->type, element_pointer)) {
-                error_full(
-                    ERROR,
-                    n->token.pos,
-                    "Can only cast '%s' to '%s', not '%s'",
-                    type_to_cstr(cast->from->type),
-                    type_to_cstr(element_pointer),
-                    type_to_cstr(cast->to->type));
+                if (cast->from->kind == NODE_ATOM && cast->from->token.kind == TOKEN_STR) {
+                    Type i8_ptr = {.kind = TYPE_I8, .ref = 1};
+                    Type u8_ptr = {.kind = TYPE_U8, .ref = 1};
+                    if (!type_eq(cast->to->type, i8_ptr) && !type_eq(cast->to->type, u8_ptr)) {
+                        error_full(
+                            ERROR,
+                            n->token.pos,
+                            "Can only cast string literal to %s' or '%s' or '%s', not '%s'",
+                            type_to_cstr(element_pointer),
+                            type_to_cstr(u8_ptr),
+                            type_to_cstr(i8_ptr),
+                            type_to_cstr(cast->to->type));
 
-                exit(1);
+                        exit(1);
+                    }
+                } else {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Can only cast '%s' to '%s', not '%s'",
+                        type_to_cstr(cast->from->type),
+                        type_to_cstr(element_pointer),
+                        type_to_cstr(cast->to->type));
+
+                    exit(1);
+                }
             }
 
             cast->slice_lowering = true;
@@ -2975,10 +2998,10 @@ static void only_check_fn(Compiler *c, Node *n) {
 void check_packages(Compiler *c, Packages ps) {
     assert(c->context.arena);
 
-    const Type u8_type = {.kind = TYPE_U8};
+    const Type char_type = {.kind = TYPE_CHAR};
     c->context.str_type = (Type) {
         .kind = TYPE_SLICE,
-        .spec_type = arena_clone(c->context.arena, &u8_type, sizeof(u8_type)),
+        .spec_type = arena_clone(c->context.arena, &char_type, sizeof(char_type)),
     };
 
     c->context.checking_toplevels = true;

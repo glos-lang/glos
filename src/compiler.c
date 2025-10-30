@@ -2,9 +2,10 @@
 #include "checker.h"
 #include "message.h"
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
     switch (kind) {
+    case TYPE_CHAR:
     case TYPE_I8:
     case TYPE_U8:
         return QBE_TYPE_I8;
@@ -27,7 +28,7 @@ static QbeTypeKind integer_type_kind(TypeKind kind) {
     }
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type) {
         return;
