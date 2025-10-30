@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <dirent.h>
 #include <stdint.h>
 
 #include "basic.h"
@@ -10,9 +9,22 @@ static const char *replace_extension(SV path, SV old, SV new) {
     return temp_sprintf(SVFmt "." SVFmt, SVArg(base), SVArg(new));
 }
 
-static bool yes_or_no_prompt(void) {
+static char single_char_prompt(FILE *in, FILE *out, const char *choices, const char **descriptions) {
+    fprintf(out, " (");
+    for (const char *p = choices, **d = descriptions; *p; p++, d++) {
+        char it = *p;
+        if (p == choices) {
+            it = toupper(it);
+        } else {
+            it = tolower(it);
+            fprintf(out, ", ");
+        }
+        fprintf(out, "%c: %s", it, *d);
+    }
+    fprintf(out, "): ");
+
     char buffer[16];
-    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+    if (fgets(buffer, sizeof(buffer), in) == NULL) {
         return false;
     }
 
@@ -21,7 +33,17 @@ static bool yes_or_no_prompt(void) {
         buffer[n - 1] = '\0';
     }
 
-    return buffer[0] == '\0' || buffer[0] == 'y' || buffer[0] == 'Y';
+    const char choice = tolower(*buffer);
+    if (!choice) {
+        return tolower(*choices);
+    }
+
+    if (strchr(choices, choice)) {
+        return choice;
+    }
+
+    fprintf(stderr, "ERROR: Invalid choice '%c'\n", choice);
+    return -1;
 }
 
 static bool read_file_into_arena(FILE *f, SV *out, SB *s, Arena *a) {
@@ -243,36 +265,61 @@ typedef struct {
 
 typedef DynamicArray(Unit) Units;
 
-static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
-    for (size_t i = 0; i < units->count; i++) {
-        Unit it = units->data[i];
+static void prepare_cmd_for_unit(Cmd *cmd, Unit unit) {
+    da_push(cmd, "../glos");
+    da_push(cmd, "-r");
+    da_push(cmd, unit.name);
+}
+
+static void flush_units(Units *units, SB *sb, Cmd *cmd, bool check, Arena *arena, const void *arena_save) {
+    size_t i = 0;
+    while (i < units->count) {
+        Unit *it = &units->data[i];
 
         Test actual = {0};
-        actual.exit = cmd_wait(it.proc);
+        actual.exit = cmd_wait(it->proc);
 
-        if (!read_file_into_arena(it.pout, &actual.out, sb, arena)) {
-            fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it.name);
+        if (!read_file_into_arena(it->pout, &actual.out, sb, arena)) {
+            fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it->name);
             exit(1);
         }
 
-        if (!read_file_into_arena(it.perr, &actual.err, sb, arena)) {
-            fprintf(stderr, "ERROR: Could not read standard error of test case '%s'\n", it.name);
+        if (!read_file_into_arena(it->perr, &actual.err, sb, arena)) {
+            fprintf(stderr, "ERROR: Could not read standard error of test case '%s'\n", it->name);
             exit(1);
         }
 
-        fclose(it.pout);
-        fclose(it.perr);
+        fclose(it->pout);
+        fclose(it->perr);
 
         bool need_to_record = false;
-        if (it.record_exists) {
-            if (!compare_tests(it.expected, actual, it.name)) {
+        if (it->record_exists) {
+            if (!compare_tests(it->expected, actual, it->name)) {
                 if (check) {
                     exit(1);
                 }
 
-                fprintf(stderr, "\nRecord new behavior for test case '%s' (Y/n): ", it.name);
-                if (yes_or_no_prompt()) {
+                const char *descriptions[] = {
+                    "Record",
+                    "Skip",
+                    "Rerun",
+                };
+
+                fprintf(stderr, "\nWhat to do for test case '%s'", it->name);
+                const char choice = single_char_prompt(stdin, stderr, "ynr", descriptions);
+                if (choice == 'y') {
                     need_to_record = true;
+                } else if (choice == 'r') {
+                    if (actual.out.data) {
+                        arena_reset(arena, actual.out.data);
+                    } else if (actual.err.data) {
+                        arena_reset(arena, actual.err.data);
+                    }
+
+                    fprintf(stderr, "Replaying '%s'\n", it->name);
+                    prepare_cmd_for_unit(cmd, *it);
+                    it->proc = cmd_run_async(cmd, (CmdStdio) {.out = &it->pout, &it->perr});
+                    continue;
                 }
             }
         } else {
@@ -280,9 +327,9 @@ static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
         }
 
         if (need_to_record) {
-            FILE *f = fopen(it.record_path, "wb");
+            FILE *f = fopen(it->record_path, "wb");
             if (!f) {
-                fprintf(stderr, "ERROR: Could not write file '%s'\n", it.record_path);
+                fprintf(stderr, "ERROR: Could not write file '%s'\n", it->record_path);
                 exit(1);
             }
 
@@ -298,10 +345,12 @@ static void flush_units(Units *units, SB *sb, Arena *arena, bool check) {
 
             fclose(f);
         }
+
+        i++;
     }
 
     units->count = 0;
-    arena_free(arena);
+    arena_reset(arena, arena_save);
 }
 
 int main(int argc, char **argv) {
@@ -340,16 +389,21 @@ int main(int argc, char **argv) {
     }
 
     Paths paths = {0};
-    Arena paths_arena = {0}; // TODO: Instead of separate arena consider reseting
-    if (!read_dir(&paths, get_current_dir(&paths_arena), ".", sv_from_cstr("glos"), &paths_arena)) {
+    Arena arena = {0};
+    if (!read_dir(&paths, get_current_dir(&arena), ".", sv_from_cstr("glos"), &arena)) {
         fprintf(stderr, "ERROR: Could not contents of current directory\n");
         exit(1);
     }
 
+    if (!paths.count) {
+        arena_free(&arena);
+        exit(0);
+    }
+    const void *checkpoint = arena_alloc(&arena, 0);
+
     SB    sb = {0};
     Cmd   cmd = {0};
     Units units = {0};
-    Arena arena = {0};
     for (size_t i = 0; i < paths.count; i++) {
         const char *it = paths.data[i];
         const char *record_path = replace_extension(sv_from_cstr(it), sv_from_cstr("glos"), sv_from_cstr("txt"));
@@ -383,12 +437,9 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "Recording '%s'\n", it);
             }
 
-            da_push(&cmd, "../glos");
-            da_push(&cmd, "-r");
-            da_push(&cmd, it);
-
             Unit unit = {0};
             unit.name = it;
+            prepare_cmd_for_unit(&cmd, unit);
 
             unit.record_exists = record_exists;
             unit.record_path = record_path;
@@ -402,15 +453,14 @@ int main(int argc, char **argv) {
             }
         }
 
-        flush_units(&units, &sb, &arena, check);
+        flush_units(&units, &sb, &cmd, check, &arena, checkpoint);
     }
 
-    flush_units(&units, &sb, &arena, check);
+    flush_units(&units, &sb, &cmd, check, &arena, checkpoint);
 
     da_free(&sb);
     da_free(&cmd);
     da_free(&units);
-
     da_free(&paths);
-    arena_free(&paths_arena);
+    arena_free(&arena);
 }

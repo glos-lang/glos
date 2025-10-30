@@ -272,6 +272,23 @@ void *arena_alloc(Arena *a, size_t size) {
     return ptr;
 }
 
+void arena_reset(Arena *a, const void *ptr) {
+    for (ArenaRegion *it = a->head; it; it = it->next) {
+        if ((const char *) ptr >= it->data && (const char *) ptr < it->data + it->capacity) {
+            it->count = (const char *) ptr - it->data;
+            for (ArenaRegion *p = a->head; p != it;) {
+                ArenaRegion *next = p->next;
+                free(p);
+                p = next;
+            }
+            a->head = it;
+            return;
+        }
+    }
+
+    unreachable();
+}
+
 void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
 }
