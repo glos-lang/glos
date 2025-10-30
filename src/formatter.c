@@ -361,6 +361,9 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
                 format_indent(f);
             }
 
+            if (!it->next && call->spread) {
+                sb_sprintf(&f->sb, "...");
+            }
             format_expr(f, it, true);
             if (it->next) {
                 sb_push(&f->sb, ',');
