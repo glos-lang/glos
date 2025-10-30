@@ -1,6 +1,6 @@
 EXIT 0
-STDOUT 6
-(nil)
+STDOUT 2
+0
 
 STDERR 0
 
