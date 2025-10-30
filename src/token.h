@@ -24,6 +24,7 @@ typedef enum {
     TOKEN_SCOPE,
     TOKEN_VARIADIC,
 
+    TOKEN_NIL,
     TOKEN_INT,
     TOKEN_STR,
     TOKEN_BOOL,

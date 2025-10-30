@@ -68,7 +68,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -192,7 +192,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -287,6 +287,13 @@ static void ensure_const_expr(Node *n) {
     }
 
     switch (n->kind) {
+    case NODE_ATOM:
+        if (n->token.kind == TOKEN_NIL) {
+            error_full(ERROR, n->token.pos, "Unexpected 'nil' in constant expression");
+            exit(1);
+        }
+        break;
+
     case NODE_CALL:
         error_full(ERROR, n->token.pos, "Unexpected call in constant expression");
         exit(1);
@@ -415,12 +422,21 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
 
     switch (token.kind) {
+    case TOKEN_NIL:
+        if (flags & PF_CONSTANT_EXPR) {
+            error_full(ERROR, token.pos, "Unexpected 'nil' in constant expression");
+            exit(1);
+        }
+
+        node = node_alloc(p, NODE_ATOM, token);
+        break;
+
     case TOKEN_INT:
     case TOKEN_STR:
     case TOKEN_BOOL:
@@ -890,7 +906,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
