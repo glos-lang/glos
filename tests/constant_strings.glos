@@ -2,29 +2,16 @@ package main
 
 import "fmt"
 
-fn println(s []u8) {
-    extern {
-        fn putchar(ch i32) i32
-    }
-
-    for var i = 0; i < len(s); i += 1 {
-        putchar(<i32> s[i])
-    }
-
-    putchar(<i32> '
-')
-}
-
 const A = "Hello, world!"
 const B = "Foo " + "Bar"
-const C = len("Foo " + "Bar")
+const C = ("Foo " + "Bar").count
 const D = "Foo Bar Baz"[4..7]
 const E = "HEHE"[1]
 
 fn main() {
-    println(A)
-    println(B)
+	fmt::println(A)
+	fmt::println(B)
     fmt::println(C)
-    println(D)
+	fmt::println(D)
     fmt::println(E)
 }

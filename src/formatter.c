@@ -393,13 +393,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
-        if (n->token.kind == TOKEN_LEN) {
-            da_push(&f->sb, '(');
-            format_expr(f, unary->operand, true);
-            da_push(&f->sb, ')');
-        } else {
-            format_expr_with_parens_maybe(f, unary->operand, POWER_PRE);
-        }
+        format_expr_with_parens_maybe(f, unary->operand, POWER_PRE);
     } break;
 
     case NODE_INDEX: {

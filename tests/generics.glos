@@ -33,7 +33,7 @@ fn main() {
 	}
 
 	var xs = slice::<i64>(xs)
-	for var i = 0; i < len(xs); i += 1 {
+	for var i = 0; i < xs.count; i += 1 {
 		fmt::println(xs[i])
 	}
 }

@@ -68,7 +68,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 71, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -192,7 +192,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 71, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -325,10 +325,14 @@ static void ensure_const_expr(Node *n) {
         ensure_const_expr(binary->rhs);
     } break;
 
-    case NODE_MEMBER:
-        error_full(ERROR, n->token.pos, "Unexpected member access in constant expression");
-        exit(1);
-        break;
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+        ensure_const_expr(member->lhs);
+        if (!sv_match(n->token.sv, "count")) {
+            error_full(ERROR, n->token.pos, "Can only access 'count' of strings in constant expression");
+            exit(1);
+        }
+    } break;
 
     case NODE_SIZEOF: {
         NodeSizeof *sizeoff = (NodeSizeof *) n;
@@ -411,7 +415,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 71, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -479,14 +483,6 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_LNOT: {
         NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
         unary->operand = parse_expr(p, POWER_PRE, flags);
-        node = (Node *) unary;
-    } break;
-
-    case TOKEN_LEN: {
-        NodeUnary *unary = node_alloc(p, NODE_UNARY, token);
-        lexer_expect(&p->lexer, TOKEN_LPAREN);
-        unary->operand = parse_expr(p, POWER_SET, flags);
-        lexer_expect(&p->lexer, TOKEN_RPAREN);
         node = (Node *) unary;
     } break;
 
@@ -590,16 +586,21 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            if (flags & PF_CONSTANT_EXPR) {
-                error_full(ERROR, token.pos, "Unexpected member access in constant expression");
-                exit(1);
-            }
-
             NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
             member->lhs = node;
             member->package = p->packages->current;
 
+            if (flags & PF_CONSTANT_EXPR && !sv_match(member->node.token.sv, "count")) {
+                error_full(ERROR, member->node.token.pos, "Can only access 'count' of strings in constant expression");
+                exit(1);
+            }
+
             if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
+                if (flags & PF_CONSTANT_EXPR) {
+                    error_full(ERROR, p->lexer.buffer.pos, "Unexpected generic instantiation in constant expression");
+                    exit(1);
+                }
+
                 lexer_expect(&p->lexer, TOKEN_LT);
                 parse_generics(p, &member->generics, &member->generics_count);
             }
@@ -759,8 +760,10 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
         Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
         if (previous_import && !p->formatter) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(previous_import->as));
-            fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->token.pos, "Imported here");
+            if (previous_import->token.pos.path) {
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous_import->token.pos, "Imported here");
+            }
             exit(1);
         }
 
@@ -818,8 +821,10 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
         Import *previous_import = imports_find(p->packages->current->imports, import->as);
         if (previous_import) {
             error_full(ERROR, token.pos, "Duplicate import of package '" SVFmt "'", SVArg(import->as));
-            fprintf(stderr, "\n");
-            error_full(NOTE, previous_import->token.pos, "Imported here");
+            if (previous_import->token.pos.path) {
+                fprintf(stderr, "\n");
+                error_full(NOTE, previous_import->token.pos, "Imported here");
+            }
             exit(1);
         }
     }
@@ -885,7 +890,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 71, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

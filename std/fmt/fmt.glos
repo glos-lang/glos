@@ -41,6 +41,13 @@ pub fn (x u64) show(w Writer) {
 	w.write(buffer[..count])
 }
 
+pub fn (x rawptr) show(w Writer) {
+	var buffer [32]u8
+	var count = C::snprintf(&buffer[0], sizeof(buffer), <&u8> "%p", x)
+	assert count >= 0
+	w.write(buffer[..count])
+}
+
 pub fn (s []u8) show(w Writer) {
 	w.write(s)
 }

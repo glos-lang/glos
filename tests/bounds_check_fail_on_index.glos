@@ -13,7 +13,7 @@ fn alloc_i64s(n i64) []i64 {
 
 fn main() {
     var xs = alloc_i64s(5)
-    for var i = 0; i < len(xs); i += 1 {
+    for var i = 0; i < xs.count; i += 1 {
         xs[i] = i * 2
     }
 

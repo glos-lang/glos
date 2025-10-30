@@ -1,0 +1,7 @@
+EXIT 0
+STDOUT 8
+true
+69
+
+STDERR 0
+
