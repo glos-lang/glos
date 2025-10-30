@@ -1,6 +1,6 @@
 EXIT 0
-STDOUT 2
-0
+STDOUT 4
+0x0
 
 STDERR 0
 
