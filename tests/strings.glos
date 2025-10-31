@@ -4,4 +4,6 @@ import "fmt"
 
 fn main() {
 	fmt::print("Hello, world!\n")
+	assert "foo" == "foo"
+	assert "foo" != "bar"
 }
