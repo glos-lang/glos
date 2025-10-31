@@ -1,0 +1,15 @@
+EXIT 1
+STDOUT 0
+
+STDERR 210
+error_match_duplicate_case.glos:6:3: ERROR: Duplicate match case "foo\"bar"
+
+
+    6 | 		"foo\"bar": {}
+      | 		^
+
+error_match_duplicate_case.glos:5:3: NOTE: Matched here
+
+    5 | 		"foo\"bar": {}
+      | 		^
+

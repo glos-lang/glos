@@ -150,6 +150,10 @@ typedef enum {
     NODE_FOR,
     NODE_BLOCK,
 
+    NODE_CASE,
+    NODE_MATCH,
+    NODE_BRANCH,
+
     NODE_JUMP,
     NODE_RETURN,
 
@@ -305,6 +309,25 @@ typedef struct {
     Node *update;
     Node *body;
 } NodeFor;
+
+typedef struct {
+    Node       node;
+    Node      *expr;
+    ConstValue value;
+} NodeCase;
+
+typedef struct {
+    Node  node;
+    Node *expr;
+    Nodes branches;
+    Node *fallback;
+} NodeMatch;
+
+typedef struct {
+    Node  node;
+    Nodes cases;
+    Node *body;
+} NodeBranch;
 
 typedef struct {
     Node  node;

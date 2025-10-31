@@ -21,7 +21,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -38,6 +38,10 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_IF] = sizeof(NodeIf),
         [NODE_FOR] = sizeof(NodeFor),
         [NODE_BLOCK] = sizeof(NodeBlock),
+
+        [NODE_CASE] = sizeof(NodeCase),
+        [NODE_MATCH] = sizeof(NodeMatch),
+        [NODE_BRANCH] = sizeof(NodeBranch),
 
         [NODE_JUMP] = sizeof(Node),
         [NODE_RETURN] = sizeof(NodeReturn),
@@ -68,7 +72,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 74, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -192,7 +196,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -280,7 +284,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name, bool will_be_method);
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -422,7 +426,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -907,7 +911,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 73, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -986,6 +990,38 @@ static Node *parse_stmt(Parser *p) {
         p->in_loop = in_loop_save;
 
         node = (Node *) forr;
+    } break;
+
+    case TOKEN_MATCH: {
+        NodeMatch *match = node_alloc(p, NODE_MATCH, token);
+        match->expr = parse_expr(p, POWER_SET, 0);
+
+        lexer_expect(&p->lexer, TOKEN_LBRACE);
+        while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
+            if (lexer_read(&p->lexer, TOKEN_ELSE)) {
+                if (match->fallback) {
+                    error_full(ERROR, p->lexer.buffer.pos, "Duplicate fallback branch in match statement");
+                    exit(1);
+                }
+
+                lexer_expect(&p->lexer, TOKEN_COLON);
+                match->fallback = parse_stmt(p);
+            } else {
+                NodeBranch *branch = node_alloc(p, NODE_BRANCH, match->node.token);
+                do {
+                    NodeCase *this = node_alloc(p, NODE_CASE, match->node.token);
+                    this->expr = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+
+                    nodes_push(&branch->cases, (Node *) this);
+                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_COLON);
+                } while (token.kind == TOKEN_COMMA);
+
+                branch->body = parse_stmt(p);
+                nodes_push(&match->branches, (Node *) branch);
+            }
+        }
+
+        node = (Node *) match;
     } break;
 
     case TOKEN_BREAK:
