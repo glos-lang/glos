@@ -2618,7 +2618,16 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_MATCH: {
         NodeMatch *match = (NodeMatch *) n;
         check_expr(c, match->expr, REF_NONE);
-        type_assert_arith(match->expr, false, true);
+        if (!type_is_numeric(match->expr->type) && !type_eq(match->expr->type, c->context.str_type)) {
+            error_full(
+                ERROR,
+                n->token.pos,
+                "Expected numeric or %s type, got '%s'",
+                type_to_cstr(c->context.str_type),
+                type_to_cstr(n->type));
+
+            exit(1);
+        }
 
         if (match->expr->type.kind == TYPE_INT) {
             match->expr->type.kind = TYPE_I64;
