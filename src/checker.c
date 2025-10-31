@@ -2488,6 +2488,54 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
+static void print_quoted(FILE *f, char ch, char quote) {
+    switch (ch) {
+    case 033:
+        fputs("\\e", f);
+        break;
+
+    case '\n':
+        fputs("\\n", f);
+        break;
+
+    case '\r':
+        fputs("\\r", f);
+        break;
+
+    case '\t':
+        fputs("\\t", f);
+        break;
+
+    case '\0':
+        fputs("\\0", f);
+        break;
+
+    case '\\':
+        fputs("\\\\", f);
+        break;
+
+    case '\'':
+        if (quote == '\'') {
+            fputs("\\'", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    case '"':
+        if (quote == '"') {
+            fputs("\\\"", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    default:
+        fputc(ch, f);
+        break;
+    }
+}
+
 static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
     for (Node *it = match->branches.head; it; it = it->next) {
         NodeBranch *branch = (NodeBranch *) it;
@@ -2512,16 +2560,13 @@ static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
                 if (this->value.is_string) {
                     fputc('"', stderr);
                     for (size_t i = 0; i < this->value.as.sv.count; i++) {
-                        const char it = this->value.as.sv.data[i];
-                        if (it == '"') {
-                            fputs("\\\"", stderr);
-                        } else {
-                            fputc(it, stderr);
-                        }
+                        print_quoted(stderr, this->value.as.sv.data[i], '"');
                     }
                     fputs("\"\n", stderr);
                 } else if (this->expr->type.kind == TYPE_CHAR) {
-                    fprintf(stderr, "'%c'\n", (char) this->value.as.integer);
+                    fputc('\'', stderr);
+                    print_quoted(stderr, this->value.as.integer, '\'');
+                    fputc('\'', stderr);
                 } else if (this->expr->type.kind == TYPE_F64) {
                     fprintf(stderr, "%.14g\n", this->value.as.floating);
                 } else if (this->expr->type.kind == TYPE_F32) {

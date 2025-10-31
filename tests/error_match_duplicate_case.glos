@@ -1,0 +1,8 @@
+package main
+
+fn main() {
+	match "foobar" {
+		"foo\"bar": {}
+		"foo\"bar": {}
+	}
+}

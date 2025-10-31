@@ -714,7 +714,45 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     } break;
 
     case NODE_MATCH: {
-        todo();
+        NodeMatch *match = (NodeMatch *) n;
+
+        sb_sprintf(&f->sb, "match ");
+        format_expr(f, match->expr, true);
+        sb_sprintf(&f->sb, " {");
+
+        f->depth++;
+        for (Node *it = match->branches.head; it; it = it->next) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+
+            NodeBranch *branch = (NodeBranch *) it;
+            for (Node *it = branch->cases.head; it; it = it->next) {
+                NodeCase *this = (NodeCase *) it;
+                format_expr(f, this->expr, true);
+                if (it->next) {
+                    sb_sprintf(&f->sb, ", ");
+                } else {
+                    sb_sprintf(&f->sb, ": ");
+                }
+            }
+
+            format_stmt(f, branch->body, true);
+        }
+
+        if (match->fallback) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+            sb_sprintf(&f->sb, "else: ");
+            format_stmt(f, match->fallback, true);
+        }
+
+        f->depth--;
+        if (match->branches.head || match->fallback) {
+            sb_push(&f->sb, '\n');
+            format_indent(f);
+        }
+
+        sb_sprintf(&f->sb, "}");
     } break;
 
     case NODE_JUMP:

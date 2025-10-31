@@ -12,4 +12,19 @@ fn main() {
 		69: fmt::println("Nice!")
 		else: fmt::println("None of the above")
 	}
+
+	match "foo" {
+		"urmom": fmt::println("NOOO")
+		"foo", "bar": fmt::println("Yes!")
+		else: fmt::println(":(")
+	}
+
+	match 69 {
+		420: fmt::println("Let's go!")
+		else: fmt::println("Hehe boi")
+	}
+
+	match 69 {
+		420: fmt::println("Let's go!")
+	}
 }
