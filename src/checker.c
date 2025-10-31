@@ -9,7 +9,7 @@ bool is_macos(void) {
 }
 
 void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 20, "");
+    static_assert(COUNT_TYPES == 23, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_CHAR] = UINT8_MAX,
 
@@ -42,6 +42,10 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             check_int_limit(n, n->token.as.integer);
             break;
 
+        case TOKEN_FLOAT:
+            n->type = expected;
+            break;
+
         case TOKEN_IDENT: {
             NodeAtom *atom = (NodeAtom *) n;
 
@@ -51,7 +55,9 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             assert(definition->check_status != CHECK_STATUS_DOING);
 
             n->type = expected;
-            check_int_limit(n, definition->value.as.integer);
+            if (!definition->value.is_float) {
+                check_int_limit(n, definition->value.as.integer);
+            }
         } break;
 
         default:
@@ -100,14 +106,16 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 }
 
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    // Untyped integer -> Typed integer
-    if (type_is_integer(type_remove_ref(expected)) && n->type.kind == TYPE_INT) {
-        // The indirection level of the typed and untyped integers must match
-        if (expected.ref != n->type.ref) {
-            return false;
+    if (type_is_integer(expected) && type_eq(n->type, (Type) {.kind = TYPE_INT})) {
+        if (expected.kind != TYPE_INT) {
+            cast_untyped(c, n, expected);
         }
 
-        if (expected.kind != TYPE_INT) {
+        return true;
+    }
+
+    if (type_is_floating(expected) && type_eq(n->type, (Type) {.kind = TYPE_FLOAT})) {
+        if (expected.kind != TYPE_FLOAT) {
             cast_untyped(c, n, expected);
         }
 
@@ -162,27 +170,29 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     exit(1);
 }
 
-static Type type_assert_arith(const Node *n, bool pointers_allowed) {
-    if (type_is_integer(n->type)) {
-        return n->type;
-    }
+static Type type_assert_arith(const Node *n, bool pointers_allowed, bool floats_allowed) {
+    if (!type_is_floating(n->type) || floats_allowed) {
+        if (type_is_numeric(n->type)) {
+            return n->type;
+        }
 
-    if (pointers_allowed && type_is_pointer(n->type)) {
-        return n->type;
+        if (type_is_pointer(n->type) && pointers_allowed) {
+            return n->type;
+        }
     }
 
     error_full(
         ERROR,
         n->token.pos,
         "Expected %s type, got '%s'",
-        pointers_allowed ? "arithmetic" : "integer",
+        pointers_allowed ? "arithmetic" : (floats_allowed ? "numeric" : "integer"),
         type_to_cstr(n->type));
 
     exit(1);
 }
 
 static Type type_assert_scalar(const Node *n) {
-    if (type_is_integer(n->type) || type_is_pointer(n->type)) {
+    if (type_is_numeric(n->type) || type_is_pointer(n->type)) {
         return n->type;
     }
 
@@ -336,19 +346,24 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         return (ConstValue) {0};
     }
 
-#define const_int(n)  ((ConstValue) {.as.integer = (n)})
-#define const_bool(b) ((ConstValue) {.as.boolean = (b)})
-#define const_str(s)  ((ConstValue) {.as.sv = (s), .is_string = true})
+#define const_int(n)   ((ConstValue) {.as.integer = (n)})
+#define const_float(n) ((ConstValue) {.as.floating = (n), .is_float = true})
+#define const_bool(b)  ((ConstValue) {.as.boolean = (b)})
+#define const_str(s)   ((ConstValue) {.as.sv = (s), .is_string = true})
 
     switch (n->kind) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             return const_int(n->token.as.integer);
+
+        case TOKEN_FLOAT:
+            n->type = (Type) {.kind = TYPE_FLOAT};
+            return const_float(n->token.as.floating);
 
         case TOKEN_STR:
             n->type = c->context.str_type;
@@ -419,17 +434,17 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
-            n->type = type_assert_arith(unary->operand, false);
-            return const_int(-value.as.integer);
+            n->type = type_assert_arith(unary->operand, false, true);
+            return value.is_float ? const_float(-value.as.floating) : const_int(-value.as.integer);
         }
 
         case TOKEN_BNOT: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
-            n->type = type_assert_arith(unary->operand, false);
+            n->type = type_assert_arith(unary->operand, false, false);
             return const_int(~value.as.integer);
         }
 
@@ -457,13 +472,13 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue from = {0};
         if (index->from) {
             from = eval_const_expr_impl(c, index->from);
-            type_assert_arith(index->from, false);
+            type_assert_arith(index->from, false, false);
         }
 
         ConstValue to = {0};
         if (index->to) {
             to = eval_const_expr_impl(c, index->to);
-            type_assert_arith(index->to, false);
+            type_assert_arith(index->to, false, false);
         }
 
         if (index->ranged) {
@@ -506,14 +521,14 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
 
             if (!lhs.is_string) {
-                type_assert_arith(binary->lhs, true);
+                type_assert_arith(binary->lhs, true, true);
             }
 
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
@@ -522,7 +537,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_SUB:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
-            type_assert_arith(binary->lhs, true);
+            type_assert_arith(binary->lhs, true, true);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -531,7 +546,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_MOD:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
-            type_assert_arith(binary->lhs, false);
+            type_assert_arith(binary->lhs, false, n->token.kind != TOKEN_MOD);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -541,7 +556,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_BAND:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
-            type_assert_arith(binary->lhs, false);
+            type_assert_arith(binary->lhs, false, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -558,7 +573,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_LE:
             lhs = eval_const_expr_impl(c, binary->lhs);
             rhs = eval_const_expr_impl(c, binary->rhs);
-            type_assert_arith(binary->lhs, true);
+            type_assert_arith(binary->lhs, true, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
@@ -575,7 +590,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -586,15 +601,22 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
                 return const_str(sv);
             }
 
-            return const_int(lhs.as.integer + rhs.as.integer);
+            return lhs.is_float ? const_float(lhs.as.floating + rhs.as.floating)
+                                : const_int(lhs.as.integer + rhs.as.integer);
 
         case TOKEN_SUB:
-            return const_int(lhs.as.integer - rhs.as.integer);
+            return lhs.is_float ? const_float(lhs.as.floating - rhs.as.floating)
+                                : const_int(lhs.as.integer - rhs.as.integer);
 
         case TOKEN_MUL:
-            return const_int(lhs.as.integer * rhs.as.integer);
+            return lhs.is_float ? const_float(lhs.as.floating * rhs.as.floating)
+                                : const_int(lhs.as.integer * rhs.as.integer);
 
         case TOKEN_DIV:
+            if (lhs.is_float) {
+                return const_float(lhs.as.floating / rhs.as.floating);
+            }
+
             if (type_is_signed(binary->lhs->type)) {
                 return const_int((long) lhs.as.integer / (long) rhs.as.integer);
             } else {
@@ -631,6 +653,10 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             return const_bool(lhs.as.boolean && rhs.as.boolean);
 
         case TOKEN_GT:
+            if (lhs.is_float) {
+                return const_bool(lhs.as.floating > rhs.as.floating);
+            }
+
             if (type_is_signed(binary->lhs->type)) {
                 return const_bool((long) lhs.as.integer > (long) rhs.as.integer);
             } else {
@@ -638,6 +664,10 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
         case TOKEN_GE:
+            if (lhs.is_float) {
+                return const_bool(lhs.as.floating >= rhs.as.floating);
+            }
+
             if (type_is_signed(binary->lhs->type)) {
                 return const_bool((long) lhs.as.integer >= (long) rhs.as.integer);
             } else {
@@ -645,6 +675,10 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
         case TOKEN_LT:
+            if (lhs.is_float) {
+                return const_bool(lhs.as.floating < rhs.as.floating);
+            }
+
             if (type_is_signed(binary->lhs->type)) {
                 return const_bool((long) lhs.as.integer < (long) rhs.as.integer);
             } else {
@@ -652,6 +686,10 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
         case TOKEN_LE:
+            if (lhs.is_float) {
+                return const_bool(lhs.as.floating <= rhs.as.floating);
+            }
+
             if (type_is_signed(binary->lhs->type)) {
                 return const_bool((long) lhs.as.integer <= (long) rhs.as.integer);
             } else {
@@ -661,6 +699,8 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_EQ:
             if (lhs.is_string) {
                 return const_bool(sv_eq(lhs.as.sv, rhs.as.sv));
+            } else if (lhs.is_float) {
+                return const_bool(lhs.as.floating == rhs.as.floating);
             } else {
                 return const_bool(lhs.as.integer == rhs.as.integer);
             }
@@ -668,6 +708,8 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_NE:
             if (lhs.is_string) {
                 return const_bool(!sv_eq(lhs.as.sv, rhs.as.sv));
+            } else if (lhs.is_float) {
+                return const_bool(lhs.as.floating != rhs.as.floating);
             } else {
                 return const_bool(lhs.as.integer != rhs.as.integer);
             }
@@ -745,7 +787,7 @@ static ConstValue eval_const_expr(Compiler *c, Node *n) {
     return value;
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t generics_count) {
     switch (type.kind) {
     case TYPE_UNIT:
@@ -759,7 +801,10 @@ static Type instantiate_type(Compiler *c, Type type, Node *generics, size_t gene
     case TYPE_U16:
     case TYPE_U32:
     case TYPE_U64:
+    case TYPE_F32:
+    case TYPE_F64:
     case TYPE_INT:
+    case TYPE_FLOAT:
     case TYPE_RAWPTR:
         return type;
 
@@ -889,7 +934,7 @@ static void convert_variadic_arg(Compiler *c, NodeFn *fn, Node *arg) {
 }
 
 static_assert(COUNT_NODES == 24, "");
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
         return;
@@ -917,6 +962,10 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
             n->type = (Type) {.kind = TYPE_U32};
         } else if (sv_match(n->token.sv, "u64")) {
             n->type = (Type) {.kind = TYPE_U64};
+        } else if (sv_match(n->token.sv, "f32")) {
+            n->type = (Type) {.kind = TYPE_F32};
+        } else if (sv_match(n->token.sv, "f64")) {
+            n->type = (Type) {.kind = TYPE_F64};
         } else if (sv_match(n->token.sv, "rawptr")) {
             n->type = (Type) {.kind = TYPE_RAWPTR};
         } else {
@@ -1013,7 +1062,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
         if (index->from) {
             ConstValue count = eval_const_expr(c, index->from);
-            type_assert_arith(index->from, false);
+            type_assert_arith(index->from, false, false);
 
             if (!count.as.integer) {
                 error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
@@ -1068,7 +1117,7 @@ static void check_if_expr(Compiler *c, NodeIf *iff) {
     iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static void infer_generic_type(Type actual, Type expected, Node *generics) {
     switch (expected.kind) {
     case TYPE_UNIT:
@@ -1082,7 +1131,10 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
     case TYPE_U16:
     case TYPE_U32:
     case TYPE_U64:
+    case TYPE_F32:
+    case TYPE_F64:
     case TYPE_INT:
+    case TYPE_FLOAT:
     case TYPE_RAWPTR:
         // Pass
         break;
@@ -1279,6 +1331,10 @@ static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_ty
 
     if (n->type.kind == TYPE_INT) {
         n->type.kind = TYPE_I64;
+    }
+
+    if (n->type.kind == TYPE_FLOAT) {
+        n->type.kind = TYPE_F64;
     }
 
     const Type n_type_base = type_remove_ref(n->type);
@@ -1481,7 +1537,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             n->type = (Type) {.kind = TYPE_RAWPTR};
@@ -1489,6 +1545,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
+            break;
+
+        case TOKEN_FLOAT:
+            n->type = (Type) {.kind = TYPE_FLOAT};
             break;
 
         case TOKEN_STR:
@@ -1814,11 +1874,11 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
-            n->type = type_assert_arith(unary->operand, false);
+            n->type = type_assert_arith(unary->operand, false, true);
             break;
 
         case TOKEN_MUL:
@@ -1852,7 +1912,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         case TOKEN_BNOT:
             check_expr(c, unary->operand, REF_NONE);
-            n->type = type_assert_arith(unary->operand, false);
+            n->type = type_assert_arith(unary->operand, false, false);
             break;
 
         case TOKEN_LNOT:
@@ -1895,13 +1955,13 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         if (index->from) {
             check_expr(c, index->from, REF_NONE);
-            type_assert_arith(index->from, false);
+            type_assert_arith(index->from, false, false);
         }
 
         if (index->ranged) {
             if (index->to) {
                 check_expr(c, index->to, REF_NONE);
-                type_assert_arith(index->to, false);
+                type_assert_arith(index->to, false, false);
             }
 
             if (index->base->type.ref) {
@@ -1932,13 +1992,13 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
             check_expr(c, binary->lhs, REF_NONE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert_arith(binary->lhs, true);
+            type_assert_arith(binary->lhs, true, true);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -1947,7 +2007,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_MOD:
             check_expr(c, binary->lhs, REF_NONE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert_arith(binary->lhs, false);
+            type_assert_arith(binary->lhs, false, n->token.kind != TOKEN_MOD);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -1957,7 +2017,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_BAND:
             check_expr(c, binary->lhs, REF_NONE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert_arith(binary->lhs, false);
+            type_assert_arith(binary->lhs, false, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
@@ -1972,7 +2032,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_SUB_SET:
             check_expr(c, binary->lhs, REF_MUTATE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, true));
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, true, true));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
@@ -1981,7 +2041,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_MOD_SET:
             check_expr(c, binary->lhs, REF_MUTATE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false, n->token.kind != TOKEN_MOD_SET));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
@@ -1991,7 +2051,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_BAND_SET:
             check_expr(c, binary->lhs, REF_MUTATE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false));
+            type_assert(c, binary->rhs, type_assert_arith(binary->lhs, false, false));
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
 
@@ -2010,7 +2070,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_NE:
             check_expr(c, binary->lhs, REF_NONE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert_arith(binary->lhs, true);
+            type_assert_arith(binary->lhs, true, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
@@ -2026,6 +2086,10 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
         if (member->lhs->type.kind == TYPE_INT) {
             member->lhs->type.kind = TYPE_I64;
+        }
+
+        if (member->lhs->type.kind == TYPE_FLOAT) {
+            member->lhs->type.kind = TYPE_F64;
         }
 
         member->definition = (Node *) methods_find(&c->context.methods, member->lhs->type, n->token.sv);
@@ -2195,7 +2259,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
                     expected = lhs->definition->type;
                 } else {
                     const ConstValue index = eval_const_expr(c, assign->lhs);
-                    type_assert_arith(assign->lhs, false);
+                    type_assert_arith(assign->lhs, false, false);
 
                     if (n->type.kind == TYPE_ARRAY && index.as.integer >= n->type.spec_count) {
                         error_full(
@@ -2507,6 +2571,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
             if (n->type.kind == TYPE_INT) {
                 n->type.kind = TYPE_I64;
+            }
+
+            if (n->type.kind == TYPE_FLOAT) {
+                n->type.kind = TYPE_F64;
             }
         }
 

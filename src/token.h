@@ -26,6 +26,7 @@ typedef enum {
 
     TOKEN_NIL,
     TOKEN_INT,
+    TOKEN_FLOAT,
     TOKEN_STR,
     TOKEN_BOOL,
     TOKEN_CHAR,
@@ -130,6 +131,7 @@ typedef struct {
     union {
         bool   boolean;
         size_t integer;
+        double floating;
     } as;
 } Token;
 

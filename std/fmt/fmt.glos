@@ -45,6 +45,20 @@ pub fn (x u64) show(w Writer) {
 	w.write(buffer[..count])
 }
 
+pub fn (x f32) show(w Writer) {
+	var buffer [32]char
+	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%g", <f64> x)
+	assert count >= 0
+	w.write(buffer[..count])
+}
+
+pub fn (x f64) show(w Writer) {
+	var buffer [32]char
+	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%.14g", x)
+	assert count >= 0
+	w.write(buffer[..count])
+}
+
 pub fn (x rawptr) show(w Writer) {
 	var buffer [32]char
 	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "0x%zx", x)
