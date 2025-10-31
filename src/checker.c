@@ -171,14 +171,16 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
 }
 
 static Type type_assert_arith(const Node *n, bool pointers_allowed, bool floats_allowed) {
-    if (!type_is_floating(n->type) || floats_allowed) {
-        if (type_is_numeric(n->type)) {
-            return n->type;
-        }
+    if (type_is_integer(n->type)) {
+        return n->type;
+    }
 
-        if (type_is_pointer(n->type) && pointers_allowed) {
-            return n->type;
-        }
+    if (type_is_floating(n->type) && floats_allowed) {
+        return n->type;
+    }
+
+    if (type_is_pointer(n->type) && pointers_allowed) {
+        return n->type;
     }
 
     error_full(
@@ -2066,11 +2068,30 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_GE:
         case TOKEN_LT:
         case TOKEN_LE:
+            check_expr(c, binary->lhs, REF_NONE);
+            check_expr(c, binary->rhs, REF_NONE);
+            type_assert_arith(binary->lhs, true, true);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_BOOL};
+            break;
+
         case TOKEN_EQ:
         case TOKEN_NE:
             check_expr(c, binary->lhs, REF_NONE);
             check_expr(c, binary->rhs, REF_NONE);
-            type_assert_arith(binary->lhs, true, true);
+
+            if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type) &&
+                !type_eq(binary->lhs->type, c->context.str_type)) {
+                error_full(
+                    ERROR,
+                    n->token.pos,
+                    "Expected arithmetic or %s type, got '%s'",
+                    type_to_cstr(c->context.str_type),
+                    type_to_cstr(n->type));
+
+                exit(1);
+            }
+
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
