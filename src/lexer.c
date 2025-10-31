@@ -199,7 +199,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 73, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -222,25 +222,36 @@ Token lexer_next(Lexer *l) {
         while (l->sv.count > 0 && isdigit(*l->sv.data)) {
             next_char(l);
         }
+
+        if (peek_char(l, 0) == '.' && isdigit(peek_char(l, 1))) {
+            token.kind = TOKEN_FLOAT;
+            next_char(l);
+            while (l->sv.count > 0 && isdigit(*l->sv.data)) {
+                next_char(l);
+            }
+        }
         token.sv.count -= l->sv.count;
 
         if (l->sv.count && isident(*l->sv.data)) {
             error_invalid(l->pos, l->sv, "digit");
         }
 
-        char buffer[32] = {0};
-        if (token.sv.count < sizeof(buffer) - 1) {
-            memcpy(buffer, token.sv.data, token.sv.count);
+        char *buffer = temp_sv_to_cstr(token.sv);
+        memcpy(buffer, token.sv.data, token.sv.count);
 
-            errno = 0;
+        errno = 0;
+        if (token.kind == TOKEN_INT) {
             token.as.integer = strtol(buffer, NULL, 10);
+        } else {
+            token.as.floating = strtod(buffer, NULL);
+        }
+        temp_reset(buffer);
 
-            if (!errno) {
-                return token;
-            }
+        if (!errno) {
+            return token;
         }
 
-        error_full(ERROR, token.pos, "Integer literal '" SVFmt "' is too large\n", SVArg(token.sv));
+        error_full(ERROR, token.pos, "Numeric literal '" SVFmt "' is too large\n", SVArg(token.sv));
         exit(1);
     }
 

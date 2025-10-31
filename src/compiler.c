@@ -2,7 +2,7 @@
 #include "checker.h"
 #include "message.h"
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static QbeTypeKind integer_type_kind(TypeKind kind) {
     switch (kind) {
     case TYPE_CHAR:
@@ -23,12 +23,19 @@ static QbeTypeKind integer_type_kind(TypeKind kind) {
     case TYPE_INT:
         return QBE_TYPE_I64;
 
+    case TYPE_F32:
+        return QBE_TYPE_F32;
+
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        return QBE_TYPE_F64;
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type) {
         return;
@@ -39,7 +46,7 @@ static void compile_type(Compiler *c, Type *type) {
         return;
     }
 
-    if (type_is_integer(*type)) {
+    if (type_is_numeric(*type)) {
         type->qbe = qbe_type_basic(integer_type_kind(type->kind));
         return;
     }
@@ -473,13 +480,16 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, 0);
 
         case TOKEN_INT:
             return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), n->token.as.integer);
+
+        case TOKEN_FLOAT:
+            return qbe_atom_float(c->qbe, integer_type_kind(n->type.kind), n->token.as.floating);
 
         case TOKEN_STR:
             return compile_str(c, resolve_str_token(n->token, c->context.arena), ref);
@@ -519,6 +529,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
                 if (n->type.kind == TYPE_BOOL) {
                     return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
+                }
+
+                if (constt->value.is_float) {
+                    return qbe_atom_float(c->qbe, integer_type_kind(n->type.kind), constt->value.as.floating);
                 }
 
                 return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
@@ -641,13 +655,18 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_load(c->qbe, c->fn, from, n->type.qbe, type_is_signed(n->type));
         }
 
-        return qbe_build_cast(c->qbe, c->fn, from, n->type.qbe.kind, type_is_signed(n->type));
+        return qbe_build_cast(
+            c->qbe,
+            c->fn,
+            from,
+            n->type.qbe.kind,
+            type_is_signed(type_is_floating(n->type) ? cast->from->type : n->type));
     }
 
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -931,7 +950,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -964,7 +983,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -995,7 +1014,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 72, "");
+        static_assert(COUNT_TOKENS == 73, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1239,7 +1258,6 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 
     case NODE_IF: {
-        // TODO: This fails for aggregate types
         NodeIf *iff = (NodeIf *) n;
 
         QbeBlock *consequence_block = qbe_block_new(c->qbe);

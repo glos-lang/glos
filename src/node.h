@@ -30,7 +30,11 @@ typedef enum {
     TYPE_U32,
     TYPE_U64,
 
+    TYPE_F32,
+    TYPE_F64,
+
     TYPE_INT,
+    TYPE_FLOAT,
     TYPE_RAWPTR,
 
     TYPE_FN,
@@ -81,8 +85,10 @@ const char *type_to_cstr(Type type);
 
 bool type_eq(Type a, Type b);
 bool type_is_signed(Type type);
-bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
+bool type_is_numeric(Type type);
+bool type_is_integer(Type type);
+bool type_is_floating(Type type);
 
 Type type_remove_ref(Type type);
 
@@ -118,10 +124,12 @@ typedef enum {
 } CheckStatus;
 
 typedef struct {
+    bool is_float;
     bool is_string;
     union {
         bool   boolean;
         size_t integer;
+        double floating;
         SV     sv;
     } as;
 } ConstValue;

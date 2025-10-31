@@ -1,6 +1,6 @@
 #include "node.h"
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 const char *type_to_cstr(Type type) {
     const char *s = temp_alloc(0);
 
@@ -53,6 +53,15 @@ const char *type_to_cstr(Type type) {
 
     case TYPE_U64:
         temp_sprintf("u64");
+        break;
+
+    case TYPE_F32:
+        temp_sprintf("f32");
+        break;
+
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        temp_sprintf("f64");
         break;
 
     case TYPE_RAWPTR:
@@ -178,7 +187,7 @@ typedef enum {
     TYPE_MATCH_BESTFIT_BI,  // Same as above, except it goes both ways
 } TypeMatchLevel;
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     if (level == TYPE_MATCH_BESTFIT_SEM && a.kind == TYPE_GENERIC && b.kind == TYPE_GENERIC && a.ref == b.ref) {
         return true;
@@ -270,12 +279,12 @@ static bool type_matches(Type a, Type b, TypeMatchLevel level) {
     }
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_eq(Type a, Type b) {
     return type_matches(a, b, TYPE_MATCH_STRICT);
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_is_signed(Type type) {
     if (type.ref != 0) {
         return false;
@@ -286,7 +295,10 @@ bool type_is_signed(Type type) {
     case TYPE_I16:
     case TYPE_I32:
     case TYPE_I64:
+    case TYPE_F32:
+    case TYPE_F64:
     case TYPE_INT:
+    case TYPE_FLOAT:
         return true;
 
     default:
@@ -294,7 +306,15 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 20, "");
+bool type_is_pointer(Type type) {
+    return type.ref != 0 || type.kind == TYPE_RAWPTR;
+}
+
+bool type_is_numeric(Type type) {
+    return type_is_integer(type) || type_is_floating(type);
+}
+
+static_assert(COUNT_TYPES == 23, "");
 bool type_is_integer(Type type) {
     if (type.ref) {
         return false;
@@ -321,8 +341,12 @@ bool type_is_integer(Type type) {
     }
 }
 
-bool type_is_pointer(Type type) {
-    return type.ref != 0 || type.kind == TYPE_RAWPTR;
+bool type_is_floating(Type type) {
+    if (type.ref) {
+        return false;
+    }
+
+    return type.kind == TYPE_F32 || type.kind == TYPE_F64 || type.kind == TYPE_FLOAT;
 }
 
 Type type_remove_ref(Type type) {
