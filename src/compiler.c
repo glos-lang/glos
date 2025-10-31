@@ -561,9 +561,9 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
         NodeFn *spec = (NodeFn *) call->fn->type.spec_node;
 
-        size_t iota = 0;
-        size_t arity = spec->arity;
-        bool   started_variadic = false;
+        long iota = -spec->is_method;
+        long arity = spec->arity - spec->is_method;
+        bool started_variadic = false;
 
         QbeType  variadic_type = {0};
         QbeNode *variadic_array = NULL;
@@ -1034,6 +1034,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             // Rhs
             qbe_build_block(c->qbe, c->fn, rhs_block);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            rhs_block = qbe_fn_get_current_block(c->fn);
             qbe_build_jump(c->qbe, c->fn, final_block);
 
             // Finally
@@ -1063,6 +1064,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             // Rhs
             qbe_build_block(c->qbe, c->fn, rhs_block);
             QbeNode *rhs = compile_expr(c, binary->rhs, false);
+            rhs_block = qbe_fn_get_current_block(c->fn);
             qbe_build_jump(c->qbe, c->fn, final_block);
 
             // Finally
@@ -1271,11 +1273,13 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         // Consequence
         qbe_build_block(c->qbe, c->fn, consequence_block);
         QbeNode *consequence = compile_expr(c, iff->consequence, false);
+        consequence_block = qbe_fn_get_current_block(c->fn);
         qbe_build_jump(c->qbe, c->fn, final_block);
 
         // Antecedence
         qbe_build_block(c->qbe, c->fn, antecedence_block);
         QbeNode *antecedence = compile_expr(c, iff->antecedence, false);
+        antecedence_block = qbe_fn_get_current_block(c->fn);
         qbe_build_jump(c->qbe, c->fn, final_block);
 
         // Finally
