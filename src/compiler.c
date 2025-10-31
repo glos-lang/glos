@@ -238,7 +238,7 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     return fn->qbe;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void clear_qbe(Node *n) {
     if (!n) {
         return;
@@ -307,6 +307,18 @@ static void clear_qbe(Node *n) {
         for (Node *it = ((NodeBlock *) n)->body.head; it; it = it->next) {
             clear_qbe(it);
         }
+        break;
+
+    case NODE_MATCH: {
+        NodeMatch *match = (NodeMatch *) n;
+        for (Node *it = match->branches.head; it; it = it->next) {
+            clear_qbe(it);
+        }
+        clear_qbe(match->fallback);
+    } break;
+
+    case NODE_BRANCH:
+        clear_qbe(((NodeBranch *) n)->body);
         break;
 
     case NODE_RETURN:
@@ -471,6 +483,17 @@ static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
 
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref);
 
+static void split_slice_to_parts(Compiler *c, QbeNode *slice, QbeNode **data, QbeNode **count) {
+    const QbeType i64 = qbe_type_basic(QBE_TYPE_I64);
+    *data = qbe_build_load(c->qbe, c->fn, slice, i64, false);
+    *count = qbe_build_load(
+        c->qbe,
+        c->fn,
+        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ADD, i64, slice, qbe_atom_int(c->qbe, QBE_TYPE_I64, sizeof(void *))),
+        i64,
+        true);
+}
+
 static void compile_string_to_parts(Compiler *c, Node *n, QbeNode **data, QbeNode **count) {
     QbeNode *ptr = NULL;
     if (n->allow_ref || (n->kind == NODE_ATOM && n->token.kind == TOKEN_STR)) {
@@ -480,15 +503,7 @@ static void compile_string_to_parts(Compiler *c, Node *n, QbeNode **data, QbeNod
         ptr = qbe_fn_add_var(c->qbe, c->fn, c->slice_type);
         qbe_build_store(c->qbe, c->fn, ptr, imm);
     }
-
-    const QbeType i64 = qbe_type_basic(QBE_TYPE_I64);
-    *data = qbe_build_load(c->qbe, c->fn, ptr, i64, false);
-    *count = qbe_build_load(
-        c->qbe,
-        c->fn,
-        qbe_build_binary(c->qbe, c->fn, QBE_BINARY_ADD, i64, ptr, qbe_atom_int(c->qbe, QBE_TYPE_I64, sizeof(void *))),
-        i64,
-        true);
+    split_slice_to_parts(c, ptr, data, count);
 }
 
 static QbeNode *compile_string_eq(Compiler *c, QbeNode *a_data, QbeNode *a_count, QbeNode *b_data, QbeNode *b_count) {
@@ -526,7 +541,7 @@ static QbeNode *compile_string_eq(Compiler *c, QbeNode *a_data, QbeNode *a_count
     return qbe_build_phi(c->qbe, c->fn, count_equal_phi, data_equal_phi);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -537,7 +552,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, 0);
@@ -723,7 +738,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -1007,7 +1022,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -1059,7 +1074,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -1090,7 +1105,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1373,7 +1388,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1502,6 +1517,71 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         c->loop_break = loop_break_save;
         c->loop_continue = loop_condition_save;
+    } break;
+
+    case NODE_MATCH: {
+        NodeMatch *match = (NodeMatch *) n;
+
+        QbeNode *expr = NULL;
+        QbeNode *expr_data = NULL;
+        QbeNode *expr_count = NULL;
+        if (match->expr->type.kind == TYPE_SLICE) {
+            compile_string_to_parts(c, match->expr, &expr_data, &expr_count);
+        } else {
+            expr = compile_expr(c, match->expr, false);
+        }
+
+        QbeBlock *final = qbe_block_new(c->qbe);
+        QbeBlock *fallback = final;
+        if (match->fallback) {
+            fallback = qbe_block_new(c->qbe);
+        }
+        for (Node *it = match->branches.head; it; it = it->next) {
+            NodeBranch *branch = (NodeBranch *) it;
+            for (Node *it = branch->cases.head; it; it = it->next) {
+                NodeCase *this = (NodeCase *) it;
+
+                QbeNode *equal = NULL;
+                if (this->value.is_string) {
+                    QbeNode *value_data = NULL;
+                    QbeNode *value_count = NULL;
+                    split_slice_to_parts(c, compile_str(c, this->value.as.sv, true), &value_data, &value_count);
+                    equal = compile_string_eq(c, expr_data, expr_count, value_data, value_count);
+                } else if (this->value.is_float) {
+                    QbeNode *value = NULL;
+                    value = qbe_atom_float(c->qbe, match->expr->type.qbe.kind, this->value.as.floating);
+                    equal = qbe_build_binary(c->qbe, c->fn, QBE_BINARY_EQ, qbe_type_basic(QBE_TYPE_I8), expr, value);
+                } else {
+                    QbeNode *value = NULL;
+                    value = qbe_atom_int(c->qbe, match->expr->type.qbe.kind, this->value.as.integer);
+                    equal = qbe_build_binary(c->qbe, c->fn, QBE_BINARY_EQ, qbe_type_basic(QBE_TYPE_I8), expr, value);
+                }
+
+                QbeBlock *eq = qbe_block_new(c->qbe);
+                QbeBlock *ne = fallback;
+
+                const bool has_next = this->node.next || branch->node.next;
+                if (has_next) {
+                    ne = qbe_block_new(c->qbe);
+                }
+                qbe_build_branch(c->qbe, c->fn, equal, eq, ne);
+
+                qbe_build_block(c->qbe, c->fn, eq);
+                compile_stmt(c, branch->body);
+                qbe_build_jump(c->qbe, c->fn, final);
+
+                if (has_next) {
+                    qbe_build_block(c->qbe, c->fn, ne);
+                }
+            }
+        }
+
+        if (match->fallback) {
+            qbe_build_block(c->qbe, c->fn, fallback);
+            compile_stmt(c, match->fallback);
+        }
+
+        qbe_build_block(c->qbe, c->fn, final);
     } break;
 
     case NODE_BLOCK: {

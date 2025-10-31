@@ -188,7 +188,7 @@ static void format_fn_signature(Formatter *f, NodeFn *fn) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void format_type(Formatter *f, Node *n, bool in_expr) {
     if (!n) {
         return;
@@ -303,7 +303,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     if (!n) {
         return;
@@ -614,7 +614,7 @@ static void set_not_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void format_stmt(Formatter *f, Node *n, bool no_indent) {
     if (!n) {
         return;
@@ -711,6 +711,10 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
 
         sb_push(&f->sb, '}');
+    } break;
+
+    case NODE_MATCH: {
+        todo();
     } break;
 
     case NODE_JUMP:

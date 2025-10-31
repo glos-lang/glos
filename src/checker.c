@@ -32,7 +32,7 @@ void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -342,7 +342,7 @@ static void resolve_ident_package(Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (ConstValue) {0};
@@ -357,7 +357,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -436,7 +436,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -523,7 +523,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -592,7 +592,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -935,7 +935,7 @@ static void convert_variadic_arg(Compiler *c, NodeFn *fn, Node *arg) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static_assert(COUNT_TYPES == 23, "");
 static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
     if (!n) {
@@ -1531,7 +1531,7 @@ static const char *order_of_number(size_t n) {
     return order;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_expr(Compiler *c, Node *n, RefKind ref) {
     if (!n) {
         return;
@@ -1539,7 +1539,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             n->type = (Type) {.kind = TYPE_RAWPTR};
@@ -1876,7 +1876,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -1994,7 +1994,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 73, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2357,7 +2357,7 @@ static void error_redefinition(const Node *n, const Node *previous, const char *
     exit(1);
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -2373,6 +2373,19 @@ static bool loop_breaks(Node *n) {
         }
         return false;
     }
+
+    case NODE_MATCH: {
+        NodeMatch *match = (NodeMatch *) n;
+        for (Node *it = match->branches.head; it; it = it->next) {
+            if (loop_breaks(it)) {
+                return true;
+            }
+        }
+        return loop_breaks(match->fallback);
+    }
+
+    case NODE_BRANCH:
+        return loop_breaks(((NodeBranch *) n)->body);
 
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
@@ -2390,7 +2403,7 @@ static bool loop_breaks(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -2412,6 +2425,19 @@ static bool always_returns(Node *n) {
         }
         return false;
     }
+
+    case NODE_MATCH: {
+        NodeMatch *match = (NodeMatch *) n;
+        for (Node *it = match->branches.head; it; it = it->next) {
+            if (always_returns(it)) {
+                return true;
+            }
+        }
+        return always_returns(match->fallback);
+    }
+
+    case NODE_BRANCH:
+        return always_returns(((NodeBranch *) n)->body);
 
     case NODE_IF: {
         NodeIf *iff = (NodeIf *) n;
@@ -2462,7 +2488,60 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
+    for (Node *it = match->branches.head; it; it = it->next) {
+        NodeBranch *branch = (NodeBranch *) it;
+        for (Node *it = branch->cases.head; it; it = it->next) {
+            NodeCase *prev = (NodeCase *) it;
+            if (prev == this) {
+                return;
+            }
+
+            bool equal = false;
+            if (prev->value.is_string) {
+                equal = sv_eq(this->value.as.sv, prev->value.as.sv);
+            } else if (prev->value.is_float) {
+                equal = this->value.as.floating == prev->value.as.floating;
+            } else {
+                equal = this->value.as.integer == prev->value.as.integer;
+            }
+
+            if (equal) {
+                error_begin(ERROR, this->expr->token.pos);
+                fprintf(stderr, "Duplicate match case ");
+                if (this->value.is_string) {
+                    fputc('"', stderr);
+                    for (size_t i = 0; i < this->value.as.sv.count; i++) {
+                        const char it = this->value.as.sv.data[i];
+                        if (it == '"') {
+                            fputs("\\\"", stderr);
+                        } else {
+                            fputc(it, stderr);
+                        }
+                    }
+                    fputs("\"\n", stderr);
+                } else if (this->expr->type.kind == TYPE_CHAR) {
+                    fprintf(stderr, "'%c'\n", (char) this->value.as.integer);
+                } else if (this->expr->type.kind == TYPE_F64) {
+                    fprintf(stderr, "%.14g\n", this->value.as.floating);
+                } else if (this->expr->type.kind == TYPE_F32) {
+                    fprintf(stderr, "%g\n", this->value.as.floating);
+                } else if (type_is_signed(this->expr->type)) {
+                    fprintf(stderr, "%ld\n", this->value.as.integer);
+                } else {
+                    fprintf(stderr, "%zu\n", this->value.as.integer);
+                }
+                error_end(this->expr->token.pos);
+
+                fputc('\n', stderr);
+                error_full(NOTE, prev->expr->token.pos, "Matched here");
+                exit(1);
+            }
+        }
+    }
+}
+
+static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -2534,6 +2613,33 @@ static void check_stmt(Compiler *c, Node *n) {
         }
 
         c->context.locals.count = locals_count_save;
+    } break;
+
+    case NODE_MATCH: {
+        NodeMatch *match = (NodeMatch *) n;
+        check_expr(c, match->expr, REF_NONE);
+        type_assert_arith(match->expr, false, true);
+
+        if (match->expr->type.kind == TYPE_INT) {
+            match->expr->type.kind = TYPE_I64;
+        }
+
+        if (match->expr->type.kind == TYPE_FLOAT) {
+            match->expr->type.kind = TYPE_F64;
+        }
+
+        for (Node *it = match->branches.head; it; it = it->next) {
+            NodeBranch *branch = (NodeBranch *) it;
+            for (Node *it = branch->cases.head; it; it = it->next) {
+                NodeCase *this = (NodeCase *) it;
+                this->value = eval_const_expr(c, this->expr);
+                type_assert(c, this->expr, match->expr->type);
+                check_for_duplicate_case(match, this);
+            }
+            check_stmt(c, branch->body);
+        }
+
+        check_stmt(c, match->fallback);
     } break;
 
     case NODE_JUMP:
@@ -2799,7 +2905,7 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void define_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {
@@ -2909,7 +3015,7 @@ static void define_toplevel(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
     case NODE_FN: {

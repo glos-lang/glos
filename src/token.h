@@ -80,6 +80,7 @@ typedef enum {
     TOKEN_THEN,
     TOKEN_ELSE,
     TOKEN_FOR,
+    TOKEN_MATCH,
 
     TOKEN_BREAK,
     TOKEN_RETURN,
