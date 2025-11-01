@@ -1025,25 +1025,25 @@ static Node *parse_stmt(Parser *p) {
 
                 lexer_expect(&p->lexer, TOKEN_COLON);
                 match->fallback = parse_stmt(p);
-
-                // TODO: stop here
-            } else {
-                NodeBranch *branch = node_alloc(p, NODE_BRANCH, match->node.token);
-                do {
-                    NodeCase *this = node_alloc(p, NODE_CASE, match->node.token);
-                    if (match->matching_type) {
-                        this->expr = parse_type(p);
-                    } else {
-                        this->expr = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
-                    }
-
-                    nodes_push(&branch->cases, (Node *) this);
-                    token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_COLON);
-                } while (token.kind == TOKEN_COMMA);
-
-                branch->body = parse_stmt(p);
-                nodes_push(&match->branches, (Node *) branch);
+                lexer_expect(&p->lexer, TOKEN_RBRACE);
+                break;
             }
+
+            NodeBranch *branch = node_alloc(p, NODE_BRANCH, match->node.token);
+            do {
+                NodeCase *this = node_alloc(p, NODE_CASE, match->node.token);
+                if (match->matching_type) {
+                    this->expr = parse_type(p);
+                } else {
+                    this->expr = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+                }
+
+                nodes_push(&branch->cases, (Node *) this);
+                token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_COLON);
+            } while (token.kind == TOKEN_COMMA);
+
+            branch->body = parse_stmt(p);
+            nodes_push(&match->branches, (Node *) branch);
         }
 
         node = (Node *) match;

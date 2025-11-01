@@ -281,6 +281,5 @@ defer:
     formatter_free(&formatter);
     arena_free(&arena);
     da_free(&cmd);
-    da_free(&compiler.link_flags); // TODO: What??
     return result;
 }
