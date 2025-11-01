@@ -259,6 +259,7 @@ typedef struct {
     Node *lhs;
     Node *definition;
     bool  is_method;
+    bool  is_type_access_valid;
 
     Nodes  generics;
     size_t generics_count;
@@ -322,6 +323,8 @@ typedef struct {
     Node *expr;
     Nodes branches;
     Node *fallback;
+
+    bool matching_type;
 } NodeMatch;
 
 typedef struct {

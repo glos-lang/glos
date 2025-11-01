@@ -1323,6 +1323,7 @@ static void pretty_print_method_signature(NodeFn *fn, Type self) {
 }
 
 static TraitImpl *check_node_satisfies_trait(Compiler *c, Node *n, Type trait_type) {
+    assert(trait_type.kind == TYPE_TRAIT);
     if (type_eq(n->type, trait_type)) {
         // It has already been turned into a trait, no need to do it again
         return NULL;
@@ -2078,21 +2079,27 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         case TOKEN_EQ:
         case TOKEN_NE:
             check_expr(c, binary->lhs, REF_NONE);
-            check_expr(c, binary->rhs, REF_NONE);
+            if (binary->lhs->kind == NODE_MEMBER && binary->lhs->token.kind == TOKEN_TYPE) {
+                check_type(c, binary->rhs, true, NULL);
+                binary->rhs->trait_impl = check_node_satisfies_trait(
+                    c, binary->rhs, type_remove_ref(((NodeMember *) binary->lhs)->lhs->type));
+            } else {
+                check_expr(c, binary->rhs, REF_NONE);
 
-            if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type) &&
-                !type_eq(binary->lhs->type, c->context.str_type)) {
-                error_full(
-                    ERROR,
-                    n->token.pos,
-                    "Expected arithmetic or %s type, got '%s'",
-                    type_to_cstr(c->context.str_type),
-                    type_to_cstr(n->type));
+                if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type) &&
+                    !type_eq(binary->lhs->type, c->context.str_type)) {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Expected arithmetic or %s type, got '%s'",
+                        type_to_cstr(c->context.str_type),
+                        type_to_cstr(n->type));
 
-                exit(1);
+                    exit(1);
+                }
+
+                type_assert_node(c, binary->rhs, binary->lhs);
             }
-
-            type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
@@ -2103,122 +2110,143 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
+        if (n->token.kind == TOKEN_TYPE) {
+            if (!member->is_type_access_valid) {
+                error_full(ERROR, n->token.pos, "Can only access type of expression for checking equality");
+                exit(1);
+            }
+        }
+
         check_expr(c, member->lhs, ref);
 
-        if (member->lhs->type.kind == TYPE_INT) {
-            member->lhs->type.kind = TYPE_I64;
-        }
-
-        if (member->lhs->type.kind == TYPE_FLOAT) {
-            member->lhs->type.kind = TYPE_F64;
-        }
-
-        member->definition = (Node *) methods_find(&c->context.methods, member->lhs->type, n->token.sv);
-        if (member->definition) {
-            member->is_method = true;
-
-            NodeFn *definition = (NodeFn *) member->definition;
-            if (definition->package != member->package && !definition->is_public) {
-                error_use_of_private(&n->token, member->definition, "method");
-            }
-
-            const size_t actual_ref = member->lhs->type.ref;
-            const size_t expected_ref = definition->args.head->type.ref;
-            if (actual_ref == expected_ref) {
-                // OK
-            } else if (actual_ref + 1 == expected_ref) {
-                if (!member->lhs->allow_ref) {
-                    error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
-                    exit(1);
-                }
-
-                NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
-                unary->node.kind = NODE_UNARY;
-                unary->node.token.kind = TOKEN_BAND;
-                unary->node.token.sv = member->lhs->token.sv;
-                unary->node.token.pos = member->lhs->token.pos;
-
-                unary->operand = member->lhs;
-                unary->node.type = member->lhs->type;
-                unary->node.type.ref++;
-
-                if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
-                    NodeAtom *atom = (NodeAtom *) member->lhs;
-                    if (atom->definition->kind == NODE_VAR) {
-                        NodeVar *var = (NodeVar *) atom->definition;
-                        if (var->kind == NODE_VAR_ARG) {
-                            var->kind = NODE_VAR_LOCAL;
-                        }
-                    }
-                }
-
-                member->lhs = (Node *) unary;
-            } else if (actual_ref > expected_ref) {
-                NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
-                unary->node.kind = NODE_UNARY;
-                unary->node.token.kind = TOKEN_MUL;
-                unary->node.token.sv = member->lhs->token.sv;
-                unary->node.token.pos = member->lhs->token.pos;
-                unary->node.token.as.integer = actual_ref - expected_ref;
-
-                unary->operand = member->lhs;
-                unary->node.type = member->lhs->type;
-                unary->node.type.ref = expected_ref;
-
-                member->lhs = (Node *) unary;
-            } else {
+        if (n->token.kind == TOKEN_TYPE) {
+            if (member->lhs->type.kind != TYPE_TRAIT) {
                 error_full(
                     ERROR,
-                    n->token.pos,
-                    "Method requires self to be '%s', got '%s'",
-                    type_to_cstr(definition->args.head->type),
+                    member->lhs->token.pos,
+                    "Can only access type of trait, not '%s'",
                     type_to_cstr(member->lhs->type));
 
                 exit(1);
             }
 
-            n->type = member->definition->type;
-            check_generics(c, n, member->generics.head, member->generics_count, member->definition);
-        } else if (member->lhs->type.kind == TYPE_STRUCT) {
-            NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
+            n->type = (Type) {.kind = TYPE_RAWPTR};
+        } else {
+            if (member->lhs->type.kind == TYPE_INT) {
+                member->lhs->type.kind = TYPE_I64;
+            }
 
-            member->definition = nodes_find(structt->fields, n->token.sv, NULL);
-            if (!member->definition) {
+            if (member->lhs->type.kind == TYPE_FLOAT) {
+                member->lhs->type.kind = TYPE_F64;
+            }
+
+            member->definition = (Node *) methods_find(&c->context.methods, member->lhs->type, n->token.sv);
+            if (member->definition) {
+                member->is_method = true;
+
+                NodeFn *definition = (NodeFn *) member->definition;
+                if (definition->package != member->package && !definition->is_public) {
+                    error_use_of_private(&n->token, member->definition, "method");
+                }
+
+                const size_t actual_ref = member->lhs->type.ref;
+                const size_t expected_ref = definition->args.head->type.ref;
+                if (actual_ref == expected_ref) {
+                    // OK
+                } else if (actual_ref + 1 == expected_ref) {
+                    if (!member->lhs->allow_ref) {
+                        error_full(ERROR, member->lhs->token.pos, "Cannot take reference to value not in memory");
+                        exit(1);
+                    }
+
+                    NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                    unary->node.kind = NODE_UNARY;
+                    unary->node.token.kind = TOKEN_BAND;
+                    unary->node.token.sv = member->lhs->token.sv;
+                    unary->node.token.pos = member->lhs->token.pos;
+
+                    unary->operand = member->lhs;
+                    unary->node.type = member->lhs->type;
+                    unary->node.type.ref++;
+
+                    if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
+                        NodeAtom *atom = (NodeAtom *) member->lhs;
+                        if (atom->definition->kind == NODE_VAR) {
+                            NodeVar *var = (NodeVar *) atom->definition;
+                            if (var->kind == NODE_VAR_ARG) {
+                                var->kind = NODE_VAR_LOCAL;
+                            }
+                        }
+                    }
+
+                    member->lhs = (Node *) unary;
+                } else if (actual_ref > expected_ref) {
+                    NodeUnary *unary = arena_alloc(c->context.arena, sizeof(NodeUnary));
+                    unary->node.kind = NODE_UNARY;
+                    unary->node.token.kind = TOKEN_MUL;
+                    unary->node.token.sv = member->lhs->token.sv;
+                    unary->node.token.pos = member->lhs->token.pos;
+                    unary->node.token.as.integer = actual_ref - expected_ref;
+
+                    unary->operand = member->lhs;
+                    unary->node.type = member->lhs->type;
+                    unary->node.type.ref = expected_ref;
+
+                    member->lhs = (Node *) unary;
+                } else {
+                    error_full(
+                        ERROR,
+                        n->token.pos,
+                        "Method requires self to be '%s', got '%s'",
+                        type_to_cstr(definition->args.head->type),
+                        type_to_cstr(member->lhs->type));
+
+                    exit(1);
+                }
+
+                n->type = member->definition->type;
+                check_generics(c, n, member->generics.head, member->generics_count, member->definition);
+            } else if (member->lhs->type.kind == TYPE_STRUCT) {
+                NodeStruct *structt = (NodeStruct *) member->lhs->type.spec_node;
+
+                member->definition = nodes_find(structt->fields, n->token.sv, NULL);
+                if (!member->definition) {
+                    error_undefined(n, "field or method");
+                }
+
+                n->allow_ref = true;
+                n->type = member->definition->type;
+            } else if (member->lhs->type.kind == TYPE_TRAIT) {
+                NodeTrait *trait = (NodeTrait *) member->lhs->type.spec_node;
+
+                member->definition = nodes_find(trait->fns, n->token.sv, NULL);
+                if (!member->definition) {
+                    error_undefined(n, "method");
+                }
+
+                n->type = member->definition->type;
+                member->is_method = true;
+            } else if (
+                member->lhs->type.kind == TYPE_ARRAY || member->lhs->type.kind == TYPE_SLICE ||
+                member->lhs->type.kind == TYPE_DSLICE) {
+                if (sv_match(n->token.sv, "data")) {
+                    n->type = *member->lhs->type.spec_type;
+                    n->type.ref++;
+                    n->token.as.integer = 0;
+                } else if (sv_match(n->token.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    n->token.as.integer = 8;
+                } else if (sv_match(n->token.sv, "capacity") && member->lhs->type.kind == TYPE_DSLICE) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    n->token.as.integer = 16;
+                } else {
+                    error_undefined(n, "field");
+                }
+
+                n->allow_ref = true;
+            } else {
                 error_undefined(n, "field or method");
             }
-
-            n->allow_ref = true;
-            n->type = member->definition->type;
-        } else if (member->lhs->type.kind == TYPE_TRAIT) {
-            NodeTrait *trait = (NodeTrait *) member->lhs->type.spec_node;
-
-            member->definition = nodes_find(trait->fns, n->token.sv, NULL);
-            if (!member->definition) {
-                error_undefined(n, "method");
-            }
-
-            n->type = member->definition->type;
-            member->is_method = true;
-        } else if (
-            member->lhs->type.kind == TYPE_ARRAY || member->lhs->type.kind == TYPE_SLICE ||
-            member->lhs->type.kind == TYPE_DSLICE) {
-            if (sv_match(n->token.sv, "data")) {
-                n->type = *member->lhs->type.spec_type;
-                n->type.ref++;
-                n->token.as.integer = 0;
-            } else if (sv_match(n->token.sv, "count")) {
-                n->type = (Type) {.kind = TYPE_I64};
-                n->token.as.integer = 8;
-            } else if (sv_match(n->token.sv, "capacity") && member->lhs->type.kind == TYPE_DSLICE) {
-                n->type = (Type) {.kind = TYPE_I64};
-                n->token.as.integer = 16;
-            } else {
-                error_undefined(n, "field");
-            }
-
-            n->allow_ref = true;
-        } else {
-            error_undefined(n, "field or method");
         }
     } break;
 
@@ -2546,7 +2574,9 @@ static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
             }
 
             bool equal = false;
-            if (prev->value.is_string) {
+            if (match->matching_type) {
+                equal = type_eq(this->node.type, prev->node.type);
+            } else if (prev->value.is_string) {
                 equal = sv_eq(this->value.as.sv, prev->value.as.sv);
             } else if (prev->value.is_float) {
                 equal = this->value.as.floating == prev->value.as.floating;
@@ -2557,7 +2587,9 @@ static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
             if (equal) {
                 error_begin(ERROR, this->expr->token.pos);
                 fprintf(stderr, "Duplicate match case ");
-                if (this->value.is_string) {
+                if (match->matching_type) {
+                    fprintf(stderr, "'%s'\n", type_to_cstr(this->expr->type));
+                } else if (this->value.is_string) {
                     fputc('"', stderr);
                     for (size_t i = 0; i < this->value.as.sv.count; i++) {
                         print_quoted(stderr, this->value.as.sv.data[i], '"');
@@ -2662,8 +2694,10 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_MATCH: {
         NodeMatch *match = (NodeMatch *) n;
+
         check_expr(c, match->expr, REF_NONE);
-        if (!type_is_numeric(match->expr->type) && !type_eq(match->expr->type, c->context.str_type)) {
+        if (!match->matching_type && !type_is_numeric(match->expr->type) &&
+            !type_eq(match->expr->type, c->context.str_type)) {
             error_full(
                 ERROR,
                 n->token.pos,
@@ -2686,8 +2720,15 @@ static void check_stmt(Compiler *c, Node *n) {
             NodeBranch *branch = (NodeBranch *) it;
             for (Node *it = branch->cases.head; it; it = it->next) {
                 NodeCase *this = (NodeCase *) it;
-                this->value = eval_const_expr(c, this->expr);
-                type_assert(c, this->expr, match->expr->type);
+                if (match->matching_type) {
+                    check_type(c, this->expr, true, NULL);
+                    this->expr->trait_impl = check_node_satisfies_trait(
+                        c, this->expr, type_remove_ref(((NodeMember *) match->expr)->lhs->type));
+                } else {
+                    this->value = eval_const_expr(c, this->expr);
+                    type_assert(c, this->expr, match->expr->type);
+                }
+                this->node.type = this->expr->type;
                 check_for_duplicate_case(match, this);
             }
             check_stmt(c, branch->body);

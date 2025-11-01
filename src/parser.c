@@ -607,7 +607,13 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
+            if (flags & PF_CONSTANT_EXPR) {
+                token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            } else {
+                token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_TYPE);
+            }
+
+            NodeMember *member = node_alloc(p, NODE_MEMBER, token);
             member->lhs = node;
             member->package = p->packages->current;
 
@@ -714,7 +720,15 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         default: {
             NodeBinary *binary = node_alloc(p, NODE_BINARY, token);
             binary->lhs = node;
-            binary->rhs = parse_expr(p, lbp, flags);
+
+            if ((token.kind == TOKEN_EQ || token.kind == TOKEN_NE) && node->kind == NODE_MEMBER &&
+                node->token.kind == TOKEN_TYPE) {
+                ((NodeMember *) node)->is_type_access_valid = true;
+                binary->rhs = parse_type(p);
+            } else {
+                binary->rhs = parse_expr(p, lbp, flags);
+            }
+
             node = (Node *) binary;
 
             if (lbp == POWER_SET) {
@@ -996,6 +1010,11 @@ static Node *parse_stmt(Parser *p) {
         NodeMatch *match = node_alloc(p, NODE_MATCH, token);
         match->expr = parse_expr(p, POWER_SET, 0);
 
+        if (match->expr->kind == NODE_MEMBER && match->expr->token.kind == TOKEN_TYPE) {
+            ((NodeMember *) match->expr)->is_type_access_valid = true;
+            match->matching_type = true;
+        }
+
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             if (lexer_read(&p->lexer, TOKEN_ELSE)) {
@@ -1006,11 +1025,17 @@ static Node *parse_stmt(Parser *p) {
 
                 lexer_expect(&p->lexer, TOKEN_COLON);
                 match->fallback = parse_stmt(p);
+
+                // TODO: stop here
             } else {
                 NodeBranch *branch = node_alloc(p, NODE_BRANCH, match->node.token);
                 do {
                     NodeCase *this = node_alloc(p, NODE_CASE, match->node.token);
-                    this->expr = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+                    if (match->matching_type) {
+                        this->expr = parse_type(p);
+                    } else {
+                        this->expr = parse_expr(p, POWER_SET, PF_CONSTANT_EXPR);
+                    }
 
                     nodes_push(&branch->cases, (Node *) this);
                     token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_COLON);

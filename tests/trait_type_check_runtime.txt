@@ -1,0 +1,10 @@
+EXIT 0
+STDOUT 111
+typeof(0x0) => raw pointer
+typeof(69) => i64
+typeof(true) => bool
+typeof(Urmom) => string
+typeof(E) => unknown
+
+STDERR 0
+

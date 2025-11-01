@@ -445,8 +445,7 @@ static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Node *caller_generics_h
     return fn->qbe;
 }
 
-static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
-    assert(n->trait_impl);
+static void compile_trait_impl_fns(Compiler *c, Node *n) {
     if (!n->trait_impl->qbe) {
         QbeVar *impl = qbe_var_new(
             c->qbe, (QbeSV) {0}, qbe_type_array(c->qbe, qbe_type_basic(QBE_TYPE_I64), n->trait_impl->fns_count));
@@ -484,6 +483,11 @@ static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
 
         n->trait_impl->qbe = (QbeNode *) impl;
     }
+}
+
+static QbeNode *compile_trait_impl(Compiler *c, Node *n, QbeNode *n_qbe) {
+    assert(n->trait_impl);
+    compile_trait_impl_fns(c, n);
 
     QbeNode *temp = qbe_fn_add_var(
         c->qbe, c->fn, qbe_type_array(c->qbe, qbe_type_basic(QBE_TYPE_I8), sizeof(void *) + qbe_sizeof(n->type.qbe)));
@@ -1086,6 +1090,12 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         BinaryOp op = direct_ops[n->token.kind];
+        if (binary->lhs->kind == NODE_MEMBER && binary->lhs->token.kind == TOKEN_TYPE) {
+            QbeNode *lhs = compile_expr(c, binary->lhs, false);
+            compile_trait_impl_fns(c, binary->rhs);
+            return qbe_build_binary(c->qbe, c->fn, op.s, n->type.qbe, lhs, binary->rhs->trait_impl->qbe);
+        }
+
         if (op.s) {
             QbeBinaryOp actual = op.s;
             if (op.u && !type_is_signed(binary->lhs->type)) {
@@ -1247,6 +1257,11 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             }
         } else {
             member->lhs_qbe = compile_expr(c, member->lhs, true);
+        }
+
+        if (member->is_type_access_valid) {
+            member->lhs_qbe = qbe_build_load(c->qbe, c->fn, member->lhs_qbe, qbe_type_basic(QBE_TYPE_I64), false);
+            return member->lhs_qbe;
         }
 
         if (member->lhs->type.kind == TYPE_ARRAY) {
@@ -1567,7 +1582,11 @@ static void compile_stmt(Compiler *c, Node *n) {
                 NodeCase *this = (NodeCase *) it;
 
                 QbeNode *equal = NULL;
-                if (this->value.is_string) {
+                if (match->matching_type) {
+                    compile_trait_impl_fns(c, this->expr);
+                    equal = qbe_build_binary(
+                        c->qbe, c->fn, QBE_BINARY_EQ, qbe_type_basic(QBE_TYPE_I8), expr, this->expr->trait_impl->qbe);
+                } else if (this->value.is_string) {
                     QbeNode *value_data = NULL;
                     QbeNode *value_count = NULL;
                     split_slice_to_parts(c, compile_str(c, this->value.as.sv, true), &value_data, &value_count);
