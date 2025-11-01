@@ -171,6 +171,18 @@ static QbeNode *compile_str(Compiler *c, SV sv, bool ref) {
     return qbe_build_load(c->qbe, c->fn, slice_struct, c->slice_type, false);
 }
 
+static void compile_defers(Compiler *c, size_t from, bool rollback) {
+    for (size_t i = c->defers.count; i > from; i--) {
+        Node *it = c->defers.data[i - 1];
+        qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
+        compile_stmt(c, it);
+    }
+
+    if (rollback) {
+        c->defers.count = from;
+    }
+}
+
 static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     QbeSV link_as = {0};
     if (fn->link) {
@@ -197,6 +209,9 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     }
 
     QbeFn *fn_save = c->fn;
+    size_t defers_start_save = c->defers_start;
+    c->defers_start = c->defers.count;
+
     c->fn = qbe_fn_new(c->qbe, link_as, return_type.qbe);
     fn->qbe = (QbeNode *) c->fn;
     if (export_qbe) {
@@ -226,6 +241,8 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
             qbe_build_debug_line(c->qbe, c->fn, it->token.pos.row + 1);
             compile_stmt(c, it);
         }
+
+        compile_defers(c, c->defers_start, true);
     } else {
         fn_row = fn_block->node.token.pos.row;
     }
@@ -234,11 +251,13 @@ static QbeNode *compile_fn(Compiler *c, NodeFn *fn, QbeNode **export_qbe) {
     qbe_fn_set_debug(c->qbe, c->fn, qbe_sv_from_cstr(fn->node.token.pos.path), fn_row + 1);
     qbe_build_return(c->qbe, c->fn, NULL);
 
+    c->defers.count = c->defers_start;
+    c->defers_start = defers_start_save;
     c->fn = fn_save;
     return fn->qbe;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void clear_qbe(Node *n) {
     if (!n) {
         return;
@@ -319,6 +338,10 @@ static void clear_qbe(Node *n) {
 
     case NODE_BRANCH:
         clear_qbe(((NodeBranch *) n)->body);
+        break;
+
+    case NODE_DEFER:
+        clear_qbe(((NodeDefer *) n)->stmt);
         break;
 
     case NODE_RETURN:
@@ -541,7 +564,7 @@ static QbeNode *compile_string_eq(Compiler *c, QbeNode *a_data, QbeNode *a_count
     return qbe_build_phi(c->qbe, c->fn, count_equal_phi, data_equal_phi);
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -552,7 +575,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, 0);
@@ -738,7 +761,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -1022,7 +1045,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -1074,7 +1097,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -1105,7 +1128,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1388,7 +1411,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1489,6 +1512,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         QbeBlock *loop_break_save = c->loop_break;
         QbeBlock *loop_condition_save = c->loop_continue;
+        size_t    loop_defers_start_save = c->loop_defers_start;
 
         c->loop_break = end;
         c->loop_continue = update;
@@ -1517,6 +1541,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         c->loop_break = loop_break_save;
         c->loop_continue = loop_condition_save;
+        c->loop_defers_start = loop_defers_start_save;
     } break;
 
     case NODE_MATCH: {
@@ -1585,6 +1610,8 @@ static void compile_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
+        const size_t defers_count_save = c->defers.count;
+
         NodeBlock *block = (NodeBlock *) n;
         for (Node *it = block->body.head; it; it = it->next) {
             // TODO: Don't generate debugs for "compilation elements":
@@ -1597,9 +1624,13 @@ static void compile_stmt(Compiler *c, Node *n) {
             compile_stmt(c, it);
         }
         qbe_build_debug_line(c->qbe, c->fn, n->token.pos.row + 1);
+
+        compile_defers(c, defers_count_save, true);
     } break;
 
     case NODE_JUMP:
+        compile_defers(c, c->loop_defers_start, false);
+
         if (n->token.kind == TOKEN_BREAK) {
             qbe_build_jump(c->qbe, c->fn, c->loop_break);
         } else if (n->token.kind == TOKEN_CONTINUE) {
@@ -1611,9 +1642,20 @@ static void compile_stmt(Compiler *c, Node *n) {
         qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
         break;
 
+    case NODE_DEFER:
+        da_push(&c->defers, ((NodeDefer *) n)->stmt);
+        break;
+
     case NODE_RETURN: {
         NodeReturn *ret = (NodeReturn *) n;
-        qbe_build_return(c->qbe, c->fn, compile_expr(c, ret->value, false));
+
+        QbeNode *value = compile_expr(c, ret->value, false);
+        if (ret->value && ret->value->type.kind == TYPE_UNIT) {
+            value = NULL;
+        }
+
+        compile_defers(c, c->defers_start, false);
+        qbe_build_return(c->qbe, c->fn, value);
         qbe_build_block(c->qbe, c->fn, qbe_block_new(c->qbe));
     } break;
 
@@ -1794,6 +1836,7 @@ void compiler_build(Compiler *c, const char *object_file_path) {
     }
 
     qbe_free(c->qbe);
+    da_free(&c->defers);
     da_free(&c->link_flags);
     context_free(&c->context);
 }

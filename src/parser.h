@@ -19,6 +19,7 @@ typedef struct {
     bool local;
     bool in_loop;
     bool in_when;
+    bool in_defer;
     bool in_extern;
     bool dont_consume_eols;
 

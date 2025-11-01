@@ -1,0 +1,17 @@
+package main
+
+import "fmt"
+
+fn foo() i64 {
+	fmt::println("foo()")
+	return 69
+}
+
+fn bar() i64 {
+	defer fmt::println("defer")
+	return foo()
+}
+
+fn main() {
+	bar()
+}

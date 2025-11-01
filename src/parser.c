@@ -1,6 +1,5 @@
 #include "parser.h"
 #include "message.h"
-#include "node.h"
 
 static void nodes_append(Nodes *dst, Nodes *src) {
     nodes_push(dst, src->head);
@@ -21,7 +20,7 @@ void parser_free(Parser *p) {
     da_free(&p->paths);
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void *node_alloc(Parser *p, NodeKind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(NodeAtom), // Prevent clang-format from messing this up
@@ -44,6 +43,7 @@ static void *node_alloc(Parser *p, NodeKind kind, Token token) {
         [NODE_BRANCH] = sizeof(NodeBranch),
 
         [NODE_JUMP] = sizeof(Node),
+        [NODE_DEFER] = sizeof(NodeDefer),
         [NODE_RETURN] = sizeof(NodeReturn),
 
         [NODE_FN] = sizeof(NodeFn),
@@ -72,7 +72,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -196,7 +196,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -284,7 +284,7 @@ static bool node_is_compound_literal_type(Node *n) {
 
 static Node *parse_fn(Parser *p, Token name, bool will_be_method);
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void ensure_const_expr(Node *n) {
     if (!n) {
         return;
@@ -426,7 +426,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -911,7 +911,7 @@ static void set_node_public_in_extern(Node *n) {
     }
 }
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1024,6 +1024,24 @@ static Node *parse_stmt(Parser *p) {
         node = (Node *) match;
     } break;
 
+    case TOKEN_DEFER: {
+        local_assert(p, token, true);
+
+        if (p->in_defer) {
+            error_full(ERROR, token.pos, "Nested 'defer' is not allowed\n");
+            exit(1);
+        }
+
+        const bool in_defer_save = p->in_defer;
+        p->in_defer = true;
+
+        NodeDefer *defer = node_alloc(p, NODE_DEFER, token);
+        defer->stmt = parse_stmt(p);
+        node = (Node *) defer;
+
+        p->in_defer = in_defer_save;
+    } break;
+
     case TOKEN_BREAK:
     case TOKEN_CONTINUE:
         if (!p->in_loop) {
@@ -1031,12 +1049,22 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        if (p->in_defer) {
+            error_full(ERROR, token.pos, "Cannot use %s inside 'defer' statement", token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
         node = node_alloc(p, NODE_JUMP, token);
         break;
 
     case TOKEN_RETURN: {
-        NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
+        local_assert(p, token, true);
+        if (p->in_defer) {
+            error_full(ERROR, token.pos, "Cannot use %s inside 'defer' statement", token_kind_to_cstr(token.kind));
+            exit(1);
+        }
 
+        NodeReturn *ret = node_alloc(p, NODE_RETURN, token);
         token = lexer_peek(&p->lexer);
         if (!token.newlines && token.kind != TOKEN_EOL && token.kind != TOKEN_RBRACE) {
             ret->value = parse_expr(p, POWER_SET, PF_COMPOUND_ALLOWED);
@@ -1414,6 +1442,9 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
     const bool in_loop_save = p->in_loop;
     p->in_loop = false;
 
+    const bool in_defer_save = p->in_defer;
+    p->in_defer = false;
+
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
         const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
 
@@ -1488,6 +1519,7 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
 
     p->local = local_save;
     p->in_loop = in_loop_save;
+    p->in_defer = in_defer_save;
     fn->package = p->packages->current;
     return (Node *) fn;
 }

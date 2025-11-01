@@ -1,0 +1,19 @@
+package main
+
+import "fmt"
+
+fn main() {
+	for var i = 0; i < 10; i += 1 {
+		defer fmt::println("Defer ", i)
+
+		if i == 2 {
+			continue
+		}
+
+		if i == 5 {
+			break
+		}
+
+		fmt::println(i)
+	}
+}
