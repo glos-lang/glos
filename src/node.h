@@ -155,6 +155,7 @@ typedef enum {
     NODE_BRANCH,
 
     NODE_JUMP,
+    NODE_DEFER,
     NODE_RETURN,
 
     NODE_FN,
@@ -335,6 +336,11 @@ typedef struct {
 
     Pos rbrace_pos;
 } NodeBlock;
+
+typedef struct {
+    Node  node;
+    Node *stmt;
+} NodeDefer;
 
 typedef struct {
     Node  node;

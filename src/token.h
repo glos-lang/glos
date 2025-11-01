@@ -82,6 +82,7 @@ typedef enum {
     TOKEN_FOR,
     TOKEN_MATCH,
 
+    TOKEN_DEFER,
     TOKEN_BREAK,
     TOKEN_RETURN,
     TOKEN_CONTINUE,

@@ -11,8 +11,12 @@ typedef struct {
     Qbe   *qbe;
     QbeFn *fn;
 
+    Scope  defers;
+    size_t defers_start;
+
     QbeBlock *loop_break;
     QbeBlock *loop_continue;
+    size_t    loop_defers_start;
 
     QbeType slice_type;
     QbeType dslice_type;

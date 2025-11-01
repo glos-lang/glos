@@ -1,0 +1,15 @@
+EXIT 0
+STDOUT 56
+0
+Defer 0
+1
+Defer 1
+Defer 2
+3
+Defer 3
+4
+Defer 4
+Defer 5
+
+STDERR 0
+
