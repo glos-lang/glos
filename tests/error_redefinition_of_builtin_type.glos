@@ -1,0 +1,5 @@
+package main
+
+struct i32 {
+	x bool
+}

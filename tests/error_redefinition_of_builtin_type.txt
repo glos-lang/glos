@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 126
+error_redefinition_of_builtin_type.glos:3:8: ERROR: Redefinition of builtin type 'i32'
+
+    3 | struct i32 {
+      |        ^
+

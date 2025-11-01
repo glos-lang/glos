@@ -3004,6 +3004,41 @@ static void check_stmt(Compiler *c, Node *n) {
     }
 }
 
+static void check_redefinition_of_builtin_type(const Node *n) {
+    bool ok = true;
+    if (sv_match(n->token.sv, "bool")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "char")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "i8")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "i16")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "i32")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "i64")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "u8")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "u16")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "u32")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "u64")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "f32")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "f64")) {
+        ok = false;
+    } else if (sv_match(n->token.sv, "rawptr")) {
+        ok = false;
+    }
+
+    if (!ok) {
+        error_redefinition(n, NULL, "builtin type");
+    }
+}
+
 static_assert(COUNT_NODES == 28, "");
 static void define_toplevel(Compiler *c, Node *n) {
     switch (n->kind) {
@@ -3044,6 +3079,7 @@ static void define_toplevel(Compiler *c, Node *n) {
     } break;
 
     case NODE_TYPE: {
+        check_redefinition_of_builtin_type(n);
         Package *package = ((NodeType *) n)->package;
 
         const Node *previous = scope_find(package->globals, n->token.sv, true);
@@ -3055,6 +3091,7 @@ static void define_toplevel(Compiler *c, Node *n) {
     } break;
 
     case NODE_TRAIT: {
+        check_redefinition_of_builtin_type(n);
         Package *package = ((NodeTrait *) n)->package;
 
         const Node *previous = scope_find(package->globals, n->token.sv, true);
@@ -3067,6 +3104,7 @@ static void define_toplevel(Compiler *c, Node *n) {
     } break;
 
     case NODE_STRUCT: {
+        check_redefinition_of_builtin_type(n);
         Package *package = ((NodeStruct *) n)->package;
 
         const Node *previous = scope_find(package->globals, n->token.sv, true);
