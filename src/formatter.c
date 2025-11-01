@@ -413,7 +413,12 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         const Power mbp = token_kind_to_power(n->token.kind);
         format_expr_with_parens_maybe(f, binary->lhs, mbp);
         sb_sprintf(&f->sb, " " SVFmt " ", SVArg(n->token.sv));
-        format_expr_with_parens_maybe(f, binary->rhs, mbp);
+
+        if (binary->lhs->kind == NODE_MEMBER && binary->lhs->token.kind == TOKEN_TYPE) {
+            format_type(f, binary->rhs, false);
+        } else {
+            format_expr_with_parens_maybe(f, binary->rhs, mbp);
+        }
     } break;
 
     case NODE_MEMBER: {
@@ -728,7 +733,11 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             NodeBranch *branch = (NodeBranch *) it;
             for (Node *it = branch->cases.head; it; it = it->next) {
                 NodeCase *this = (NodeCase *) it;
-                format_expr(f, this->expr, true);
+                if (match->matching_type) {
+                    format_type(f, this->expr, false);
+                } else {
+                    format_expr(f, this->expr, true);
+                }
                 if (it->next) {
                     sb_sprintf(&f->sb, ", ");
                 } else {
