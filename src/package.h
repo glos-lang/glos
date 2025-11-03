@@ -25,11 +25,11 @@ void imports_push(Imports *is, Import *i);
 typedef DynamicArray(Node *) Scope;
 
 struct Package {
-    SV    path;
+    SV    relative_path;
+    SV    absolute_path;
     Token name;
 
-    bool        is_file;
-    const char *real_path;
+    bool is_file;
 
     Nodes   nodes;
     Scope   globals;
@@ -48,6 +48,6 @@ void packages_free(Packages *ps);
 void packages_push(Packages *ps, Package *p);
 
 Package *packages_find_by_name(Packages ps, SV name);
-Package *packages_find_by_path(Packages ps, SV name);
+Package *packages_find_by_path(Packages ps, SV abspath);
 
 #endif // PACKAGE_H

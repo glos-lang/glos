@@ -37,12 +37,6 @@ typedef enum {
     PDE_FAILED,
 } ParseDirError;
 
-typedef enum {
-    PDS_NO,
-    PDS_YES,
-    PDS_ONLY,
-} ParseDirStd;
-
-ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds);
+ParseDirError parse_dir(Parser *p, const char *path);
 
 #endif // PARSER_H

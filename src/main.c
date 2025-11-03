@@ -46,6 +46,8 @@ static const char *path_last(const char *path) {
 }
 
 static const char *get_std_path(Arena *a) {
+    const void *checkpoint = temp_alloc(0);
+
 #if defined(__APPLE__)
     uint32_t count = DA_INIT_CAP;
     char    *data = temp_alloc(count);
@@ -61,7 +63,9 @@ static const char *get_std_path(Arena *a) {
         }
     }
 
+    data = resolve_absolute_path(data);
     count = strlen(data);
+
 #elif defined(__linux__)
     long  count = 0;
     char *data = NULL;
@@ -91,8 +95,8 @@ static const char *get_std_path(Arena *a) {
         }
     }
 
-    const char *path = arena_sprintf(a, SVFmt "std/", SVArg(sv));
-    temp_reset(data);
+    const char *path = arena_sprintf(a, SVFmt "std", SVArg(sv));
+    temp_reset(checkpoint);
     return path;
 }
 
@@ -189,21 +193,22 @@ int main(int argc, char **argv) {
     }
 
     Package package = {
-        .path = sv_from_cstr(input),
+        .relative_path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
     packages_push(&packages, &package);
 
-    parser_load_builtin(&parser);
-
     if (is_dir(input)) {
-        parser.root = input;
-        if (parse_dir(&parser, input, PDS_NO) == PDE_EMPTY) {
+        parser.root = get_absolute_path(parser.cwd, input, &arena);
+        package.absolute_path = sv_from_cstr(parser.root);
+        parser_load_builtin(&parser);
+        if (parse_dir(&parser, input) == PDE_EMPTY) {
             error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
             exit(1);
         }
     } else {
         package.is_file = true;
+        parser_load_builtin(&parser);
         if (!parse_file(&parser, input)) {
             error_standalone(ERROR, "Could not read '%s'", input);
             exit(1);
@@ -213,7 +218,7 @@ int main(int argc, char **argv) {
     for (Package *it = packages.head; it; it = it->next) {
         if (!it->is_file) {
             da_push(&compiler.link_flags, "-L");
-            da_push(&compiler.link_flags, it->real_path);
+            da_push(&compiler.link_flags, it->absolute_path.data);
         }
     }
 
