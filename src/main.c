@@ -65,7 +65,6 @@ static const char *get_std_path(Arena *a) {
 
     data = resolve_absolute_path(data);
     count = strlen(data);
-    printf("EXE_PATH = %s\n", data);
 
 #elif defined(__linux__)
     long  count = 0;

@@ -858,14 +858,6 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
         ParseDirError pde = parse_dir(p, absolute);
         if (pde == PDE_FAILED) {
             error_full(ERROR, token.pos, "Could not import package '%s'", relative);
-
-            if (is_macos()) {
-                fprintf(stderr, "\nAbsolute path: %s\n", absolute);
-                fprintf(stderr, "\nRoot:          %s\n", p->root);
-                fprintf(stderr, "\nCWD:           %s\n", p->cwd);
-                fprintf(stderr, "\nSTD:           %s\n", p->std);
-            }
-
             exit(1);
         }
 
