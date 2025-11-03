@@ -45,9 +45,9 @@ Package *packages_find_by_name(Packages ps, SV name) {
     return NULL;
 }
 
-Package *packages_find_by_path(Packages ps, SV path) {
+Package *packages_find_by_path(Packages ps, SV abspath) {
     for (Package *it = ps.head; it; it = it->next) {
-        if (sv_eq(it->path, path)) {
+        if (sv_eq(it->absolute_path, abspath)) {
             return it;
         }
     }

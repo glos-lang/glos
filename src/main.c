@@ -91,7 +91,7 @@ static const char *get_std_path(Arena *a) {
         }
     }
 
-    const char *path = arena_sprintf(a, SVFmt "std/", SVArg(sv));
+    const char *path = arena_sprintf(a, SVFmt "std", SVArg(sv));
     temp_reset(data);
     return path;
 }
@@ -189,21 +189,22 @@ int main(int argc, char **argv) {
     }
 
     Package package = {
-        .path = sv_from_cstr(input),
+        .relative_path = sv_from_cstr(input),
         .name.sv = sv_from_cstr("main"),
     };
     packages_push(&packages, &package);
 
-    parser_load_builtin(&parser);
-
     if (is_dir(input)) {
-        parser.root = input;
-        if (parse_dir(&parser, input, PDS_NO) == PDE_EMPTY) {
+        parser.root = get_absolute_path(parser.cwd, input, &arena);
+        package.absolute_path = sv_from_cstr(parser.root);
+        parser_load_builtin(&parser);
+        if (parse_dir(&parser, input) == PDE_EMPTY) {
             error_standalone(ERROR, "Directory '%s' does not contain any glos files", input);
             exit(1);
         }
     } else {
         package.is_file = true;
+        parser_load_builtin(&parser);
         if (!parse_file(&parser, input)) {
             error_standalone(ERROR, "Could not read '%s'", input);
             exit(1);
@@ -213,7 +214,7 @@ int main(int argc, char **argv) {
     for (Package *it = packages.head; it; it = it->next) {
         if (!it->is_file) {
             da_push(&compiler.link_flags, "-L");
-            da_push(&compiler.link_flags, it->real_path);
+            da_push(&compiler.link_flags, it->absolute_path.data);
         }
     }
 

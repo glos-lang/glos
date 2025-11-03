@@ -768,11 +768,24 @@ static NodeAssert *parse_assert(Parser *p, Token token) {
     return assertt;
 }
 
-static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
+static void resolve_import_path(Parser *p, Token token, const char *dir, const char **absolute, const char **relative) {
     char *path_start = temp_alloc(0);
-    if (p->root) {
-        path_start = temp_sprintf("%s/", p->root);
+
+    const char *root = NULL;
+    if (dir) {
+        root = dir;
+    } else if (p->packages->current && !p->packages->current->is_file) {
+        root = p->packages->current->absolute_path.data;
+        assert(root);
+    } else if (p->root) {
+        root = p->root;
+    }
+
+    if (root) {
+        path_start = temp_sprintf("%s/", root);
         temp_remove_null();
+    } else {
+        root = p->cwd;
     }
 
     char *path_buffer = temp_alloc(token.as.integer + 1);
@@ -781,16 +794,33 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     resolve_escape_chars(path_buffer, &path_sv);
     path_buffer[token.as.integer] = '\0';
 
-    const char *path = get_relative_path(p->cwd, path_start, p->arena);
+    get_absolute_and_relative_paths(root, path_start, p->arena, absolute, relative);
     temp_reset(path_start);
+}
 
-    if (!p->formatter && !strcmp(path, ".")) {
+static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
+    const char *checkpoint = arena_alloc(p->arena, 0);
+
+    const char *absolute = NULL;
+    const char *relative = NULL;
+    if (!only_check_std) {
+        resolve_import_path(p, token, NULL, &absolute, &relative);
+    }
+
+    if (only_check_std || !is_dir(absolute)) {
+        arena_reset(p->arena, checkpoint);
+        resolve_import_path(p, token, p->std, &absolute, &relative);
+    }
+
+    if (!p->formatter && !strcmp(relative, ".")) {
         error_full(ERROR, token.pos, "Cannot import package 'main'");
         exit(1);
     }
-    path_sv = sv_from_cstr(path);
 
-    Package *previous = packages_find_by_path(*p->packages, path_sv);
+    const SV relative_path_sv = sv_from_cstr(relative);
+    const SV absolute_path_sv = sv_from_cstr(absolute);
+
+    Package *previous = packages_find_by_path(*p->packages, absolute_path_sv);
     if (previous) {
         Import *previous_import = imports_find(p->packages->current->imports, previous->name.sv);
         if (previous_import && !p->formatter) {
@@ -817,20 +847,21 @@ static void do_import(Parser *p, Token token, SV as, ParseDirStd pds) {
     }
 
     Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
-    package->path = path_sv;
+    package->relative_path = relative_path_sv;
+    package->absolute_path = absolute_path_sv;
 
     Package *packages_current_save = p->packages->current;
     packages_push(p->packages, package);
 
     if (!p->formatter) {
-        ParseDirError pde = parse_dir(p, path, pds);
+        ParseDirError pde = parse_dir(p, absolute);
         if (pde == PDE_FAILED) {
-            error_full(ERROR, token.pos, "Could not import package '%s'", path);
+            error_full(ERROR, token.pos, "Could not import package '%s'", relative);
             exit(1);
         }
 
         if (pde == PDE_EMPTY) {
-            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", path);
+            error_full(ERROR, token.pos, "Directory '%s' does not contain any glos files", relative);
             exit(1);
         }
     }
@@ -1400,7 +1431,7 @@ static Node *parse_stmt(Parser *p) {
                     token = lexer_expect(&p->lexer, TOKEN_STR);
                 }
 
-                do_import(p, token, as, PDS_YES);
+                do_import(p, token, as, false);
                 lexer_read(&p->lexer, TOKEN_COMMA);
             }
         } else {
@@ -1410,7 +1441,7 @@ static Node *parse_stmt(Parser *p) {
                 token = lexer_expect(&p->lexer, TOKEN_STR);
             }
 
-            do_import(p, token, as, PDS_YES);
+            do_import(p, token, as, false);
         }
     } break;
 
@@ -1614,36 +1645,13 @@ bool parse_file(Parser *p, const char *path) {
     return true;
 }
 
-ParseDirError parse_dir(Parser *p, const char *path, ParseDirStd pds) {
+ParseDirError parse_dir(Parser *p, const char *path) {
     assert(p->arena);
 
-    const SV     suffix = sv_from_cstr(".glos");
     const size_t start = p->paths.count;
-    if (pds == PDS_ONLY || !read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
-        if (!pds) {
-            return PDE_FAILED;
-        }
-
-        if (p->root) {
-            SV path_sv = sv_from_cstr(path);
-            SV root_sv = sv_from_cstr(p->root);
-            if (sv_has_prefix(path_sv, root_sv) && path_sv.count > root_sv.count &&
-                path_sv.data[root_sv.count] == '/') {
-                path_sv = sv_strip_prefix(path_sv, root_sv);
-                sv_drop(&path_sv, 1);
-                path = arena_sprintf(p->arena, "%s" SVFmt, p->std, SVArg(path_sv));
-            } else {
-                path = arena_sprintf(p->arena, "%s%s", p->std, path);
-            }
-        } else {
-            path = arena_sprintf(p->arena, "%s%s", p->std, path);
-        }
-
-        if (!read_dir(&p->paths, p->cwd, path, suffix, p->arena)) {
-            return PDE_FAILED;
-        }
+    if (!read_dir(&p->paths, p->cwd, path, sv_from_cstr(".glos"), p->arena)) {
+        return PDE_FAILED;
     }
-    p->packages->current->real_path = path;
 
     bool empty = true;
 
@@ -1675,6 +1683,6 @@ void parser_load_builtin(Parser *p) {
         Token builtin = {0};
         builtin.sv = sv_from_cstr("\"builtin\"");
         builtin.as.integer = strlen("builtin");
-        do_import(p, builtin, (SV) {0}, PDS_ONLY);
+        do_import(p, builtin, (SV) {0}, true);
     }
 }

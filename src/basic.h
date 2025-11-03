@@ -146,6 +146,10 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) PrintfLike(2);
 const char *get_current_dir(Arena *arena);
 const char *get_relative_path(const char *cwd, const char *path, Arena *arena);
 const char *get_absolute_path(const char *cwd, const char *path, Arena *arena);
+const char *get_relative_path_from_absolute(const char *cwd, const char *path, Arena *arena);
+
+void get_absolute_and_relative_paths(
+    const char *cwd, const char *path, Arena *arena, const char **absolute, const char **relative);
 
 bool read_file(SV *out, const char *path, Arena *arena);
 
