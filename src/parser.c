@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "checker.h" // TODO: Remove
 #include "message.h"
 
 static void nodes_append(Nodes *dst, Nodes *src) {
@@ -856,7 +857,15 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
     if (!p->formatter) {
         ParseDirError pde = parse_dir(p, absolute);
         if (pde == PDE_FAILED) {
-            error_full(ERROR, token.pos, "Could not import package '%s'", absolute);
+            error_full(ERROR, token.pos, "Could not import package '%s'", relative);
+
+            if (is_macos()) {
+                fprintf(stderr, "\nAbsolute path: %s\n", absolute);
+                fprintf(stderr, "\nRoot:          %s\n", p->root);
+                fprintf(stderr, "\nCWD:           %s\n", p->cwd);
+                fprintf(stderr, "\nSTD:           %s\n", p->std);
+            }
+
             exit(1);
         }
 
