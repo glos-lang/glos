@@ -144,6 +144,8 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) PrintfLike(2);
 
 // FS
 const char *get_current_dir(Arena *arena);
+const char *resolve_absolute_path(char *path);
+
 const char *get_relative_path(const char *cwd, const char *path, Arena *arena);
 const char *get_absolute_path(const char *cwd, const char *path, Arena *arena);
 const char *get_relative_path_from_absolute(const char *cwd, const char *path, Arena *arena);

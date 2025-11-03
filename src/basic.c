@@ -337,7 +337,7 @@ const char *get_current_dir(Arena *a) {
     }
 }
 
-static const char *resolve_fullpath(char *path) {
+const char *resolve_absolute_path(char *path) {
     char *dst = path;
     char *src = path;
 
@@ -391,9 +391,9 @@ const char *get_relative_path(const char *cwd, const char *path, Arena *arena) {
 
     const char *full = NULL;
     if (*path == '/') {
-        full = resolve_fullpath(temp_sprintf("%s", path));
+        full = resolve_absolute_path(temp_sprintf("%s", path));
     } else {
-        full = resolve_fullpath(temp_sprintf("%s/%s", cwd, path));
+        full = resolve_absolute_path(temp_sprintf("%s/%s", cwd, path));
     }
 
     const char *relative = get_relative_path_from_absolute(cwd, full, arena);
@@ -408,9 +408,9 @@ const char *get_absolute_path(const char *cwd, const char *path, Arena *arena) {
 
     const char *full = NULL;
     if (*path == '/') {
-        full = resolve_fullpath(temp_sprintf("%s", path));
+        full = resolve_absolute_path(temp_sprintf("%s", path));
     } else {
-        full = resolve_fullpath(temp_sprintf("%s/%s", cwd, path));
+        full = resolve_absolute_path(temp_sprintf("%s/%s", cwd, path));
     }
 
     const char *absolute = arena_sprintf(arena, "%s", full);
@@ -490,9 +490,9 @@ void get_absolute_and_relative_paths(
 
     const char *full = NULL;
     if (*path == '/') {
-        full = resolve_fullpath(temp_sprintf("%s", path));
+        full = resolve_absolute_path(temp_sprintf("%s", path));
     } else {
-        full = resolve_fullpath(temp_sprintf("%s/%s", cwd, path));
+        full = resolve_absolute_path(temp_sprintf("%s/%s", cwd, path));
     }
 
     *absolute = arena_sprintf(arena, "%s", full);

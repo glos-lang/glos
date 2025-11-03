@@ -46,6 +46,8 @@ static const char *path_last(const char *path) {
 }
 
 static const char *get_std_path(Arena *a) {
+    const void *checkpoint = temp_alloc(0);
+
 #if defined(__APPLE__)
     uint32_t count = DA_INIT_CAP;
     char    *data = temp_alloc(count);
@@ -61,8 +63,8 @@ static const char *get_std_path(Arena *a) {
         }
     }
 
+    data = resolve_absolute_path(data);
     count = strlen(data);
-
     printf("EXE_PATH = %s\n", data);
 
 #elif defined(__linux__)
@@ -95,7 +97,7 @@ static const char *get_std_path(Arena *a) {
     }
 
     const char *path = arena_sprintf(a, SVFmt "std", SVArg(sv));
-    temp_reset(data);
+    temp_reset(checkpoint);
     return path;
 }
 
