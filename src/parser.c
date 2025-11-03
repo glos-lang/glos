@@ -856,7 +856,7 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
     if (!p->formatter) {
         ParseDirError pde = parse_dir(p, absolute);
         if (pde == PDE_FAILED) {
-            error_full(ERROR, token.pos, "Could not import package '%s'", relative);
+            error_full(ERROR, token.pos, "Could not import package '%s'", absolute);
             exit(1);
         }
 
