@@ -1,5 +1,4 @@
 #include "parser.h"
-#include "checker.h" // TODO: Remove
 #include "message.h"
 
 static void nodes_append(Nodes *dst, Nodes *src) {
@@ -811,6 +810,15 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
     if (only_check_std || !is_dir(absolute)) {
         arena_reset(p->arena, checkpoint);
         resolve_import_path(p, token, p->std, &absolute, &relative);
+
+        if (!strcmp(relative, "builtin")) {
+            if (p->imported_builtin) {
+                error_full(WARN, token.pos, "Package 'builtin' is automatically imported");
+                return;
+            } else {
+                p->imported_builtin = true;
+            }
+        }
     }
 
     if (!p->formatter && !strcmp(relative, ".")) {

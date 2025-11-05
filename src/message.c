@@ -87,6 +87,10 @@ void error_begin(ErrorKind kind, Pos pos) {
         eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_YELLOW, "NOTE: ");
         break;
 
+    case WARN:
+        eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_YELLOW, "WARNING: ");
+        break;
+
     case ERROR:
         eprint_message(MESSAGE_ATTRIB_BOLD | MESSAGE_FG_RED, "ERROR: ");
         break;

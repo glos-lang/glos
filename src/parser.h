@@ -22,6 +22,7 @@ typedef struct {
     bool in_defer;
     bool in_extern;
     bool dont_consume_eols;
+    bool imported_builtin;
 
     Paths paths;
 } Parser;

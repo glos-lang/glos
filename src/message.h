@@ -26,6 +26,7 @@ void write_message(FILE *f, MessageAttrib attrib, const char *fmt, ...) PrintfLi
 
 typedef enum {
     NOTE,
+    WARN,
     ERROR,
 } ErrorKind;
 

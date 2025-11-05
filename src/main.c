@@ -100,6 +100,27 @@ static const char *get_std_path(Arena *a) {
     return path;
 }
 
+static const char *temp_dirname(SV path) {
+    bool found = false;
+    for (size_t i = path.count; i; i--) {
+        if (path.data[i - 1] == '/') {
+            path.count = i;
+            found = true;
+            break;
+        }
+    }
+
+    if (found) {
+        if (path.count > 1) {
+            path.count--;
+        }
+    } else {
+        path = sv_from_cstr(".");
+    }
+
+    return temp_sv_to_cstr(path);
+}
+
 int main(int argc, char **argv) {
     int      result = 0;
     Arena    arena = {0};
@@ -208,6 +229,7 @@ int main(int argc, char **argv) {
         }
     } else {
         package.is_file = true;
+        package.absolute_path = sv_from_cstr(get_absolute_path(parser.cwd, input, &arena));
         parser_load_builtin(&parser);
         if (!parse_file(&parser, input)) {
             error_standalone(ERROR, "Could not read '%s'", input);
@@ -216,8 +238,10 @@ int main(int argc, char **argv) {
     }
 
     for (Package *it = packages.head; it; it = it->next) {
-        if (!it->is_file) {
-            da_push(&compiler.link_flags, "-L");
+        da_push(&compiler.link_flags, "-L");
+        if (it->is_file) {
+            da_push(&compiler.link_flags, temp_dirname(it->absolute_path));
+        } else {
             da_push(&compiler.link_flags, it->absolute_path.data);
         }
     }
