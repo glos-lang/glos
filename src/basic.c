@@ -179,6 +179,54 @@ void resolve_escape_chars(char *buffer, SV *sv) {
     sv->count = p - buffer;
 }
 
+void print_quoted_char(FILE *f, char ch, char quote) {
+    switch (ch) {
+    case 033:
+        fputs("\\e", f);
+        break;
+
+    case '\n':
+        fputs("\\n", f);
+        break;
+
+    case '\r':
+        fputs("\\r", f);
+        break;
+
+    case '\t':
+        fputs("\\t", f);
+        break;
+
+    case '\0':
+        fputs("\\0", f);
+        break;
+
+    case '\\':
+        fputs("\\\\", f);
+        break;
+
+    case '\'':
+        if (quote == '\'') {
+            fputs("\\'", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    case '"':
+        if (quote == '"') {
+            fputs("\\\"", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    default:
+        fputc(ch, f);
+        break;
+    }
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1000 * 1000];
 static size_t temp_count;
@@ -578,6 +626,56 @@ bool read_dir(Paths *p, const char *cwd, const char *path, SV suffix, Arena *are
     closedir(d);
     qsort(p->data + start, p->count - start, sizeof(*p->data), compare_cstrs);
     return true;
+}
+
+bool file_exists(const char *path) {
+    struct stat statbuf = {0};
+    return !stat(path, &statbuf);
+}
+
+int get_modified_time(const char *path) {
+    struct stat statbuf = {0};
+    if (stat(path, &statbuf) < 0) {
+        return -1;
+    }
+    return statbuf.st_mtime;
+}
+
+bool copy_file(const char *dst, const char *src) {
+    bool  result = true;
+    FILE *in = NULL;
+    FILE *out = NULL;
+
+    in = fopen(src, "r");
+    if (!in) {
+        return_defer(false);
+    }
+
+    out = fopen(dst, "w");
+    if (!out) {
+        return_defer(false);
+    }
+
+#define SIZE 4096
+    char *buffer = temp_alloc(SIZE);
+    while (!feof(in)) {
+        const size_t n = fread(buffer, sizeof(*buffer), SIZE, in);
+        if (ferror(in)) {
+            return_defer(false);
+        }
+
+        fwrite(buffer, sizeof(*buffer), n, out);
+        if (ferror(out)) {
+            return_defer(false);
+        }
+    }
+    temp_reset(buffer);
+#undef SIZE
+
+defer:
+    if (in) fclose(in);
+    if (out) fclose(out);
+    return result;
 }
 
 // OS

@@ -11,10 +11,12 @@ typedef struct {
     const char *std;
     const char *root;
 
-    Lexer lexer;
+    Lexer    lexer;
+    Comments comments;
 
     Formatter *formatter;
     bool       formatter_failed;
+    bool       documenting;
 
     bool local;
     bool in_loop;

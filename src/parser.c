@@ -18,6 +18,7 @@ static Import *imports_find(Imports is, SV name) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
+    da_free(&p->comments);
 }
 
 static_assert(COUNT_NODES == 28, "");
@@ -807,6 +808,7 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
         resolve_import_path(p, token, NULL, &absolute, &relative);
     }
 
+    bool is_builtin = false;
     if (only_check_std || !is_dir(absolute)) {
         arena_reset(p->arena, checkpoint);
         resolve_import_path(p, token, p->std, &absolute, &relative);
@@ -816,6 +818,7 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
                 error_full(WARN, token.pos, "Package 'builtin' is automatically imported");
                 return;
             } else {
+                is_builtin = true;
                 p->imported_builtin = true;
             }
         }
@@ -856,6 +859,7 @@ static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
     }
 
     Package *package = arena_alloc(p->arena, sizeof(*p->packages->current));
+    package->is_builtin = is_builtin;
     package->relative_path = relative_path_sv;
     package->absolute_path = absolute_path_sv;
 
@@ -963,6 +967,27 @@ static void set_node_public_in_extern(Node *n) {
     } else {
         unreachable();
     }
+}
+
+static long get_doc_comment_start(Parser *p, size_t row) {
+    if (!p->documenting) {
+        return -1;
+    }
+
+    if (!p->comments.count) {
+        return -1;
+    }
+
+    if (p->comments.data[p->comments.count - 1].pos.row != row - 1) {
+        return -1;
+    }
+
+    size_t i = 1;
+    while (i - 1 < p->comments.count && p->comments.data[p->comments.count - i].pos.row == row - i) {
+        i++;
+    }
+
+    return p->comments.count - i + 1;
 }
 
 static_assert(COUNT_TOKENS == 75, "");
@@ -1139,6 +1164,7 @@ static Node *parse_stmt(Parser *p) {
     } break;
 
     case TOKEN_FN: {
+        const long  doc_comment_start = get_doc_comment_start(p, token.pos.row);
         const Token fn_token = token;
 
         token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LPAREN);
@@ -1162,10 +1188,13 @@ static Node *parse_stmt(Parser *p) {
         } else {
             node = parse_fn(p, token, false);
         }
+
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_VAR: {
-        NodeVar *var = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
+        const long doc_comment_start = get_doc_comment_start(p, token.pos.row);
+        NodeVar   *var = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
         if (p->in_extern) {
             var->type = parse_type(p);
             var->is_extern = true;
@@ -1188,10 +1217,12 @@ static Node *parse_stmt(Parser *p) {
 
         var->package = p->packages->current;
         node = (Node *) var;
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_TYPE: {
-        NodeType *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
+        const long doc_comment_start = get_doc_comment_start(p, token.pos.row);
+        NodeType  *type = node_alloc(p, NODE_TYPE, lexer_expect(&p->lexer, TOKEN_IDENT));
         if (sv_match(type->node.token.sv, "_")) {
             error_full(ERROR, type->node.token.pos, "Cannot use '_' as name of type");
             exit(1);
@@ -1209,9 +1240,11 @@ static Node *parse_stmt(Parser *p) {
         type->definition = parse_type(p);
         type->package = p->packages->current;
         node = (Node *) type;
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_CONST: {
+        const long doc_comment_start = get_doc_comment_start(p, token.pos.row);
         NodeConst *constt = node_alloc(p, NODE_CONST, lexer_expect(&p->lexer, TOKEN_IDENT));
 
         if (!lexer_read(&p->lexer, TOKEN_SET)) {
@@ -1223,9 +1256,11 @@ static Node *parse_stmt(Parser *p) {
         constt->local = p->local;
         constt->package = p->packages->current;
         node = (Node *) constt;
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_TRAIT: {
+        const long doc_comment_start = get_doc_comment_start(p, token.pos.row);
         local_assert(p, token, false);
 
         token = lexer_expect(&p->lexer, TOKEN_IDENT);
@@ -1260,9 +1295,11 @@ static Node *parse_stmt(Parser *p) {
 
         trait->package = p->packages->current;
         node = (Node *) trait;
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_STRUCT: {
+        const long  doc_comment_start = get_doc_comment_start(p, token.pos.row);
         NodeStruct *structt = node_alloc(p, NODE_STRUCT, lexer_expect(&p->lexer, TOKEN_IDENT));
         if (sv_match(structt->node.token.sv, "_")) {
             error_full(ERROR, structt->node.token.pos, "Cannot use '_' as name of type");
@@ -1301,6 +1338,7 @@ static Node *parse_stmt(Parser *p) {
 
         structt->package = p->packages->current;
         node = (Node *) structt;
+        node->fmt_doc_comment_start = doc_comment_start;
     } break;
 
     case TOKEN_EXTERN: {
@@ -1596,7 +1634,10 @@ bool parse_file(Parser *p, const char *path) {
     }
 
     if (p->formatter) {
-        p->lexer.comments = &p->formatter->comments;
+        p->formatter->comments = &p->comments;
+        p->lexer.comments = p->formatter->comments;
+    } else if (p->documenting) {
+        p->lexer.comments = &p->comments;
     }
 
     lexer_expect(&p->lexer, TOKEN_PACKAGE);
@@ -1670,6 +1711,9 @@ ParseDirError parse_dir(Parser *p, const char *path) {
         if (is_dir(it)) {
             continue;
         }
+
+        const int modified_time = get_modified_time(it);
+        p->packages->current->modified_time = max(modified_time, p->packages->current->modified_time);
 
         empty = false;
         if (!parse_file(p, it)) {

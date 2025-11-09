@@ -48,8 +48,8 @@ static void format_ensure_blank_line(Formatter *f) {
 
 static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_after_last) {
     bool emitted = false;
-    while (f->comments_synced < f->comments.count) {
-        const Comment it = f->comments.data[f->comments_synced];
+    while (f->comments_synced < f->comments->count) {
+        const Comment it = f->comments->data[f->comments_synced];
         if (till) {
             if (it.pos.row > till->row) {
                 break;
@@ -1032,14 +1032,13 @@ static Import *sort_imports(Import *head) {
 
 void formatter_free(Formatter *f) {
     sb_free(&f->sb);
-    da_free(&f->comments);
 }
 
 bool format_file(Formatter *f, const char *path, Token package, Import *imports, Node *nodes) {
     const size_t start = f->sb.count;
 
-    if (f->comments.count && f->comments.data[0].shebang) {
-        sb_sprintf(&f->sb, SVFmt "\n\n", SVArg(f->comments.data[0].sv));
+    if (f->comments->count && f->comments->data[0].shebang) {
+        sb_sprintf(&f->sb, SVFmt "\n\n", SVArg(f->comments->data[0].sv));
         f->comments_synced++;
     }
 
@@ -1091,11 +1090,12 @@ bool format_file(Formatter *f, const char *path, Token package, Import *imports,
         }
     }
 
+    // This sinks incase of dir packages
     format_sync_comments(f, NULL, true);
 
     const SV result = sb_to_sv(*&f->sb, start);
     f->sb.count = 0;
-    f->comments.count = 0;
+    f->comments->count = 0;
     f->comments_synced = 0;
 
     FILE *out = fopen(path, "w");

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel='stylesheet' href='/index.css'>
+<script src='/index.js'></script>
+<title>Package C</title>
+</head>
+<body>
+<h1>Package C</h1>
+<pre>
+<span class='keyword'>import </span><span class='string'>&quot;C&quot;
+</span></pre>
+<h2>Variables</h2>
+<pre id='stdout'>
+<span class='keyword'>var </span><span class='variable'>stdout</span> <span class='type'>rawptr</span>
+</pre>
+<pre id='stderr'>
+<span class='keyword'>var </span><span class='variable'>stderr</span> <span class='type'>rawptr</span>
+</pre>
+<h2>Functions</h2>
+<pre id='fwrite'>
+<span class='keyword'>fn </span><span class='function'>fwrite</span>(data <span class='type'>rawptr</span>, count <span class='type'>u64</span>, size <span class='type'>u64</span>, stream <span class='type'>rawptr</span>) <span class='type'>u64</span>
+</pre>
+<pre id='snprintf'>
+<span class='keyword'>fn </span><span class='function'>snprintf</span>(buffer &amp;<span class='type'>i8</span>, capacity <span class='type'>u64</span>, fmt &amp;<span class='type'>i8</span>, ...) <span class='type'>i32</span>
+</pre>
+</body>
+</html>

@@ -30,10 +30,14 @@ struct Package {
     Token name;
 
     bool is_file;
+    bool is_builtin;
+    bool is_documented;
 
     Nodes   nodes;
     Scope   globals;
     Imports imports;
+
+    int modified_time;
 
     Package *next;
 };

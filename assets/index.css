@@ -1,0 +1,91 @@
+@font-face {
+  font-family: 'Roboto';
+  src: url(fonts/Roboto/Roboto-Regular.ttf);
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url(fonts/JetBrainsMono/JetBrainsMono-Regular.ttf);
+}
+
+:root {
+    --padding: 0.4rem;
+    --codebg: #282828;
+    --pagebg: #202020;
+    --pagefg: #D4BE98;
+    --link: #89B482;
+    --type: #D8A657;
+    --string: #89B482;
+    --comment: #928374;
+    --keyword: #EA6962;
+    --package: #E78A4E;
+    --constant: #D3869B;
+    --function: #A9B665;
+    --variable: #7DAEA3;
+}
+
+a {
+    color: var(--link);
+}
+
+a:hover {
+    filter: brightness(0.8);
+}
+
+span a {
+    color: inherit;
+    text-decoration: none;
+}
+
+pre {
+    padding: var(--padding);
+    tab-size: 4;
+    font-family: 'JetBrains Mono';
+    background-color: var(--codebg);
+}
+
+body {
+    font-family: 'Roboto';
+    color: var(--pagefg);
+    background-color: var(--pagebg);
+}
+
+.type {
+    color: var(--type);
+}
+
+.string {
+    color: var(--string);
+}
+
+.comment {
+    color: var(--comment);
+}
+
+.keyword {
+    color: var(--keyword);
+}
+
+.package {
+    color: var(--package);
+}
+
+.constant {
+    color: var(--constant);
+}
+
+.function {
+    color: var(--function);
+}
+
+.variable {
+    color: var(--variable);
+}
+
+.flash {
+    animation: flash 1s ease;
+}
+
+@keyframes flash {
+    0% { background-color: #45403D; }
+}

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel='stylesheet' href='/index.css'>
+<script src='/index.js'></script>
+<title>Package fmt</title>
+</head>
+<body>
+<h1>Package fmt</h1>
+<pre>
+<span class='keyword'>import </span><span class='string'>&quot;fmt&quot;
+</span></pre>
+<h2>Types</h2>
+<pre id='@Writer'>
+<span class='keyword'>trait </span><span class='type'>Writer</span> {
+	write([]<span class='type'>char</span>)
+}
+</pre>
+<pre id='@Show'>
+<span class='keyword'>trait </span><span class='type'>Show</span> {
+	show(<span class='type'><a href='#@Writer'>Writer</a></span>)
+}
+</pre>
+<h2>Functions</h2>
+<pre id='write'>
+<span class='keyword'>fn </span><span class='function'>write</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>, shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Write the arguments into the writer
+<br>
+</p>
+<pre id='writeln'>
+<span class='keyword'>fn </span><span class='function'>writeln</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>, shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Write the arguments into the writer with a following newline
+<br>
+</p>
+<pre id='print'>
+<span class='keyword'>fn </span><span class='function'>print</span>(shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Print the arguments to standard output
+<br>
+</p>
+<pre id='println'>
+<span class='keyword'>fn </span><span class='function'>println</span>(shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Print the arguments to standard output with a following newline
+<br>
+</p>
+<pre id='eprint'>
+<span class='keyword'>fn </span><span class='function'>eprint</span>(shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Print the arguments to standard error
+<br>
+</p>
+<pre id='eprintln'>
+<span class='keyword'>fn </span><span class='function'>eprintln</span>(shows ...<span class='type'><a href='#@Show'>Show</a></span>)
+</pre>
+<p>
+Print the arguments to standard error with a following newline
+<br>
+</p>
+<h2>Methods</h2>
+<pre id='show'>
+<span class='keyword'>fn </span>(b <span class='type'>bool</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>char</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>i8</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>i16</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>i32</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>i64</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>u8</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>u16</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>u32</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>u64</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>f32</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>f64</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(x <span class='type'>rawptr</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+<pre id='show'>
+<span class='keyword'>fn </span>(s []<span class='type'>char</span>) <span class='function'>show</span>(w <span class='type'><a href='#@Writer'>Writer</a></span>)
+</pre>
+</body>
+</html>

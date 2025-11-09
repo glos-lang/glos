@@ -30,6 +30,7 @@ typedef struct {
     Comments *comments;
 } Lexer;
 
+void lexer_init(Lexer *l, Pos pos, SV sv);
 bool lexer_open(Lexer *l, const char *path, Arena *arena);
 
 void lexer_buffer(Lexer *l, Token token);

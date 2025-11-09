@@ -322,6 +322,7 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
+// TODO: Make package 'builtin' available to all packages
 static void resolve_ident_package(Node *n) {
     assert(n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT);
 
@@ -2516,54 +2517,7 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-static void print_quoted(FILE *f, char ch, char quote) {
-    switch (ch) {
-    case 033:
-        fputs("\\e", f);
-        break;
-
-    case '\n':
-        fputs("\\n", f);
-        break;
-
-    case '\r':
-        fputs("\\r", f);
-        break;
-
-    case '\t':
-        fputs("\\t", f);
-        break;
-
-    case '\0':
-        fputs("\\0", f);
-        break;
-
-    case '\\':
-        fputs("\\\\", f);
-        break;
-
-    case '\'':
-        if (quote == '\'') {
-            fputs("\\'", f);
-        } else {
-            fputc(ch, f);
-        }
-        break;
-
-    case '"':
-        if (quote == '"') {
-            fputs("\\\"", f);
-        } else {
-            fputc(ch, f);
-        }
-        break;
-
-    default:
-        fputc(ch, f);
-        break;
-    }
-}
-
+// TODO: Booleans
 static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
     for (Node *it = match->branches.head; it; it = it->next) {
         NodeBranch *branch = (NodeBranch *) it;
@@ -2592,12 +2546,12 @@ static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
                 } else if (this->value.is_string) {
                     fputc('"', stderr);
                     for (size_t i = 0; i < this->value.as.sv.count; i++) {
-                        print_quoted(stderr, this->value.as.sv.data[i], '"');
+                        print_quoted_char(stderr, this->value.as.sv.data[i], '"');
                     }
                     fputs("\"\n", stderr);
                 } else if (this->expr->type.kind == TYPE_CHAR) {
                     fputc('\'', stderr);
-                    print_quoted(stderr, this->value.as.integer, '\'');
+                    print_quoted_char(stderr, this->value.as.integer, '\'');
                     fputc('\'', stderr);
                 } else if (this->expr->type.kind == TYPE_F64) {
                     fprintf(stderr, "%.14g\n", this->value.as.floating);
@@ -3350,6 +3304,7 @@ void check_packages(Compiler *c, Packages ps) {
     }
     c->context.checking_toplevels = false;
 
+    // TODO: Do not do this if generating documentation
     for (Package *p = ps.head; p; p = p->next) {
         for (Node *it = p->nodes.head; it; it = it->next) {
             only_check_fn(c, it);
