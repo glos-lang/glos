@@ -1815,6 +1815,13 @@ static void compile_global_var_assignment(Compiler *c, Node *n) {
     }
 }
 
+void compiler_free(Compiler *c) {
+    qbe_free(c->qbe);
+    da_free(&c->defers);
+    da_free(&c->link_flags);
+    context_free(&c->context);
+}
+
 void compiler_build(Compiler *c, const char *object_file_path) {
     assert(c->context.arena);
 
@@ -1853,11 +1860,6 @@ void compiler_build(Compiler *c, const char *object_file_path) {
         error_standalone(ERROR, "Could not generate '%s'", object_file_path);
         exit(1);
     }
-
-    qbe_free(c->qbe);
-    da_free(&c->defers);
-    da_free(&c->link_flags);
-    context_free(&c->context);
 }
 
 size_t compile_sizeof(Compiler *c, Type *type) {

@@ -25,6 +25,7 @@ typedef struct {
 } Compiler;
 
 void compiler_init(Compiler *c);
+void compiler_free(Compiler *c);
 void compiler_build(Compiler *c, const char *object_file_path);
 
 size_t compile_sizeof(Compiler *c, Type *type);

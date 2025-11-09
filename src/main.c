@@ -347,6 +347,7 @@ int main(int argc, char **argv) {
     }
 
 defer:
+    compiler_free(&compiler);
     parser_free(&parser);
     packages_free(&packages);
     formatter_free(&formatter);

@@ -751,6 +751,7 @@ static void docs_finalize(Docs *d) {
         "</body>\n"
         "</html>\n");
 
+    fclose(f);
     temp_reset(homepage);
 
     printf("Generated documentation into '" SVFmt "'\n", SVArg(d->dir));
@@ -822,7 +823,7 @@ static void docs_emit_package(Docs *d, Package *p) {
 
     fprintf(d->f, "<h1>Package " SVFmt "</h1>\n", SVArg(p->name.sv));
 
-    if (!sv_match(p->relative_path, ".")) {
+    if (!sv_match(p->relative_path, ".") && !p->is_builtin) {
         fprintf(d->f, "<pre>\n");
         docs_printf_safe(d, STYLE_KEYWORD, "import ");
         docs_format_style_begin(d, STYLE_STRING);
