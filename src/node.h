@@ -194,6 +194,7 @@ struct Node {
     // Formatter metadata
     bool fmt_newline;
     bool fmt_toplevel_newline;
+    long fmt_doc_comment_start;
 };
 
 void nodes_push(Nodes *ns, Node *n);

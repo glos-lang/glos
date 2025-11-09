@@ -66,12 +66,14 @@ pub fn (s []char) show(w Writer) {
 	w.write(s)
 }
 
+// Write the arguments into the writer
 pub fn write(w Writer, shows ...Show) {
 	for var i = 0; i < shows.count; i += 1 {
 		shows[i].show(w)
 	}
 }
 
+// Write the arguments into the writer with a following newline
 pub fn writeln(w Writer, shows ...Show) {
 	for var i = 0; i < shows.count; i += 1 {
 		shows[i].show(w)
@@ -79,18 +81,22 @@ pub fn writeln(w Writer, shows ...Show) {
 	w.write("\n")
 }
 
+// Print the arguments to standard output
 pub fn print(shows ...Show) {
 	write(&io::stdout, ...shows)
 }
 
+// Print the arguments to standard output with a following newline
 pub fn println(shows ...Show) {
 	writeln(&io::stdout, ...shows)
 }
 
+// Print the arguments to standard error
 pub fn eprint(shows ...Show) {
 	write(&io::stderr, ...shows)
 }
 
+// Print the arguments to standard error with a following newline
 pub fn eprintln(shows ...Show) {
 	writeln(&io::stderr, ...shows)
 }

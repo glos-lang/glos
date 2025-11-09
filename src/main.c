@@ -3,6 +3,7 @@
 
 #include "checker.h"
 #include "compiler.h"
+#include "docs.h"
 #include "message.h"
 #include "parser.h"
 
@@ -21,6 +22,7 @@ static void usage(FILE *file) {
     usage_flag(file, "h", "           Show this message");
     usage_flag(file, "r", "           Run the program");
     usage_flag(file, "f", "           Format the program");
+    usage_flag(file, "d", "DIR        Generate documentation into DIR");
     usage_flag(file, "o", "OUTPUT     Set the output path");
     usage_flag(file, "L", "PATH       Add a library path");
     usage_flag(file, "l", "NAME       Add a library");
@@ -153,7 +155,12 @@ int main(int argc, char **argv) {
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
                 if (parser.formatter) {
-                    error_standalone(ERROR, "Cannot format and compile at the same time");
+                    error_standalone(ERROR, "Cannot compile and format at the same time");
+                    exit(1);
+                }
+
+                if (parser.documenting) {
+                    error_standalone(ERROR, "Cannot compile and document at the same time");
                     exit(1);
                 }
 
@@ -164,10 +171,38 @@ int main(int argc, char **argv) {
                     exit(1);
                 }
 
+                if (parser.documenting) {
+                    error_standalone(ERROR, "Cannot format and document at the same time");
+                    exit(1);
+                }
+
                 parser.formatter = &formatter;
+            } else if (!strcmp(arg, "-d")) {
+                if (run || output) {
+                    error_standalone(ERROR, "Cannot document and compile at the same time");
+                    exit(1);
+                }
+
+                if (parser.formatter) {
+                    error_standalone(ERROR, "Cannot document and format at the same time");
+                    exit(1);
+                }
+
+                if (parser.documenting) {
+                    error_standalone(ERROR, "Duplicate use of flag '-d'");
+                    exit(1);
+                }
+                parser.documenting = true;
+
+                output = shift(&argc, &argv, "Documentation directory");
             } else if (!strcmp(arg, "-o")) {
                 if (parser.formatter) {
-                    error_standalone(ERROR, "Cannot format and compile at the same time");
+                    error_standalone(ERROR, "Cannot compile and format at the same time");
+                    exit(1);
+                }
+
+                if (parser.documenting) {
+                    error_standalone(ERROR, "Cannot compile and document at the same time");
                     exit(1);
                 }
 
@@ -213,10 +248,12 @@ int main(int argc, char **argv) {
         input = ".";
     }
 
-    Package package = {
-        .relative_path = sv_from_cstr(input),
-        .name.sv = sv_from_cstr("main"),
-    };
+    Package package = {0};
+    package.relative_path = sv_from_cstr(input);
+    if (!parser.documenting) {
+        package.name.sv = sv_from_cstr("main");
+    }
+
     packages_push(&packages, &package);
 
     if (is_dir(input)) {
@@ -252,6 +289,11 @@ int main(int argc, char **argv) {
 
     compiler_init(&compiler);
     check_packages(&compiler, packages);
+
+    if (parser.documenting) {
+        docs_generate(packages, &parser.comments, output, parser.std);
+        return_defer(0);
+    }
 
     da_push_many(&compiler.link_flags, link_flags.data, link_flags.count);
     da_free(&link_flags);

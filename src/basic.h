@@ -82,6 +82,8 @@
         (l)->count += (c);                                                                                             \
     } while (0)
 
+#define da_foreach(l, it) for (__typeof((l).data) it = (l).data; it < (l).data + (l).count; it++)
+
 // String View
 typedef struct {
     const char *data;
@@ -121,6 +123,7 @@ SV   sb_to_sv(SB sb, size_t start);
 // Encoding
 bool resolve_escape_char(char *ch);
 void resolve_escape_chars(char *buffer, SV *sv);
+void print_quoted_char(FILE *f, char ch, char quote);
 
 // Temporary Allocator
 void  temp_reset(const void *p);
@@ -159,6 +162,11 @@ typedef DynamicArray(const char *) Paths;
 
 bool is_dir(const char *path);
 bool read_dir(Paths *p, const char *cwd, const char *path, SV suffix, Arena *arena);
+
+bool file_exists(const char *path);
+int  get_modified_time(const char *path);
+
+bool copy_file(const char *dst, const char *src);
 
 // OS
 typedef DynamicArray(const char *) Cmd;

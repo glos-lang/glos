@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel='stylesheet' href='/index.css'>
+<script src='/index.js'></script>
+<title>Package io</title>
+</head>
+<body>
+<h1>Package io</h1>
+<pre>
+<span class='keyword'>import </span><span class='string'>&quot;io&quot;
+</span></pre>
+<h2>Types</h2>
+<pre id='@File'>
+<span class='keyword'>struct </span><span class='type'>File</span> {
+	c <span class='type'>rawptr</span>
+}
+</pre>
+<h2>Variables</h2>
+<pre id='stdout'>
+<span class='keyword'>var </span><span class='variable'>stdout</span> <span class='type'><a href='#@File'>File</a></span>
+</pre>
+<pre id='stderr'>
+<span class='keyword'>var </span><span class='variable'>stderr</span> <span class='type'><a href='#@File'>File</a></span>
+</pre>
+<h2>Methods</h2>
+<pre id='write'>
+<span class='keyword'>fn </span>(f &amp;<span class='type'><a href='#@File'>File</a></span>) <span class='function'>write</span>(bytes []<span class='type'>char</span>)
+</pre>
+</body>
+</html>

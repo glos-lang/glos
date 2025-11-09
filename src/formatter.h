@@ -7,8 +7,8 @@
 typedef struct {
     SB sb;
 
-    Comments comments;
-    size_t   comments_synced;
+    Comments *comments;
+    size_t    comments_synced;
 
     size_t depth;
 } Formatter;

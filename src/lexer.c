@@ -10,6 +10,13 @@ static SV first_line(SV sv) {
     return sv;
 }
 
+void lexer_init(Lexer *l, Pos pos, SV sv) {
+    memset(l, 0, sizeof(*l));
+    l->sv = sv;
+    l->pos = pos;
+    l->pos.line = first_line(l->sv);
+}
+
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
     memset(l, 0, sizeof(*l));
     if (!read_file(&l->sv, path, arena)) {
