@@ -21,10 +21,15 @@ typedef struct {
     Nodes  types;
     size_t count;
     bool   called;
-    bool   incomplete;
+
+    // For distinguishing between the maybe `foo[A]` and must `foo[A, B]`
+    bool must_be;
+    bool checked;
+
+    bool incomplete;
 } Generics;
 
-Generics *node_generics(Node *n);
+Generics *node_get_generics(Node *n);
 
 typedef enum {
     TYPE_UNIT,
@@ -215,8 +220,8 @@ typedef struct {
     Token scope;
     bool  scope_resolved;
 
-    Generics generics;
-    Package *package;
+    Generics *generics;
+    Package  *package;
 } NodeAtom;
 
 typedef struct {
@@ -228,6 +233,8 @@ typedef struct {
 
     bool spread;
     Pos  spread_pos;
+
+    Generics *generics;
 
     // Formatter metadata
     bool fmt_multiline;
@@ -253,6 +260,20 @@ typedef struct {
     Node *to;
     bool  ranged;
     bool  is_type;
+
+    // This is not always true, however it might be, since syntactically:
+    //
+    //   Index operation:        array[index]
+    //   Generic instanstiation: Generic[T]
+    //
+    // Some absolute conditions which we can be sure of at parsing time:
+    //
+    //   1. If it is ranged, then it CANNOT be generic instantiation
+    //   2. If it has comma inside the square brackets, it MUST be generic instantiation
+    //
+    // If not sure at parsing time, we need to postpond this till checking time
+    Generics generics;
+    bool     is_instantiation;
 } NodeIndex;
 
 typedef struct {
@@ -268,8 +289,8 @@ typedef struct {
     bool  is_method;
     bool  is_type_access_valid;
 
-    Generics generics;
-    Package *package;
+    Generics *generics;
+    Package  *package;
 
     QbeNode *lhs_qbe;
 } NodeMember;

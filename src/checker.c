@@ -1015,29 +1015,29 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
                 unreachable();
             }
 
-            if (atom->generics.count) {
+            if (atom->generics) {
                 if (!definition_generics_count) {
                     error_full(ERROR, n->token.pos, "Can only instantiate generic types");
                     exit(1);
                 }
 
-                if (atom->generics.count != definition_generics_count) {
+                if (atom->generics->count != definition_generics_count) {
                     error_full(
                         ERROR,
                         n->token.pos,
                         "Expected %zu generic parameter%s, got %zu",
                         definition_generics_count,
                         definition_generics_count == 1 ? "" : "s",
-                        atom->generics.count);
+                        atom->generics->count);
 
                     exit(1);
                 }
 
-                for (Node *it = atom->generics.types.head; it; it = it->next) {
+                for (Node *it = atom->generics->types.head; it; it = it->next) {
                     check_type(c, it, true, extra_generic_context);
                 }
 
-                n->type = instantiate_type(c, n->type, atom->generics);
+                n->type = instantiate_type(c, n->type, *atom->generics);
             } else {
                 if (definition_generics_count) {
                     error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
@@ -1223,17 +1223,23 @@ static void infer_generic_type(Type actual, Type expected, Node *generics) {
 }
 
 static void check_generics(Compiler *c, Node *n, Node *definition) {
-    Generics *generics = node_generics(n);
-    assert(generics);
-
-    if (generics->count) {
+    Generics *generics = node_get_generics(n);
+    if (generics && generics->count) {
         if (definition->kind != NODE_FN) {
+            if (!generics->must_be) {
+                return;
+            }
+
             error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
             exit(1);
         }
 
         const NodeFn *definition_fn = (const NodeFn *) definition;
         if (!definition_fn->generics.head) {
+            if (!generics->must_be) {
+                return;
+            }
+
             error_full(ERROR, n->token.pos, "Can only instantiate generic functions");
             exit(1);
         }
@@ -1271,10 +1277,16 @@ static void check_generics(Compiler *c, Node *n, Node *definition) {
         if (!generics->incomplete) {
             n->type = instantiate_type(c, n->type, *generics);
         }
+
+        generics->checked = true;
     } else {
-        if (definition->kind == NODE_FN && !generics->called) {
+        if (definition->kind == NODE_FN) {
             const NodeFn *definition_fn = (const NodeFn *) definition;
             if (definition_fn->generics.head) {
+                if (generics && generics->called) {
+                    return;
+                }
+
                 error_full(ERROR, n->token.pos, "Cannot use generic function without instantiation");
                 exit(1);
             }
@@ -1628,8 +1640,17 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         const NodeFn *expected = (const NodeFn *) fn_type->spec_node;
         {
             size_t expected_arity = expected->arity;
-            if (call->fn->kind == NODE_MEMBER) {
-                NodeMember *member = (NodeMember *) call->fn;
+
+            Node *fn = call->fn;
+            if (fn->kind == NODE_INDEX) {
+                NodeIndex *index = (NodeIndex *) fn;
+                if (index->is_instantiation) {
+                    fn = index->base;
+                }
+            }
+
+            if (fn->kind == NODE_MEMBER) {
+                NodeMember *member = (NodeMember *) fn;
                 if (member->is_method) {
                     Node *self = member->lhs;
                     self->next = call->args.head;
@@ -1696,7 +1717,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         bool inferred = false;
         bool inferred_left = false;
         if (expected->generics_count) {
-            Generics *generics = node_generics(call->fn);
+            Generics *generics = node_get_generics(call->fn);
             assert(generics);
 
             if (!generics->count || generics->incomplete) {
@@ -1768,19 +1789,27 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             error_begin(NOTE, n->token.pos);
             fprintf(stderr, "Inferred ");
 
-            if (call->fn->kind == NODE_MEMBER) {
-                NodeMember *member = (NodeMember *) call->fn;
-                if (member->is_method) {
-                    fprintf(stderr, "(");
-                    write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(member->lhs->type));
-                    fprintf(stderr, ").");
+            {
+                Node *fn = call->fn;
+                if (fn->kind == NODE_INDEX) {
+                    fn = ((NodeIndex *) fn)->base;
                 }
+
+                if (fn->kind == NODE_MEMBER) {
+                    NodeMember *member = (NodeMember *) fn;
+                    if (member->is_method) {
+                        fprintf(stderr, "(");
+                        write_message(stderr, MESSAGE_FG_YELLOW, "%s", type_to_cstr(member->lhs->type));
+                        fprintf(stderr, ").");
+                    }
+                }
+
+                write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(fn->token.sv));
             }
 
-            write_message(stderr, MESSAGE_FG_GREEN, SVFmt, SVArg(call->fn->token.sv));
             fprintf(stderr, "[");
 
-            Generics *generics = node_generics(call->fn);
+            Generics *generics = node_get_generics(call->fn);
             assert(generics);
 
             for (Node *it = generics->types.head; it; it = it->next) {
@@ -1919,6 +1948,11 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         }
 
         check_expr(c, index->base, ref);
+        if (index->generics.checked) {
+            index->is_instantiation = true;
+            n->type = index->base->type;
+            return;
+        }
 
         const Type base = index->base->type;
         if (index->ranged) {

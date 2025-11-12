@@ -603,7 +603,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_IDENT:
             switch (atom->definition->kind) {
             case NODE_FN:
-                return node_fn_get_qbe(c, (NodeFn *) atom->definition, atom->generics);
+                return node_fn_get_qbe(
+                    c, (NodeFn *) atom->definition, atom->generics ? *atom->generics : (Generics) {0});
 
             case NODE_VAR: {
                 NodeVar *var = (NodeVar *) atom->definition;
@@ -807,6 +808,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         NodeIndex *index = (NodeIndex *) n;
 
         QbeNode *base = compile_expr(c, index->base, index->base->type.kind == TYPE_ARRAY && !index->base->type.ref);
+        if (index->is_instantiation) {
+            return base;
+        }
+
         QbeNode *from = compile_expr(c, index->from, false);
 
         if (index->ranged) {
@@ -1240,7 +1245,8 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 return qbe_build_load(c->qbe, c->fn, method, qbe_type_basic(QBE_TYPE_I64), false);
             }
 
-            return node_fn_get_qbe(c, (NodeFn *) member->definition, member->generics);
+            return node_fn_get_qbe(
+                c, (NodeFn *) member->definition, member->generics ? *member->generics : (Generics) {0});
         }
 
         if (member->lhs->type.ref) {

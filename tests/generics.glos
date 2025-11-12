@@ -29,10 +29,10 @@ fn slice[T](a Array[T]) []T {
 fn main() {
 	var xs Array[i64]
 	for var i = 0; i < 10; i += 1 {
-		append::[i64](&xs, i * 2)
+		append[i64](&xs, i * 2)
 	}
 
-	var xs = slice::[i64](xs)
+	var xs = slice[i64](xs)
 	for var i = 0; i < xs.count; i += 1 {
 		fmt::println(xs[i])
 	}

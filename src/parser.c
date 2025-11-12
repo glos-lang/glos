@@ -198,25 +198,16 @@ static Node *parse_type(Parser *p) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
-            if (token.kind == TOKEN_IDENT) {
-                atom->scope = atom->node.token;
-                atom->node.token = token;
-            } else {
-                lexer_buffer(&p->lexer, token);
-            }
+            token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            atom->scope = atom->node.token;
+            atom->node.token = token;
         }
 
-        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
-            lexer_buffer(&p->lexer, token);
-        } else {
-            token = lexer_peek(&p->lexer);
-        }
-
+        token = lexer_peek(&p->lexer);
         if (token.kind == TOKEN_LBRACKET && !token.newlines) {
             lexer_unbuffer(&p->lexer);
-            parse_generics(p, &atom->generics);
+            atom->generics = arena_alloc(p->arena, sizeof(Generics));
+            parse_generics(p, atom->generics);
         }
 
         node = (Node *) atom;
@@ -420,6 +411,14 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
+static void node_set_generics(Node *n, Generics *g) {
+    if (n->kind == NODE_ATOM) {
+        ((NodeAtom *) n)->generics = g;
+    } else if (n->kind == NODE_MEMBER) {
+        ((NodeMember *) n)->generics = g;
+    }
+}
+
 static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
@@ -449,23 +448,9 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
         atom->package = p->packages->current;
 
         if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT, TOKEN_LBRACKET);
-            if (token.kind == TOKEN_IDENT) {
-                atom->scope = atom->node.token;
-                atom->node.token = token;
-                if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                    token = lexer_expect(&p->lexer, TOKEN_LBRACKET);
-                }
-            }
-
-            if (token.kind == TOKEN_LBRACKET) {
-                if (flags & PF_CONSTANT_EXPR) {
-                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
-                    exit(1);
-                }
-
-                parse_generics(p, &atom->generics);
-            }
+            token = lexer_expect(&p->lexer, TOKEN_IDENT);
+            atom->scope = atom->node.token;
+            atom->node.token = token;
         }
 
         node = (Node *) atom;
@@ -620,16 +605,6 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 exit(1);
             }
 
-            if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-                if (flags & PF_CONSTANT_EXPR) {
-                    error_full(ERROR, p->lexer.buffer.pos, "Unexpected generic instantiation in constant expression");
-                    exit(1);
-                }
-
-                lexer_expect(&p->lexer, TOKEN_LBRACKET);
-                parse_generics(p, &member->generics);
-            }
-
             node = (Node *) member;
         } break;
 
@@ -644,7 +619,19 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
 
-            Generics *generics = node_generics(call->fn);
+            if (call->fn->kind == NODE_INDEX) {
+                NodeIndex *index = (NodeIndex *) call->fn;
+                if (!index->is_type) {
+                    call->generics = node_get_generics(call->fn);
+                }
+            }
+
+            if (!call->generics) {
+                call->generics = arena_alloc(p->arena, sizeof(Generics));
+            }
+            node_set_generics(call->fn, call->generics);
+
+            Generics *generics = node_get_generics(call->fn);
             if (generics) {
                 generics->called = true;
             }
@@ -700,18 +687,34 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             NodeIndex *index = node_alloc(p, NODE_INDEX, token);
             index->base = node;
 
-            if (lexer_peek(&p->lexer).kind != TOKEN_RANGE) {
+            token = lexer_peek(&p->lexer);
+            if (token.kind != TOKEN_RANGE) {
                 index->from = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
+                if (!(flags & PF_CONSTANT_EXPR)) {
+                    node_set_generics(node, &index->generics);
+                    nodes_push(&index->generics.types, index->from);
+                    index->generics.count++;
+                }
             }
 
-            if (lexer_read(&p->lexer, TOKEN_RANGE)) {
+            token = lexer_expect(&p->lexer, TOKEN_RBRACKET, TOKEN_COMMA, TOKEN_RANGE);
+            if (token.kind == TOKEN_RANGE) {
                 index->ranged = true;
                 if (lexer_peek(&p->lexer).kind != TOKEN_RBRACKET) {
                     index->to = parse_expr(p, POWER_SET, flags | PF_COMPOUND_ALLOWED);
                 }
+                lexer_expect(&p->lexer, TOKEN_RBRACKET);
+                node_set_generics(node, NULL);
+            } else if (token.kind == TOKEN_COMMA) {
+                if (flags & PF_CONSTANT_EXPR) {
+                    error_full(ERROR, token.pos, "Unexpected generic instantiation in constant expression");
+                    exit(1);
+                }
+
+                index->generics.must_be = true;
+                parse_generics(p, &index->generics);
             }
 
-            lexer_expect(&p->lexer, TOKEN_RBRACKET);
             node = (Node *) index;
         } break;
 

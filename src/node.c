@@ -14,13 +14,17 @@ void nodes_push(Nodes *ns, Node *n) {
     ns->tail = n;
 }
 
-Generics *node_generics(Node *n) {
+Generics *node_get_generics(Node *n) {
     if (n->kind == NODE_ATOM) {
-        return &((NodeAtom *) n)->generics;
+        return ((NodeAtom *) n)->generics;
+    }
+
+    if (n->kind == NODE_INDEX) {
+        return &((NodeIndex *) n)->generics;
     }
 
     if (n->kind == NODE_MEMBER) {
-        return &((NodeMember *) n)->generics;
+        return ((NodeMember *) n)->generics;
     }
 
     return NULL;

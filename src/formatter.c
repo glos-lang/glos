@@ -119,7 +119,7 @@ static bool format_sync_comments(Formatter *f, Pos *till, bool emit_newline_afte
 }
 
 static void format_expr(Formatter *f, Node *n, bool sync_comments_before);
-static void format_type(Formatter *f, Node *n, bool in_expr);
+static void format_type(Formatter *f, Node *n);
 
 static void format_fn_signature(Formatter *f, NodeFn *fn) {
     sb_push(&f->sb, '(');
@@ -150,7 +150,7 @@ static void format_fn_signature(Formatter *f, NodeFn *fn) {
             sb_sprintf(&f->sb, "...");
         }
 
-        format_type(f, ((NodeVar *) it)->type, false);
+        format_type(f, ((NodeVar *) it)->type);
         if (it->next) {
             sb_push(&f->sb, ',');
             if (!fn->fmt_multiline) {
@@ -184,12 +184,12 @@ static void format_fn_signature(Formatter *f, NodeFn *fn) {
 
     if (fn->ret) {
         sb_push(&f->sb, ' ');
-        format_type(f, fn->ret, false);
+        format_type(f, fn->ret);
     }
 }
 
 static_assert(COUNT_NODES == 28, "");
-static void format_type(Formatter *f, Node *n, bool in_expr) {
+static void format_type(Formatter *f, Node *n) {
     if (!n) {
         return;
     }
@@ -202,15 +202,10 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
         }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
 
-        if (atom->generics.types.head) {
-            if (in_expr) {
-                sb_sprintf(&f->sb, "::[");
-            } else {
-                sb_sprintf(&f->sb, "[");
-            }
-
-            for (Node *type = atom->generics.types.head; type; type = type->next) {
-                format_type(f, type, false);
+        if (atom->generics) {
+            sb_sprintf(&f->sb, "[");
+            for (Node *type = atom->generics->types.head; type; type = type->next) {
+                format_type(f, type);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");
                 }
@@ -221,7 +216,7 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
 
     case NODE_UNARY: {
         sb_push(&f->sb, '&');
-        format_type(f, ((NodeUnary *) n)->operand, false);
+        format_type(f, ((NodeUnary *) n)->operand);
     } break;
 
     case NODE_INDEX: {
@@ -229,7 +224,7 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
         sb_push(&f->sb, '[');
         format_expr(f, index->from, true);
         sb_push(&f->sb, ']');
-        format_type(f, index->base, false);
+        format_type(f, index->base);
     } break;
 
     case NODE_FN:
@@ -277,7 +272,7 @@ static void format_fn(Formatter *f, NodeFn *fn) {
     sb_sprintf(&f->sb, "fn ");
     if (fn->is_method) {
         sb_sprintf(&f->sb, "(" SVFmt " ", SVArg(fn->args.head->token.sv));
-        format_type(f, ((NodeVar *) fn->args.head)->type, false);
+        format_type(f, ((NodeVar *) fn->args.head)->type);
         sb_sprintf(&f->sb, ") ");
     }
 
@@ -323,17 +318,6 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
             sb_sprintf(&f->sb, SVFmt "::", SVArg(atom->scope.sv));
         }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
-
-        if (atom->generics.types.head) {
-            sb_sprintf(&f->sb, "::[");
-            for (Node *type = atom->generics.types.head; type; type = type->next) {
-                format_type(f, type, false);
-                if (type->next) {
-                    sb_sprintf(&f->sb, ", ");
-                }
-            }
-            sb_push(&f->sb, ']');
-        }
     } break;
 
     case NODE_CALL: {
@@ -385,7 +369,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     case NODE_CAST: {
         NodeCast *cast = (NodeCast *) n;
         sb_push(&f->sb, '<');
-        format_type(f, cast->to, false);
+        format_type(f, cast->to);
         sb_sprintf(&f->sb, "> ");
         format_expr_with_parens_maybe(f, cast->from, POWER_PRE);
     } break;
@@ -415,7 +399,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         sb_sprintf(&f->sb, " " SVFmt " ", SVArg(n->token.sv));
 
         if (binary->lhs->kind == NODE_MEMBER && binary->lhs->token.kind == TOKEN_TYPE) {
-            format_type(f, binary->rhs, false);
+            format_type(f, binary->rhs);
         } else {
             format_expr_with_parens_maybe(f, binary->rhs, mbp);
         }
@@ -425,17 +409,6 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         NodeMember *member = (NodeMember *) n;
         format_expr(f, member->lhs, true);
         sb_sprintf(&f->sb, "." SVFmt, SVArg(n->token.sv));
-
-        if (member->generics.types.head) {
-            sb_sprintf(&f->sb, "::[");
-            for (Node *type = member->generics.types.head; type; type = type->next) {
-                format_type(f, type, false);
-                if (type->next) {
-                    sb_sprintf(&f->sb, ", ");
-                }
-            }
-            sb_push(&f->sb, ']');
-        }
     } break;
 
     case NODE_SIZEOF: {
@@ -454,7 +427,7 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
 
     case NODE_COMPOUND: {
         NodeCompound *compound = (NodeCompound *) n;
-        format_type(f, compound->type, true);
+        format_type(f, compound->type);
         sb_sprintf(&f->sb, " {");
         if (compound->fmt_multiline) {
             f->depth++;
@@ -734,7 +707,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             for (Node *it = branch->cases.head; it; it = it->next) {
                 NodeCase *this = (NodeCase *) it;
                 if (match->matching_type) {
-                    format_type(f, this->expr, false);
+                    format_type(f, this->expr);
                 } else {
                     format_expr(f, this->expr, true);
                 }
@@ -814,7 +787,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         sb_sprintf(&f->sb, "var " SVFmt, SVArg(n->token.sv));
         if (var->type) {
             sb_push(&f->sb, ' ');
-            format_type(f, var->type, false);
+            format_type(f, var->type);
         }
 
         if (var->expr) {
@@ -842,7 +815,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         }
 
         sb_push(&f->sb, ' ');
-        format_type(f, type->definition, false);
+        format_type(f, type->definition);
     } break;
 
     case NODE_CONST: {
@@ -854,7 +827,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
         sb_sprintf(&f->sb, "const " SVFmt, SVArg(n->token.sv));
         if (constt->type) {
             sb_push(&f->sb, ' ');
-            format_type(f, constt->type, false);
+            format_type(f, constt->type);
         }
 
         sb_sprintf(&f->sb, " = ");
@@ -875,7 +848,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             }
 
             format_indent(f);
-            format_type(f, it, false);
+            format_type(f, it);
             sb_push(&f->sb, '\n');
         }
         f->depth--;
@@ -925,7 +898,7 @@ static void format_stmt(Formatter *f, Node *n, bool no_indent) {
             format_indent(f);
             sb_sprintf(&f->sb, SVFmt "%*s", SVArg(it->token.sv), (int) (max_field_length - it->token.sv.count + 1), "");
 
-            format_type(f, ((NodeField *) it)->type, false);
+            format_type(f, ((NodeField *) it)->type);
             sb_push(&f->sb, '\n');
         }
         f->depth--;

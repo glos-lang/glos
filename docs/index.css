@@ -30,6 +30,8 @@ a {
 
 a:hover {
     filter: brightness(0.8);
+    text-decoration: underline;
+    text-underline-offset: calc(0.5 * var(--padding));
 }
 
 span a {

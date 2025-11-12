@@ -158,19 +158,21 @@ static void docs_format_identifier(Docs *d, Style style, SV sv, Package *package
     }
 }
 
-static void docs_format_fn_signature(Docs *d, NodeFn *fn) {
-    if (fn->generics.head) {
-        docs_printf_safe(d, STYLE_NORMAL, "<");
-        for (Node *it = fn->generics.head; it; it = it->next) {
+static void docs_format_generics(Docs *d, Node *generics) {
+    if (generics) {
+        docs_printf_safe(d, STYLE_NORMAL, "[");
+        for (Node *it = generics; it; it = it->next) {
             docs_format_type(d, it->type);
             if (it->next) {
                 docs_printf_safe(d, STYLE_NORMAL, ", ");
             }
         }
-
-        docs_printf_safe(d, STYLE_NORMAL, ">");
+        docs_printf_safe(d, STYLE_NORMAL, "]");
     }
+}
 
+static void docs_format_fn_signature(Docs *d, NodeFn *fn) {
+    docs_format_generics(d, fn->generics.head);
     docs_printf_safe(d, STYLE_NORMAL, "(");
     for (const Node *it = fn->args.head; it; it = it->next) {
         if (fn->is_method && it == fn->args.head) {
@@ -299,14 +301,7 @@ static void docs_format_type(Docs *d, Type type) {
         NodeStruct *structt = (NodeStruct *) type.spec_node;
         docs_format_identifier(d, STYLE_TYPE, structt->node.token.sv, structt->package);
         if (type.spec_struct_instance) {
-            docs_printf_safe(d, STYLE_NORMAL, "<");
-            for (Node *it = type.spec_struct_instance->generics; it; it = it->next) {
-                docs_format_type(d, it->type);
-                if (it->next) {
-                    docs_printf_safe(d, STYLE_NORMAL, ", ");
-                }
-            }
-            docs_printf_safe(d, STYLE_NORMAL, ">");
+            docs_format_generics(d, type.spec_struct_instance->generics);
         }
     } break;
 
@@ -344,18 +339,21 @@ static void docs_emit_var(Docs *d, Node *n) {
 static_assert(COUNT_NODES == 28, "");
 static void docs_emit_type(Docs *d, Node *n) {
     switch (n->kind) {
-    case NODE_TYPE:
+    case NODE_TYPE: {
+        NodeType *type = (NodeType *) n;
         docs_printf_safe(d, STYLE_KEYWORD, "type ");
         docs_printf_safe(d, STYLE_TYPE, SVFmt, SVArg(n->token.sv));
+        docs_format_generics(d, type->generics.head);
         docs_printf_safe(d, STYLE_NORMAL, " ");
         docs_format_type(d, n->type);
         docs_printf_safe(d, STYLE_NORMAL, "\n");
-        break;
+    } break;
 
     case NODE_STRUCT: {
         NodeStruct *structt = (NodeStruct *) n;
         docs_printf_safe(d, STYLE_KEYWORD, "struct ");
         docs_printf_safe(d, STYLE_TYPE, SVFmt, SVArg(n->token.sv));
+        docs_format_generics(d, structt->generics.head);
         docs_printf_safe(d, STYLE_NORMAL, " {\n");
         for (Node *it = structt->fields.head; it; it = it->next) {
             docs_printf_safe(d, STYLE_NORMAL, "\t" SVFmt " ", SVArg(it->token.sv));

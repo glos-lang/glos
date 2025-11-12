@@ -10,5 +10,5 @@ fn (b &Box[T]) unwrap[T]() T {
 
 fn main() {
 	var b Box[i32]
-	b.unwrap::[i64]()
+	b.unwrap[i64]()
 }

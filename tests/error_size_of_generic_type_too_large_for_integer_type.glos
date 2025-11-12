@@ -7,5 +7,5 @@ fn foo[T]() i8 {
 }
 
 fn main() {
-	fmt::println(foo::[[128]u8]())
+	fmt::println(foo[[128]u8]())
 }

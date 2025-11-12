@@ -13,6 +13,6 @@ fn bar[A, B](a A) {
 }
 
 fn main() {
-	foo::[i16](69)
-	bar::[_, bool](420)
+	foo[i16](69)
+	bar[_, bool](420)
 }
