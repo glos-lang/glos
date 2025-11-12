@@ -247,6 +247,7 @@ typedef struct {
     Node *from;
     Node *to;
     bool  ranged;
+    bool  is_type;
 } NodeIndex;
 
 typedef struct {
@@ -375,6 +376,7 @@ struct NodeFn {
     Node *link;
     bool  local;
     bool  is_public;
+    bool  is_type;
 
     bool    is_method;
     NodeFn *next_method;

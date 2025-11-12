@@ -253,9 +253,11 @@ static Node *parse_type(Parser *p) {
         node = (Node *) unary;
     } break;
 
-    case TOKEN_FN:
-        node = (Node *) parse_fn_signature(p, node_alloc(p, NODE_FN, token));
-        break;
+    case TOKEN_FN: {
+        NodeFn *fn = parse_fn_signature(p, node_alloc(p, NODE_FN, token));
+        fn->is_type = true;
+        node = (Node *) fn;
+    } break;
 
     default:
         error_unexpected(token);
@@ -545,13 +547,17 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 exit(1);
             }
 
-            token = lexer_expect(&p->lexer, TOKEN_LBRACE);
-            if (token.newlines) {
-                error_full(ERROR, token.pos, "Expected '{' on same line as type");
-                exit(1);
-            }
+            if (lexer_read(&p->lexer, TOKEN_LBRACE)) {
+                if (p->lexer.buffer.newlines) {
+                    error_full(ERROR, p->lexer.buffer.pos, "Expected '{' on same line as type");
+                    exit(1);
+                }
 
-            node = (Node *) parse_compound(p, node, token, flags);
+                node = (Node *) parse_compound(p, node, p->lexer.buffer, flags);
+            } else {
+                assert(node->kind == NODE_INDEX);
+                ((NodeIndex *) node)->is_type = true;
+            }
         } else {
             error_unexpected(token);
         }
@@ -1570,9 +1576,14 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
         fn->ret = parse_type(p);
     }
 
-    if (!p->in_extern) {
-        lexer_buffer(&p->lexer, lexer_expect(&p->lexer, TOKEN_LBRACE));
+    token = lexer_peek(&p->lexer);
+    if (token.kind == TOKEN_LBRACE) {
         fn->body = parse_stmt(p);
+    } else if (!p->in_extern) {
+        if (!local_save) {
+            lexer_expect(&p->lexer, TOKEN_LBRACE);
+        }
+        fn->is_type = true;
     }
 
     p->local = local_save;

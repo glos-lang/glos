@@ -1931,6 +1931,11 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
+        if (index->is_type) {
+            error_full(ERROR, n->token.pos, "Unexpected type expression");
+            exit(1);
+        }
+
         check_expr(c, index->base, ref);
 
         const Type base = index->base->type;
@@ -3213,12 +3218,17 @@ static void check_toplevel(Compiler *c, Node *n) {
 }
 
 static void check_fn(Compiler *c, Node *n) {
+    NodeFn *fn = (NodeFn *) n;
+    if (fn->is_type) {
+        error_full(ERROR, n->token.pos, "Unexpected type expression");
+        exit(1);
+    }
+
     if (c->context.checking_toplevels) {
         check_toplevel(c, n);
         return;
     }
 
-    NodeFn *fn = (NodeFn *) n;
     if (fn->local) {
         da_push(&c->context.locals, n);
     }
