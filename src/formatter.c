@@ -222,7 +222,13 @@ static void format_type(Formatter *f, Node *n) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
         sb_push(&f->sb, '[');
-        format_expr(f, index->from, true);
+
+        if (index->ranged) {
+            sb_sprintf(&f->sb, "..");
+        } else {
+            format_expr(f, index->from, true);
+        }
+
         sb_push(&f->sb, ']');
         format_type(f, index->base);
     } break;
