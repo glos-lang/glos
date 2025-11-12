@@ -202,14 +202,14 @@ static void format_type(Formatter *f, Node *n, bool in_expr) {
         }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
 
-        if (atom->generics.head) {
+        if (atom->generics.types.head) {
             if (in_expr) {
                 sb_sprintf(&f->sb, "::[");
             } else {
                 sb_sprintf(&f->sb, "[");
             }
 
-            for (Node *type = atom->generics.head; type; type = type->next) {
+            for (Node *type = atom->generics.types.head; type; type = type->next) {
                 format_type(f, type, false);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");
@@ -324,9 +324,9 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
 
-        if (atom->generics.head) {
+        if (atom->generics.types.head) {
             sb_sprintf(&f->sb, "::[");
-            for (Node *type = atom->generics.head; type; type = type->next) {
+            for (Node *type = atom->generics.types.head; type; type = type->next) {
                 format_type(f, type, false);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");
@@ -426,9 +426,9 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
         format_expr(f, member->lhs, true);
         sb_sprintf(&f->sb, "." SVFmt, SVArg(n->token.sv));
 
-        if (member->generics.head) {
+        if (member->generics.types.head) {
             sb_sprintf(&f->sb, "::[");
-            for (Node *type = member->generics.head; type; type = type->next) {
+            for (Node *type = member->generics.types.head; type; type = type->next) {
                 format_type(f, type, false);
                 if (type->next) {
                     sb_sprintf(&f->sb, ", ");

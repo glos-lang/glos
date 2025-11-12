@@ -395,22 +395,20 @@ static void clear_qbe(Node *n) {
     }
 }
 
-static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Node *caller_generics_head, size_t caller_generics_count) {
+static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Generics caller_generics) {
     if (fn->generics.head) {
-        assert(fn->generics_count == caller_generics_count);
+        assert(fn->generics_count == caller_generics.count);
 
-        Instantiation *instantiation =
-            instantiations_get(&fn->instantiations, caller_generics_head, caller_generics_count, c->context.arena);
-
+        Instantiation *instantiation = instantiations_get(&fn->instantiations, caller_generics, c->context.arena);
         if (instantiation->qbe) {
             return instantiation->qbe;
         }
 
-        Type **save = temp_alloc(caller_generics_count * sizeof(Type *));
+        Type **save = temp_alloc(caller_generics.count * sizeof(Type *));
         {
             Node *generic = fn->generics.head;
-            Node *specific = caller_generics_head;
-            for (size_t i = 0; i < caller_generics_count; i++) {
+            Node *specific = caller_generics.types.head;
+            for (size_t i = 0; i < caller_generics.count; i++) {
                 assert(generic);
                 save[i] = generic->type.spec_type;
 
@@ -428,7 +426,7 @@ static QbeNode *node_fn_get_qbe(Compiler *c, NodeFn *fn, Node *caller_generics_h
 
         {
             Node *generic = fn->generics.head;
-            for (size_t i = 0; i < caller_generics_count; i++) {
+            for (size_t i = 0; i < caller_generics.count; i++) {
                 assert(generic);
                 generic->type.spec_type = save[i];
                 generic = generic->next;
@@ -453,7 +451,7 @@ static void compile_trait_impl_fns(Compiler *c, Node *n) {
         for (size_t i = 0; i < n->trait_impl->fns_count; i++) {
             NodeFn *fn = n->trait_impl->fns[i];
             if (!fn->shim) {
-                QbeNode *fn_qbe = node_fn_get_qbe(c, fn, NULL, 0);
+                QbeNode *fn_qbe = node_fn_get_qbe(c, fn, (Generics) {0});
 
                 QbeFn *fn_save = c->fn;
                 c->fn = qbe_fn_new(c->qbe, (QbeSV) {0}, fn->return_type_qbe);
@@ -605,7 +603,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_IDENT:
             switch (atom->definition->kind) {
             case NODE_FN:
-                return node_fn_get_qbe(c, (NodeFn *) atom->definition, atom->generics.head, atom->generics_count);
+                return node_fn_get_qbe(c, (NodeFn *) atom->definition, atom->generics);
 
             case NODE_VAR: {
                 NodeVar *var = (NodeVar *) atom->definition;
@@ -1242,7 +1240,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
                 return qbe_build_load(c->qbe, c->fn, method, qbe_type_basic(QBE_TYPE_I64), false);
             }
 
-            return node_fn_get_qbe(c, (NodeFn *) member->definition, member->generics.head, member->generics_count);
+            return node_fn_get_qbe(c, (NodeFn *) member->definition, member->generics);
         }
 
         if (member->lhs->type.ref) {

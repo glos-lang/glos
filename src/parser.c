@@ -96,10 +96,10 @@ typedef enum {
 static Node *parse_type(Parser *p);
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags);
 
-static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
+static void parse_generics(Parser *p, Generics *generics) {
     while (true) {
-        nodes_push(generics, parse_type(p));
-        (*generics_count)++;
+        nodes_push(&generics->types, parse_type(p));
+        generics->count++;
 
         const Token token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RBRACKET);
         if (token.kind != TOKEN_COMMA || lexer_read(&p->lexer, TOKEN_RBRACKET)) {
@@ -216,7 +216,7 @@ static Node *parse_type(Parser *p) {
 
         if (token.kind == TOKEN_LBRACKET && !token.newlines) {
             lexer_unbuffer(&p->lexer);
-            parse_generics(p, &atom->generics, &atom->generics_count);
+            parse_generics(p, &atom->generics);
         }
 
         node = (Node *) atom;
@@ -463,7 +463,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                     exit(1);
                 }
 
-                parse_generics(p, &atom->generics, &atom->generics_count);
+                parse_generics(p, &atom->generics);
             }
         }
 
@@ -626,7 +626,7 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
                 }
 
                 lexer_expect(&p->lexer, TOKEN_LBRACKET);
-                parse_generics(p, &member->generics, &member->generics_count);
+                parse_generics(p, &member->generics);
             }
 
             node = (Node *) member;
@@ -642,10 +642,10 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
 
             NodeCall *call = node_alloc(p, NODE_CALL, token);
             call->fn = node;
-            if (call->fn->kind == NODE_ATOM) {
-                ((NodeAtom *) call->fn)->will_be_called = true;
-            } else if (call->fn->kind == NODE_MEMBER) {
-                ((NodeMember *) call->fn)->will_be_called = true;
+
+            Generics *generics = node_generics(call->fn);
+            if (generics) {
+                generics->called = true;
             }
 
             while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {

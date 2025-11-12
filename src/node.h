@@ -15,6 +15,17 @@ typedef struct {
     Node *tail;
 } Nodes;
 
+void nodes_push(Nodes *ns, Node *n);
+
+typedef struct {
+    Nodes  types;
+    size_t count;
+    bool   called;
+    bool   incomplete;
+} Generics;
+
+Generics *node_generics(Node *n);
+
 typedef enum {
     TYPE_UNIT,
     TYPE_BOOL,
@@ -115,7 +126,7 @@ typedef struct {
 
 void           instantiations_push(Instantiations *is, Instantiation *i);
 Instantiation *instantiations_find(Instantiations is, Type *types, size_t count);
-Instantiation *instantiations_get(Instantiations *instantiations, Node *generics, size_t generics_count, Arena *a);
+Instantiation *instantiations_get(Instantiations *instantiations, Generics generics, Arena *a);
 
 typedef enum {
     CHECK_STATUS_TODO,
@@ -197,8 +208,6 @@ struct Node {
     long fmt_doc_comment_start;
 };
 
-void nodes_push(Nodes *ns, Node *n);
-
 typedef struct {
     Node  node;
     Node *definition;
@@ -206,11 +215,7 @@ typedef struct {
     Token scope;
     bool  scope_resolved;
 
-    Nodes  generics;
-    size_t generics_count;
-    bool   generics_incomplete;
-    bool   will_be_called;
-
+    Generics generics;
     Package *package;
 } NodeAtom;
 
@@ -263,11 +268,7 @@ typedef struct {
     bool  is_method;
     bool  is_type_access_valid;
 
-    Nodes  generics;
-    size_t generics_count;
-    bool   generics_incomplete;
-    bool   will_be_called;
-
+    Generics generics;
     Package *package;
 
     QbeNode *lhs_qbe;
