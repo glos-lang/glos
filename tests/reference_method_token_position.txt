@@ -2,8 +2,8 @@ EXIT 1
 STDOUT 0
 
 STDERR 134
-reference_method_token_position.glos:13:2: ERROR: Expected type '&Box<i64>', got '&Box<i32>'
+reference_method_token_position.glos:13:2: ERROR: Expected type '&Box[i64]', got '&Box[i32]'
 
-    13 | 	b.unwrap::<i64>()
+    13 | 	b.unwrap::[i64]()
        | 	^
 

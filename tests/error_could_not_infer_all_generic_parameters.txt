@@ -1,11 +1,11 @@
 EXIT 1
 STDOUT 0
 
-STDERR 266
+STDERR 264
 error_could_not_infer_all_generic_parameters.glos:6:12: ERROR: Could not infer all the generic parameters, instance the call explicitly
 
-    6 | 	foo::<i64>()
+    6 | 	foo::[i64]()
       | 	          ^
 
-error_could_not_infer_all_generic_parameters.glos:6:12: NOTE: Inferred foo::<i64, _>
+error_could_not_infer_all_generic_parameters.glos:6:12: NOTE: Inferred foo[i64, _]
 

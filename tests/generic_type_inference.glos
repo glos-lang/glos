@@ -2,7 +2,7 @@ package main
 
 import "fmt"
 
-fn zero<T>(ptr &T) {
+fn zero[T](ptr &T) {
 	extern {
 		fn memset(ptr rawptr, ch i32, count u64) rawptr
 	}

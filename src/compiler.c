@@ -1816,7 +1816,9 @@ static void compile_global_var_assignment(Compiler *c, Node *n) {
 }
 
 void compiler_free(Compiler *c) {
-    qbe_free(c->qbe);
+    if (c->qbe) {
+        qbe_free(c->qbe);
+    }
     da_free(&c->defers);
     da_free(&c->link_flags);
     context_free(&c->context);

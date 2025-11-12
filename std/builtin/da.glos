@@ -1,6 +1,6 @@
 package builtin
 
-pub fn (xs &[..]T) push<T>(x T) {
+pub fn (xs &[..]T) push[T](x T) {
 	extern {
 		fn realloc(ptr rawptr, size u64) rawptr
 	}
@@ -14,7 +14,7 @@ pub fn (xs &[..]T) push<T>(x T) {
 	(*xs)[xs.count - 1] = x
 }
 
-pub fn (xs &[..]T) free<T>() {
+pub fn (xs &[..]T) free[T]() {
 	extern {
 		fn free(ptr rawptr)
 		fn memset(s rawptr, c i32, n u64) rawptr

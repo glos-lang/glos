@@ -2,17 +2,17 @@ package main
 
 import "fmt"
 
-fn foo<A, B>(b B) {
+fn foo[A, B](b B) {
 	fmt::println(sizeof<A>)
 	fmt::println(sizeof<B>)
 }
 
-fn bar<A, B>(a A) {
+fn bar[A, B](a A) {
 	fmt::println(sizeof<A>)
 	fmt::println(sizeof<B>)
 }
 
 fn main() {
-	foo::<i16>(69)
-	bar::<_, bool>(420)
+	foo::[i16](69)
+	bar::[_, bool](420)
 }

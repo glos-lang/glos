@@ -1,14 +1,14 @@
 package main
 
-struct Box<T> {
+struct Box[T] {
 	v T
 }
 
-fn (b &Box<T>) unwrap<T>() T {
+fn (b &Box[T]) unwrap[T]() T {
 	return b.v
 }
 
 fn main() {
-	var b Box<i32>
-	b.unwrap::<i64>()
+	var b Box[i32]
+	b.unwrap::[i64]()
 }

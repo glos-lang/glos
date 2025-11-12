@@ -2,16 +2,16 @@ package main
 
 import "fmt"
 
-struct Box<T> {
+struct Box[T] {
 	v T
 }
 
-fn (b &Box<T>) set<T>(v T) {
+fn (b &Box[T]) set[T](v T) {
 	b.v = v
 }
 
 fn main() {
-	var box Box<i64>
+	var box Box[i64]
 	box.set(69)
 	fmt::println(box.v)
 }
