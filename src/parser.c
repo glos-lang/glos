@@ -108,10 +108,10 @@ static void parse_generics(Parser *p, Nodes *generics, size_t *generics_count) {
     }
 }
 
-static NodeFn *parse_fn_signature(Parser *p, Token token) {
+static NodeFn *parse_fn_signature(Parser *p, NodeFn *fn) {
     const size_t starting_row = lexer_expect(&p->lexer, TOKEN_LPAREN).pos.row;
 
-    NodeFn *fn = node_alloc(p, NODE_FN, token);
+    Token token = {0};
     while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
         const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
 
@@ -154,7 +154,7 @@ static NodeFn *parse_fn_signature(Parser *p, Token token) {
                 error_full(
                     ERROR,
                     arg->node.token.pos,
-                    "Variadic parameter cannot be the first argument in an external function");
+                    "Untyped variadic parameter cannot be the first argument in a function");
                 exit(1);
             }
 
@@ -254,7 +254,7 @@ static Node *parse_type(Parser *p) {
     } break;
 
     case TOKEN_FN:
-        node = (Node *) parse_fn_signature(p, token);
+        node = (Node *) parse_fn_signature(p, node_alloc(p, NODE_FN, token));
         break;
 
     default:
@@ -1264,7 +1264,7 @@ static Node *parse_stmt(Parser *p) {
 
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
-            NodeFn *fn = parse_fn_signature(p, lexer_expect(&p->lexer, TOKEN_IDENT));
+            NodeFn *fn = parse_fn_signature(p, node_alloc(p, NODE_FN, lexer_expect(&p->lexer, TOKEN_IDENT)));
             if (trait->fns.head) {
                 fn->node.fmt_newline = fn->node.token.newlines > 1;
             }
@@ -1536,7 +1536,6 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
 
         token = lexer_expect(&p->lexer, TOKEN_LPAREN);
     }
-    const size_t starting_row = token.pos.row;
 
     const bool local_save = p->local;
     p->local = true;
@@ -1547,66 +1546,23 @@ static Node *parse_fn(Parser *p, Token token, bool will_be_method) {
     const bool in_defer_save = p->in_defer;
     p->in_defer = false;
 
-    while (!lexer_read(&p->lexer, TOKEN_RPAREN)) {
-        const bool fmt_newline = fn->args.head && lexer_peek(&p->lexer).newlines > 1;
-
-        if (lexer_read(&p->lexer, TOKEN_VARIADIC)) {
-            if (!p->in_extern) {
-                error_full(
-                    ERROR, p->lexer.buffer.pos, "Variadic parameter must have a name in a non external function");
-                exit(1);
-            }
-
-            if (will_be_method) {
-                error_full(ERROR, p->lexer.buffer.pos, "Variadic parameter cannot be used in an external method");
-                exit(1);
-            }
-
-            if (!fn->arity) {
-                error_full(
-                    ERROR,
-                    p->lexer.buffer.pos,
-                    "Variadic parameter cannot be the first argument in an external function");
-                exit(1);
-            }
-
-            fn->variadic = VARIADIC_UNTYPED;
-            lexer_expect(&p->lexer, TOKEN_RPAREN);
-            break;
+    lexer_buffer(&p->lexer, token);
+    parse_fn_signature(p, fn);
+    if (fn->variadic == VARIADIC_TYPED) {
+        if (p->in_extern) {
+            error_full(ERROR, fn->node.token.pos, "Typed variadics cannot be used in an external function");
+            exit(1);
+        }
+    } else if (fn->variadic == VARIADIC_UNTYPED) {
+        if (!p->in_extern) {
+            error_full(ERROR, fn->node.token.pos, "Untyped variadics cannot be used in a non external function");
+            exit(1);
         }
 
-        NodeVar *arg = node_alloc(p, NODE_VAR, lexer_expect(&p->lexer, TOKEN_IDENT));
-        arg->kind = NODE_VAR_ARG;
-
-        if (lexer_read(&p->lexer, TOKEN_VARIADIC)) {
-            if (p->in_extern) {
-                error_full(
-                    ERROR, arg->node.token.pos, "Variadic parameter must not have a name in an external function");
-                exit(1);
-            }
-
-            fn->variadic = VARIADIC_TYPED;
-            arg->type = parse_type(p);
-            nodes_push(&fn->args, (Node *) arg);
-            fn->args.tail->fmt_newline = fmt_newline;
-            lexer_expect(&p->lexer, TOKEN_RPAREN);
-            break;
-        } else {
-            arg->type = parse_type(p);
+        if (will_be_method) {
+            error_full(ERROR, fn->node.token.pos, "Untyped variadics cannot be used in an external method");
+            exit(1);
         }
-
-        nodes_push(&fn->args, (Node *) arg);
-        fn->args.tail->fmt_newline = fmt_newline;
-        fn->arity++;
-
-        token = lexer_expect(&p->lexer, TOKEN_COMMA, TOKEN_RPAREN);
-        if (token.kind != TOKEN_COMMA) {
-            break;
-        }
-    }
-
-    if (p->lexer.pos.row != starting_row) {
-        fn->fmt_multiline = true;
     }
 
     token = lexer_peek(&p->lexer);
