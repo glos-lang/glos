@@ -1048,6 +1048,11 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
         break;
 
     case NODE_UNARY: {
+        if (n->token.kind != TOKEN_BAND) {
+            error_full(ERROR, n->token.pos, "Unexpected unary %s in type", token_kind_to_cstr(n->token.kind));
+            exit(1);
+        }
+
         NodeUnary *unary = (NodeUnary *) n;
         check_type(c, unary->operand, false, extra_generic_context);
         n->type = unary->operand->type;
@@ -1056,8 +1061,12 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
-        check_type(c, index->base, true, extra_generic_context);
+        if (!index->is_type) {
+            error_full(ERROR, n->token.pos, "Unexpected expression in type");
+            exit(1);
+        }
 
+        check_type(c, index->base, true, extra_generic_context);
         if (index->from) {
             ConstValue count = eval_const_expr(c, index->from);
             type_assert_arith(index->from, false, false);
@@ -1086,21 +1095,26 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
     } break;
 
     case NODE_FN: {
-        NodeFn *spec = (NodeFn *) n;
+        NodeFn *fn = (NodeFn *) n;
+        if (!fn->is_type) {
+            error_full(ERROR, n->token.pos, "Unexpected expression in type");
+            exit(1);
+        }
 
-        for (Node *it = spec->args.head; it; it = it->next) {
+        for (Node *it = fn->args.head; it; it = it->next) {
             NodeVar *arg = (NodeVar *) it;
             check_type(c, arg->type, true, extra_generic_context);
             it->type = arg->type->type;
-            convert_variadic_arg(c, spec, it);
+            convert_variadic_arg(c, fn, it);
         }
 
-        check_type(c, spec->ret, true, extra_generic_context);
+        check_type(c, fn->ret, true, extra_generic_context);
         n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
     } break;
 
     default:
-        unreachable();
+        error_full(ERROR, n->token.pos, "Unexpected expression in type");
+        exit(1);
     }
 }
 
@@ -1751,9 +1765,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         if (inferred_left) {
             error_full(ERROR, n->token.pos, "Could not infer all the generic parameters, instance the call explicitly");
             fprintf(stderr, "\n");
-
             error_begin(NOTE, n->token.pos);
-
             fprintf(stderr, "Inferred ");
 
             if (call->fn->kind == NODE_MEMBER) {
@@ -1902,7 +1914,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
         if (index->is_type) {
-            error_full(ERROR, n->token.pos, "Unexpected type expression");
+            error_full(ERROR, n->token.pos, "Unexpected type");
             exit(1);
         }
 
@@ -3190,7 +3202,7 @@ static void check_toplevel(Compiler *c, Node *n) {
 static void check_fn(Compiler *c, Node *n) {
     NodeFn *fn = (NodeFn *) n;
     if (fn->is_type) {
-        error_full(ERROR, n->token.pos, "Unexpected type expression");
+        error_full(ERROR, n->token.pos, "Unexpected type");
         exit(1);
     }
 

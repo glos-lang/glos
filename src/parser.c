@@ -224,6 +224,7 @@ static Node *parse_type(Parser *p) {
 
     case TOKEN_LBRACKET: {
         NodeIndex *index = node_alloc(p, NODE_INDEX, token);
+        index->is_type = true;
 
         token = lexer_peek(&p->lexer);
         if (token.kind == TOKEN_RBRACKET) {
@@ -1271,6 +1272,8 @@ static Node *parse_stmt(Parser *p) {
         lexer_expect(&p->lexer, TOKEN_LBRACE);
         while (!lexer_read(&p->lexer, TOKEN_RBRACE)) {
             NodeFn *fn = parse_fn_signature(p, node_alloc(p, NODE_FN, lexer_expect(&p->lexer, TOKEN_IDENT)));
+            fn->is_type = true;
+
             if (trait->fns.head) {
                 fn->node.fmt_newline = fn->node.token.newlines > 1;
             }
