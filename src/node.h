@@ -259,7 +259,10 @@ typedef struct {
     Node *from;
     Node *to;
     bool  ranged;
-    bool  is_type;
+
+    // []T, [N]T, [..]T            => true
+    // a[b], a[b, c, ...], a[b..c] => false
+    bool is_type;
 
     // This is not always true, however it might be, since syntactically:
     //

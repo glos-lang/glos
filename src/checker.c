@@ -1061,36 +1061,41 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 
     case NODE_INDEX: {
         NodeIndex *index = (NodeIndex *) n;
-        if (!index->is_type) {
-            error_full(ERROR, n->token.pos, "Unexpected expression in type");
-            exit(1);
-        }
+        if (index->is_type) {
+            check_type(c, index->base, true, extra_generic_context);
+            if (index->from) {
+                ConstValue count = eval_const_expr(c, index->from);
+                type_assert_arith(index->from, false, false);
 
-        check_type(c, index->base, true, extra_generic_context);
-        if (index->from) {
-            ConstValue count = eval_const_expr(c, index->from);
-            type_assert_arith(index->from, false, false);
+                if (!count.as.integer) {
+                    error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
+                    exit(1);
+                }
 
-            if (!count.as.integer) {
-                error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
+                n->type = (Type) {
+                    .kind = TYPE_ARRAY,
+                    .spec_type = &index->base->type,
+                    .spec_count = count.as.integer,
+                };
+            } else if (index->ranged) {
+                n->type = (Type) {
+                    .kind = TYPE_DSLICE,
+                    .spec_type = &index->base->type,
+                };
+            } else {
+                n->type = (Type) {
+                    .kind = TYPE_SLICE,
+                    .spec_type = &index->base->type,
+                };
+            }
+        } else {
+            if (index->ranged && (index->from || index->to)) {
+                error_full(ERROR, n->token.pos, "Unexpected expression in type");
                 exit(1);
             }
 
-            n->type = (Type) {
-                .kind = TYPE_ARRAY,
-                .spec_type = &index->base->type,
-                .spec_count = count.as.integer,
-            };
-        } else if (index->ranged) {
-            n->type = (Type) {
-                .kind = TYPE_DSLICE,
-                .spec_type = &index->base->type,
-            };
-        } else {
-            n->type = (Type) {
-                .kind = TYPE_SLICE,
-                .spec_type = &index->base->type,
-            };
+            check_type(c, index->base, need_full_definition, extra_generic_context);
+            n->type = index->base->type;
         }
     } break;
 
