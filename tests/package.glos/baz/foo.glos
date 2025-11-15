@@ -3,5 +3,5 @@ package baz
 import "fmt"
 
 pub fn foo() {
-    fmt::println(1337)
+    fmt.println(1337)
 }

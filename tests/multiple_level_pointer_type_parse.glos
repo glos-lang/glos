@@ -7,7 +7,7 @@ fn main() {
     var y &i64 = &x
     var z &&i64 = &y
 
-    fmt::println(x)
+    fmt.println(x)
     **z = 420
-    fmt::println(x)
+    fmt.println(x)
 }

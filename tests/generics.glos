@@ -34,6 +34,6 @@ fn main() {
 
 	var xs = slice[i64](xs)
 	for var i = 0; i < xs.count; i += 1 {
-		fmt::println(xs[i])
+		fmt.println(xs[i])
 	}
 }

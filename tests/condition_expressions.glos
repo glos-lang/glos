@@ -3,6 +3,6 @@ package main
 import "fmt"
 
 fn main() {
-	fmt::println(if true then 69 else 420)
-	fmt::println(if false then 69 else 420)
+	fmt.println(if true then 69 else 420)
+	fmt.println(if false then 69 else 420)
 }

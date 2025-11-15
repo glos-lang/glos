@@ -73,7 +73,7 @@ static void error_unexpected(Token token) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 74, "");
 static bool token_kind_is_start_of_type(TokenKind k) {
     switch (k) {
     case TOKEN_IDENT:
@@ -187,7 +187,15 @@ static NodeFn *parse_fn_signature(Parser *p, NodeFn *fn) {
     return fn;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static void node_set_generics(Node *n, Generics *g) {
+    if (n->kind == NODE_ATOM) {
+        ((NodeAtom *) n)->generics = g;
+    } else if (n->kind == NODE_MEMBER) {
+        ((NodeMember *) n)->generics = g;
+    }
+}
+
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_type(Parser *p) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -197,20 +205,26 @@ static Node *parse_type(Parser *p) {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
 
-        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT);
-            atom->scope = atom->node.token;
-            atom->node.token = token;
+        node = (Node *) atom;
+        token = lexer_peek(&p->lexer);
+        if (token.kind == TOKEN_DOT) {
+            lexer_unbuffer(&p->lexer);
+
+            NodeMember *member = node_alloc(p, NODE_MEMBER, lexer_expect(&p->lexer, TOKEN_IDENT));
+            member->lhs = node;
+            member->package = p->packages->current;
+
+            atom->parent = member;
+            node = (Node *) member;
+            token = lexer_peek(&p->lexer);
         }
 
-        token = lexer_peek(&p->lexer);
         if (token.kind == TOKEN_LBRACKET && !token.newlines) {
             lexer_unbuffer(&p->lexer);
-            atom->generics = arena_alloc(p->arena, sizeof(Generics));
-            parse_generics(p, atom->generics);
+            Generics *generics = arena_alloc(p->arena, sizeof(Generics));
+            parse_generics(p, generics);
+            node_set_generics(node, generics);
         }
-
-        node = (Node *) atom;
     } break;
 
     case TOKEN_LBRACKET: {
@@ -262,6 +276,11 @@ static Node *parse_type(Parser *p) {
 static bool node_is_compound_literal_type(Node *n) {
     if (n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT) {
         return true;
+    }
+
+    if (n->kind == NODE_MEMBER) {
+        Node *lhs = ((NodeMember *) n)->lhs;
+        return lhs->kind == NODE_ATOM && lhs->token.kind == TOKEN_IDENT;
     }
 
     return false;
@@ -324,10 +343,6 @@ static void ensure_const_expr(Node *n) {
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
         ensure_const_expr(member->lhs);
-        if (!sv_match(n->token.sv, "count")) {
-            error_full(ERROR, n->token.pos, "Can only access 'count' of strings in constant expression");
-            exit(1);
-        }
     } break;
 
     case NODE_SIZEOF: {
@@ -411,15 +426,7 @@ static NodeCompound *parse_compound(Parser *p, Node *node, Token token, ParseFla
     return compound;
 }
 
-static void node_set_generics(Node *n, Generics *g) {
-    if (n->kind == NODE_ATOM) {
-        ((NodeAtom *) n)->generics = g;
-    } else if (n->kind == NODE_MEMBER) {
-        ((NodeMember *) n)->generics = g;
-    }
-}
-
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     Node *node = NULL;
     Token token = lexer_next(&p->lexer);
@@ -446,13 +453,6 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
     case TOKEN_IDENT: {
         NodeAtom *atom = node_alloc(p, NODE_ATOM, token);
         atom->package = p->packages->current;
-
-        if (lexer_read(&p->lexer, TOKEN_SCOPE)) {
-            token = lexer_expect(&p->lexer, TOKEN_IDENT);
-            atom->scope = atom->node.token;
-            atom->node.token = token;
-        }
-
         node = (Node *) atom;
     } break;
 
@@ -600,9 +600,8 @@ static Node *parse_expr(Parser *p, Power mbp, ParseFlags flags) {
             member->lhs = node;
             member->package = p->packages->current;
 
-            if (flags & PF_CONSTANT_EXPR && !sv_match(member->node.token.sv, "count")) {
-                error_full(ERROR, member->node.token.pos, "Can only access 'count' of strings in constant expression");
-                exit(1);
+            if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
+                ((NodeAtom *) member->lhs)->parent = member;
             }
 
             node = (Node *) member;
@@ -800,7 +799,7 @@ static void resolve_import_path(Parser *p, Token token, const char *dir, const c
 }
 
 static void do_import(Parser *p, Token token, SV as, bool only_check_std) {
-    const char *checkpoint = arena_alloc(p->arena, 0);
+    const void *checkpoint = arena_alloc(p->arena, 0);
 
     const char *absolute = NULL;
     const char *relative = NULL;
@@ -990,7 +989,7 @@ static long get_doc_comment_start(Parser *p, size_t row) {
     return p->comments.count - i + 1;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

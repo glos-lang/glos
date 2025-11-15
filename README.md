@@ -16,7 +16,7 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println("Hello, world!")
+    fmt.println("Hello, world!")
 }
 ```
 
@@ -33,7 +33,7 @@ fn main() {
 	}
 
 	for var i = 0; i < xs.count; i += 1 {
-		fmt::println(xs[i])
+		fmt.println(xs[i])
 	}
 }
 ```

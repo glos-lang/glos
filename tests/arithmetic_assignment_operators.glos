@@ -4,32 +4,32 @@ import "fmt"
 
 fn main() {
     var acc = 42
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc += 10
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc -= 5
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc *= 2
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc /= 3
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc <<= 1
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc >>= 2
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc |= 8
-    fmt::println(acc)
+    fmt.println(acc)
 
     acc &= 15
-    fmt::println(acc)
+    fmt.println(acc)
 
 	acc %= 4
-	fmt::println(acc)
+	fmt.println(acc)
 }

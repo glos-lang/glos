@@ -11,5 +11,5 @@ fn factorial(n i64) i64 {
 }
 
 fn main() {
-    fmt::println(factorial(5))
+    fmt.println(factorial(5))
 }

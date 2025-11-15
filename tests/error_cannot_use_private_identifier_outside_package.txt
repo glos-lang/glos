@@ -1,11 +1,11 @@
 EXIT 1
 STDOUT 0
 
-STDERR 301
-error_cannot_use_private_identifier_outside_package.glos/main.glos:6:7: ERROR: Cannot use private identifier 'bar' outside its package
+STDERR 299
+error_cannot_use_private_identifier_outside_package.glos/main.glos:6:6: ERROR: Cannot use private identifier 'bar' outside its package
 
-    6 | 	foo::bar
-      | 	     ^
+    6 | 	foo.bar
+      | 	    ^
 
 error_cannot_use_private_identifier_outside_package.glos/foo/foo.glos:3:5: NOTE: Defined here
 

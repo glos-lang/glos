@@ -7,5 +7,5 @@ fn add(x i64, y i64) i64 {
 }
 
 fn main() {
-    fmt::println(add(34, 35))
+    fmt.println(add(34, 35))
 }

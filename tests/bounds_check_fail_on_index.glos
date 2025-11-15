@@ -17,6 +17,6 @@ fn main() {
         xs[i] = i * 2
     }
 
-    fmt::println(xs[2])
-    fmt::println(xs[5])
+    fmt.println(xs[2])
+    fmt.println(xs[5])
 }

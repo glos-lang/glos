@@ -11,5 +11,5 @@ fn double(x i64) i64 {
 }
 
 fn main() {
-    fmt::println(map(210, double))
+    fmt.println(map(210, double))
 }

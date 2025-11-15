@@ -3,13 +3,13 @@ package main
 import "fmt"
 
 fn foo[A, B](b B) {
-	fmt::println(sizeof<A>)
-	fmt::println(sizeof<B>)
+	fmt.println(sizeof<A>)
+	fmt.println(sizeof<B>)
 }
 
 fn bar[A, B](a A) {
-	fmt::println(sizeof<A>)
-	fmt::println(sizeof<B>)
+	fmt.println(sizeof<A>)
+	fmt.println(sizeof<B>)
 }
 
 fn main() {

@@ -566,6 +566,46 @@ static QbeNode *compile_string_eq(Compiler *c, QbeNode *a_data, QbeNode *a_count
     return qbe_build_phi(c->qbe, c->fn, count_equal_phi, data_equal_phi);
 }
 
+static QbeNode *compile_identifier(Compiler *c, Node *n, bool ref, Node *definition, Generics *generics) {
+    switch (definition->kind) {
+    case NODE_FN:
+        return node_fn_get_qbe(c, (NodeFn *) definition, generics ? *generics : (Generics) {0});
+
+    case NODE_VAR: {
+        NodeVar *var = (NodeVar *) definition;
+        if (!var->qbe) {
+            compile_stmt(c, definition);
+        }
+
+        if (ref || var->kind == NODE_VAR_ARG) {
+            return var->qbe;
+        }
+
+        return qbe_build_load(c->qbe, c->fn, var->qbe, n->type.qbe, type_is_signed(n->type));
+    }
+
+    case NODE_CONST: {
+        NodeConst *constt = (NodeConst *) definition;
+        if (constt->value.is_string) {
+            return compile_str(c, constt->value.as.sv, false);
+        }
+
+        if (n->type.kind == TYPE_BOOL) {
+            return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
+        }
+
+        if (constt->value.is_float) {
+            return qbe_atom_float(c->qbe, integer_type_kind(n->type.kind), constt->value.as.floating);
+        }
+
+        return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
+    }
+
+    default:
+        unreachable();
+    }
+}
+
 static_assert(COUNT_NODES == 28, "");
 static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -577,7 +617,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             return qbe_atom_int(c->qbe, QBE_TYPE_I64, 0);
@@ -601,45 +641,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return compile_str(c, sv_from_cstr(is_macos() ? "macOS" : "Linux"), false);
 
         case TOKEN_IDENT:
-            switch (atom->definition->kind) {
-            case NODE_FN:
-                return node_fn_get_qbe(
-                    c, (NodeFn *) atom->definition, atom->generics ? *atom->generics : (Generics) {0});
-
-            case NODE_VAR: {
-                NodeVar *var = (NodeVar *) atom->definition;
-                if (!var->qbe) {
-                    compile_stmt(c, atom->definition);
-                }
-
-                if (ref || var->kind == NODE_VAR_ARG) {
-                    return var->qbe;
-                }
-
-                return qbe_build_load(c->qbe, c->fn, var->qbe, n->type.qbe, type_is_signed(n->type));
-            }
-
-            case NODE_CONST: {
-                NodeConst *constt = (NodeConst *) atom->definition;
-                if (constt->value.is_string) {
-                    return compile_str(c, constt->value.as.sv, false);
-                }
-
-                if (n->type.kind == TYPE_BOOL) {
-                    return qbe_atom_int(c->qbe, QBE_TYPE_I8, constt->value.as.boolean);
-                }
-
-                if (constt->value.is_float) {
-                    return qbe_atom_float(c->qbe, integer_type_kind(n->type.kind), constt->value.as.floating);
-                }
-
-                return qbe_atom_int(c->qbe, integer_type_kind(n->type.kind), constt->value.as.integer);
-            }
-
-            default:
-                unreachable();
-            }
-            break;
+            return compile_identifier(c, n, ref, atom->definition, atom->generics);
 
         default:
             unreachable();
@@ -764,7 +766,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             QbeNode *operand = compile_expr(c, unary->operand, false);
@@ -1052,7 +1054,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             QbeBinaryOp u; // Optional
         } BinaryOp;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         static const BinaryOp direct_ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB] = {.s = QBE_BINARY_SUB},
@@ -1110,7 +1112,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return qbe_build_binary(c->qbe, c->fn, actual, n->type.qbe, lhs, rhs);
         }
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         static const BinaryOp assign_ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.s = QBE_BINARY_ADD},
             [TOKEN_SUB_SET] = {.s = QBE_BINARY_SUB},
@@ -1141,7 +1143,7 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
             return NULL;
         }
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             QbeNode *lhs = compile_expr(c, binary->lhs, true);
@@ -1217,6 +1219,10 @@ static QbeNode *compile_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
+        if (member->package_access) {
+            return compile_identifier(c, n, ref, member->definition, member->generics);
+        }
+
         if (member->is_method) {
             member->lhs_qbe = compile_expr(c, member->lhs, false);
 

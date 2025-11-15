@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 107
-error_package_not_imported.glos:4:5: ERROR: Package 'foo' not imported
+STDERR 106
+error_package_not_imported.glos:4:5: ERROR: Undefined identifier 'foo'
 
-    4 |     foo::bar
+    4 |     foo.bar
       |     ^
 

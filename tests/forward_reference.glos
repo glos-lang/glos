@@ -4,18 +4,18 @@ import "fmt"
 
 fn foo(x bool) {
     if x {
-        fmt::println(1337)
+        fmt.println(1337)
     } else {
-        fmt::println(69)
+        fmt.println(69)
     }
     bar(x)
 }
 
 fn bar(x bool) {
     if x {
-        fmt::println(80085)
+        fmt.println(80085)
     } else {
-        fmt::println(420)
+        fmt.println(420)
         foo(true)
     }
 }

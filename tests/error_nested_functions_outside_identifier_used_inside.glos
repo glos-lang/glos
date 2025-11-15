@@ -6,7 +6,7 @@ fn main() {
     var x = 69
 
     fn foo() {
-        fmt::println(x)
+        fmt.println(x)
     }
 
     foo()

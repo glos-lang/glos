@@ -4,6 +4,6 @@ import "fmt"
 
 fn main() {
 	var xs [69]u8
-	fmt::println(xs.data == &xs[0])
-	fmt::println(xs.count)
+	fmt.println(xs.data == &xs[0])
+	fmt.println(xs.count)
 }

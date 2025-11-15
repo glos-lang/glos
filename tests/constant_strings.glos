@@ -9,9 +9,9 @@ const D = "Foo Bar Baz"[4..7]
 const E = "HEHE"[1]
 
 fn main() {
-	fmt::println(A)
-	fmt::println(B)
-    fmt::println(C)
-	fmt::println(D)
-    fmt::println(E)
+	fmt.println(A)
+	fmt.println(B)
+    fmt.println(C)
+	fmt.println(D)
+    fmt.println(E)
 }

@@ -4,13 +4,13 @@ import "fmt"
 
 when true {
 	fn main() {
-		fmt::println(foo())
+		fmt.println(foo())
 	}
 }
 
 when false {
 	fn main() {
-		fmt::println("This does not get checked or compiled")
+		fmt.println("This does not get checked or compiled")
 	}
 } else {
 	fn foo() i64 {

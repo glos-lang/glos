@@ -8,5 +8,5 @@ type Bar i64
 fn main() {
     var x Foo = 34
     var y Bar = 35
-    fmt::println(x + y)
+    fmt.println(x + y)
 }

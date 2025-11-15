@@ -26,7 +26,7 @@ pub fn (x i16) show(w Writer) { (<i64> x).show(w) }
 pub fn (x i32) show(w Writer) { (<i64> x).show(w) }
 pub fn (x i64) show(w Writer) {
 	var buffer [32]char
-	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%ld", x)
+	var count = C.snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%ld", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
@@ -36,28 +36,28 @@ pub fn (x u16) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u32) show(w Writer) { (<u64> x).show(w) }
 pub fn (x u64) show(w Writer) {
 	var buffer [32]char
-	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%zu", x)
+	var count = C.snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%zu", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
 
 pub fn (x f32) show(w Writer) {
 	var buffer [32]char
-	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%g", <f64> x)
+	var count = C.snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%g", <f64> x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
 
 pub fn (x f64) show(w Writer) {
 	var buffer [32]char
-	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%.14g", x)
+	var count = C.snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "%.14g", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
 
 pub fn (x rawptr) show(w Writer) {
 	var buffer [32]char
-	var count = C::snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "0x%zx", x)
+	var count = C.snprintf(<&i8> buffer.data, sizeof(buffer), <&i8> "0x%zx", x)
 	assert count >= 0
 	w.write(buffer[..count])
 }
@@ -83,22 +83,22 @@ pub fn writeln(w Writer, shows ...Show) {
 
 // Print the arguments to standard output
 pub fn print(shows ...Show) {
-	write(&io::stdout, ...shows)
+	write(&io.stdout, ...shows)
 }
 
 // Print the arguments to standard output with a following newline
 pub fn println(shows ...Show) {
-	writeln(&io::stdout, ...shows)
+	writeln(&io.stdout, ...shows)
 }
 
 // Print the arguments to standard error
 pub fn eprint(shows ...Show) {
-	write(&io::stderr, ...shows)
+	write(&io.stderr, ...shows)
 }
 
 // Print the arguments to standard error with a following newline
 pub fn eprintln(shows ...Show) {
-	writeln(&io::stderr, ...shows)
+	writeln(&io.stderr, ...shows)
 }
 
 // TODO: Flesh out this package

@@ -8,15 +8,15 @@ fn main() {
     var c = <u32> 1337
     var d = <u64> 80085
 
-    fmt::println(a)
-    fmt::println(sizeof(a))
+    fmt.println(a)
+    fmt.println(sizeof(a))
 
-    fmt::println(b)
-    fmt::println(sizeof(b))
+    fmt.println(b)
+    fmt.println(sizeof(b))
 
-    fmt::println(c)
-    fmt::println(sizeof(c))
+    fmt.println(c)
+    fmt.println(sizeof(c))
 
-    fmt::println(d)
-    fmt::println(sizeof(d))
+    fmt.println(d)
+    fmt.println(sizeof(d))
 }

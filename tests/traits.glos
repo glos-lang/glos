@@ -7,7 +7,7 @@ trait MyShow {
 }
 
 fn (x i64) myshow() {
-	fmt::println(x)
+	fmt.println(x)
 }
 
 fn display(s MyShow) {

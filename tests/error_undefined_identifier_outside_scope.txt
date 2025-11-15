@@ -1,9 +1,9 @@
 EXIT 1
 STDOUT 0
 
-STDERR 143
-error_undefined_identifier_outside_scope.glos:11:18: ERROR: Undefined identifier 'x'
+STDERR 141
+error_undefined_identifier_outside_scope.glos:11:17: ERROR: Undefined identifier 'x'
 
-    11 |     fmt::println(x)
-       |                  ^
+    11 |     fmt.println(x)
+       |                 ^
 

@@ -143,7 +143,7 @@ static void docs_format_identifier(Docs *d, Style style, SV sv, Package *package
             fprintf(d->f, "<a href='" SVFmt "'>" SVFmt "</a>", SVArg(path), SVArg(package->name.sv));
             docs_format_style_end(d, style);
 
-            fprintf(d->f, "::");
+            fprintf(d->f, ".");
 
             docs_format_style_begin(d, style);
             fprintf(d->f, "<a href='" SVFmt "%s" SVFmt "'>" SVFmt "</a>", SVArg(path), delim, SVArg(sv), SVArg(sv));
@@ -443,7 +443,6 @@ static void docs_emit_code(Docs *d, Pos pos) {
         case TOKEN_COLON:
         case TOKEN_COMMA:
         case TOKEN_RANGE:
-        case TOKEN_SCOPE:
         case TOKEN_VARIADIC:
         case TOKEN_LPAREN:
         case TOKEN_RPAREN:

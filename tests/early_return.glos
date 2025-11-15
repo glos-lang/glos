@@ -4,10 +4,10 @@ import "fmt"
 
 fn bar() i64 {
     return 69
-    fmt::println(420)
+    fmt.println(420)
     return 1337
 }
 
 fn main() {
-    fmt::println(bar())
+    fmt.println(bar())
 }

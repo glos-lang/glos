@@ -7,6 +7,6 @@ fn main() {
     var b = <u64> 0
     var c = <u64> -1
 
-    fmt::println(a > b)
-    fmt::println(a > c)
+    fmt.println(a > b)
+    fmt.println(a > c)
 }

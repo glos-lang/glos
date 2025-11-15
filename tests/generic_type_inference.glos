@@ -12,8 +12,8 @@ fn zero[T](ptr &T) {
 
 fn main() {
 	var x = 69
-	fmt::println(x)
+	fmt.println(x)
 
 	zero(&x)
-	fmt::println(x)
+	fmt.println(x)
 }

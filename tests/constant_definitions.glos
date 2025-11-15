@@ -8,8 +8,8 @@ struct Vec2 {
 }
 
 fn print_vec2(v Vec2) {
-    fmt::println(v.x)
-    fmt::println(v.y)
+    fmt.println(v.x)
+    fmt.println(v.y)
 }
 
 const X = 34 + 35

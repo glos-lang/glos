@@ -5,8 +5,8 @@ import "fmt"
 fn main() {
     if true {
         var x = 69
-        fmt::println(x)
+        fmt.println(x)
     } else {
-        fmt::println(x)
+        fmt.println(x)
     }
 }

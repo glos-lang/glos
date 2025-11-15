@@ -9,9 +9,9 @@ fn iota() i64 {
 }
 
 fn main() {
-    fmt::println(iota())
-    fmt::println(iota())
-    fmt::println(iota())
-    fmt::println(iota())
-    fmt::println(iota())
+    fmt.println(iota())
+    fmt.println(iota())
+    fmt.println(iota())
+    fmt.println(iota())
+    fmt.println(iota())
 }

@@ -322,25 +322,50 @@ static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *ex
 static void check_expr(Compiler *c, Node *n, RefKind ref);
 static void check_stmt(Compiler *c, Node *n);
 
-// TODO: Make package 'builtin' available to all packages
-static void resolve_ident_package(Node *n) {
-    assert(n->kind == NODE_ATOM && n->token.kind == TOKEN_IDENT);
-
-    NodeAtom *atom = (NodeAtom *) n;
-    if (atom->scope_resolved || !atom->scope.sv.data) {
-        return;
+static Node *eval_const_identifier(Compiler *c, Node *n, Package *package, bool is_imported) {
+    Node *definition = ident_find(&c->context, package, &n->token, false, is_imported);
+    if (!definition) {
+        return NULL;
     }
-    atom->scope_resolved = true;
 
-    for (Import *i = atom->package->imports.head; i; i = i->next) {
-        if (sv_eq(i->as, atom->scope.sv)) {
-            atom->package = i->package;
-            return;
+    if (definition->kind != NODE_CONST) {
+        error_full(ERROR, n->token.pos, "Can only refer to constants in constant expressions");
+        exit(1);
+    }
+
+    NodeConst *constt = (NodeConst *) definition;
+    if (constt->check_status != CHECK_STATUS_DONE) {
+        check_stmt(c, definition);
+    }
+
+    n->type = definition->type;
+    return definition;
+}
+
+static void resolve_accessed_identifier(NodeAtom *atom) {
+    Package *package = NULL;
+    for (Import *it = atom->package->imports.head; it; it = it->next) {
+        if (sv_eq(it->as, atom->node.token.sv)) {
+            package = it->package;
+            break;
         }
     }
 
-    error_full(ERROR, atom->scope.pos, "Package '" SVFmt "' not imported", SVArg(atom->scope.sv));
-    exit(1);
+    if (package) {
+        if (!atom->parent) {
+            error_full(
+                ERROR,
+                atom->node.token.pos,
+                "Use of package '" SVFmt "' without member access",
+                SVArg(atom->node.token.sv));
+
+            exit(1);
+        }
+
+        atom->parent->package_access = package;
+    } else {
+        error_undefined((Node *) atom, "identifier");
+    }
 }
 
 static_assert(COUNT_NODES == 28, "");
@@ -358,7 +383,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -389,25 +414,14 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
         case TOKEN_IDENT:
-            resolve_ident_package(n);
-
-            atom->definition = ident_find(&c->context, atom->package, &n->token, false, atom->scope_resolved);
-            if (!atom->definition) {
-                error_undefined(n, "identifier");
+            atom->definition = eval_const_identifier(c, n, atom->package, false);
+            if (atom->definition) {
+                assert(atom->definition->kind == NODE_CONST);
+                return ((NodeConst *) atom->definition)->value;
             }
 
-            if (atom->definition->kind != NODE_CONST) {
-                error_full(ERROR, n->token.pos, "Can only refer to constants in constant expressions");
-                exit(1);
-            }
-
-            NodeConst *constt = (NodeConst *) atom->definition;
-            if (constt->check_status != CHECK_STATUS_DONE) {
-                check_stmt(c, atom->definition);
-            }
-
-            n->type = atom->definition->type;
-            return constt->value;
+            resolve_accessed_identifier(atom);
+            return const_int(69);
 
         default:
             unreachable();
@@ -437,7 +451,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB: {
             ConstValue value = eval_const_expr_impl(c, unary->operand);
@@ -524,7 +538,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
         ConstValue lhs = {0};
         ConstValue rhs = {0};
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr_impl(c, binary->lhs);
@@ -593,7 +607,7 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
             unreachable();
         }
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             if (lhs.is_string) {
@@ -725,6 +739,17 @@ static ConstValue eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_MEMBER: {
         NodeMember *member = (NodeMember *) n;
         ConstValue  lhs = eval_const_expr_impl(c, member->lhs);
+        if (member->package_access) {
+            member->definition = eval_const_identifier(c, n, member->package_access, true);
+            if (!member->definition) {
+                error_undefined(n, "identifier");
+            }
+            n->type = member->definition->type;
+
+            assert(member->definition->kind == NODE_CONST);
+            return ((NodeConst *) member->definition)->value;
+        }
+
         if (!lhs.is_string) {
             error_full(
                 ERROR, member->lhs->token.pos, "Expected type '[u8]', got '%s'", type_to_cstr(member->lhs->type));
@@ -931,209 +956,6 @@ static void convert_variadic_arg(Compiler *c, NodeFn *fn, Node *arg) {
     }
 }
 
-static_assert(COUNT_NODES == 28, "");
-static_assert(COUNT_TYPES == 23, "");
-static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
-    if (!n) {
-        return;
-    }
-
-    switch (n->kind) {
-    case NODE_ATOM:
-        if (sv_match(n->token.sv, "bool")) {
-            n->type = (Type) {.kind = TYPE_BOOL};
-        } else if (sv_match(n->token.sv, "char")) {
-            n->type = (Type) {.kind = TYPE_CHAR};
-        } else if (sv_match(n->token.sv, "i8")) {
-            n->type = (Type) {.kind = TYPE_I8};
-        } else if (sv_match(n->token.sv, "i16")) {
-            n->type = (Type) {.kind = TYPE_I16};
-        } else if (sv_match(n->token.sv, "i32")) {
-            n->type = (Type) {.kind = TYPE_I32};
-        } else if (sv_match(n->token.sv, "i64")) {
-            n->type = (Type) {.kind = TYPE_I64};
-        } else if (sv_match(n->token.sv, "u8")) {
-            n->type = (Type) {.kind = TYPE_U8};
-        } else if (sv_match(n->token.sv, "u16")) {
-            n->type = (Type) {.kind = TYPE_U16};
-        } else if (sv_match(n->token.sv, "u32")) {
-            n->type = (Type) {.kind = TYPE_U32};
-        } else if (sv_match(n->token.sv, "u64")) {
-            n->type = (Type) {.kind = TYPE_U64};
-        } else if (sv_match(n->token.sv, "f32")) {
-            n->type = (Type) {.kind = TYPE_F32};
-        } else if (sv_match(n->token.sv, "f64")) {
-            n->type = (Type) {.kind = TYPE_F64};
-        } else if (sv_match(n->token.sv, "rawptr")) {
-            n->type = (Type) {.kind = TYPE_RAWPTR};
-        } else {
-            resolve_ident_package(n);
-
-            if (extra_generic_context) {
-                for (Node *it = extra_generic_context; it; it = it->next) {
-                    if (sv_eq(it->token.sv, n->token.sv)) {
-                        n->type = it->type;
-                        return;
-                    }
-                }
-            }
-
-            NodeAtom *atom = (NodeAtom *) n;
-            Node     *definition = ident_find(&c->context, atom->package, &n->token, true, atom->scope_resolved);
-            if (!definition) {
-                error_undefined(n, "type");
-            }
-
-            size_t definition_generics_count = 0;
-            switch (definition->kind) {
-            case NODE_TYPE: {
-                NodeType *type = (NodeType *) definition;
-                if (type->check_status != CHECK_STATUS_DONE) {
-                    check_stmt(c, definition);
-                }
-
-                n->type = definition->type;
-                definition_generics_count = type->generics_count;
-            } break;
-
-            case NODE_TRAIT:
-                n->type = definition->type;
-                break;
-
-            case NODE_STRUCT: {
-                NodeStruct *structt = (NodeStruct *) definition;
-                if ((structt->check_status != CHECK_STATUS_DONE && need_full_definition) ||
-                    (structt->check_status == CHECK_STATUS_TODO && structt->generics_count)) {
-                    check_stmt(c, definition);
-                }
-
-                n->type = definition->type;
-                definition_generics_count = structt->generics_count;
-            } break;
-
-            default:
-                unreachable();
-            }
-
-            if (atom->generics) {
-                if (!definition_generics_count) {
-                    error_full(ERROR, n->token.pos, "Can only instantiate generic types");
-                    exit(1);
-                }
-
-                if (atom->generics->count != definition_generics_count) {
-                    error_full(
-                        ERROR,
-                        n->token.pos,
-                        "Expected %zu generic parameter%s, got %zu",
-                        definition_generics_count,
-                        definition_generics_count == 1 ? "" : "s",
-                        atom->generics->count);
-
-                    exit(1);
-                }
-
-                for (Node *it = atom->generics->types.head; it; it = it->next) {
-                    check_type(c, it, true, extra_generic_context);
-                }
-
-                n->type = instantiate_type(c, n->type, *atom->generics);
-            } else {
-                if (definition_generics_count) {
-                    error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
-                    exit(1);
-                }
-            }
-        }
-        break;
-
-    case NODE_UNARY: {
-        if (n->token.kind != TOKEN_BAND) {
-            error_full(ERROR, n->token.pos, "Unexpected unary %s in type", token_kind_to_cstr(n->token.kind));
-            exit(1);
-        }
-
-        NodeUnary *unary = (NodeUnary *) n;
-        check_type(c, unary->operand, false, extra_generic_context);
-        n->type = unary->operand->type;
-        n->type.ref++;
-    } break;
-
-    case NODE_INDEX: {
-        NodeIndex *index = (NodeIndex *) n;
-        if (index->is_type) {
-            check_type(c, index->base, true, extra_generic_context);
-            if (index->from) {
-                ConstValue count = eval_const_expr(c, index->from);
-                type_assert_arith(index->from, false, false);
-
-                if (!count.as.integer) {
-                    error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
-                    exit(1);
-                }
-
-                n->type = (Type) {
-                    .kind = TYPE_ARRAY,
-                    .spec_type = &index->base->type,
-                    .spec_count = count.as.integer,
-                };
-            } else if (index->ranged) {
-                n->type = (Type) {
-                    .kind = TYPE_DSLICE,
-                    .spec_type = &index->base->type,
-                };
-            } else {
-                n->type = (Type) {
-                    .kind = TYPE_SLICE,
-                    .spec_type = &index->base->type,
-                };
-            }
-        } else {
-            if (index->ranged && (index->from || index->to)) {
-                error_full(ERROR, n->token.pos, "Unexpected expression in type");
-                exit(1);
-            }
-
-            check_type(c, index->base, need_full_definition, extra_generic_context);
-            n->type = index->base->type;
-        }
-    } break;
-
-    case NODE_FN: {
-        NodeFn *fn = (NodeFn *) n;
-        if (!fn->is_type) {
-            error_full(ERROR, n->token.pos, "Unexpected expression in type");
-            exit(1);
-        }
-
-        for (Node *it = fn->args.head; it; it = it->next) {
-            NodeVar *arg = (NodeVar *) it;
-            check_type(c, arg->type, true, extra_generic_context);
-            it->type = arg->type->type;
-            convert_variadic_arg(c, fn, it);
-        }
-
-        check_type(c, fn->ret, true, extra_generic_context);
-        n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
-    } break;
-
-    default:
-        error_full(ERROR, n->token.pos, "Unexpected expression in type");
-        exit(1);
-    }
-}
-
-static void check_fn(Compiler *c, Node *n);
-
-static void check_if_expr(Compiler *c, NodeIf *iff) {
-    check_expr(c, iff->condition, REF_NONE);
-    type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
-
-    check_expr(c, iff->consequence, REF_NONE);
-    check_expr(c, iff->antecedence, REF_NONE);
-    iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
-}
-
 static_assert(COUNT_TYPES == 23, "");
 static void infer_generic_type(Type actual, Type expected, Node *generics) {
     switch (expected.kind) {
@@ -1297,6 +1119,272 @@ static void check_generics(Compiler *c, Node *n, Node *definition) {
             }
         }
     }
+}
+
+static Node *check_type_identifier(
+    Compiler *c, Node *n, Package *package, bool is_imported, bool need_full_definition, Node *extra_generic_context) {
+    Node *definition = ident_find(&c->context, package, &n->token, true, is_imported);
+    if (!definition) {
+        return NULL;
+    }
+
+    size_t definition_generics_count = 0;
+    switch (definition->kind) {
+    case NODE_TYPE: {
+        NodeType *type = (NodeType *) definition;
+        if (type->check_status != CHECK_STATUS_DONE) {
+            check_stmt(c, definition);
+        }
+
+        n->type = definition->type;
+        definition_generics_count = type->generics_count;
+    } break;
+
+    case NODE_TRAIT:
+        n->type = definition->type;
+        break;
+
+    case NODE_STRUCT: {
+        NodeStruct *structt = (NodeStruct *) definition;
+        if ((structt->check_status != CHECK_STATUS_DONE && need_full_definition) ||
+            (structt->check_status == CHECK_STATUS_TODO && structt->generics_count)) {
+            check_stmt(c, definition);
+        }
+
+        n->type = definition->type;
+        definition_generics_count = structt->generics_count;
+    } break;
+
+    default:
+        unreachable();
+    }
+
+    Generics *generics = node_get_generics(n);
+    if (generics) {
+        if (!definition_generics_count) {
+            error_full(ERROR, n->token.pos, "Can only instantiate generic types");
+            exit(1);
+        }
+
+        if (generics->count != definition_generics_count) {
+            error_full(
+                ERROR,
+                n->token.pos,
+                "Expected %zu generic parameter%s, got %zu",
+                definition_generics_count,
+                definition_generics_count == 1 ? "" : "s",
+                generics->count);
+
+            exit(1);
+        }
+
+        for (Node *it = generics->types.head; it; it = it->next) {
+            check_type(c, it, true, extra_generic_context);
+        }
+
+        n->type = instantiate_type(c, n->type, *generics);
+    } else {
+        if (definition_generics_count) {
+            error_full(ERROR, n->token.pos, "Cannot use generic type without instantiation");
+            exit(1);
+        }
+    }
+
+    return definition;
+}
+
+static Node *check_expr_identifier(Compiler *c, Node *n, Package *package, RefKind ref, bool is_imported) {
+    Node *definition = ident_find(&c->context, package, &n->token, false, is_imported);
+    if (!definition) {
+        return NULL;
+    }
+
+    if (c->context.checking_toplevels) {
+        check_stmt(c, definition);
+    }
+    n->type = definition->type;
+
+    check_generics(c, n, definition);
+
+    n->allow_ref = definition->kind == NODE_VAR;
+    if (ref) {
+        if (definition->kind == NODE_CONST && ref == REF_MUTATE) {
+            error_full(ERROR, n->token.pos, "Cannot mutate constant value");
+            exit(1);
+        }
+
+        if (n->allow_ref) {
+            NodeVar *var = (NodeVar *) definition;
+            if (var->kind == NODE_VAR_ARG) {
+                var->kind = NODE_VAR_LOCAL;
+            }
+        }
+    }
+
+    return definition;
+}
+
+static_assert(COUNT_NODES == 28, "");
+static_assert(COUNT_TYPES == 23, "");
+static void check_type(Compiler *c, Node *n, bool need_full_definition, Node *extra_generic_context) {
+    if (!n) {
+        return;
+    }
+
+    switch (n->kind) {
+    case NODE_ATOM:
+        if (sv_match(n->token.sv, "bool")) {
+            n->type = (Type) {.kind = TYPE_BOOL};
+        } else if (sv_match(n->token.sv, "char")) {
+            n->type = (Type) {.kind = TYPE_CHAR};
+        } else if (sv_match(n->token.sv, "i8")) {
+            n->type = (Type) {.kind = TYPE_I8};
+        } else if (sv_match(n->token.sv, "i16")) {
+            n->type = (Type) {.kind = TYPE_I16};
+        } else if (sv_match(n->token.sv, "i32")) {
+            n->type = (Type) {.kind = TYPE_I32};
+        } else if (sv_match(n->token.sv, "i64")) {
+            n->type = (Type) {.kind = TYPE_I64};
+        } else if (sv_match(n->token.sv, "u8")) {
+            n->type = (Type) {.kind = TYPE_U8};
+        } else if (sv_match(n->token.sv, "u16")) {
+            n->type = (Type) {.kind = TYPE_U16};
+        } else if (sv_match(n->token.sv, "u32")) {
+            n->type = (Type) {.kind = TYPE_U32};
+        } else if (sv_match(n->token.sv, "u64")) {
+            n->type = (Type) {.kind = TYPE_U64};
+        } else if (sv_match(n->token.sv, "f32")) {
+            n->type = (Type) {.kind = TYPE_F32};
+        } else if (sv_match(n->token.sv, "f64")) {
+            n->type = (Type) {.kind = TYPE_F64};
+        } else if (sv_match(n->token.sv, "rawptr")) {
+            n->type = (Type) {.kind = TYPE_RAWPTR};
+        } else {
+            if (extra_generic_context) {
+                for (Node *it = extra_generic_context; it; it = it->next) {
+                    if (sv_eq(it->token.sv, n->token.sv)) {
+                        n->type = it->type;
+                        return;
+                    }
+                }
+            }
+
+            NodeAtom *atom = (NodeAtom *) n;
+            Node     *definition =
+                check_type_identifier(c, n, atom->package, false, need_full_definition, extra_generic_context);
+
+            if (!definition) {
+                resolve_accessed_identifier(atom);
+            }
+        }
+        break;
+
+    case NODE_UNARY: {
+        if (n->token.kind != TOKEN_BAND) {
+            error_full(ERROR, n->token.pos, "Unexpected unary %s in type", token_kind_to_cstr(n->token.kind));
+            exit(1);
+        }
+
+        NodeUnary *unary = (NodeUnary *) n;
+        check_type(c, unary->operand, false, extra_generic_context);
+        n->type = unary->operand->type;
+        n->type.ref++;
+    } break;
+
+    case NODE_INDEX: {
+        NodeIndex *index = (NodeIndex *) n;
+        if (index->is_type) {
+            check_type(c, index->base, true, extra_generic_context);
+            if (index->from) {
+                ConstValue count = eval_const_expr(c, index->from);
+                type_assert_arith(index->from, false, false);
+
+                if (!count.as.integer) {
+                    error_full(ERROR, index->from->token.pos, "Array cannot have zero items");
+                    exit(1);
+                }
+
+                n->type = (Type) {
+                    .kind = TYPE_ARRAY,
+                    .spec_type = &index->base->type,
+                    .spec_count = count.as.integer,
+                };
+            } else if (index->ranged) {
+                n->type = (Type) {
+                    .kind = TYPE_DSLICE,
+                    .spec_type = &index->base->type,
+                };
+            } else {
+                n->type = (Type) {
+                    .kind = TYPE_SLICE,
+                    .spec_type = &index->base->type,
+                };
+            }
+        } else {
+            if (index->ranged && (index->from || index->to)) {
+                error_full(ERROR, n->token.pos, "Unexpected expression in type");
+                exit(1);
+            }
+
+            check_type(c, index->base, need_full_definition, extra_generic_context);
+            n->type = index->base->type;
+        }
+    } break;
+
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+        if (n->token.kind == TOKEN_TYPE) {
+            error_full(ERROR, n->token.pos, "Unexpected expression in type");
+            exit(1);
+        }
+
+        if (member->lhs->kind == NODE_ATOM && member->lhs->token.kind == TOKEN_IDENT) {
+            resolve_accessed_identifier((NodeAtom *) member->lhs);
+            Node *definition =
+                check_type_identifier(c, n, member->package_access, true, need_full_definition, extra_generic_context);
+
+            if (!definition) {
+                error_undefined(n, "type");
+            }
+        } else {
+            error_full(ERROR, member->lhs->token.pos, "Unexpected expression in type");
+            exit(1);
+        }
+    } break;
+
+    case NODE_FN: {
+        NodeFn *fn = (NodeFn *) n;
+        if (!fn->is_type) {
+            error_full(ERROR, n->token.pos, "Unexpected expression in type");
+            exit(1);
+        }
+
+        for (Node *it = fn->args.head; it; it = it->next) {
+            NodeVar *arg = (NodeVar *) it;
+            check_type(c, arg->type, true, extra_generic_context);
+            it->type = arg->type->type;
+            convert_variadic_arg(c, fn, it);
+        }
+
+        check_type(c, fn->ret, true, extra_generic_context);
+        n->type = (Type) {.kind = TYPE_FN, .spec_node = n};
+    } break;
+
+    default:
+        error_full(ERROR, n->token.pos, "Unexpected expression in type");
+        exit(1);
+    }
+}
+
+static void check_fn(Compiler *c, Node *n);
+
+static void check_if_expr(Compiler *c, NodeIf *iff) {
+    check_expr(c, iff->condition, REF_NONE);
+    type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+
+    check_expr(c, iff->consequence, REF_NONE);
+    check_expr(c, iff->antecedence, REF_NONE);
+    iff->node.type = type_assert_node(c, iff->antecedence, iff->consequence);
 }
 
 static void pretty_print_method_signature(NodeFn *fn, Type self) {
@@ -1556,7 +1644,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
 
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_NIL:
             n->type = (Type) {.kind = TYPE_RAWPTR};
@@ -1584,34 +1672,11 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
             break;
 
         case TOKEN_IDENT: {
-            resolve_ident_package(n);
-
             NodeAtom *atom = (NodeAtom *) n;
-            atom->definition = ident_find(&c->context, atom->package, &n->token, false, atom->scope_resolved);
+            atom->definition = check_expr_identifier(c, n, atom->package, ref, false);
             if (!atom->definition) {
-                error_undefined(n, "identifier");
-            }
-
-            if (c->context.checking_toplevels) {
-                check_stmt(c, atom->definition);
-            }
-            n->type = atom->definition->type;
-
-            check_generics(c, n, atom->definition);
-
-            n->allow_ref = atom->definition->kind == NODE_VAR;
-            if (ref) {
-                if (atom->definition->kind == NODE_CONST && ref == REF_MUTATE) {
-                    error_full(ERROR, n->token.pos, "Cannot mutate constant value");
-                    exit(1);
-                }
-
-                if (n->allow_ref) {
-                    NodeVar *var = (NodeVar *) atom->definition;
-                    if (var->kind == NODE_VAR_ARG) {
-                        var->kind = NODE_VAR_LOCAL;
-                    }
-                }
+                resolve_accessed_identifier(atom);
+                n->allow_ref = true;
             }
         } break;
 
@@ -1894,7 +1959,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_UNARY: {
         NodeUnary *unary = (NodeUnary *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->operand, REF_NONE);
@@ -2022,7 +2087,7 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
     case NODE_BINARY: {
         NodeBinary *binary = (NodeBinary *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 74, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2145,8 +2210,14 @@ static void check_expr(Compiler *c, Node *n, RefKind ref) {
         }
 
         check_expr(c, member->lhs, ref);
+        if (member->package_access) {
+            member->definition = check_expr_identifier(c, n, member->package_access, ref, true);
+            if (!member->definition) {
+                error_undefined(n, "identifier");
+            }
 
-        if (n->token.kind == TOKEN_TYPE) {
+            n->type = member->definition->type;
+        } else if (n->token.kind == TOKEN_TYPE) {
             if (member->lhs->type.kind != TYPE_TRAIT) {
                 error_full(
                     ERROR,
@@ -2543,7 +2614,6 @@ static void collect_extern_libraries(Compiler *c, NodeExtern *externn) {
     }
 }
 
-// TODO: Booleans
 static void check_for_duplicate_case(NodeMatch *match, NodeCase *this) {
     for (Node *it = match->branches.head; it; it = it->next) {
         NodeBranch *branch = (NodeBranch *) it;
@@ -2683,7 +2753,7 @@ static void check_stmt(Compiler *c, Node *n) {
                 n->token.pos,
                 "Expected numeric or %s type, got '%s'",
                 type_to_cstr(c->context.str_type),
-                type_to_cstr(n->type));
+                type_to_cstr(match->expr->type));
 
             exit(1);
         }

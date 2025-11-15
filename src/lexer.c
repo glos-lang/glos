@@ -206,7 +206,7 @@ static size_t parse_str(Lexer *l, const char *label) {
     return n;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 74, "");
 Token lexer_next(Lexer *l) {
     if (l->peeked) {
         lexer_unbuffer(l);
@@ -347,11 +347,7 @@ Token lexer_next(Lexer *l) {
         break;
 
     case ':':
-        if (match_char(l, ':')) {
-            token.kind = TOKEN_SCOPE;
-        } else {
-            token.kind = TOKEN_COLON;
-        }
+        token.kind = TOKEN_COLON;
         break;
 
     case ',':

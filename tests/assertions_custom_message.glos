@@ -3,11 +3,11 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println(69)
+    fmt.println(69)
     assert true
 
-    fmt::println(420)
+    fmt.println(420)
     assert !true, "Custom message for testing"
 
-    fmt::println(1337)
+    fmt.println(1337)
 }

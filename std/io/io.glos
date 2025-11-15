@@ -10,8 +10,8 @@ struct File {
 }
 
 pub fn (f &File) write(bytes []char) {
-	C::fwrite(<rawptr> bytes.data, <u64> bytes.count, sizeof<u8>, f.c)
+	C.fwrite(<rawptr> bytes.data, <u64> bytes.count, sizeof<u8>, f.c)
 }
 
-pub var stdout = File {c: C::stdout}
-pub var stderr = File {c: C::stderr}
+pub var stdout = File {c: C.stdout}
+pub var stderr = File {c: C.stderr}

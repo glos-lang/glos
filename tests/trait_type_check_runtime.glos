@@ -2,17 +2,17 @@ package main
 
 import "fmt"
 
-fn typeof(s fmt::Show) {
+fn typeof(s fmt.Show) {
 	if s.type == rawptr {
-		fmt::println("typeof(", s, ") => raw pointer")
+		fmt.println("typeof(", s, ") => raw pointer")
 		return
 	}
 
 	match s.type {
-		i64: fmt::println("typeof(", s, ") => i64")
-		bool: fmt::println("typeof(", s, ") => bool")
-		[]char: fmt::println("typeof(", s, ") => string")
-		else: fmt::println("typeof(", s, ") => unknown")
+		i64: fmt.println("typeof(", s, ") => i64")
+		bool: fmt.println("typeof(", s, ") => bool")
+		[]char: fmt.println("typeof(", s, ") => string")
+		else: fmt.println("typeof(", s, ") => unknown")
 	}
 }
 

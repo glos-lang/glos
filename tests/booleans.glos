@@ -3,29 +3,29 @@ package main
 import "fmt"
 
 fn foo(x bool) bool {
-    fmt::println(69)
+    fmt.println(69)
     return x
 }
 
 fn bar(x bool) bool {
-    fmt::println(420)
+    fmt.println(420)
     return x
 }
 
 fn main() {
-    fmt::println(true)
-    fmt::println(false)
+    fmt.println(true)
+    fmt.println(false)
 
-    fmt::println(!true)
-    fmt::println(!false)
+    fmt.println(!true)
+    fmt.println(!false)
 
-    fmt::println(foo(true)  && bar(true))
-    fmt::println(foo(true)  && bar(false))
-    fmt::println(foo(false) && bar(true))
-    fmt::println(foo(false) && bar(false))
+    fmt.println(foo(true)  && bar(true))
+    fmt.println(foo(true)  && bar(false))
+    fmt.println(foo(false) && bar(true))
+    fmt.println(foo(false) && bar(false))
 
-    fmt::println(foo(true)  || bar(true))
-    fmt::println(foo(true)  || bar(false))
-    fmt::println(foo(false) || bar(true))
-    fmt::println(foo(false) || bar(false))
+    fmt.println(foo(true)  || bar(true))
+    fmt.println(foo(true)  || bar(false))
+    fmt.println(foo(false) || bar(true))
+    fmt.println(foo(false) || bar(false))
 }

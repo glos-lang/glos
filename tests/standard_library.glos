@@ -3,5 +3,5 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println("Hello, world!")
+    fmt.println("Hello, world!")
 }

@@ -4,27 +4,27 @@ import "fmt"
 
 fn main() {
 	match 69 {
-		1: fmt::println("One")
+		1: fmt.println("One")
 		2: {
-			fmt::println("Two")
+			fmt.println("Two")
 		}
-		3, 4: fmt::println("3 or 4")
-		69: fmt::println("Nice!")
-		else: fmt::println("None of the above")
+		3, 4: fmt.println("3 or 4")
+		69: fmt.println("Nice!")
+		else: fmt.println("None of the above")
 	}
 
 	match "foo" {
-		"urmom": fmt::println("NOOO")
-		"foo", "bar": fmt::println("Yes!")
-		else: fmt::println(":(")
+		"urmom": fmt.println("NOOO")
+		"foo", "bar": fmt.println("Yes!")
+		else: fmt.println(":(")
 	}
 
 	match 69 {
-		420: fmt::println("Let's go!")
-		else: fmt::println("Hehe boi")
+		420: fmt.println("Let's go!")
+		else: fmt.println("Hehe boi")
 	}
 
 	match 69 {
-		420: fmt::println("Let's go!")
+		420: fmt.println("Let's go!")
 	}
 }

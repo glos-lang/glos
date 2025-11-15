@@ -3,10 +3,10 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println(34.5 + 34.5)
-    fmt::println(500.1 - 80.1)
-    fmt::println(11.5 * 6.0)
-    fmt::println(630.0 / 1.5)
-    fmt::println(17.25 * 2.0 - -34.5)
-    fmt::println(0.2 * (1000.0 + 1100.0))
+    fmt.println(34.5 + 34.5)
+    fmt.println(500.1 - 80.1)
+    fmt.println(11.5 * 6.0)
+    fmt.println(630.0 / 1.5)
+    fmt.println(17.25 * 2.0 - -34.5)
+    fmt.println(0.2 * (1000.0 + 1100.0))
 }

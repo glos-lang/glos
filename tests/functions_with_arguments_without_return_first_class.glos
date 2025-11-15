@@ -7,8 +7,8 @@ fn apply(x i64, f fn (i64)) {
 }
 
 fn twice(x i64) {
-    fmt::println(x)
-    fmt::println(x)
+    fmt.println(x)
+    fmt.println(x)
 }
 
 fn main() {

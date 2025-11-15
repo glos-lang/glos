@@ -3,25 +3,25 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println(2 > 1)
-    fmt::println(1 > 1)
-    fmt::println(0 > 1)
+    fmt.println(2 > 1)
+    fmt.println(1 > 1)
+    fmt.println(0 > 1)
 
-    fmt::println(2 >= 1)
-    fmt::println(1 >= 1)
-    fmt::println(0 >= 1)
+    fmt.println(2 >= 1)
+    fmt.println(1 >= 1)
+    fmt.println(0 >= 1)
 
-    fmt::println(1 < 2)
-    fmt::println(1 < 1)
-    fmt::println(1 < 0)
+    fmt.println(1 < 2)
+    fmt.println(1 < 1)
+    fmt.println(1 < 0)
 
-    fmt::println(1 <= 2)
-    fmt::println(1 <= 1)
-    fmt::println(1 <= 0)
+    fmt.println(1 <= 2)
+    fmt.println(1 <= 1)
+    fmt.println(1 <= 0)
 
-    fmt::println(1 == 1)
-    fmt::println(1 == 2)
+    fmt.println(1 == 1)
+    fmt.println(1 == 2)
 
-    fmt::println(1 != 2)
-    fmt::println(1 != 1)
+    fmt.println(1 != 2)
+    fmt.println(1 != 1)
 }

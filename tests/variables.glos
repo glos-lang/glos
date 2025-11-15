@@ -9,10 +9,10 @@ var third i64
 fn main() {
     third = 3
 
-    fmt::println(first)
-    fmt::println(second)
-    fmt::println(first + 8 + second * third)
+    fmt.println(first)
+    fmt.println(second)
+    fmt.println(first + 8 + second * third)
 
     var local = 80085
-    fmt::println(local)
+    fmt.println(local)
 }

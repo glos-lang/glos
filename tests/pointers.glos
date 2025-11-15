@@ -6,9 +6,9 @@ fn f() {
     var x = 69
     var p = &x
 
-    fmt::println(x)
+    fmt.println(x)
     *p = 420
-    fmt::println(x)
+    fmt.println(x)
 }
 
 fn g() {
@@ -18,24 +18,24 @@ fn g() {
     var y = &a
     var z = &y
 
-    fmt::println(a)
-    fmt::println(b)
+    fmt.println(a)
+    fmt.println(b)
 
     *y = 420
 
-    fmt::println(a)
-    fmt::println(b)
+    fmt.println(a)
+    fmt.println(b)
 
     *z = &b
     *y = 69
 
-    fmt::println(a)
-    fmt::println(b)
+    fmt.println(a)
+    fmt.println(b)
 
     **z = 1337
 
-    fmt::println(a)
-    fmt::println(b)
+    fmt.println(a)
+    fmt.println(b)
 }
 
 fn main() {

@@ -197,9 +197,6 @@ static void format_type(Formatter *f, Node *n) {
     switch (n->kind) {
     case NODE_ATOM: {
         NodeAtom *atom = (NodeAtom *) n;
-        if (atom->scope.sv.data) {
-            sb_sprintf(&f->sb, SVFmt "::", SVArg(atom->scope.sv));
-        }
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
 
         if (atom->generics) {
@@ -231,6 +228,12 @@ static void format_type(Formatter *f, Node *n) {
 
         sb_push(&f->sb, ']');
         format_type(f, index->base);
+    } break;
+
+    case NODE_MEMBER: {
+        NodeMember *member = (NodeMember *) n;
+        format_expr(f, member->lhs, true);
+        sb_sprintf(&f->sb, "." SVFmt, SVArg(n->token.sv));
     } break;
 
     case NODE_FN:
@@ -318,13 +321,9 @@ static void format_expr(Formatter *f, Node *n, bool sync_comments_before) {
     }
 
     switch (n->kind) {
-    case NODE_ATOM: {
-        NodeAtom *atom = (NodeAtom *) n;
-        if (atom->scope.sv.data) {
-            sb_sprintf(&f->sb, SVFmt "::", SVArg(atom->scope.sv));
-        }
+    case NODE_ATOM:
         sb_sprintf(&f->sb, SVFmt, SVArg(n->token.sv));
-    } break;
+        break;
 
     case NODE_CALL: {
         NodeCall *call = (NodeCall *) n;

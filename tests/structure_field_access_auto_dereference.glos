@@ -17,11 +17,11 @@ fn double(i &&Iota) {
 fn main() {
     var iota = Iota {x: 67}
     var ptr = &iota
-    fmt::println(iota.x)
+    fmt.println(iota.x)
 
     single(ptr)
-    fmt::println(iota.x)
+    fmt.println(iota.x)
 
     double(&ptr)
-    fmt::println(iota.x)
+    fmt.println(iota.x)
 }

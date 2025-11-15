@@ -3,5 +3,5 @@ package bar
 import "fmt"
 
 pub fn foo() {
-    fmt::println(420)
+    fmt.println(420)
 }

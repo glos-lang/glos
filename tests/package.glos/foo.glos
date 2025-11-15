@@ -1,5 +1,5 @@
 package main
 
 fn foo() {
-    fmt::println(69)
+    fmt.println(69)
 }

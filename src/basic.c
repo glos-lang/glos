@@ -315,14 +315,16 @@ void *arena_alloc(Arena *a, size_t size) {
     }
 
     void *ptr = &region->data[region->count];
-    memset(ptr, 0, size);
+    if (size) {
+        memset(ptr, 0, size);
+    }
     region->count += size;
     return ptr;
 }
 
 void arena_reset(Arena *a, const void *ptr) {
     for (ArenaRegion *it = a->head; it; it = it->next) {
-        if ((const char *) ptr >= it->data && (const char *) ptr < it->data + it->capacity) {
+        if ((const char *) ptr >= it->data && (const char *) ptr <= it->data + it->capacity) {
             it->count = (const char *) ptr - it->data;
             for (ArenaRegion *p = a->head; p != it;) {
                 ArenaRegion *next = p->next;

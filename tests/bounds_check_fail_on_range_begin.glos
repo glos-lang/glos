@@ -13,7 +13,7 @@ fn alloc_i64s(n i64) []i64 {
 
 fn print_i64s(xs []i64) {
     for var i = 0; i < xs.count; i += 1 {
-        fmt::println(xs[i])
+        fmt.println(xs[i])
     }
 }
 

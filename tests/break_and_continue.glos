@@ -8,7 +8,7 @@ fn main() {
 			continue
 		}
 
-		fmt::println(i)
+		fmt.println(i)
 	}
 
 	for var i = 0; i < 10; i += 1 {
@@ -16,6 +16,6 @@ fn main() {
 			break
 		}
 
-		fmt::println(i)
+		fmt.println(i)
 	}
 }

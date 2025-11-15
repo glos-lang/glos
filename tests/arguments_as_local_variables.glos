@@ -3,18 +3,18 @@ package main
 import "fmt"
 
 fn foo(x i64) {
-    fmt::println(x)
+    fmt.println(x)
     x = 420
-    fmt::println(x)
+    fmt.println(x)
 }
 
 fn bar(x i64) {
-    fmt::println(x)
+    fmt.println(x)
     {
         var p = &x
         *p = 420
     }
-    fmt::println(x)
+    fmt.println(x)
 }
 
 fn main() {

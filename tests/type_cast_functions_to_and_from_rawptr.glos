@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 fn foo() {
-    fmt::println(69)
+    fmt.println(69)
 }
 
 fn main() {

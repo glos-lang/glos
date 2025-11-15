@@ -4,18 +4,18 @@ import "fmt"
 
 fn main() {
     // Standard
-    fmt::println(34 + 35)
-    fmt::println(500 - 80)
-    fmt::println(23 * 3)
-    fmt::println(1260 / 3)
-    fmt::println(17 * 2 - -35)
-    fmt::println(10 % 4 * (100 + 110))
+    fmt.println(34 + 35)
+    fmt.println(500 - 80)
+    fmt.println(23 * 3)
+    fmt.println(1260 / 3)
+    fmt.println(17 * 2 - -35)
+    fmt.println(10 % 4 * (100 + 110))
 
     // Bitwise
-    fmt::println(276 >> 2)
-    fmt::println(105 << 2)
-    fmt::println(~-70)
-    fmt::println(160 | 260)
-    fmt::println(77 & 103)
-    fmt::println(~-419 + 10 & 3)
+    fmt.println(276 >> 2)
+    fmt.println(105 << 2)
+    fmt.println(~-70)
+    fmt.println(160 | 260)
+    fmt.println(77 & 103)
+    fmt.println(~-419 + 10 & 3)
 }

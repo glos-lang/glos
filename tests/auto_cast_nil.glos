@@ -4,5 +4,5 @@ import "fmt"
 
 fn main() {
 	var x &u8 = nil
-	fmt::println(<rawptr> x)
+	fmt.println(<rawptr> x)
 }

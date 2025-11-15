@@ -13,8 +13,8 @@ fn foo(v &Vec2) {
 }
 
 fn bar(v Vec2) {
-    fmt::println(v.x)
-    fmt::println(v.y)
+    fmt.println(v.x)
+    fmt.println(v.y)
 }
 
 fn vec2(x i32, y i32) Vec2 {
@@ -26,10 +26,10 @@ fn vec2(x i32, y i32) Vec2 {
 
 fn main() {
     var pos Vec2
-    fmt::println(sizeof(pos))
+    fmt.println(sizeof(pos))
 
     foo(&pos)
     bar(pos)
     bar(vec2(420, 1337))
-    fmt::println(vec2(80085, 69).x)
+    fmt.println(vec2(80085, 69).x)
 }

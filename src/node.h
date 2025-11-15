@@ -6,6 +6,7 @@
 
 typedef struct Node       Node;
 typedef struct NodeFn     NodeFn;
+typedef struct NodeMember NodeMember;
 typedef struct NodeStruct NodeStruct;
 
 typedef struct Package Package;
@@ -217,8 +218,8 @@ typedef struct {
     Node  node;
     Node *definition;
 
-    Token scope;
-    bool  scope_resolved;
+    // For packages
+    NodeMember *parent;
 
     Generics *generics;
     Package  *package;
@@ -285,18 +286,20 @@ typedef struct {
     Node *rhs;
 } NodeBinary;
 
-typedef struct {
+struct NodeMember {
     Node  node;
     Node *lhs;
     Node *definition;
     bool  is_method;
     bool  is_type_access_valid;
 
+    Package *package_access;
+
     Generics *generics;
     Package  *package;
 
     QbeNode *lhs_qbe;
-} NodeMember;
+};
 
 typedef struct {
     Node  node;

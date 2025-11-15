@@ -3,14 +3,14 @@ package main
 import "fmt"
 
 fn main() {
-    fmt::println(sizeof<bool>)
-    fmt::println(sizeof<i64>)
-    fmt::println(sizeof<fn ()>)
-    fmt::println(sizeof<rawptr>)
-    fmt::println(sizeof<&&bool>)
+    fmt.println(sizeof<bool>)
+    fmt.println(sizeof<i64>)
+    fmt.println(sizeof<fn ()>)
+    fmt.println(sizeof<rawptr>)
+    fmt.println(sizeof<&&bool>)
 
-    fmt::println(sizeof(main()))
-    fmt::println(sizeof(69))
-    fmt::println(sizeof(420 == 1337))
-    fmt::println(sizeof(<rawptr> 0))
+    fmt.println(sizeof(main()))
+    fmt.println(sizeof(69))
+    fmt.println(sizeof(420 == 1337))
+    fmt.println(sizeof(<rawptr> 0))
 }
