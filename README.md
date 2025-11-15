@@ -16,7 +16,7 @@ package main
 import "fmt"
 
 fn main() {
-    fmt.println("Hello, world!")
+	fmt.println("Hello, world!")
 }
 ```
 
@@ -28,6 +28,8 @@ import "fmt"
 
 fn main() {
 	var xs [..]i64
+	defer xs.free()
+
 	for var i = 0; i < 10; i += 1 {
 		xs.push(i * 2)
 	}
