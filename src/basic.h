@@ -1,13 +1,6 @@
 #ifndef BASIC_H
 #define BASIC_H
 
-#include <assert.h>
-#include <stdbool.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #if defined(__x86_64__) && defined(__linux__)
 #define PLATFORM_X86_64_LINUX
 #elif defined(__x86_64__) && defined(_WIN64)
@@ -23,6 +16,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif // PLATFORM_X86_64_WINDOWS
+
+#include <assert.h>
+#include <stdbool.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Helper Macros
 #define len(a)    (sizeof(a) / sizeof(*(a)))
