@@ -1,0 +1,13 @@
+# Phase 01 - Turing Complete
+- [X] Arithmetic expressions
+- [ ] Types
+- [ ] Block statement
+- [ ] Booleans
+- [ ] Arithmetic comparisons
+- [ ] Conditions
+- [ ] Global variables
+- [ ] Loops
+- [ ] Type Casting
+- [ ] Pointers
+- [ ] External C functions
+- [ ] Bitwise operators

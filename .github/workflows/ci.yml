@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: clang -o glos src/*.c
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: clang -o glos src/*.c
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        run: clang -o glos.exe src/*.c
+
+      - name: Tests (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: ./glos -r sample.glos
+
+      - name: Tests (macOS)
+        if: matrix.os == 'macos-latest'
+        run: ./glos -r sample.glos
+
+      - name: Tests (Windows)
+        if: matrix.os == 'windows-latest'
+        run: ./glos.exe -r sample.glos
