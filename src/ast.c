@@ -14,6 +14,38 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
+static_assert(COUNT_AST_TYPES == 3, "");
+const char *ast_type_to_cstr(AST_Type type) {
+    switch (type.kind) {
+    case AST_TYPE_UNIT:
+        return "()";
+
+    case AST_TYPE_BOOL:
+        return "bool";
+
+    case AST_TYPE_I64:
+        return "i64";
+
+    default:
+        unreachable();
+    }
+}
+
+bool ast_type_eq(AST_Type a, AST_Type b) {
+    return a.kind == b.kind;
+}
+
+static_assert(COUNT_AST_TYPES == 3, "");
+bool ast_type_is_numeric(AST_Type type) {
+    switch (type.kind) {
+    case AST_TYPE_I64:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 

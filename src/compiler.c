@@ -1,5 +1,30 @@
 #include "compiler.h"
 
+static_assert(COUNT_AST_TYPES == 3, "");
+static void compile_type(AST_Type *type) {
+    if (!type) {
+        return;
+    }
+
+    switch (type->kind) {
+    case AST_TYPE_UNIT:
+        type->llvm = llvm_type_basic(LLVM_TYPE_I0);
+        break;
+
+    case AST_TYPE_BOOL:
+        type->llvm = llvm_type_basic(LLVM_TYPE_I1);
+        break;
+
+    case AST_TYPE_I64:
+        type->llvm = llvm_type_basic(LLVM_TYPE_I64);
+        break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 static_assert(COUNT_AST_NODES == 4, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     if (!n) {
@@ -8,18 +33,24 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
 
     LLVM_Node *result = NULL;
 
+    compile_type(&n->type);
     switch (n->kind) {
-    case AST_NODE_ATOM:
-        return_defer(llvm_atom_int(&c->llvm, n->token.as.integer));
+    case AST_NODE_ATOM: {
+        static_assert(COUNT_TOKENS == 14, "");
+        return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
+    } break;
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 12, "");
+        static_assert(COUNT_TOKENS == 14, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
-            return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, value));
+            return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
+
+        case TOKEN_LNOT:
+            return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_LNOT, n->type.llvm, value));
 
         default:
             unreachable();
@@ -31,22 +62,22 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         LLVM_Node       *lhs = compile_expr(c, binary->lhs);
         LLVM_Node       *rhs = compile_expr(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 12, "");
+        static_assert(COUNT_TOKENS == 14, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_ADD, lhs, rhs));
+            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_ADD, n->type.llvm, lhs, rhs));
 
         case TOKEN_SUB:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_SUB, lhs, rhs));
+            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_SUB, n->type.llvm, lhs, rhs));
 
         case TOKEN_MUL:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MUL, lhs, rhs));
+            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MUL, n->type.llvm, lhs, rhs));
 
         case TOKEN_DIV:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_DIV, lhs, rhs));
+            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_DIV, n->type.llvm, lhs, rhs));
 
         case TOKEN_MOD:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MOD, lhs, rhs));
+            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MOD, n->type.llvm, lhs, rhs));
 
         default:
             unreachable();
@@ -96,7 +127,7 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
 #if 0
     fwrite(c->llvm.sb.data, c->llvm.sb.count, 1, stdout);
     sb_free(&c->llvm.sb);
-    return;
+    exit(0);
 #endif
 
     c->cmd->count = 0;
@@ -110,9 +141,10 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
 
     FILE *f = NULL;
     Proc  proc = cmd_run_async(c->cmd, (CmdStdio) {.in = &f});
-
-    fwrite(c->llvm.sb.data, sizeof(char), c->llvm.sb.count, f);
-    fclose(f);
+    if (f) {
+        fwrite(c->llvm.sb.data, sizeof(char), c->llvm.sb.count, f);
+        fclose(f);
+    }
     sb_free(&c->llvm.sb);
 
     const int code = cmd_wait(proc);

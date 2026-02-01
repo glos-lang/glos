@@ -10,8 +10,11 @@ typedef enum {
 } LLVM_Node_Kind;
 
 struct LLVM_Node {
-    LLVM_Node_Kind  kind;
-    size_t          iota;
+    LLVM_Node_Kind kind;
+
+    LLVM_Type type;
+    size_t    iota;
+
     LLVM_Debug_Pos *debug;
     LLVM_Node      *next;
 };
@@ -70,7 +73,7 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
 }
 
 static_assert(COUNT_LLVM_NODES == 4, "");
-static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind) {
+static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
         [LLVM_NODE_UNARY] = sizeof(LLVM_Node_Unary),
@@ -82,17 +85,28 @@ static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind) {
     assert(kind >= LLVM_NODE_ATOM && kind < COUNT_LLVM_NODES);
     LLVM_Node *node = arena_alloc(l->arena, sizes[kind]);
     node->kind = kind;
+    node->type = type;
     return node;
 }
 
-static LLVM_Node *llvm_node_build(LLVM *l, LLVM_Node_Kind kind) {
-    LLVM_Node *node = llvm_node_alloc(l, kind);
+static LLVM_Node *llvm_node_build(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
+    LLVM_Node *node = llvm_node_alloc(l, kind, type);
     llvm_nodes_push(&l->body, node);
     return node;
 }
 
+static void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
+    pos->iota = l->iota_debug++;
+    sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
+}
+
+static void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
+    file->iota = l->iota_debug++;
+    sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
+}
+
 static_assert(COUNT_LLVM_NODES == 4, "");
-static void llvm_node_emit_repr(LLVM *l, LLVM_Node *n) {
+static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
     }
@@ -109,14 +123,24 @@ static void llvm_node_emit_repr(LLVM *l, LLVM_Node *n) {
     }
 }
 
-static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
-    pos->iota = l->iota_debug++;
-    sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
-}
+static_assert(COUNT_LLVM_TYPES == 3, "");
+static void llvm_type_emit(LLVM *l, LLVM_Type type) {
+    switch (type.kind) {
+    case LLVM_TYPE_I0:
+        sb_sprintf(&l->sb, "void");
+        break;
 
-static void llvm_debug_file_compile(LLVM *l, LLVM_Debug_File *file) {
-    file->iota = l->iota_debug++;
-    sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
+    case LLVM_TYPE_I1:
+        sb_sprintf(&l->sb, "i1");
+        break;
+
+    case LLVM_TYPE_I64:
+        sb_sprintf(&l->sb, "i64");
+        break;
+
+    default:
+        unreachable();
+    }
 }
 
 static_assert(COUNT_LLVM_NODES == 4, "");
@@ -134,14 +158,24 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
-        llvm_node_emit_repr(l, n);
+        llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_UNARYS == 1, "");
+        static_assert(COUNT_LLVM_UNARYS == 2, "");
         switch (unary->kind) {
         case LLVM_UNARY_NEG:
-            sb_sprintf(&l->sb, "sub i64 0, ");
-            llvm_node_emit_repr(l, unary->value);
+            sb_push_cstr(&l->sb, "sub ");
+            llvm_type_emit(l, n->type);
+            sb_push_cstr(&l->sb, " 0, ");
+            llvm_node_emit(l, unary->value);
+            break;
+
+        case LLVM_UNARY_LNOT:
+            sb_push_cstr(&l->sb, "icmp eq ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, unary->value);
+            sb_push_cstr(&l->sb, ", 0");
             break;
 
         default:
@@ -149,7 +183,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
             break;
         }
 
-        llvm_debug_pos_compile(l, n->debug);
+        llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
     } break;
 
@@ -158,44 +192,54 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
-        llvm_node_emit_repr(l, n);
+        llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
         static_assert(COUNT_LLVM_BINARYS == 5, "");
         switch (binary->kind) {
         case LLVM_BINARY_ADD:
-            sb_sprintf(&l->sb, "add i64 ");
-            llvm_node_emit_repr(l, binary->lhs);
+            sb_push_cstr(&l->sb, "add ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, binary->lhs);
             sb_sprintf(&l->sb, ", ");
-            llvm_node_emit_repr(l, binary->rhs);
+            llvm_node_emit(l, binary->rhs);
             break;
 
         case LLVM_BINARY_SUB:
-            sb_sprintf(&l->sb, "sub i64 ");
-            llvm_node_emit_repr(l, binary->lhs);
+            sb_push_cstr(&l->sb, "sub ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, binary->lhs);
             sb_sprintf(&l->sb, ", ");
-            llvm_node_emit_repr(l, binary->rhs);
+            llvm_node_emit(l, binary->rhs);
             break;
 
         case LLVM_BINARY_MUL:
-            sb_sprintf(&l->sb, "mul i64 ");
-            llvm_node_emit_repr(l, binary->lhs);
+            sb_push_cstr(&l->sb, "mul ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, binary->lhs);
             sb_sprintf(&l->sb, ", ");
-            llvm_node_emit_repr(l, binary->rhs);
+            llvm_node_emit(l, binary->rhs);
             break;
 
         case LLVM_BINARY_DIV:
-            sb_sprintf(&l->sb, "sdiv i64 ");
-            llvm_node_emit_repr(l, binary->lhs);
+            sb_push_cstr(&l->sb, "sdiv ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, binary->lhs);
             sb_sprintf(&l->sb, ", ");
-            llvm_node_emit_repr(l, binary->rhs);
+            llvm_node_emit(l, binary->rhs);
             break;
 
         case LLVM_BINARY_MOD:
-            sb_sprintf(&l->sb, "srem i64 ");
-            llvm_node_emit_repr(l, binary->lhs);
+            sb_push_cstr(&l->sb, "srem ");
+            llvm_type_emit(l, n->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, binary->lhs);
             sb_sprintf(&l->sb, ", ");
-            llvm_node_emit_repr(l, binary->rhs);
+            llvm_node_emit(l, binary->rhs);
             break;
 
         default:
@@ -203,7 +247,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
             break;
         }
 
-        llvm_debug_pos_compile(l, n->debug);
+        llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
     } break;
 
@@ -212,11 +256,13 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
-        llvm_node_emit_repr(l, n);
-        sb_push_cstr(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.iprint, i64 ");
-        llvm_node_emit_repr(l, print->value);
+        llvm_node_emit(l, n);
+        sb_push_cstr(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.iprint, ");
+        llvm_type_emit(l, print->value->type);
+        sb_push(&l->sb, ' ');
+        llvm_node_emit(l, print->value);
         sb_push(&l->sb, ')');
-        llvm_debug_pos_compile(l, n->debug);
+        llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
     } break;
 
@@ -237,7 +283,7 @@ void llvm_compile(LLVM *l) {
 
     {
         sb_push(&l->sb, '\n');
-        llvm_debug_file_compile(l, l->debug_file);
+        llvm_debug_file_emit(l, l->debug_file);
         sb_push(&l->sb, '\n');
 
         const size_t debug_version = l->iota_debug++;
@@ -319,21 +365,25 @@ void llvm_compile(LLVM *l) {
     }
 }
 
-LLVM_Node *llvm_atom_int(LLVM *l, size_t n) {
-    LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM);
+LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
+    return (LLVM_Type) {.kind = kind};
+}
+
+LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n) {
+    LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM, type);
     atom->as.integer = n;
     return (LLVM_Node *) atom;
 }
 
-LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Node *value) {
-    LLVM_Node_Unary *unary = (LLVM_Node_Unary *) llvm_node_build(l, LLVM_NODE_UNARY);
+LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
+    LLVM_Node_Unary *unary = (LLVM_Node_Unary *) llvm_node_build(l, LLVM_NODE_UNARY, type);
     unary->kind = kind;
     unary->value = value;
     return (LLVM_Node *) unary;
 }
 
-LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Node *lhs, LLVM_Node *rhs) {
-    LLVM_Node_Binary *binary = (LLVM_Node_Binary *) llvm_node_build(l, LLVM_NODE_BINARY);
+LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs) {
+    LLVM_Node_Binary *binary = (LLVM_Node_Binary *) llvm_node_build(l, LLVM_NODE_BINARY, type);
     binary->kind = kind;
     binary->lhs = lhs;
     binary->rhs = rhs;
@@ -341,7 +391,7 @@ LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Node *lhs, LLV
 }
 
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value) {
-    LLVM_Node_Print *print = (LLVM_Node_Print *) llvm_node_build(l, LLVM_NODE_PRINT);
+    LLVM_Node_Print *print = (LLVM_Node_Print *) llvm_node_build(l, LLVM_NODE_PRINT, llvm_type_basic(LLVM_TYPE_I0));
     print->value = value;
     return (LLVM_Node *) print;
 }

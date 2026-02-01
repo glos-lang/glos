@@ -1,3 +1,4 @@
+#include "checker.h"
 #include "compiler.h"
 #include "parser.h"
 
@@ -86,6 +87,7 @@ int main(int argc, char **argv) {
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
+    check_nodes(parser.nodes);
     Compiler compiler = {
         .cmd = &cmd,
         .llvm.arena = &arena,

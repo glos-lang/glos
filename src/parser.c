@@ -75,17 +75,19 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
 }
 
 static_assert(COUNT_AST_NODES == 4, "");
-static_assert(COUNT_TOKENS == 12, "");
+static_assert(COUNT_TOKENS == 14, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
 
     switch (token.kind) {
     case TOKEN_INT:
+    case TOKEN_BOOL:
         node = ast_node_alloc(p, AST_NODE_ATOM, token);
         break;
 
-    case TOKEN_SUB: {
+    case TOKEN_SUB:
+    case TOKEN_LNOT: {
         node = ast_node_alloc(p, AST_NODE_UNARY, token);
         AST_Node_Unary *unary = (AST_Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE);

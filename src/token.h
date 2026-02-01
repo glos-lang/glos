@@ -17,6 +17,7 @@ typedef enum {
     TOKEN_EOL,
 
     TOKEN_INT,
+    TOKEN_BOOL,
     TOKEN_IDENT,
 
     TOKEN_LPAREN,
@@ -27,6 +28,8 @@ typedef enum {
     TOKEN_MUL,
     TOKEN_DIV,
     TOKEN_MOD,
+
+    TOKEN_LNOT,
 
     TOKEN_PRINT,
     COUNT_TOKENS

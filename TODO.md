@@ -1,8 +1,8 @@
 # Phase 01 - Turing Complete
 - [X] Arithmetic expressions
-- [ ] Types
+- [X] Types
 - [ ] Block statement
-- [ ] Booleans
+- [X] Booleans
 - [ ] Arithmetic comparisons
 - [ ] Conditions
 - [ ] Global variables

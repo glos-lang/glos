@@ -13,7 +13,19 @@ typedef struct {
 } LLVM_Nodes;
 
 typedef enum {
+    LLVM_TYPE_I0,
+    LLVM_TYPE_I1,
+    LLVM_TYPE_I64,
+    COUNT_LLVM_TYPES,
+} LLVM_Type_Kind;
+
+typedef struct {
+    LLVM_Type_Kind kind;
+} LLVM_Type;
+
+typedef enum {
     LLVM_UNARY_NEG,
+    LLVM_UNARY_LNOT,
     COUNT_LLVM_UNARYS
 } LLVM_Unary_Kind;
 
@@ -42,10 +54,12 @@ typedef struct {
 void llvm_free(LLVM *l);
 void llvm_compile(LLVM *l);
 
-LLVM_Node *llvm_atom_int(LLVM *l, size_t n);
+LLVM_Type llvm_type_basic(LLVM_Type_Kind kind);
 
-LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Node *value);
-LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Node *lhs, LLVM_Node *rhs);
+LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n);
+
+LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
+LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);
 
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value);
 
