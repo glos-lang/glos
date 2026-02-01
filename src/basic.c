@@ -6,7 +6,6 @@
 #include <io.h>
 #else
 #include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
 
@@ -452,24 +451,4 @@ int cmd_wait(Proc proc) {
 
 int cmd_run_sync(Cmd *c, CmdStdio stdio) {
     return cmd_wait(cmd_run_async(c, stdio));
-}
-
-// Others
-double get_time(void) {
-#ifdef PLATFORM_X86_64_WINDOWS
-    static LARGE_INTEGER freq;
-    static int           initialized = 0;
-    if (!initialized) {
-        QueryPerformanceFrequency(&freq);
-        initialized = 1;
-    }
-
-    LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    return (double) counter.QuadPart / (double) freq.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double) ts.tv_sec + (double) ts.tv_nsec * 1e-9;
-#endif // PLATFORM_X86_64_WINDOWS
 }

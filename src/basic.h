@@ -167,7 +167,4 @@ Proc cmd_run_async(Cmd *c, CmdStdio stdio);
 int  cmd_run_sync(Cmd *c, CmdStdio stdio);
 int  cmd_wait(Proc proc);
 
-// Others
-double get_time(void);
-
 #endif // BASIC_H
