@@ -11,6 +11,8 @@
 #error "Unsupported platform"
 #endif
 
+#define PROFILE
+
 #ifdef PLATFORM_X86_64_WINDOWS
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
@@ -166,5 +168,8 @@ typedef int Proc;
 Proc cmd_run_async(Cmd *c, CmdStdio stdio);
 int  cmd_run_sync(Cmd *c, CmdStdio stdio);
 int  cmd_wait(Proc proc);
+
+// Others
+double get_time(void);
 
 #endif // BASIC_H

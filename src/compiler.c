@@ -125,11 +125,20 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     assert(c->cmd);
     assert(c->llvm.arena);
 
+#ifdef PROFILE
+    const double profile_generation_begin = get_time();
+#endif // PROFILE
+
     llvm_debug_set_file(&c->llvm, c->path);
     for (AST_Node *it = nodes.head; it; it = it->next) {
         compile_stmt(c, it);
     }
     llvm_compile(&c->llvm);
+
+#ifdef PROFILE
+    const double profile_generation_end = get_time();
+    printf("[PROFILE] LLVM assembly generation took %.7g seconds\n", profile_generation_end - profile_generation_begin);
+#endif // PROFILE
 
 #if 0
     fwrite(c->llvm.sb.data, c->llvm.sb.count, 1, stdout);
@@ -146,6 +155,10 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     cmd_push(c->cmd, "ir");
     cmd_push(c->cmd, "-");
 
+#ifdef PROFILE
+    const double profile_clang_begin = get_time();
+#endif // PROFILE
+
     FILE *f = NULL;
     Proc  proc = cmd_run_async(c->cmd, (CmdStdio) {.in = &f});
     if (f) {
@@ -159,4 +172,9 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         fprintf(stderr, "ERROR: Process 'clang' exited abnormally with code %d\n", code);
         exit(1);
     }
+
+#ifdef PROFILE
+    const double profile_clang_end = get_time();
+    printf("[PROFILE] Clang took %.7g seconds\n", profile_clang_end - profile_clang_begin);
+#endif // PROFILE
 }
