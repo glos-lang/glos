@@ -35,6 +35,8 @@ typedef enum {
     AST_NODE_UNARY,
     AST_NODE_BINARY,
 
+    AST_NODE_BLOCK,
+
     AST_NODE_PRINT,
     COUNT_AST_NODES
 } AST_Node_Kind;
@@ -62,6 +64,11 @@ typedef struct {
     AST_Node *lhs;
     AST_Node *rhs;
 } AST_Node_Binary;
+
+typedef struct {
+    AST_Node  node;
+    AST_Nodes body;
+} AST_Node_Block;
 
 typedef struct {
     AST_Node  node;

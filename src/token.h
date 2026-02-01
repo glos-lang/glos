@@ -22,6 +22,8 @@ typedef enum {
 
     TOKEN_LPAREN,
     TOKEN_RPAREN,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
 
     TOKEN_ADD,
     TOKEN_SUB,

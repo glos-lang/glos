@@ -49,6 +49,7 @@ bool ast_type_is_numeric(AST_Type type) {
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
+static_assert(COUNT_AST_NODES == 5, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -61,7 +62,7 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
 
     switch (n->kind) {
     case AST_NODE_ATOM:
-        fprintf(f, "Atom '" SV_Fmt "'\n", SV_Arg(n->token.sv));
+        fprintf(f, "Atom " SV_Fmt "\n", SV_Arg(n->token.sv));
         break;
 
     case AST_NODE_UNARY: {
@@ -79,6 +80,15 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
+    case AST_NODE_BLOCK: {
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        fprintf(f, "Block {\n");
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            ast_node_debug_impl(f, it, depth + 1, NULL);
+        }
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         fprintf(f, "Print {\n");
@@ -86,12 +96,11 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
-    case COUNT_AST_NODES:
+    default:
         unreachable();
     }
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
 void ast_node_debug(FILE *f, AST_Node *n) {
     ast_node_debug_impl(f, n, 0, NULL);
 }

@@ -57,7 +57,7 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static void check_expr(AST_Node *n) {
     if (!n) {
         return;
@@ -65,7 +65,7 @@ static void check_expr(AST_Node *n) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -84,7 +84,7 @@ static void check_expr(AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_expr(unary->value);
 
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -104,7 +104,7 @@ static void check_expr(AST_Node *n) {
         check_expr(binary->lhs);
         check_expr(binary->rhs);
 
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -125,13 +125,20 @@ static void check_expr(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static void check_stmt(AST_Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case AST_NODE_BLOCK: {
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            check_stmt(it);
+        }
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         check_expr(print->value);

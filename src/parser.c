@@ -24,8 +24,13 @@ static Power token_kind_to_power(Token_Kind kind) {
 }
 
 static void error_unexpected(Token token) {
-    fprintf(stderr, Pos_Fmt "ERROR: Unexpected %s", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
+    fprintf(stderr, Pos_Fmt "ERROR: Unexpected %s\n", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
     exit(1);
+}
+
+static void buffer_token(Parser *p, Token token) {
+    p->peeked = true;
+    p->ahead = token;
 }
 
 static Token next_token(Parser *p) {
@@ -42,8 +47,7 @@ static Token peek_token(Parser *p) {
         return p->ahead;
     }
 
-    p->peeked = true;
-    p->ahead = lexer_iter(&p->lexer);
+    buffer_token(p, lexer_iter(&p->lexer));
     return p->ahead;
 }
 
@@ -57,12 +61,14 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
         [AST_NODE_UNARY] = sizeof(AST_Node_Unary),
         [AST_NODE_BINARY] = sizeof(AST_Node_Binary),
+
+        [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
 
         [AST_NODE_PRINT] = sizeof(AST_Node_Print),
     };
@@ -74,8 +80,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     return node;
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
-static_assert(COUNT_TOKENS == 14, "");
+static_assert(COUNT_TOKENS == 16, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -118,12 +123,20 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
     return node;
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
 
     Token token = next_token(p);
     switch (token.kind) {
+    case TOKEN_LBRACE: {
+        node = ast_node_alloc(p, AST_NODE_BLOCK, token);
+        AST_Node_Block *block = (AST_Node_Block *) node;
+        while (!read_token(p, TOKEN_RBRACE)) {
+            ast_nodes_push(&block->body, parse_stmt(p));
+        }
+    } break;
+
     case TOKEN_PRINT: {
         node = ast_node_alloc(p, AST_NODE_PRINT, token);
         AST_Node_Print *print = (AST_Node_Print *) node;
@@ -131,6 +144,7 @@ static AST_Node *parse_stmt(Parser *p) {
     } break;
 
     default:
+        buffer_token(p, token);
         node = parse_expr(p, POWER_NIL);
         break;
     }

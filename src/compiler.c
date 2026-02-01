@@ -25,7 +25,7 @@ static void compile_type(AST_Type *type) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return NULL;
@@ -36,7 +36,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     compile_type(&n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
     } break;
 
@@ -44,7 +44,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -62,7 +62,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         LLVM_Node       *lhs = compile_expr(c, binary->lhs);
         LLVM_Node       *rhs = compile_expr(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 14, "");
+        static_assert(COUNT_TOKENS == 16, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_ADD, n->type.llvm, lhs, rhs));
@@ -95,13 +95,20 @@ defer:
     return result;
 }
 
-static_assert(COUNT_AST_NODES == 4, "");
+static_assert(COUNT_AST_NODES == 5, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case AST_NODE_BLOCK: {
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            compile_stmt(c, it);
+        }
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         LLVM_Node      *value = compile_expr(c, print->value);
