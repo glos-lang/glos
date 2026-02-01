@@ -1,8 +1,8 @@
 #include "basic.h"
+#include <fcntl.h>
 #include <stdarg.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
-#include <fcntl.h>
 #include <io.h>
 #else
 #include <sys/wait.h>
@@ -322,9 +322,13 @@ Proc cmd_run_async(Cmd *c, CmdStdio stdio) {
 
     return piProcInfo.hProcess;
 #else
-    int in[2] = {-1, -1};
-    int out[2] = {-1, -1};
-    int err[2] = {-1, -1};
+    int in[2] = {0};
+    int out[2] = {0};
+    int err[2] = {0};
+    int fail[2] = {0};
+    if (pipe(fail) < 0 || fcntl(fail[1], F_SETFD, FD_CLOEXEC) < 0) {
+        return PROC_INVALID;
+    }
 
     if (stdio.in && pipe(in) < 0) {
         return PROC_INVALID;
@@ -363,11 +367,25 @@ Proc cmd_run_async(Cmd *c, CmdStdio stdio) {
         }
 
         da_push(c, NULL);
+
+        close(fail[0]);
         execvp(*c->data, (char *const *) c->data);
+        write(fail[1], "E", 1);
+        close(fail[1]);
         exit(127);
     }
 
     c->count = 0;
+
+    close(fail[1]);
+    char       buffer[1];
+    const long count = read(fail[0], buffer, sizeof(buffer));
+    close(fail[0]);
+
+    if (count > 0) {
+        waitpid(proc, NULL, 0); // Wait for the child to kill itself so it doesn't become a zombie
+        return PROC_INVALID;
+    }
 
     if (stdio.in) {
         close(in[0]);

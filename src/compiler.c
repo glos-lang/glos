@@ -148,6 +148,11 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
 
     FILE *f = NULL;
     Proc  proc = cmd_run_async(c->cmd, (CmdStdio) {.in = &f});
+    if (proc == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not start process 'clang'\n");
+        exit(1);
+    }
+
     if (f) {
         fwrite(c->llvm.sb.data, sizeof(char), c->llvm.sb.count, f);
         fclose(f);
