@@ -11,8 +11,6 @@
 #error "Unsupported platform"
 #endif
 
-#define PROFILE
-
 #ifdef PLATFORM_X86_64_WINDOWS
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN

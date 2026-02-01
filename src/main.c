@@ -73,19 +73,10 @@ int main(int argc, char **argv) {
 
     Parser parser = {.arena = &arena};
 
-#ifdef PROFILE
-    const double profile_parse_begin = get_time();
-#endif // PROFILE
-
     if (!parse_file(&parser, input)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
         exit(1);
     }
-
-#ifdef PROFILE
-    const double profile_parse_end = get_time();
-    printf("[PROFILE] Parsing took %.7g seconds\n", profile_parse_end - profile_parse_begin);
-#endif // PROFILE
 
     if (!output) {
         output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
@@ -97,16 +88,7 @@ int main(int argc, char **argv) {
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-#ifdef PROFILE
-    const double profile_check_begin = get_time();
-#endif // PROFILE
-
     check_nodes(parser.nodes);
-
-#ifdef PROFILE
-    const double profile_check_end = get_time();
-    printf("[PROFILE] Checking took %.7g seconds\n", profile_check_end - profile_check_begin);
-#endif // PROFILE
 
     Compiler compiler = {
         .cmd = &cmd,
@@ -119,18 +101,7 @@ int main(int argc, char **argv) {
         cmd.count = 0;
         cmd_push(&cmd, temp_sprintf("./%s", output));
         cmd_push_many(&cmd, argv, argc);
-
-#ifdef PROFILE
-        const double profile_run_begin = get_time();
-#endif // PROFILE
-
         result = cmd_run_sync(&cmd, (CmdStdio) {0});
-
-#ifdef PROFILE
-        const double profile_run_end = get_time();
-        printf("[PROFILE] Running executable took %.7g seconds\n", profile_run_end - profile_run_begin);
-#endif // PROFILE
-
         delete_file(output);
     }
 
