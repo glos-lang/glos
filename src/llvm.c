@@ -254,12 +254,22 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
 
+        if (print->value->type.kind != LLVM_TYPE_I64) {
+            sb_push_cstr(&l->sb, "  ");
+            n->iota = ++l->iota_local;
+            llvm_node_emit(l, n);
+            sb_push_cstr(&l->sb, " = zext ");
+            llvm_type_emit(l, print->value->type);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, print->value);
+            sb_push_cstr(&l->sb, " to i64\n");
+            print->value->iota = n->iota;
+        }
+
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
         llvm_node_emit(l, n);
-        sb_push_cstr(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.iprint, ");
-        llvm_type_emit(l, print->value->type);
-        sb_push(&l->sb, ' ');
+        sb_push_cstr(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.iprint, i64 ");
         llvm_node_emit(l, print->value);
         sb_push(&l->sb, ')');
         llvm_debug_pos_emit(l, n->debug);
