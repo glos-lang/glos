@@ -45,7 +45,7 @@ static bool build_glos(size_t nprocs) {
 
     size_t headers_time = 0;
     for (size_t i = 0; i < len(headers); i++) {
-        const size_t time = get_modified_time(headers[i]);
+        const size_t time = get_path_modified_time(headers[i]);
         headers_time = max(headers_time, time);
     }
 
@@ -53,8 +53,8 @@ static bool build_glos(size_t nprocs) {
     for (size_t i = 0; i < len(sources); i++) {
         const char  *src = sources[i];
         const char  *obj = replace_extension(src, ".c", OBJ_FILE_EXTENSION);
-        const size_t src_time = get_modified_time(src);
-        const size_t obj_time = get_modified_time(obj);
+        const size_t src_time = get_path_modified_time(src);
+        const size_t obj_time = get_path_modified_time(obj);
         if (obj_time >= src_time && obj_time >= headers_time) {
             continue;
         }

@@ -122,6 +122,7 @@ void arena_free(Arena *a) {
         free(it);
         it = next;
     }
+    sb_free(&a->sb);
     memset(a, 0, sizeof(*a));
 }
 
@@ -156,46 +157,66 @@ void *arena_alloc(Arena *a, size_t size) {
     return ptr;
 }
 
+void *arena_clone(Arena *a, const void *data, size_t size) {
+    return memcpy(arena_alloc(a, size), data, size);
+}
+
 // FS
-bool read_file(const char *path, SV *out, Arena *arena) {
-    char *data = NULL;
-    bool  result = true;
+bool read_file(FILE *f, SV *out, Arena *arena) {
+    bool         result = true;
+    const size_t start = arena->sb.count;
+
+    if (!f) {
+        return_defer(false);
+    }
+
+    while (true) {
+#define CHUNK_SIZE 4096
+        sb_grow(&arena->sb, CHUNK_SIZE);
+        const size_t n = fread(arena->sb.data + arena->sb.count, sizeof(*arena->sb.data), CHUNK_SIZE, f);
+        arena->sb.count += n;
+
+        if (n < CHUNK_SIZE) {
+            if (feof(f)) {
+                break;
+            }
+
+            if (ferror(f)) {
+                return_defer(false);
+            }
+        }
+#undef CHUNK_SIZE
+    }
+
+    out->count = arena->sb.count - start;
+    out->data = arena_clone(arena, arena->sb.data + start, out->count);
+
+defer:
+    arena->sb.count = start;
+    return result;
+}
+
+bool read_file_path(const char *path, SV *out, Arena *arena) {
+    bool result = true;
 
     FILE *f = fopen(path, "r");
     if (!f) {
         return_defer(false);
     }
 
-    if (fseek(f, 0, SEEK_END)) {
+    if (!read_file(f, out, arena)) {
         return_defer(false);
     }
-
-    const long count = ftell(f);
-    if (count < 0) {
-        return_defer(false);
-    }
-    rewind(f);
-
-    data = arena_alloc(arena, count + 1);
-    const size_t bytes = fread(data, 1, count, f);
-    data[bytes] = '\0';
-
-    out->data = data;
-    out->count = bytes;
 
 defer:
     if (f) {
         fclose(f);
     }
 
-    if (!result) {
-        free(data);
-    }
-
     return result;
 }
 
-bool delete_file(const char *path) {
+bool delete_file_path(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     return DeleteFileA(path);
 #else
@@ -203,7 +224,7 @@ bool delete_file(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-size_t get_modified_time(const char *path) {
+size_t get_path_modified_time(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     WIN32_FILE_ATTRIBUTE_DATA data;
     if (!GetFileAttributesExA(path, GetFileExInfoStandard, &data)) {

@@ -135,16 +135,19 @@ char *temp_sv_to_cstr(SV sv);
 typedef struct Arena_Region Arena_Region;
 
 typedef struct {
+    SB            sb;
     Arena_Region *head;
 } Arena;
 
 void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
+void *arena_clone(Arena *a, const void *data, size_t size);
 
 // FS
-bool   read_file(const char *path, SV *out, Arena *arena);
-bool   delete_file(const char *path);
-size_t get_modified_time(const char *path);
+bool   read_file(FILE *f, SV *out, Arena *arena);
+bool   read_file_path(const char *path, SV *out, Arena *arena);
+bool   delete_file_path(const char *path);
+size_t get_path_modified_time(const char *path);
 
 // Processes
 typedef Dynamic_Array(const char *) Cmd;

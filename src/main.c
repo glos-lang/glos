@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
         cmd_push(&cmd, temp_sprintf("./%s", output));
         cmd_push_many(&cmd, argv, argc);
         result = cmd_run_sync(&cmd, (Cmd_Stdio) {0});
-        delete_file(output);
+        delete_file_path(output);
     }
 
     arena_free(&arena);
