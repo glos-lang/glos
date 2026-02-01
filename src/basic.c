@@ -5,6 +5,7 @@
 #ifdef PLATFORM_X86_64_WINDOWS
 #include <io.h>
 #else
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
@@ -202,8 +203,30 @@ bool delete_file(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
+size_t get_modified_time(const char *path) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &data)) {
+        return 0;
+    }
+
+    ULARGE_INTEGER ft;
+    ft.LowPart = data.ftLastWriteTime.dwLowDateTime;
+    ft.HighPart = data.ftLastWriteTime.dwHighDateTime;
+    return ft.QuadPart;
+
+#else
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        return 0;
+    }
+
+    return st.st_mtime;
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
 // Processes
-Proc cmd_run_async(Cmd *c, CmdStdio stdio) {
+Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 #ifdef PLATFORM_X86_64_WINDOWS
     STARTUPINFOA siStartInfo;
     ZeroMemory(&siStartInfo, sizeof(siStartInfo));
@@ -449,6 +472,32 @@ int cmd_wait(Proc proc) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-int cmd_run_sync(Cmd *c, CmdStdio stdio) {
+int cmd_run_sync(Cmd *c, Cmd_Stdio stdio) {
     return cmd_wait(cmd_run_async(c, stdio));
+}
+
+bool procs_push(Procs *ps, Proc p, size_t nprocs) {
+    if (p == PROC_INVALID) {
+        return false;
+    }
+
+    if (ps->count < nprocs) {
+        da_push(ps, p);
+        return true;
+    }
+
+    return procs_flush(ps);
+}
+
+bool procs_flush(Procs *ps) {
+    bool ok = true;
+    for (size_t i = 0; i < ps->count; i++) {
+        const int code = cmd_wait(ps->data[i]);
+        if (code != 0) {
+            ok = false;
+        }
+    }
+
+    ps->count = 0;
+    return ok;
 }

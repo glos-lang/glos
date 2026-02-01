@@ -3,13 +3,13 @@
 > This repo is WIP.
 
 ## Quick Start
-```console
-$ clang -o glos src/*.c
-$ ./glos -r sample.glos
-```
+Install `clang`
 
-## Dependencies
-The compiler depends on the `clang` executable.
+```console
+$ clang -o first first.c     # On Linux/macOS
+$ clang -o first.exe first.c # On Windows
+$ ./first
+```
 
 ## Platforms supported
 - x86_64 Linux

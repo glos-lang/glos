@@ -19,17 +19,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: clang -o glos src/*.c
-
-      - name: Build (macOS)
-        if: matrix.os == 'macos-latest'
-        run: clang -o glos src/*.c
-
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        run: clang -o glos.exe src/*.c
+      - name: Build
+        run: |
+          clang -o first.exe first.c
+          ./first.exe
 
       - name: Tests (Linux)
         if: matrix.os == 'ubuntu-latest'

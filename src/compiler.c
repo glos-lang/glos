@@ -147,7 +147,7 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     cmd_push(c->cmd, "-");
 
     FILE *f = NULL;
-    Proc  proc = cmd_run_async(c->cmd, (CmdStdio) {.in = &f});
+    Proc  proc = cmd_run_async(c->cmd, (Cmd_Stdio) {.in = &f});
     if (proc == PROC_INVALID) {
         fprintf(stderr, "ERROR: Could not start process 'clang'\n");
         exit(1);

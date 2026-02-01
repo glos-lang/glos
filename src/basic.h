@@ -1,6 +1,7 @@
 #ifndef BASIC_H
 #define BASIC_H
 
+// Platforms
 #if defined(__x86_64__) && defined(__linux__)
 #define PLATFORM_X86_64_LINUX
 #elif defined(__x86_64__) && defined(_WIN64)
@@ -15,6 +16,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
 #endif // PLATFORM_X86_64_WINDOWS
 
 #include <assert.h>
@@ -28,8 +32,8 @@
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
 
-#define panic(...)    (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
-#define PrintfLike(n) __attribute__((format(printf, (n), (n) + 1)))
+#define panic(...)     (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+#define Printf_Like(n) __attribute__((format(printf, (n), (n) + 1)))
 
 #ifdef unreachable
 #undef unreachable
@@ -47,7 +51,7 @@
 // Dynamic Array
 #define DA_INIT_CAP 128
 
-#define DynamicArray(T)                                                                                                \
+#define Dynamic_Array(T)                                                                                               \
     struct {                                                                                                           \
         T     *data;                                                                                                   \
         size_t count;                                                                                                  \
@@ -111,20 +115,20 @@ bool sv_has_suffix(SV a, SV b);
 bool sv_find(SV s, char ch, size_t *index);
 
 // String Builder
-typedef DynamicArray(char) SB;
+typedef Dynamic_Array(char) SB;
 
 #define sb_free      da_free
 #define sb_grow      da_grow
 #define sb_push      da_push
 #define sb_push_many da_push_many
 
-void sb_sprintf(SB *sb, const char *fmt, ...) PrintfLike(2);
+void sb_sprintf(SB *sb, const char *fmt, ...) Printf_Like(2);
 void sb_push_cstr(SB *sb, const char *cstr);
 
 // Temporary Allocator
 void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
-char *temp_sprintf(const char *fmt, ...) PrintfLike(1);
+char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
 char *temp_sv_to_cstr(SV sv);
 
 // Arena Allocator
@@ -138,11 +142,12 @@ void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
 
 // FS
-bool read_file(const char *path, SV *out, Arena *arena);
-bool delete_file(const char *path);
+bool   read_file(const char *path, SV *out, Arena *arena);
+bool   delete_file(const char *path);
+size_t get_modified_time(const char *path);
 
 // Processes
-typedef DynamicArray(const char *) Cmd;
+typedef Dynamic_Array(const char *) Cmd;
 
 #define cmd_free      da_free
 #define cmd_grow      da_grow
@@ -153,7 +158,7 @@ typedef struct {
     FILE **in;
     FILE **out;
     FILE **err;
-} CmdStdio;
+} Cmd_Stdio;
 
 #ifdef PLATFORM_X86_64_WINDOWS
 typedef HANDLE Proc;
@@ -163,8 +168,12 @@ typedef int Proc;
 #define PROC_INVALID -1
 #endif // PLATFORM_X86_64_WINDOWS
 
-Proc cmd_run_async(Cmd *c, CmdStdio stdio);
-int  cmd_run_sync(Cmd *c, CmdStdio stdio);
+Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio);
+int  cmd_run_sync(Cmd *c, Cmd_Stdio stdio);
 int  cmd_wait(Proc proc);
+
+typedef Dynamic_Array(Proc) Procs;
+bool procs_push(Procs *ps, Proc p, size_t nprocs);
+bool procs_flush(Procs *ps);
 
 #endif // BASIC_H
