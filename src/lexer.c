@@ -3,7 +3,7 @@
 #include <errno.h>
 
 bool lexer_open(Lexer *l, const char *path, Arena *arena) {
-    if (!read_file_path(path, &l->sv, arena)) {
+    if (!read_file_into_arena(path, &l->sv, arena)) {
         return false;
     }
 

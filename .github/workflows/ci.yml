@@ -24,14 +24,6 @@ jobs:
           clang -o first.exe first.c
           ./first.exe
 
-      - name: Tests (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: ./glos -r sample.glos
-
-      - name: Tests (macOS)
-        if: matrix.os == 'macos-latest'
-        run: ./glos -r sample.glos
-
-      - name: Tests (Windows)
-        if: matrix.os == 'windows-latest'
-        run: ./glos.exe -r sample.glos
+      - name: Tests
+        run: |
+          ./first.exe -T

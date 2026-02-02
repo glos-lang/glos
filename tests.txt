@@ -1,0 +1,2 @@
+tests/integers.glos
+tests/booleans.glos

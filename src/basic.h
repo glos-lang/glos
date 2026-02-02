@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,9 +111,14 @@ typedef struct {
 SV sv_from_cstr(const char *cstr);
 SV sv_strip_suffix(SV a, SV b);
 
+bool sv_eq(SV a, SV b);
 bool sv_match(SV a, const char *b);
 bool sv_has_suffix(SV a, SV b);
 bool sv_find(SV s, char ch, size_t *index);
+
+SV sv_trim(SV s, char ch);
+SV sv_drop(SV *s, size_t count);
+SV sv_split(SV *s, char ch);
 
 // String Builder
 typedef Dynamic_Array(char) SB;
@@ -141,13 +147,18 @@ typedef struct {
 
 void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
+void  arena_reset(Arena *a, const void *ptr);
 void *arena_clone(Arena *a, const void *data, size_t size);
 
 // FS
-bool   read_file(FILE *f, SV *out, Arena *arena);
-bool   read_file_path(const char *path, SV *out, Arena *arena);
-bool   delete_file_path(const char *path);
-size_t get_path_modified_time(const char *path);
+bool read_fp(FILE *f, SV *out, SB *sb);
+bool read_fp_into_arena(FILE *f, SV *out, Arena *arena);
+
+bool read_file(const char *path, SV *out, SB *sb);
+bool read_file_into_arena(const char *path, SV *out, Arena *arena);
+
+bool   delete_file(const char *path);
+size_t get_modified_time(const char *path);
 
 // Processes
 typedef Dynamic_Array(const char *) Cmd;
@@ -175,8 +186,14 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio);
 int  cmd_run_sync(Cmd *c, Cmd_Stdio stdio);
 int  cmd_wait(Proc proc);
 
-typedef Dynamic_Array(Proc) Procs;
-bool procs_push(Procs *ps, Proc p, size_t nprocs);
+typedef struct {
+    Proc  *data;
+    size_t count;
+    size_t capacity;
+    size_t nprocs;
+} Procs;
+
+bool procs_push(Procs *ps, Proc p);
 bool procs_flush(Procs *ps);
 
 #endif // BASIC_H

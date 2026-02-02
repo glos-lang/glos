@@ -22,6 +22,10 @@ SV sv_strip_suffix(SV a, SV b) {
     return a;
 }
 
+bool sv_eq(SV a, SV b) {
+    return a.count == b.count && memcmp(a.data, b.data, b.count) == 0;
+}
+
 bool sv_match(SV a, const char *b) {
     return a.count == strlen(b) && memcmp(b, a.data, a.count) == 0;
 }
@@ -44,6 +48,41 @@ bool sv_find(SV s, char ch, size_t *index) {
         *index = p - s.data;
     }
     return true;
+}
+
+SV sv_trim(SV s, char ch) {
+    while (s.count && *s.data == ch) {
+        s.data++;
+        s.count--;
+    }
+
+    while (s.count && s.data[s.count - 1] == ch) {
+        s.count--;
+    }
+
+    return s;
+}
+
+SV sv_drop(SV *s, size_t count) {
+    const SV result = (SV) {.data = s->data, .count = count};
+    s->data += count;
+    s->count -= count;
+    return result;
+}
+
+SV sv_split(SV *s, char ch) {
+    const char *p = memchr(s->data, ch, s->count);
+    if (!p) {
+        const SV result = *s;
+        s->data += s->count;
+        s->count = 0;
+        return result;
+    }
+
+    const SV result = (SV) {.data = s->data, .count = p - s->data};
+    s->data = p + 1;
+    s->count -= result.count + 1;
+    return result;
 }
 
 // String Builder
@@ -157,14 +196,31 @@ void *arena_alloc(Arena *a, size_t size) {
     return ptr;
 }
 
+void arena_reset(Arena *a, const void *ptr) {
+    for (Arena_Region *it = a->head; it; it = it->next) {
+        if ((const char *) ptr >= it->data && (const char *) ptr <= it->data + it->capacity) {
+            it->count = (const char *) ptr - it->data;
+            for (Arena_Region *p = a->head; p != it;) {
+                Arena_Region *next = p->next;
+                free(p);
+                p = next;
+            }
+            a->head = it;
+            return;
+        }
+    }
+
+    unreachable();
+}
+
 void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
 }
 
 // FS
-bool read_file(FILE *f, SV *out, Arena *arena) {
+bool read_fp(FILE *f, SV *out, SB *sb) {
     bool         result = true;
-    const size_t start = arena->sb.count;
+    const size_t start = sb->count;
 
     if (!f) {
         return_defer(false);
@@ -172,9 +228,9 @@ bool read_file(FILE *f, SV *out, Arena *arena) {
 
     while (true) {
 #define CHUNK_SIZE 4096
-        sb_grow(&arena->sb, CHUNK_SIZE);
-        const size_t n = fread(arena->sb.data + arena->sb.count, sizeof(*arena->sb.data), CHUNK_SIZE, f);
-        arena->sb.count += n;
+        sb_grow(sb, CHUNK_SIZE);
+        const size_t n = fread(sb->data + sb->count, sizeof(*sb->data), CHUNK_SIZE, f);
+        sb->count += n;
 
         if (n < CHUNK_SIZE) {
             if (feof(f)) {
@@ -188,15 +244,39 @@ bool read_file(FILE *f, SV *out, Arena *arena) {
 #undef CHUNK_SIZE
     }
 
-    out->count = arena->sb.count - start;
-    out->data = arena_clone(arena, arena->sb.data + start, out->count);
+#ifdef PLATFORM_X86_64_WINDOWS
+    size_t j = start;
+    for (size_t i = start; i < sb->count; i++) {
+        char it = sb->data[i];
+        if (it == '\r' && i + 1 < sb->count && sb->data[i + 1] == '\n') {
+            it = sb->data[++i];
+        }
+        sb->data[j++] = it;
+    }
+    sb->count = j;
+#endif // PLATFORM_X86_64_WINDOWS
+
+    out->data = sb->data + start;
+    out->count = sb->count - start;
 
 defer:
-    arena->sb.count = start;
+    if (!result) {
+        sb->count = start;
+    }
     return result;
 }
 
-bool read_file_path(const char *path, SV *out, Arena *arena) {
+bool read_fp_into_arena(FILE *f, SV *out, Arena *arena) {
+    if (!read_fp(f, out, &arena->sb)) {
+        return false;
+    }
+
+    out->data = arena_clone(arena, out->data, out->count);
+    arena->sb.count -= out->count;
+    return true;
+}
+
+bool read_file(const char *path, SV *out, SB *sb) {
     bool result = true;
 
     FILE *f = fopen(path, "r");
@@ -204,7 +284,7 @@ bool read_file_path(const char *path, SV *out, Arena *arena) {
         return_defer(false);
     }
 
-    if (!read_file(f, out, arena)) {
+    if (!read_fp(f, out, sb)) {
         return_defer(false);
     }
 
@@ -216,7 +296,17 @@ defer:
     return result;
 }
 
-bool delete_file_path(const char *path) {
+bool read_file_into_arena(const char *path, SV *out, Arena *arena) {
+    if (!read_file(path, out, &arena->sb)) {
+        return false;
+    }
+
+    out->data = arena_clone(arena, out->data, out->count);
+    arena->sb.count -= out->count;
+    return true;
+}
+
+bool delete_file(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     return DeleteFileA(path);
 #else
@@ -224,7 +314,7 @@ bool delete_file_path(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-size_t get_path_modified_time(const char *path) {
+size_t get_modified_time(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     WIN32_FILE_ATTRIBUTE_DATA data;
     if (!GetFileAttributesExA(path, GetFileExInfoStandard, &data)) {
@@ -497,13 +587,13 @@ int cmd_run_sync(Cmd *c, Cmd_Stdio stdio) {
     return cmd_wait(cmd_run_async(c, stdio));
 }
 
-bool procs_push(Procs *ps, Proc p, size_t nprocs) {
+bool procs_push(Procs *ps, Proc p) {
     if (p == PROC_INVALID) {
         return false;
     }
 
-    if (ps->count < nprocs) {
-        da_push(ps, p);
+    da_push(ps, p);
+    if (ps->count <= ps->nprocs) {
         return true;
     }
 
