@@ -1,3 +1,6 @@
 /glos
 /glos.exe
+/first
+/first.exe
 *.o
+*.obj

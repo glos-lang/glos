@@ -3,13 +3,19 @@
 > This repo is WIP.
 
 ## Quick Start
+Install `clang`
+
 ```console
-$ clang -o glos src/*.c
-$ ./glos -r sample.glos
+$ clang -o first first.c     # On Linux/macOS
+$ clang -o first.exe first.c # On Windows
+$ ./first
 ```
 
-## Dependencies
-The compiler depends on the `clang` executable.
+## Tests
+```console
+$ ./first -t # Interactive mode
+$ ./first -T # Non-interactive mode
+```
 
 ## Platforms supported
 - x86_64 Linux

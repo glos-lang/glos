@@ -1,4 +1,0 @@
-{
-    print 17 * 2 + 35
-    print !false
-}
