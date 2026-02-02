@@ -72,7 +72,7 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         headers_time = max(headers_time, time);
     }
 
-    bool built_objects = false;
+    bool need_linking = get_modified_time("glos" EXE_FILE_EXTENSION) == 0;
     for (size_t i = 0; i < len(sources); i++) {
         const char  *src = sources[i];
         const char  *obj = replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
@@ -83,7 +83,7 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         }
 
         fprintf(stderr, "Building '%s'\n", obj);
-        built_objects = true;
+        need_linking = true;
 
         da_push(cmd, "clang");
         da_push(cmd, "-ggdb");
@@ -109,7 +109,7 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         return_defer(false);
     }
 
-    if (!built_objects) {
+    if (!need_linking) {
         return_defer(true);
     }
 
@@ -328,7 +328,7 @@ typedef struct {
 typedef Dynamic_Array(Test) Tests;
 
 static void test_prepare_cmd(Test test, Cmd *cmd) {
-    da_push(cmd, "./glos");
+    da_push(cmd, "./glos" EXE_FILE_EXTENSION);
     da_push(cmd, "-r");
     da_push(cmd, test.name);
 }
@@ -341,18 +341,25 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
         Test_Info actual = {0};
         actual.exit = cmd_wait(it->proc);
 
-        if (!read_fp_into_arena(it->pout, &actual.out, arena)) {
-            fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it->name);
-            exit(1);
+        if (it->pout) {
+            if (!read_fp_into_arena(it->pout, &actual.out, arena)) {
+                fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it->name);
+                exit(1);
+            }
+            fclose(it->pout);
+        } else {
+            actual.out = (SV) {0};
         }
 
-        if (!read_fp_into_arena(it->perr, &actual.err, arena)) {
-            fprintf(stderr, "ERROR: Could not read standard error of test case '%s'\n", it->name);
-            exit(1);
+        if (it->perr) {
+            if (!read_fp_into_arena(it->perr, &actual.err, arena)) {
+                fprintf(stderr, "ERROR: Could not read standard error of test case '%s'\n", it->name);
+                exit(1);
+            }
+            fclose(it->perr);
+        } else {
+            actual.err = (SV) {0};
         }
-
-        fclose(it->pout);
-        fclose(it->perr);
 
         bool need_to_record = false;
         if (it->record_exists) {
@@ -380,7 +387,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
 
                     fprintf(stderr, "Replaying '%s'\n", it->name);
                     test_prepare_cmd(*it, cmd);
-                    it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, &it->perr});
+                    it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, .err = &it->perr});
                     continue;
                 }
             }

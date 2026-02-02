@@ -244,7 +244,6 @@ bool read_fp(FILE *f, SV *out, SB *sb) {
 #undef CHUNK_SIZE
     }
 
-#ifdef PLATFORM_X86_64_WINDOWS
     size_t j = start;
     for (size_t i = start; i < sb->count; i++) {
         char it = sb->data[i];
@@ -254,7 +253,6 @@ bool read_fp(FILE *f, SV *out, SB *sb) {
         sb->data[j++] = it;
     }
     sb->count = j;
-#endif // PLATFORM_X86_64_WINDOWS
 
     out->data = sb->data + start;
     out->count = sb->count - start;
