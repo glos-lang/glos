@@ -333,7 +333,7 @@ static void test_prepare_cmd(Test test, Cmd *cmd) {
     da_push(cmd, test.name);
 }
 
-static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, const void *arena_save) {
+static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, const void *arena_save) {
     size_t i = 0;
     while (i < tests->count) {
         Test *it = &tests->data[i];
@@ -372,10 +372,11 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
                     "Record",
                     "Skip",
                     "Rerun",
+                    "Quit",
                 };
 
                 fprintf(stderr, "\nWhat to do for test case '%s'", it->name);
-                const char choice = single_char_prompt(stdin, stderr, "ynr", descriptions);
+                const char choice = single_char_prompt(stdin, stderr, "ynrq", descriptions);
                 if (choice == 'y') {
                     need_to_record = true;
                 } else if (choice == 'r') {
@@ -389,6 +390,8 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
                     test_prepare_cmd(*it, cmd);
                     it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, .err = &it->perr});
                     continue;
+                } else if (choice == 'q') {
+                    return false;
                 }
             }
         } else {
@@ -420,6 +423,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
 
     tests->count = 0;
     arena_reset(arena, arena_save);
+    return true;
 }
 
 static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
@@ -483,7 +487,9 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
             }
         }
 
-        tests_flush(&tests, cmd, interactive, &arena, arena_save);
+        if (!tests_flush(&tests, cmd, interactive, &arena, arena_save)) {
+            return_defer(true);
+        }
     }
 
     tests_flush(&tests, cmd, interactive, &arena, arena_save);
