@@ -2,11 +2,13 @@
 
 typedef enum {
     POWER_NIL,
+    POWER_CMP,
     POWER_ADD,
     POWER_MUL,
     POWER_PRE
 } Power;
 
+static_assert(COUNT_TOKENS == 22, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -17,6 +19,14 @@ static Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_DIV:
     case TOKEN_MOD:
         return POWER_MUL;
+
+    case TOKEN_GT:
+    case TOKEN_GE:
+    case TOKEN_LT:
+    case TOKEN_LE:
+    case TOKEN_EQ:
+    case TOKEN_NE:
+        return POWER_CMP;
 
     default:
         return POWER_NIL;
@@ -80,7 +90,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     return node;
 }
 
-static_assert(COUNT_TOKENS == 16, "");
+static_assert(COUNT_TOKENS == 22, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);

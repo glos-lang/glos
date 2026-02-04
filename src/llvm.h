@@ -24,17 +24,28 @@ typedef struct {
 } LLVM_Type;
 
 typedef enum {
+    LLVM_UNARY_NOP,
     LLVM_UNARY_NEG,
     LLVM_UNARY_LNOT,
     COUNT_LLVM_UNARYS
 } LLVM_Unary_Kind;
 
 typedef enum {
+    LLVM_BINARY_NOP,
+
     LLVM_BINARY_ADD,
     LLVM_BINARY_SUB,
     LLVM_BINARY_MUL,
     LLVM_BINARY_DIV,
     LLVM_BINARY_MOD,
+
+    LLVM_BINARY_GT,
+    LLVM_BINARY_GE,
+    LLVM_BINARY_LT,
+    LLVM_BINARY_LE,
+    LLVM_BINARY_EQ,
+    LLVM_BINARY_NE,
+
     COUNT_LLVM_BINARYS
 } LLVM_Binary_Kind;
 

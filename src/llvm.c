@@ -161,7 +161,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_UNARYS == 2, "");
+        static_assert(COUNT_LLVM_UNARYS == 3, "");
         switch (unary->kind) {
         case LLVM_UNARY_NEG:
             sb_push_cstr(&l->sb, "sub ");
@@ -195,57 +195,31 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_BINARYS == 5, "");
-        switch (binary->kind) {
-        case LLVM_BINARY_ADD:
-            sb_push_cstr(&l->sb, "add ");
-            llvm_type_emit(l, n->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, binary->lhs);
-            sb_sprintf(&l->sb, ", ");
-            llvm_node_emit(l, binary->rhs);
-            break;
+        static_assert(COUNT_LLVM_BINARYS == 12, "");
+        static const char *ops[COUNT_LLVM_BINARYS] = {
+            [LLVM_BINARY_ADD] = "add",
+            [LLVM_BINARY_SUB] = "sub",
+            [LLVM_BINARY_MUL] = "mul",
+            [LLVM_BINARY_DIV] = "sdiv",
+            [LLVM_BINARY_MOD] = "srem",
 
-        case LLVM_BINARY_SUB:
-            sb_push_cstr(&l->sb, "sub ");
-            llvm_type_emit(l, n->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, binary->lhs);
-            sb_sprintf(&l->sb, ", ");
-            llvm_node_emit(l, binary->rhs);
-            break;
+            [LLVM_BINARY_GT] = "icmp sgt",
+            [LLVM_BINARY_GE] = "icmp sge",
+            [LLVM_BINARY_LT] = "icmp slt",
+            [LLVM_BINARY_LE] = "icmp sle",
+            [LLVM_BINARY_EQ] = "icmp eq",
+            [LLVM_BINARY_NE] = "icmp ne",
+        };
 
-        case LLVM_BINARY_MUL:
-            sb_push_cstr(&l->sb, "mul ");
-            llvm_type_emit(l, n->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, binary->lhs);
-            sb_sprintf(&l->sb, ", ");
-            llvm_node_emit(l, binary->rhs);
-            break;
+        const char *op = ops[binary->kind];
+        assert(op);
 
-        case LLVM_BINARY_DIV:
-            sb_push_cstr(&l->sb, "sdiv ");
-            llvm_type_emit(l, n->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, binary->lhs);
-            sb_sprintf(&l->sb, ", ");
-            llvm_node_emit(l, binary->rhs);
-            break;
-
-        case LLVM_BINARY_MOD:
-            sb_push_cstr(&l->sb, "srem ");
-            llvm_type_emit(l, n->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, binary->lhs);
-            sb_sprintf(&l->sb, ", ");
-            llvm_node_emit(l, binary->rhs);
-            break;
-
-        default:
-            unreachable();
-            break;
-        }
+        sb_sprintf(&l->sb, "%s ", op);
+        llvm_type_emit(l, binary->lhs->type);
+        sb_push(&l->sb, ' ');
+        llvm_node_emit(l, binary->lhs);
+        sb_sprintf(&l->sb, ", ");
+        llvm_node_emit(l, binary->rhs);
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
