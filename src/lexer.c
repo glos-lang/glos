@@ -46,6 +46,14 @@ static char read_char(Lexer *l) {
     return l->sv.data[-1];
 }
 
+static bool match_char(Lexer *l, char ch) {
+    if (l->sv.count && *l->sv.data == ch) {
+        next_char(l);
+        return true;
+    }
+    return false;
+}
+
 static void skip_whitespace(Lexer *l) {
     l->newline = false;
     while (l->sv.count) {
@@ -96,7 +104,7 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 16, "");
+static_assert(COUNT_TOKENS == 22, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -199,7 +207,35 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '!':
-        token.kind = TOKEN_LNOT;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_NE;
+        } else {
+            token.kind = TOKEN_LNOT;
+        }
+        break;
+
+    case '>':
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_GE;
+        } else {
+            token.kind = TOKEN_GT;
+        }
+        break;
+
+    case '<':
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_LE;
+        } else {
+            token.kind = TOKEN_LT;
+        }
+        break;
+
+    case '=':
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_EQ;
+        } else {
+            todo();
+        }
         break;
 
     default:

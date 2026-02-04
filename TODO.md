@@ -3,7 +3,7 @@
 - [X] Types
 - [X] Block statement
 - [X] Booleans
-- [ ] Arithmetic comparisons
+- [X] Arithmetic comparisons
 - [ ] Conditions
 - [ ] Global variables
 - [ ] Loops

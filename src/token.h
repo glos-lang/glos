@@ -33,6 +33,13 @@ typedef enum {
 
     TOKEN_LNOT,
 
+    TOKEN_GT,
+    TOKEN_GE,
+    TOKEN_LT,
+    TOKEN_LE,
+    TOKEN_EQ,
+    TOKEN_NE,
+
     TOKEN_PRINT,
     COUNT_TOKENS
 } Token_Kind;

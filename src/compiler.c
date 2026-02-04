@@ -36,7 +36,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     compile_type(&n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 16, "");
+        static_assert(COUNT_TOKENS == 22, "");
         return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
     } break;
 
@@ -44,7 +44,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 16, "");
+        static_assert(COUNT_TOKENS == 22, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -62,26 +62,25 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         LLVM_Node       *lhs = compile_expr(c, binary->lhs);
         LLVM_Node       *rhs = compile_expr(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 16, "");
-        switch (n->token.kind) {
-        case TOKEN_ADD:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_ADD, n->type.llvm, lhs, rhs));
+        static_assert(COUNT_TOKENS == 22, "");
+        static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
+            [TOKEN_ADD] = LLVM_BINARY_ADD,
+            [TOKEN_SUB] = LLVM_BINARY_SUB,
+            [TOKEN_MUL] = LLVM_BINARY_MUL,
+            [TOKEN_DIV] = LLVM_BINARY_DIV,
+            [TOKEN_MOD] = LLVM_BINARY_MOD,
 
-        case TOKEN_SUB:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_SUB, n->type.llvm, lhs, rhs));
+            [TOKEN_GT] = LLVM_BINARY_GT,
+            [TOKEN_GE] = LLVM_BINARY_GE,
+            [TOKEN_LT] = LLVM_BINARY_LT,
+            [TOKEN_LE] = LLVM_BINARY_LE,
+            [TOKEN_EQ] = LLVM_BINARY_EQ,
+            [TOKEN_NE] = LLVM_BINARY_NE,
+        };
 
-        case TOKEN_MUL:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MUL, n->type.llvm, lhs, rhs));
-
-        case TOKEN_DIV:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_DIV, n->type.llvm, lhs, rhs));
-
-        case TOKEN_MOD:
-            return_defer(llvm_build_binary(&c->llvm, LLVM_BINARY_MOD, n->type.llvm, lhs, rhs));
-
-        default:
-            unreachable();
-        }
+        const LLVM_Binary_Kind op = ops[n->token.kind];
+        assert(op);
+        return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
     } break;
 
     default:

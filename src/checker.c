@@ -65,7 +65,7 @@ static void check_expr(AST_Node *n) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 16, "");
+        static_assert(COUNT_TOKENS == 22, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -84,7 +84,7 @@ static void check_expr(AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_expr(unary->value);
 
-        static_assert(COUNT_TOKENS == 16, "");
+        static_assert(COUNT_TOKENS == 22, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -104,16 +104,27 @@ static void check_expr(AST_Node *n) {
         check_expr(binary->lhs);
         check_expr(binary->rhs);
 
-        static_assert(COUNT_TOKENS == 16, "");
+        static_assert(COUNT_TOKENS == 22, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
         case TOKEN_MUL:
         case TOKEN_DIV:
-        case TOKEN_MOD: {
+        case TOKEN_MOD:
             ast_type_assert_numeric(binary->lhs);
             n->type = ast_type_assert_node(binary->rhs, binary->lhs);
-        } break;
+            break;
+
+        case TOKEN_GT:
+        case TOKEN_GE:
+        case TOKEN_LT:
+        case TOKEN_LE:
+        case TOKEN_EQ:
+        case TOKEN_NE:
+            ast_type_assert_numeric(binary->lhs);
+            ast_type_assert_node(binary->rhs, binary->lhs);
+            n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
+            break;
 
         default:
             unreachable();
