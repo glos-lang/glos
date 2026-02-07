@@ -121,7 +121,11 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
         // Condition
         LLVM_Node *condition = compile_expr(c, iff->condition);
-        llvm_build_branch(&c->llvm, condition, consequence, antecedence);
+        llvm_debug_set_pos(
+            &c->llvm,
+            llvm_build_branch(&c->llvm, condition, consequence, antecedence),
+            n->token.pos.row,
+            n->token.pos.col);
 
         // Consequence
         llvm_build_block(&c->llvm, consequence);

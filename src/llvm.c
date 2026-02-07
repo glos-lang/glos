@@ -279,10 +279,14 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_type_emit(l, branch->condition->type);
         sb_push(&l->sb, ' ');
         llvm_node_emit(l, branch->condition);
+
         sb_push_cstr(&l->sb, ", ");
         llvm_node_emit(l, (LLVM_Node *) branch->consequence);
+
         sb_push_cstr(&l->sb, ", ");
         llvm_node_emit(l, (LLVM_Node *) branch->antecedence);
+
+        llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
     } break;
 
