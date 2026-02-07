@@ -8,7 +8,7 @@ typedef enum {
     POWER_PRE
 } Power;
 
-static_assert(COUNT_TOKENS == 22, "");
+static_assert(COUNT_TOKENS == 24, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -67,11 +67,33 @@ static bool read_token(Parser *p, Token_Kind kind) {
     return !p->peeked;
 }
 
+static Token expect_token(Parser *p, const Token_Kind *kinds) {
+    const Token token = next_token(p);
+    for (const Token_Kind *it = kinds; *it != TOKEN_EOF; it++) {
+        if (token.kind == *it) {
+            return token;
+        }
+    }
+
+    fprintf(stderr, Pos_Fmt "ERROR: Expected ", Pos_Arg(token.pos));
+    for (const Token_Kind *it = kinds; *it != TOKEN_EOF; it++) {
+        if (it != kinds) {
+            fprintf(stderr, " or ");
+        }
+
+        fprintf(stderr, "%s", token_kind_to_cstr(*it));
+    }
+
+    fprintf(stderr, ", got %s\n", token_kind_to_cstr(token.kind));
+    exit(1);
+}
+#define expect_token(p, ...) expect_token((p), (const Token_Kind[]) {__VA_ARGS__, TOKEN_EOF})
+
 static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 5, "");
+static_assert(COUNT_AST_NODES == 6, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
@@ -79,6 +101,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
         [AST_NODE_BINARY] = sizeof(AST_Node_Binary),
 
         [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
+        [AST_NODE_IF] = sizeof(AST_Node_If),
 
         [AST_NODE_PRINT] = sizeof(AST_Node_Print),
     };
@@ -90,7 +113,10 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     return node;
 }
 
-static_assert(COUNT_TOKENS == 22, "");
+static AST_Node *parse_expr(Parser *p, Power mbp);
+static AST_Node *parse_stmt(Parser *p);
+
+static_assert(COUNT_TOKENS == 24, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -133,33 +159,54 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
     return node;
 }
 
-static_assert(COUNT_AST_NODES == 5, "");
-static AST_Node *parse_stmt(Parser *p) {
-    AST_Node *node = NULL;
+static AST_Node *parse_block(Parser *p, Token token) {
+    AST_Node       *node = ast_node_alloc(p, AST_NODE_BLOCK, token);
+    AST_Node_Block *block = (AST_Node_Block *) node;
+    while (!read_token(p, TOKEN_RBRACE)) {
+        ast_nodes_push(&block->body, parse_stmt(p));
+    }
+    return node;
+}
 
+static AST_Node *parse_if(Parser *p, Token token) {
+    AST_Node    *node = ast_node_alloc(p, AST_NODE_IF, token);
+    AST_Node_If *iff = (AST_Node_If *) node;
+    iff->condition = parse_expr(p, POWER_NIL);
+    token = expect_token(p, TOKEN_LBRACE);
+    iff->consequence = parse_block(p, token);
+
+    if (read_token(p, TOKEN_ELSE)) {
+        token = expect_token(p, TOKEN_LBRACE, TOKEN_IF);
+        if (token.kind == TOKEN_LBRACE) {
+            iff->antecedence = parse_block(p, token);
+        } else {
+            iff->antecedence = parse_if(p, token);
+        }
+    }
+    return node;
+}
+
+static_assert(COUNT_AST_NODES == 6, "");
+static AST_Node *parse_stmt(Parser *p) {
     Token token = next_token(p);
     switch (token.kind) {
-    case TOKEN_LBRACE: {
-        node = ast_node_alloc(p, AST_NODE_BLOCK, token);
-        AST_Node_Block *block = (AST_Node_Block *) node;
-        while (!read_token(p, TOKEN_RBRACE)) {
-            ast_nodes_push(&block->body, parse_stmt(p));
-        }
-    } break;
+    case TOKEN_LBRACE:
+        return parse_block(p, token);
+
+    case TOKEN_IF:
+        return parse_if(p, token);
 
     case TOKEN_PRINT: {
-        node = ast_node_alloc(p, AST_NODE_PRINT, token);
+        AST_Node       *node = ast_node_alloc(p, AST_NODE_PRINT, token);
         AST_Node_Print *print = (AST_Node_Print *) node;
         print->value = parse_expr(p, POWER_NIL);
-    } break;
+        return node;
+    }
 
     default:
         buffer_token(p, token);
-        node = parse_expr(p, POWER_NIL);
-        break;
+        return parse_expr(p, POWER_NIL);
     }
-
-    return node;
 }
 
 bool parse_file(Parser *p, const char *path) {

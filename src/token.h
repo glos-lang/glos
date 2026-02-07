@@ -40,6 +40,9 @@ typedef enum {
     TOKEN_EQ,
     TOKEN_NE,
 
+    TOKEN_IF,
+    TOKEN_ELSE,
+
     TOKEN_PRINT,
     COUNT_TOKENS
 } Token_Kind;

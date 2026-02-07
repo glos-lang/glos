@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,11 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Build
+      - name: Build and Tests
         run: |
           clang -o first.exe first.c
-          ./first.exe
-
-      - name: Tests
-        run: |
           ./first.exe -T
