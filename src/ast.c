@@ -49,7 +49,7 @@ bool ast_type_is_numeric(AST_Type type) {
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
-static_assert(COUNT_AST_NODES == 5, "");
+static_assert(COUNT_AST_NODES == 6, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -86,6 +86,15 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         for (AST_Node *it = block->body.head; it; it = it->next) {
             ast_node_debug_impl(f, it, depth + 1, NULL);
         }
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_IF: {
+        AST_Node_If *iff = (AST_Node_If *) n;
+        fprintf(f, "If {\n");
+        ast_node_debug_impl(f, iff->condition, depth + 1, "Condition");
+        ast_node_debug_impl(f, iff->consequence, depth + 1, "Consequence");
+        ast_node_debug_impl(f, iff->antecedence, depth + 1, "Antecedence");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

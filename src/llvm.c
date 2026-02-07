@@ -5,6 +5,10 @@ typedef enum {
     LLVM_NODE_UNARY,
     LLVM_NODE_BINARY,
 
+    LLVM_NODE_BLOCK,
+    LLVM_NODE_JUMP,
+    LLVM_NODE_BRANCH,
+
     LLVM_NODE_PRINT,
     COUNT_LLVM_NODES
 } LLVM_Node_Kind;
@@ -53,6 +57,22 @@ typedef struct {
     LLVM_Node       *rhs;
 } LLVM_Node_Binary;
 
+struct LLVM_Node_Block {
+    LLVM_Node node;
+};
+
+typedef struct {
+    LLVM_Node        node;
+    LLVM_Node_Block *block;
+} LLVM_Node_Jump;
+
+typedef struct {
+    LLVM_Node        node;
+    LLVM_Node       *condition;
+    LLVM_Node_Block *consequence;
+    LLVM_Node_Block *antecedence;
+} LLVM_Node_Branch;
+
 typedef struct {
     LLVM_Node  node;
     LLVM_Node *value;
@@ -72,12 +92,16 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 4, "");
+static_assert(COUNT_LLVM_NODES == 7, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
         [LLVM_NODE_UNARY] = sizeof(LLVM_Node_Unary),
         [LLVM_NODE_BINARY] = sizeof(LLVM_Node_Binary),
+
+        [LLVM_NODE_BLOCK] = sizeof(LLVM_Node_Block),
+        [LLVM_NODE_JUMP] = sizeof(LLVM_Node_Jump),
+        [LLVM_NODE_BRANCH] = sizeof(LLVM_Node_Branch),
 
         [LLVM_NODE_PRINT] = sizeof(LLVM_Node_Print),
     };
@@ -95,17 +119,25 @@ static LLVM_Node *llvm_node_build(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) 
     return node;
 }
 
-static void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
+static inline size_t llvm_block_iota(LLVM *l, LLVM_Node_Block *block) {
+    if (!block->node.iota) {
+        block->node.iota = ++l->iota_local;
+    }
+
+    return block->node.iota;
+}
+
+static inline void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
     pos->iota = l->iota_debug++;
     sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
 }
 
-static void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
+static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     file->iota = l->iota_debug++;
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 4, "");
+static_assert(COUNT_LLVM_NODES == 7, "");
 static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -117,9 +149,14 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
         sb_sprintf(&l->sb, "%zu", atom->as.integer);
     } break;
 
+    case LLVM_NODE_BLOCK:
+        sb_sprintf(&l->sb, "label %%.%zu", llvm_block_iota(l, (LLVM_Node_Block *) n));
+        break;
+
     default:
         assert(n->iota);
-        sb_sprintf(&l->sb, "%%%zu", n->iota);
+        sb_sprintf(&l->sb, "%%.%zu", n->iota);
+        break;
     }
 }
 
@@ -143,7 +180,7 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type) {
     }
 }
 
-static_assert(COUNT_LLVM_NODES == 4, "");
+static_assert(COUNT_LLVM_NODES == 7, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -225,9 +262,36 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push(&l->sb, '\n');
     } break;
 
+    case LLVM_NODE_BLOCK:
+        sb_sprintf(&l->sb, ".%zu:\n", llvm_block_iota(l, (LLVM_Node_Block *) n));
+        break;
+
+    case LLVM_NODE_JUMP: {
+        LLVM_Node_Jump *jump = (LLVM_Node_Jump *) n;
+        sb_push_cstr(&l->sb, "  br ");
+        llvm_node_emit(l, (LLVM_Node *) jump->block);
+        sb_push_cstr(&l->sb, "\n");
+    } break;
+
+    case LLVM_NODE_BRANCH: {
+        LLVM_Node_Branch *branch = (LLVM_Node_Branch *) n;
+        sb_push_cstr(&l->sb, "  br ");
+        llvm_type_emit(l, branch->condition->type);
+        sb_push(&l->sb, ' ');
+        llvm_node_emit(l, branch->condition);
+
+        sb_push_cstr(&l->sb, ", ");
+        llvm_node_emit(l, (LLVM_Node *) branch->consequence);
+
+        sb_push_cstr(&l->sb, ", ");
+        llvm_node_emit(l, (LLVM_Node *) branch->antecedence);
+
+        llvm_debug_pos_emit(l, n->debug);
+        sb_push(&l->sb, '\n');
+    } break;
+
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
-
         if (print->value->type.kind != LLVM_TYPE_I64) {
             sb_push_cstr(&l->sb, "  ");
             n->iota = ++l->iota_local;
@@ -250,7 +314,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push(&l->sb, '\n');
     } break;
 
-    case COUNT_LLVM_NODES:
+    default:
         unreachable();
     }
 }
@@ -359,6 +423,10 @@ LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n) {
     return (LLVM_Node *) atom;
 }
 
+LLVM_Node_Block *llvm_block_new(LLVM *l) {
+    return (LLVM_Node_Block *) llvm_node_alloc(l, LLVM_NODE_BLOCK, llvm_type_basic(LLVM_TYPE_I0));
+}
+
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
     LLVM_Node_Unary *unary = (LLVM_Node_Unary *) llvm_node_build(l, LLVM_NODE_UNARY, type);
     unary->kind = kind;
@@ -372,6 +440,27 @@ LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLV
     binary->lhs = lhs;
     binary->rhs = rhs;
     return (LLVM_Node *) binary;
+}
+
+LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block) {
+    LLVM_Node *node = (LLVM_Node *) block;
+    llvm_nodes_push(&l->body, node);
+    return node;
+}
+
+LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block) {
+    LLVM_Node_Jump *jump = (LLVM_Node_Jump *) llvm_node_build(l, LLVM_NODE_JUMP, llvm_type_basic(LLVM_TYPE_I0));
+    jump->block = block;
+    return (LLVM_Node *) block;
+}
+
+LLVM_Node *
+llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, LLVM_Node_Block *antecedence) {
+    LLVM_Node_Branch *branch = (LLVM_Node_Branch *) llvm_node_build(l, LLVM_NODE_BRANCH, llvm_type_basic(LLVM_TYPE_I0));
+    branch->condition = condition;
+    branch->consequence = consequence;
+    branch->antecedence = antecedence;
+    return (LLVM_Node *) branch;
 }
 
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value) {

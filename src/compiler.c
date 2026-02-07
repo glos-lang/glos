@@ -25,7 +25,7 @@ static void compile_type(AST_Type *type) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 5, "");
+static_assert(COUNT_AST_NODES == 6, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return NULL;
@@ -36,7 +36,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     compile_type(&n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 22, "");
+        static_assert(COUNT_TOKENS == 24, "");
         return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
     } break;
 
@@ -44,7 +44,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 22, "");
+        static_assert(COUNT_TOKENS == 24, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -62,7 +62,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         LLVM_Node       *lhs = compile_expr(c, binary->lhs);
         LLVM_Node       *rhs = compile_expr(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 22, "");
+        static_assert(COUNT_TOKENS == 24, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -94,7 +94,7 @@ defer:
     return result;
 }
 
-static_assert(COUNT_AST_NODES == 5, "");
+static_assert(COUNT_AST_NODES == 6, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -106,6 +106,41 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         for (AST_Node *it = block->body.head; it; it = it->next) {
             compile_stmt(c, it);
         }
+    } break;
+
+    case AST_NODE_IF: {
+        AST_Node_If *iff = (AST_Node_If *) n;
+
+        LLVM_Node_Block *consequence = llvm_block_new(&c->llvm);
+        LLVM_Node_Block *antecedence = llvm_block_new(&c->llvm);
+
+        LLVM_Node_Block *end = antecedence;
+        if (iff->antecedence) {
+            end = llvm_block_new(&c->llvm);
+        }
+
+        // Condition
+        LLVM_Node *condition = compile_expr(c, iff->condition);
+        llvm_debug_set_pos(
+            &c->llvm,
+            llvm_build_branch(&c->llvm, condition, consequence, antecedence),
+            n->token.pos.row,
+            n->token.pos.col);
+
+        // Consequence
+        llvm_build_block(&c->llvm, consequence);
+        compile_stmt(c, iff->consequence);
+        llvm_build_jump(&c->llvm, end);
+
+        // Antecedence
+        if (iff->antecedence) {
+            llvm_build_block(&c->llvm, antecedence);
+            compile_stmt(c, iff->antecedence);
+            llvm_build_jump(&c->llvm, end);
+        }
+
+        // End
+        llvm_build_block(&c->llvm, end);
     } break;
 
     case AST_NODE_PRINT: {

@@ -4,6 +4,8 @@
 #include "basic.h"
 
 typedef struct LLVM_Node       LLVM_Node;
+typedef struct LLVM_Node_Block LLVM_Node_Block;
+
 typedef struct LLVM_Debug_Pos  LLVM_Debug_Pos;
 typedef struct LLVM_Debug_File LLVM_Debug_File;
 
@@ -69,8 +71,14 @@ LLVM_Type llvm_type_basic(LLVM_Type_Kind kind);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n);
 
+LLVM_Node_Block *llvm_block_new(LLVM *l);
+
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
 LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);
+
+LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
+LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);
+LLVM_Node *llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, LLVM_Node_Block *antecedence);
 
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value);
 
