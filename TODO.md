@@ -4,7 +4,7 @@
 - [X] Block statement
 - [X] Booleans
 - [X] Arithmetic comparisons
-- [ ] Conditions
+- [X] Conditions
 - [ ] Global variables
 - [ ] Loops
 - [ ] Type Casting

@@ -9,23 +9,24 @@
 #define EXE_FILE_EXTENSION ""
 #endif // PLATFORM_X86_64_WINDOWS
 
-static void usage(FILE *f) {
+static void usage(FILE *f, const char *program) {
     fprintf(
         f,
         "Usage:\n"
-        "    first [FLAGS...]\n"
+        "    %s [FLAGS...]\n"
         "\n"
         "Flags:\n"
         "    -h              Show this message\n"
         "    -t              Run tests\n"
         "    -T              Run tests in non-interactive mode\n"
-        "    -j NPROCS       Set the maximum number of parallel processes. Default is 5\n");
+        "    -j NPROCS       Set the maximum number of parallel processes. Default is 5\n",
+        program);
 }
 
-static const char *shift(int *argc, char ***argv, const char *expected) {
+static const char *shift(int *argc, char ***argv, const char *program, const char *expected) {
     if (*argc <= 0) {
         fprintf(stderr, "ERROR: %s not provided\n\n", expected);
-        usage(stderr);
+        usage(stderr, program);
         exit(1);
     }
 
@@ -502,15 +503,15 @@ defer:
 }
 
 int main(int argc, char **argv) {
-    shift(&argc, &argv, "Program name");
+    const char *program = shift(&argc, &argv, NULL, NULL);
 
     bool   tests = false;
     bool   interactive = true;
     size_t nprocs = 5;
     while (argc) {
-        const char *arg = shift(&argc, &argv, "Input path");
+        const char *arg = shift(&argc, &argv, program, "Input path");
         if (!strcmp(arg, "-h")) {
-            usage(stdout);
+            usage(stdout, program);
             exit(0);
         } else if (!strcmp(arg, "-t")) {
             if (tests) {
@@ -531,7 +532,7 @@ int main(int argc, char **argv) {
             if (arg[2]) {
                 arg += 2;
             } else {
-                arg = shift(&argc, &argv, "Parallel process count");
+                arg = shift(&argc, &argv, program, "Parallel process count");
             }
 
             if (!parse_uint_from_sv(sv_from_cstr(arg), &nprocs) || nprocs == 0) {
@@ -540,7 +541,7 @@ int main(int argc, char **argv) {
             }
         } else {
             fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
-            usage(stderr);
+            usage(stderr, program);
             exit(1);
         }
     }

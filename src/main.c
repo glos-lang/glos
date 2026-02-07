@@ -2,23 +2,24 @@
 #include "compiler.h"
 #include "parser.h"
 
-static void usage(FILE *f) {
+static void usage(FILE *f, const char *program) {
     fprintf(
         f,
         "Usage:\n"
-        "    glos [FLAGS...] FILE\n"
+        "    %s [FLAGS...] FILE\n"
         "\n"
         "Flags:\n"
         "    -h              Show this message\n"
         "    -r              Run the program\n"
         "    -o OUTPUT       Set the output path\n"
-        "    --              End of compiler options. All following arguments are passed to the program if ran\n");
+        "    --              End of compiler options. All following arguments are passed to the program if ran\n",
+        program);
 }
 
-static const char *shift(int *argc, char ***argv, const char *expected) {
+static const char *shift(int *argc, char ***argv, const char *program, const char *expected) {
     if (*argc <= 0) {
         fprintf(stderr, "ERROR: %s not provided\n\n", expected);
-        usage(stderr);
+        usage(stderr, program);
         exit(1);
     }
 
@@ -27,29 +28,30 @@ static const char *shift(int *argc, char ***argv, const char *expected) {
 }
 
 int main(int argc, char **argv) {
+    const char *program = shift(&argc, &argv, NULL, NULL);
+
     int   result = 0;
     Cmd   cmd = {0};
     Arena arena = {0};
-    shift(&argc, &argv, "Program name");
 
     bool        run = false;
     const char *input = NULL;
     const char *output = NULL;
     while (argc) {
-        const char *arg = shift(&argc, &argv, "Input path");
+        const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {
             if (!strcmp(arg, "-h")) {
-                usage(stdout);
+                usage(stdout, program);
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
                 run = true;
             } else if (!strcmp(arg, "-o")) {
-                output = shift(&argc, &argv, "Output path");
+                output = shift(&argc, &argv, program, "Output path");
             } else if (!strcmp(arg, "--")) {
                 break;
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
-                usage(stderr);
+                usage(stderr, program);
                 exit(1);
             }
         } else {
@@ -67,7 +69,7 @@ int main(int argc, char **argv) {
 
     if (!input) {
         fprintf(stderr, "ERROR: Input path not provided\n\n");
-        usage(stderr);
+        usage(stderr, program);
         exit(1);
     }
 
