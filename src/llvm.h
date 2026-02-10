@@ -4,6 +4,7 @@
 #include "basic.h"
 
 typedef struct LLVM_Node       LLVM_Node;
+typedef struct LLVM_Node_Var   LLVM_Node_Var;
 typedef struct LLVM_Node_Block LLVM_Node_Block;
 
 typedef struct LLVM_Debug_Pos  LLVM_Debug_Pos;
@@ -59,6 +60,8 @@ typedef struct {
     size_t     iota_local;
     size_t     iota_debug;
 
+    LLVM_Nodes vars;
+
     size_t           debug_main_fn;
     LLVM_Debug_Pos  *debug_pos;
     LLVM_Debug_File *debug_file;
@@ -72,9 +75,13 @@ LLVM_Type llvm_type_basic(LLVM_Type_Kind kind);
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n);
 
 LLVM_Node_Block *llvm_block_new(LLVM *l);
+LLVM_Node_Var   *llvm_var_new(LLVM *l, SV name, LLVM_Type type);
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
 LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);
+
+LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
+LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);

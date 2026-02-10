@@ -1,12 +1,13 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include "ast.h"
-#include "llvm.h"
+#include "context.h"
 
 typedef struct {
     Cmd *cmd;
     LLVM llvm;
+
+    Decls globals;
 
     // For debug information
     const char *path;

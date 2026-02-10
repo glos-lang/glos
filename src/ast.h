@@ -17,13 +17,22 @@ typedef enum {
     AST_TYPE_UNIT,
     AST_TYPE_BOOL,
     AST_TYPE_I64,
+
+    AST_TYPE_TYPE,
     COUNT_AST_TYPES,
 } AST_Type_Kind;
 
-typedef struct {
+typedef struct AST_Type AST_Type;
+
+struct AST_Type {
     AST_Type_Kind kind;
-    LLVM_Type     llvm;
-} AST_Type;
+
+    union {
+        AST_Type *type;
+    } spec;
+
+    LLVM_Type llvm;
+};
 
 const char *ast_type_to_cstr(AST_Type type);
 
@@ -35,6 +44,7 @@ typedef enum {
     AST_NODE_UNARY,
     AST_NODE_BINARY,
 
+    AST_NODE_DECL,
     AST_NODE_BLOCK,
     AST_NODE_IF,
 
@@ -48,11 +58,15 @@ struct AST_Node {
     Token    token;
     AST_Type type;
 
+    bool allow_ref;
+
     AST_Node *next;
 };
 
 typedef struct {
-    AST_Node node;
+    AST_Node   node;
+    AST_Node  *definition;
+    LLVM_Node *llvm;
 } AST_Node_Atom;
 
 typedef struct {
@@ -65,6 +79,13 @@ typedef struct {
     AST_Node *lhs;
     AST_Node *rhs;
 } AST_Node_Binary;
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *name;
+    AST_Node *type;
+    AST_Node *expr;
+} AST_Node_Decl;
 
 typedef struct {
     AST_Node  node;
@@ -84,5 +105,6 @@ typedef struct {
 } AST_Node_Print;
 
 void ast_node_debug(FILE *f, AST_Node *n);
+void ast_nodes_debug(FILE *f, AST_Nodes ns);
 
 #endif // AST_H

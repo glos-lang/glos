@@ -45,6 +45,7 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         "src/basic.h",
         "src/checker.h",
         "src/compiler.h",
+        "src/context.h",
         "src/lexer.h",
         "src/llvm.h",
         "src/parser.h",
@@ -56,6 +57,7 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         "src/basic.c",
         "src/checker.c",
         "src/compiler.c",
+        "src/context.c",
         "src/lexer.c",
         "src/llvm.c",
         "src/main.c",
@@ -179,7 +181,7 @@ static void print_lines_with_indent(FILE *f, SV sv, const char *indent) {
     }
 
     while (sv.count) {
-        const SV line = sv_split(&sv, '\n');
+        const SV line = sv_split_mut(&sv, '\n');
         fputs(indent, f);
         fwrite(line.data, line.count, 1, f);
         fputc('\n', f);
@@ -258,7 +260,7 @@ static SV parse_bytes_value(SV value, SV *contents, const char *label, const cha
         }
     }
 
-    sv_drop(contents, bytes.count + 1);
+    sv_drop_mut(contents, bytes.count + 1);
     (*row)++;
 
     return bytes;
@@ -434,14 +436,19 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     const char *temp_save = temp_alloc(0);
 
     SV contents = {0};
-    if (!read_file_into_arena("tests.txt", &contents, &arena)) {
-        fprintf(stderr, "ERROR: Could not read file 'tests.txt'\n");
+    if (!read_file_into_arena("tests.conf", &contents, &arena)) {
+        fprintf(stderr, "ERROR: Could not read file 'tests.conf'\n");
         return_defer(false);
     }
 
     const void *arena_save = arena_alloc(&arena, 0);
     while (contents.count) {
-        const char *it = temp_sv_to_cstr(sv_split(&contents, '\n'));
+        const SV line = sv_trim(sv_split(sv_split_mut(&contents, '\n'), '#'), ' ');
+        if (line.count == 0) {
+            continue;
+        }
+
+        const char *it = temp_sv_to_cstr(line);
         const char *record_path = replace_suffix(it, ".glos", ".bin");
 
         SV         contents = {0};
@@ -451,9 +458,8 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
             Test_Info expected = {0};
             if (record_exists) {
                 for (size_t row = 1; contents.count; row++) {
-                    SV it = sv_split(&contents, '\n');
-                    SV line = sv_trim(it, ' ');
-                    SV key = sv_split(&line, ' ');
+                    SV line = sv_trim(sv_split_mut(&contents, '\n'), ' ');
+                    SV key = sv_split_mut(&line, ' ');
                     SV value = sv_trim(line, ' ');
                     if (sv_match(key, "EXIT")) {
                         expected.exit = parse_uint_value(value, "exit code", record_path, row, line);

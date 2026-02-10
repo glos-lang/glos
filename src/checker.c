@@ -7,7 +7,7 @@ static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
 
     fprintf(
         stderr,
-        Pos_Fmt "ERROR: Expected type '%s', got '%s'\n",
+        Pos_Fmt "ERROR: Expected '%s', got '%s'\n",
         Pos_Arg(actual->token.pos),
         ast_type_to_cstr(expected),
         ast_type_to_cstr(actual->type));
@@ -22,7 +22,7 @@ static AST_Type ast_type_assert_node(AST_Node *actual, AST_Node *expected) {
 
     fprintf(
         stderr,
-        Pos_Fmt "ERROR: Expected type '%s', got '%s'\n",
+        Pos_Fmt "ERROR: Expected '%s', got '%s'\n",
         Pos_Arg(actual->token.pos),
         ast_type_to_cstr(expected->type),
         ast_type_to_cstr(actual->type));
@@ -57,15 +57,40 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_AST_NODES == 6, "");
-static void check_expr(AST_Node *n) {
+static void error_undefined(const AST_Node *n) {
+    fprintf(stderr, Pos_Fmt "ERROR: Undefined identifier '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
+    exit(1);
+}
+
+static void error_redefinition(const AST_Node *n, const AST_Node *previous) {
+    fprintf(stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
+    if (previous) {
+        fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(previous->token.pos));
+    }
+    exit(1);
+}
+
+typedef enum {
+    REF_NIL,
+    REF_MUT,
+} Ref;
+
+static_assert(COUNT_AST_TYPES == 4, "");
+static const char *builtin_type_names[COUNT_AST_TYPES] = {
+    [AST_TYPE_BOOL] = "bool",
+    [AST_TYPE_I64] = "i64",
+};
+
+static_assert(COUNT_AST_NODES == 7, "");
+static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 24, "");
+        AST_Node_Atom *atom = (AST_Node_Atom *) n;
+        static_assert(COUNT_TOKENS == 26, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -75,6 +100,33 @@ static void check_expr(AST_Node *n) {
             n->type = (AST_Type) {.kind = AST_TYPE_I64};
             break;
 
+        case TOKEN_IDENT: {
+            atom->definition = decls_find(&c->globals, n->token.sv);
+            if (atom->definition) {
+                n->type = atom->definition->type;
+                n->allow_ref = true;
+            } else {
+                bool ok = false;
+                for (AST_Type_Kind kind = 0; kind < COUNT_AST_TYPES; kind++) {
+                    const char *name = builtin_type_names[kind];
+                    if (name && sv_match(n->token.sv, name)) {
+                        const AST_Type type = {.kind = kind};
+                        n->type = (AST_Type) {
+                            .kind = AST_TYPE_TYPE,
+                            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
+                        };
+
+                        ok = true;
+                        break;
+                    }
+                }
+
+                if (!ok) {
+                    error_undefined(n);
+                }
+            }
+        } break;
+
         default:
             unreachable();
         }
@@ -82,9 +134,9 @@ static void check_expr(AST_Node *n) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        check_expr(unary->value);
+        check_expr(c, unary->value, REF_NIL);
 
-        static_assert(COUNT_TOKENS == 24, "");
+        static_assert(COUNT_TOKENS == 26, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -101,16 +153,15 @@ static void check_expr(AST_Node *n) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        check_expr(binary->lhs);
-        check_expr(binary->rhs);
-
-        static_assert(COUNT_TOKENS == 24, "");
+        static_assert(COUNT_TOKENS == 26, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
         case TOKEN_MUL:
         case TOKEN_DIV:
         case TOKEN_MOD:
+            check_expr(c, binary->lhs, REF_NIL);
+            check_expr(c, binary->rhs, REF_NIL);
             ast_type_assert_numeric(binary->lhs);
             n->type = ast_type_assert_node(binary->rhs, binary->lhs);
             break;
@@ -121,9 +172,18 @@ static void check_expr(AST_Node *n) {
         case TOKEN_LE:
         case TOKEN_EQ:
         case TOKEN_NE:
+            check_expr(c, binary->lhs, REF_NIL);
+            check_expr(c, binary->rhs, REF_NIL);
             ast_type_assert_numeric(binary->lhs);
             ast_type_assert_node(binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
+            break;
+
+        case TOKEN_SET:
+            check_expr(c, binary->lhs, REF_MUT);
+            check_expr(c, binary->rhs, REF_NIL);
+            ast_type_assert_node(binary->rhs, binary->lhs);
+            n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
             break;
 
         default:
@@ -134,44 +194,85 @@ static void check_expr(AST_Node *n) {
     default:
         unreachable();
     }
+
+    if (!n->allow_ref && ref != REF_NIL) {
+        fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference to value not in memory\n", Pos_Arg(n->token.pos));
+        exit(1);
+    }
 }
 
-static_assert(COUNT_AST_NODES == 6, "");
-static void check_stmt(AST_Node *n) {
+static_assert(COUNT_AST_NODES == 7, "");
+static void check_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case AST_NODE_DECL: {
+        AST_Node_Decl *decl = (AST_Node_Decl *) n;
+
+        assert(decl->name->kind == AST_NODE_ATOM && decl->name->token.kind == TOKEN_IDENT);
+        AST_Node *it = decl->name;
+
+        for (AST_Type_Kind kind = 0; kind < COUNT_AST_TYPES; kind++) {
+            const char *name = builtin_type_names[kind];
+            if (name && sv_match(it->token.sv, name)) {
+                error_redefinition(it, NULL);
+            }
+        }
+
+        AST_Node *previous = decls_find(&c->globals, it->token.sv);
+        if (previous) {
+            error_redefinition(it, previous);
+        }
+
+        if (decl->type) {
+            check_expr(c, decl->type, REF_NIL);
+            ast_type_assert(decl->type, (AST_Type) {.kind = AST_TYPE_TYPE});
+            it->type = *decl->type->type.spec.type;
+        }
+
+        if (decl->expr) {
+            check_expr(c, decl->expr, REF_NIL);
+            if (decl->type) {
+                ast_type_assert(decl->expr, it->type);
+            } else {
+                it->type = decl->expr->type;
+            }
+        }
+
+        da_push(&c->globals, it);
+    } break;
+
     case AST_NODE_BLOCK: {
         AST_Node_Block *block = (AST_Node_Block *) n;
         for (AST_Node *it = block->body.head; it; it = it->next) {
-            check_stmt(it);
+            check_stmt(c, it);
         }
     } break;
 
     case AST_NODE_IF: {
         AST_Node_If *iff = (AST_Node_If *) n;
-        check_expr(iff->condition);
+        check_expr(c, iff->condition, REF_NIL);
         ast_type_assert(iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
-        check_stmt(iff->consequence);
-        check_stmt(iff->antecedence);
+        check_stmt(c, iff->consequence);
+        check_stmt(c, iff->antecedence);
     } break;
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
-        check_expr(print->value);
+        check_expr(c, print->value, REF_NIL);
         ast_type_assert_scalar(print->value);
     } break;
 
     default:
-        check_expr(n);
+        check_expr(c, n, REF_NIL);
         break;
     }
 }
 
-void check_nodes(AST_Nodes nodes) {
+void check_nodes(Compiler *c, AST_Nodes nodes) {
     for (AST_Node *it = nodes.head; it; it = it->next) {
-        check_stmt(it);
+        check_stmt(c, it);
     }
 }

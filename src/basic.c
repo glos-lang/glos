@@ -63,14 +63,22 @@ SV sv_trim(SV s, char ch) {
     return s;
 }
 
-SV sv_drop(SV *s, size_t count) {
+SV sv_drop(SV s, size_t count) {
+    return sv_drop_mut(&s, count);
+}
+
+SV sv_drop_mut(SV *s, size_t count) {
     const SV result = (SV) {.data = s->data, .count = count};
     s->data += count;
     s->count -= count;
     return result;
 }
 
-SV sv_split(SV *s, char ch) {
+SV sv_split(SV s, char ch) {
+    return sv_split_mut(&s, ch);
+}
+
+SV sv_split_mut(SV *s, char ch) {
     const char *p = memchr(s->data, ch, s->count);
     if (!p) {
         const SV result = *s;

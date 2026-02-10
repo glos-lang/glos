@@ -117,8 +117,10 @@ bool sv_has_suffix(SV a, SV b);
 bool sv_find(SV s, char ch, size_t *index);
 
 SV sv_trim(SV s, char ch);
-SV sv_drop(SV *s, size_t count);
-SV sv_split(SV *s, char ch);
+SV sv_drop(SV s, size_t count);
+SV sv_drop_mut(SV *s, size_t count);
+SV sv_split(SV s, char ch);
+SV sv_split_mut(SV *s, char ch);
 
 // String Builder
 typedef Dynamic_Array(char) SB;
