@@ -152,8 +152,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             llvm_debug_set_pos(
                 &c->llvm,
                 llvm_build_store(&c->llvm, it->llvm, compile_expr(c, decl->expr, false)),
-
-                // TODO: Use the position of the `=`
                 n->token.pos.row,
                 n->token.pos.col);
         }

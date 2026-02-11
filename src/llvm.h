@@ -18,6 +18,7 @@ typedef struct {
 typedef enum {
     LLVM_TYPE_I0,
     LLVM_TYPE_I1,
+    LLVM_TYPE_I8,
     LLVM_TYPE_I64,
     COUNT_LLVM_TYPES,
 } LLVM_Type_Kind;
@@ -25,6 +26,11 @@ typedef enum {
 typedef struct {
     LLVM_Type_Kind kind;
 } LLVM_Type;
+
+typedef struct {
+    size_t align;
+    size_t size;
+} LLVM_Type_Info;
 
 typedef enum {
     LLVM_UNARY_NOP,
@@ -63,6 +69,7 @@ typedef struct {
     size_t iota_debug;
 
     size_t debug_bool_type;
+    size_t debug_i8_type;
     size_t debug_i32_type;
     size_t debug_i64_type;
 
@@ -74,7 +81,8 @@ typedef struct {
 void llvm_free(LLVM *l);
 void llvm_compile(LLVM *l);
 
-LLVM_Type llvm_type_basic(LLVM_Type_Kind kind);
+LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
+LLVM_Type_Info llvm_type_info(LLVM_Type type);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n);
 

@@ -191,24 +191,64 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 3, "");
-static void llvm_type_emit(LLVM *l, LLVM_Type type) {
+static_assert(COUNT_LLVM_TYPES == 4, "");
+static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
-        sb_sprintf(&l->sb, "void");
+        sb_push_cstr(&l->sb, "void");
         break;
 
     case LLVM_TYPE_I1:
-        sb_sprintf(&l->sb, "i1");
+        sb_push_cstr(&l->sb, i1_to_i8 ? "i8" : "i1");
+        break;
+
+    case LLVM_TYPE_I8:
+        sb_push_cstr(&l->sb, "i8");
         break;
 
     case LLVM_TYPE_I64:
-        sb_sprintf(&l->sb, "i64");
+        sb_push_cstr(&l->sb, "i64");
         break;
 
     default:
         unreachable();
     }
+}
+
+static void llvm_node_build_cast(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
+    if (n->type.kind == to) {
+        return;
+    }
+
+    if (n->kind == LLVM_NODE_ATOM) {
+        n->type.kind = to;
+        return;
+    }
+
+    const size_t temp = ++l->iota_local;
+    sb_sprintf(&l->sb, "  %%.%zu = ", temp);
+
+    if (n->type.kind < to) {
+        // Lower -> Higher
+        if (n->type.kind == LLVM_TYPE_I1) {
+            sb_push_cstr(&l->sb, "zext");
+        } else {
+            sb_push_cstr(&l->sb, "sext");
+        }
+    } else {
+        // Higher -> Lower
+        sb_push_cstr(&l->sb, "trunc");
+    }
+
+    sb_push(&l->sb, ' ');
+    llvm_type_emit(l, n->type, false);
+    sb_push(&l->sb, ' ');
+    llvm_node_emit(l, n);
+    sb_push_cstr(&l->sb, " to ");
+    llvm_type_emit(l, (LLVM_Type) {.kind = to}, false);
+    sb_push(&l->sb, '\n');
+    n->iota = temp;
+    n->type.kind = to;
 }
 
 static_assert(COUNT_LLVM_NODES == 10, "");
@@ -233,14 +273,14 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         switch (unary->kind) {
         case LLVM_UNARY_NEG:
             sb_push_cstr(&l->sb, "sub ");
-            llvm_type_emit(l, n->type);
+            llvm_type_emit(l, n->type, false);
             sb_push_cstr(&l->sb, " 0, ");
             llvm_node_emit(l, unary->value);
             break;
 
         case LLVM_UNARY_LNOT:
             sb_push_cstr(&l->sb, "icmp eq ");
-            llvm_type_emit(l, n->type);
+            llvm_type_emit(l, n->type, false);
             sb_push(&l->sb, ' ');
             llvm_node_emit(l, unary->value);
             sb_push_cstr(&l->sb, ", 0");
@@ -283,7 +323,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         assert(op);
 
         sb_sprintf(&l->sb, "%s ", op);
-        llvm_type_emit(l, binary->lhs->type);
+        llvm_type_emit(l, binary->lhs->type, false);
         sb_push(&l->sb, ' ');
         llvm_node_emit(l, binary->lhs);
         sb_sprintf(&l->sb, ", ");
@@ -299,27 +339,36 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push_cstr(&l->sb, "  ");
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = load ");
-        llvm_type_emit(l, n->type);
+        llvm_type_emit(l, n->type, true);
         sb_push_cstr(&l->sb, ", ptr ");
         llvm_node_emit(l, load->ptr);
+        sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
-        // TODO: Align
+
+        if (n->type.kind == LLVM_TYPE_I1) {
+            n->type.kind = LLVM_TYPE_I8;
+            llvm_node_build_cast(l, n, LLVM_TYPE_I1);
+        }
     } break;
 
     case LLVM_NODE_STORE: {
         LLVM_Node_Store *store = (LLVM_Node_Store *) n;
+        if (store->value->type.kind == LLVM_TYPE_I1) {
+            llvm_node_build_cast(l, store->value, LLVM_TYPE_I8);
+        }
+
         sb_push_cstr(&l->sb, "  store ");
-        llvm_type_emit(l, store->value->type);
+        llvm_type_emit(l, store->value->type, true);
         sb_push(&l->sb, ' ');
         llvm_node_emit(l, store->value);
         sb_push_cstr(&l->sb, ", ptr ");
         llvm_node_emit(l, store->ptr);
+        sb_sprintf(&l->sb, ", align %zu", llvm_type_info(store->value->type).align);
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
-        // TODO: Align
     } break;
 
     case LLVM_NODE_BLOCK:
@@ -336,7 +385,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_BRANCH: {
         LLVM_Node_Branch *branch = (LLVM_Node_Branch *) n;
         sb_push_cstr(&l->sb, "  br ");
-        llvm_type_emit(l, branch->condition->type);
+        llvm_type_emit(l, branch->condition->type, false);
         sb_push(&l->sb, ' ');
         llvm_node_emit(l, branch->condition);
 
@@ -352,17 +401,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
-        if (print->value->type.kind != LLVM_TYPE_I64) {
-            sb_push_cstr(&l->sb, "  ");
-            n->iota = ++l->iota_local;
-            llvm_node_emit(l, n);
-            sb_push_cstr(&l->sb, " = zext ");
-            llvm_type_emit(l, print->value->type);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, print->value);
-            sb_push_cstr(&l->sb, " to i64\n");
-            print->value->iota = n->iota;
-        }
+        llvm_node_build_cast(l, print->value, LLVM_TYPE_I64);
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
@@ -384,9 +423,10 @@ void llvm_free(LLVM *l) {
 }
 
 void llvm_compile(LLVM *l) {
+    l->debug_bool_type = ++l->iota_debug;
+    l->debug_i8_type = ++l->iota_debug;
     l->debug_i32_type = ++l->iota_debug;
     l->debug_i64_type = ++l->iota_debug;
-    l->debug_bool_type = ++l->iota_debug;
 
     sb_push_cstr(
         &l->sb,
@@ -397,13 +437,12 @@ void llvm_compile(LLVM *l) {
         sb_push(&l->sb, '\n');
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
             sb_sprintf(&l->sb, "@" SV_Fmt " = global ", SV_Arg(it->sv));
-            llvm_type_emit(l, it->type);
+            llvm_type_emit(l, it->type, true);
             sb_sprintf(&l->sb, " zeroinitializer");
+            sb_sprintf(&l->sb, ", align %zu", llvm_type_info(it->type).align);
 
             llvm_debug_pos_emit(l, it->debug);
             sb_push(&l->sb, '\n');
-            // TODO: Align
-            // TODO: Booleans should be stored as `i8`
         }
     }
 
@@ -469,6 +508,7 @@ void llvm_compile(LLVM *l) {
         debug_compilation_unit);
 
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)\n", l->debug_bool_type);
+    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i8\", size: 8, encoding: DW_ATE_signed)\n", l->debug_i8_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
     sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", debug_main_fn_type, l->debug_i32_type);
@@ -479,7 +519,7 @@ void llvm_compile(LLVM *l) {
             &l->sb, "!%zu = !DIGlobalVariableExpression(var: !%zu, expr: !DIExpression())\n", it->debug->iota, info);
 
         size_t debug_type = 0;
-        static_assert(COUNT_LLVM_TYPES == 3, "");
+        static_assert(COUNT_LLVM_TYPES == 4, "");
         switch (it->type.kind) {
         case LLVM_TYPE_I0:
             unreachable();
@@ -487,6 +527,10 @@ void llvm_compile(LLVM *l) {
 
         case LLVM_TYPE_I1:
             debug_type = l->debug_bool_type;
+            break;
+
+        case LLVM_TYPE_I8:
+            debug_type = l->debug_i8_type;
             break;
 
         case LLVM_TYPE_I64:
@@ -537,6 +581,25 @@ void llvm_compile(LLVM *l) {
 
 LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
     return (LLVM_Type) {.kind = kind};
+}
+
+static_assert(COUNT_LLVM_TYPES == 4, "");
+LLVM_Type_Info llvm_type_info(LLVM_Type type) {
+    switch (type.kind) {
+    case LLVM_TYPE_I0:
+        return (LLVM_Type_Info) {.align = 0, .size = 0};
+
+    case LLVM_TYPE_I1:
+    case LLVM_TYPE_I8:
+        return (LLVM_Type_Info) {.align = 1, .size = 1};
+
+    case LLVM_TYPE_I64:
+        return (LLVM_Type_Info) {.align = 8, .size = 8};
+
+    default:
+        unreachable();
+        break;
+    }
 }
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n) {
