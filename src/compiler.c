@@ -201,27 +201,45 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
+        compile_stmt(c, forr->init);
 
-        LLVM_Node_Block *condition = llvm_block_new(&c->llvm);
         LLVM_Node_Block *body = llvm_block_new(&c->llvm);
         LLVM_Node_Block *end = llvm_block_new(&c->llvm);
 
-        // Condition
-        llvm_build_jump(&c->llvm, condition);
-        llvm_build_block(&c->llvm, condition);
+        LLVM_Node_Block *start = body;
+        LLVM_Node_Block *update = start;
+        if (forr->update) {
+            update = llvm_block_new(&c->llvm);
+        }
 
-        llvm_debug_set_pos(
-            &c->llvm,
-            llvm_build_branch(&c->llvm, compile_expr(c, forr->condition, false), body, end),
-            forr->condition->token.pos.row,
-            forr->condition->token.pos.col);
+        // Condition
+        if (forr->condition) {
+            start = llvm_block_new(&c->llvm);
+            llvm_build_jump(&c->llvm, start);
+            llvm_build_block(&c->llvm, start);
+
+            llvm_debug_set_pos(
+                &c->llvm,
+                llvm_build_branch(&c->llvm, compile_expr(c, forr->condition, false), body, end),
+                forr->condition->token.pos.row,
+                forr->condition->token.pos.col);
+        } else {
+            llvm_build_jump(&c->llvm, body);
+        }
 
         // Body
         llvm_build_block(&c->llvm, body);
         compile_stmt(c, forr->body);
 
+        // Update
+        if (forr->update) {
+            llvm_build_jump(&c->llvm, update);
+            llvm_build_block(&c->llvm, update);
+            compile_expr(c, forr->update, false);
+        }
+
         // Loop
-        llvm_build_jump(&c->llvm, condition);
+        llvm_build_jump(&c->llvm, start);
 
         // End
         llvm_build_block(&c->llvm, end);

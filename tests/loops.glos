@@ -3,3 +3,11 @@ for i < 5 {
     print i
     i = i + 1
 }
+
+for i = 0; i < 10; i = i + 2 {
+    print i
+}
+
+for j := 5; j > 0; j = j - 1 {
+    print j
+}

@@ -121,7 +121,9 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
         fprintf(f, "For {\n");
+        ast_node_debug_impl(f, forr->init, depth + 1, "Init");
         ast_node_debug_impl(f, forr->condition, depth + 1, "Condition");
+        ast_node_debug_impl(f, forr->update, depth + 1, "Update");
         ast_node_debug_impl(f, forr->body, depth + 1, "Body");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;

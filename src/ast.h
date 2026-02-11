@@ -102,7 +102,9 @@ typedef struct {
 
 typedef struct {
     AST_Node  node;
+    AST_Node *init;
     AST_Node *condition;
+    AST_Node *update;
     AST_Node *body;
 } AST_Node_For;
 

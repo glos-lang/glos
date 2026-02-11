@@ -1,10 +1,20 @@
 EXIT 0
-STDOUT 10
+STDOUT 30
 0
 1
 2
 3
 4
+0
+2
+4
+6
+8
+5
+4
+3
+2
+1
 
 STDERR 0
 

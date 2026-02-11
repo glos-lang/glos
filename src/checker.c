@@ -266,8 +266,12 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
+        check_stmt(c, forr->init);
         check_expr(c, forr->condition, false);
-        ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+        if (forr->condition) {
+            ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+        }
+        check_stmt(c, forr->update);
         check_stmt(c, forr->body);
     } break;
 
