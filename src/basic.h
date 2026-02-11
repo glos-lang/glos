@@ -59,45 +59,13 @@
         size_t capacity;                                                                                               \
     }
 
-#define da_free(l)                                                                                                     \
-    do {                                                                                                               \
-        free((l)->data);                                                                                               \
-        memset((l), 0, sizeof(*(l)));                                                                                  \
-    } while (0)
-
-#define da_push(l, v)                                                                                                  \
-    do {                                                                                                               \
-        if ((l)->count >= (l)->capacity) {                                                                             \
-            (l)->capacity = (l)->capacity == 0 ? DA_INIT_CAP : (l)->capacity * 2;                                      \
-            (l)->data = realloc((l)->data, (l)->capacity * sizeof(*(l)->data));                                        \
-            assert((l)->data);                                                                                         \
-        }                                                                                                              \
-                                                                                                                       \
-        (l)->data[(l)->count++] = (v);                                                                                 \
-    } while (0)
-
-#define da_grow(l, c)                                                                                                  \
-    do {                                                                                                               \
-        if ((l)->count + (c) > (l)->capacity) {                                                                        \
-            if ((l)->capacity == 0) {                                                                                  \
-                (l)->capacity = DA_INIT_CAP;                                                                           \
-            }                                                                                                          \
-                                                                                                                       \
-            while ((l)->count + (c) > (l)->capacity) {                                                                 \
-                (l)->capacity *= 2;                                                                                    \
-            }                                                                                                          \
-                                                                                                                       \
-            (l)->data = realloc((l)->data, (l)->capacity * sizeof(*(l)->data));                                        \
-            assert((l)->data);                                                                                         \
-        }                                                                                                              \
-    } while (0)
-
+#define da_grow(l, c) (da_resize((void **) &(l)->data, &(l)->capacity, sizeof(*(l)->data), c))
+#define da_free(l)    (da_grow(l, 0), (l)->count = 0)
+#define da_push(l, v) (da_grow(l, (l)->count + 1), (l)->data[(l)->count] = (v), (l)->count++)
 #define da_push_many(l, v, c)                                                                                          \
-    do {                                                                                                               \
-        da_grow(l, c);                                                                                                 \
-        memcpy((l)->data + (l)->count, (v), (c) * sizeof(*(l)->data));                                                 \
-        (l)->count += (c);                                                                                             \
-    } while (0)
+    (da_grow(l, (l)->count + c), memcpy((l)->data + (l)->count, (v), (c) * sizeof(*(l)->data)), (l)->count += (c))
+
+void da_resize(void **data, size_t *capacity, size_t size, size_t count);
 
 // String View
 typedef struct {

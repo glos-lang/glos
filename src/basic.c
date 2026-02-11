@@ -10,6 +10,29 @@
 #include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
 
+// Dynamic Array
+void da_resize(void **data, size_t *capacity, size_t size, size_t count) {
+    if (!count) {
+        free(*data);
+        *data = NULL;
+        *capacity = 0;
+        return;
+    }
+
+    if (count > *capacity) {
+        if (*capacity == 0) {
+            *capacity = DA_INIT_CAP;
+        }
+
+        while (count > *capacity) {
+            *capacity *= 2;
+        }
+
+        *data = realloc(*data, *capacity * size);
+        assert(data);
+    }
+}
+
 // String View
 SV sv_from_cstr(const char *cstr) {
     return (SV) {.data = cstr, .count = strlen(cstr)};
@@ -101,7 +124,7 @@ void sb_sprintf(SB *sb, const char *fmt, ...) {
     va_end(args);
 
     assert(n >= 0);
-    sb_grow(sb, n + 1);
+    sb_grow(sb, sb->count + n + 1);
 
     va_start(args, fmt);
     vsnprintf(sb->data + sb->count, n + 1, fmt, args);
@@ -236,7 +259,7 @@ bool read_fp(FILE *f, SV *out, SB *sb) {
 
     while (true) {
 #define CHUNK_SIZE 4096
-        sb_grow(sb, CHUNK_SIZE);
+        sb_grow(sb, sb->count + CHUNK_SIZE);
         const size_t n = fread(sb->data + sb->count, sizeof(*sb->data), CHUNK_SIZE, f);
         sb->count += n;
 
