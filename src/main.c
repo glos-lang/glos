@@ -74,7 +74,6 @@ int main(int argc, char **argv) {
     }
 
     Parser parser = {.arena = &arena};
-
     if (!parse_file(&parser, input)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
         exit(1);
@@ -90,13 +89,12 @@ int main(int argc, char **argv) {
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-    check_nodes(parser.nodes);
-
     Compiler compiler = {
         .cmd = &cmd,
         .llvm.arena = &arena,
         .path = input,
     };
+    check_nodes(&compiler, parser.nodes);
     compiler_build(&compiler, parser.nodes, output);
 
     if (run) {

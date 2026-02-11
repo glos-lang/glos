@@ -1,3 +1,0 @@
-tests/integers.glos
-tests/booleans.glos
-tests/conditions.glos

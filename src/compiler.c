@@ -1,6 +1,6 @@
 #include "compiler.h"
 
-static_assert(COUNT_AST_TYPES == 3, "");
+static_assert(COUNT_AST_TYPES == 4, "");
 static void compile_type(AST_Type *type) {
     if (!type) {
         return;
@@ -19,32 +19,53 @@ static void compile_type(AST_Type *type) {
         type->llvm = llvm_type_basic(LLVM_TYPE_I64);
         break;
 
+    case AST_TYPE_TYPE:
     default:
         unreachable();
         break;
     }
 }
 
-static_assert(COUNT_AST_NODES == 6, "");
-static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
+static_assert(COUNT_AST_NODES == 7, "");
+static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
     }
 
+    bool       debug = true;
     LLVM_Node *result = NULL;
 
     compile_type(&n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 24, "");
-        return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
+        AST_Node_Atom *atom = (AST_Node_Atom *) n;
+        static_assert(COUNT_TOKENS == 26, "");
+        switch (n->token.kind) {
+        case TOKEN_BOOL:
+        case TOKEN_INT:
+            debug = false;
+            return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
+
+        case TOKEN_IDENT: {
+            assert(atom->definition->kind == AST_NODE_ATOM && atom->definition->token.kind == TOKEN_IDENT);
+            AST_Node_Atom *definition = (AST_Node_Atom *) atom->definition;
+            if (ref) {
+                debug = false;
+                return_defer(definition->llvm);
+            }
+            return_defer(llvm_build_load(&c->llvm, definition->llvm, n->type.llvm));
+        } break;
+
+        default:
+            unreachable();
+        }
     } break;
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        LLVM_Node      *value = compile_expr(c, unary->value);
+        LLVM_Node      *value = compile_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 24, "");
+        static_assert(COUNT_TOKENS == 26, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -59,10 +80,8 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        LLVM_Node       *lhs = compile_expr(c, binary->lhs);
-        LLVM_Node       *rhs = compile_expr(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 24, "");
+        static_assert(COUNT_TOKENS == 26, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -79,8 +98,23 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
         };
 
         const LLVM_Binary_Kind op = ops[n->token.kind];
-        assert(op);
-        return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
+        if (op) {
+            LLVM_Node *lhs = compile_expr(c, binary->lhs, false);
+            LLVM_Node *rhs = compile_expr(c, binary->rhs, false);
+            return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
+        }
+
+        static_assert(COUNT_TOKENS == 26, "");
+        switch (n->token.kind) {
+        case TOKEN_SET: {
+            LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
+            LLVM_Node *rhs = compile_expr(c, binary->rhs, false);
+            return_defer(llvm_build_store(&c->llvm, lhs, rhs));
+        }
+
+        default:
+            unreachable();
+        }
     } break;
 
     default:
@@ -88,19 +122,41 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n) {
     }
 
 defer:
-    if (result && n->kind != AST_NODE_ATOM) {
+    if (result && debug) {
         llvm_debug_set_pos(&c->llvm, result, n->token.pos.row, n->token.pos.col);
     }
     return result;
 }
 
-static_assert(COUNT_AST_NODES == 6, "");
+static_assert(COUNT_AST_NODES == 7, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case AST_NODE_DECL: {
+        AST_Node_Decl *decl = (AST_Node_Decl *) n;
+
+        assert(decl->name->kind == AST_NODE_ATOM && decl->name->token.kind == TOKEN_IDENT);
+        AST_Node_Atom *it = (AST_Node_Atom *) decl->name;
+
+        if (!it->llvm) {
+            compile_type(&it->node.type);
+            LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm);
+            llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            it->llvm = (LLVM_Node *) var;
+        }
+
+        if (decl->expr) {
+            llvm_debug_set_pos(
+                &c->llvm,
+                llvm_build_store(&c->llvm, it->llvm, compile_expr(c, decl->expr, false)),
+                n->token.pos.row,
+                n->token.pos.col);
+        }
+    } break;
+
     case AST_NODE_BLOCK: {
         AST_Node_Block *block = (AST_Node_Block *) n;
         for (AST_Node *it = block->body.head; it; it = it->next) {
@@ -120,7 +176,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         }
 
         // Condition
-        LLVM_Node *condition = compile_expr(c, iff->condition);
+        LLVM_Node *condition = compile_expr(c, iff->condition, false);
         llvm_debug_set_pos(
             &c->llvm,
             llvm_build_branch(&c->llvm, condition, consequence, antecedence),
@@ -145,12 +201,12 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
-        LLVM_Node      *value = compile_expr(c, print->value);
+        LLVM_Node      *value = compile_expr(c, print->value, false);
         llvm_debug_set_pos(&c->llvm, llvm_build_print(&c->llvm, value), n->token.pos.row, n->token.pos.col);
     } break;
 
     default:
-        compile_expr(c, n);
+        compile_expr(c, n, false);
         break;
     }
 }
@@ -191,7 +247,9 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         fwrite(c->llvm.sb.data, sizeof(char), c->llvm.sb.count, f);
         fclose(f);
     }
-    sb_free(&c->llvm.sb);
+
+    llvm_free(&c->llvm);
+    da_free(&c->globals);
 
     const int code = cmd_wait(proc);
     if (code != 0) {

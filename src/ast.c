@@ -14,8 +14,8 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 3, "");
-const char *ast_type_to_cstr(AST_Type type) {
+static_assert(COUNT_AST_TYPES == 4, "");
+static const char *ast_type_to_cstr_impl(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_UNIT:
         return "()";
@@ -26,16 +26,27 @@ const char *ast_type_to_cstr(AST_Type type) {
     case AST_TYPE_I64:
         return "i64";
 
+    case AST_TYPE_TYPE:
+        unreachable();
+
     default:
         unreachable();
     }
+}
+
+const char *ast_type_to_cstr(AST_Type type) {
+    if (type.kind == AST_TYPE_TYPE) {
+        return temp_sprintf("a type");
+    }
+
+    return temp_sprintf("'%s'", ast_type_to_cstr_impl(type));
 }
 
 bool ast_type_eq(AST_Type a, AST_Type b) {
     return a.kind == b.kind;
 }
 
-static_assert(COUNT_AST_TYPES == 3, "");
+static_assert(COUNT_AST_TYPES == 4, "");
 bool ast_type_is_numeric(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_I64:
@@ -49,7 +60,7 @@ bool ast_type_is_numeric(AST_Type type) {
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
-static_assert(COUNT_AST_NODES == 6, "");
+static_assert(COUNT_AST_NODES == 7, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -77,6 +88,15 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, "Binary '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
         ast_node_debug_impl(f, binary->lhs, depth + 1, "Lhs");
         ast_node_debug_impl(f, binary->rhs, depth + 1, "Rhs");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_DECL: {
+        AST_Node_Decl *decl = (AST_Node_Decl *) n;
+        fprintf(f, "Define {\n");
+        ast_node_debug_impl(f, decl->name, depth + 1, "Name");
+        ast_node_debug_impl(f, decl->type, depth + 1, "Type");
+        ast_node_debug_impl(f, decl->expr, depth + 1, "Expr");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
@@ -112,4 +132,10 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
 
 void ast_node_debug(FILE *f, AST_Node *n) {
     ast_node_debug_impl(f, n, 0, NULL);
+}
+
+void ast_nodes_debug(FILE *f, AST_Nodes ns) {
+    for (AST_Node *it = ns.head; it; it = it->next) {
+        ast_node_debug(f, it);
+    }
 }

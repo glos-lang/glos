@@ -1,8 +1,8 @@
 #ifndef CHECKER_H
 #define CHECKER_H
 
-#include "ast.h"
+#include "compiler.h"
 
-void check_nodes(AST_Nodes nodes);
+void check_nodes(Compiler *c, AST_Nodes nodes);
 
 #endif // CHECKER_H

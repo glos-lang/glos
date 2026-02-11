@@ -5,7 +5,7 @@
 - [X] Booleans
 - [X] Arithmetic comparisons
 - [X] Conditions
-- [ ] Global variables
+- [X] Global variables
 - [ ] Loops
 - [ ] Type Casting
 - [ ] Pointers
