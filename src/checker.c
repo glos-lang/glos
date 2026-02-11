@@ -75,7 +75,7 @@ static const char *builtin_type_names[COUNT_AST_TYPES] = {
     [AST_TYPE_I64] = "i64",
 };
 
-static_assert(COUNT_AST_NODES == 7, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return;
@@ -84,7 +84,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -130,7 +130,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -147,7 +147,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -195,7 +195,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 7, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static void check_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -263,6 +263,21 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         check_stmt(c, iff->consequence);
         check_stmt(c, iff->antecedence);
     } break;
+
+    case AST_NODE_FOR: {
+        AST_Node_For *forr = (AST_Node_For *) n;
+        check_stmt(c, forr->init);
+        check_expr(c, forr->condition, false);
+        if (forr->condition) {
+            ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+        }
+        check_stmt(c, forr->update);
+        check_stmt(c, forr->body);
+    } break;
+
+    case AST_NODE_JUMP:
+        // Pass
+        break;
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;

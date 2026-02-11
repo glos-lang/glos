@@ -11,6 +11,8 @@ typedef struct {
     Token ahead;
     bool  peeked;
 
+    bool in_loop;
+
     AST_Nodes nodes;
 } Parser;
 

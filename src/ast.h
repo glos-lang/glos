@@ -47,6 +47,8 @@ typedef enum {
     AST_NODE_DECL,
     AST_NODE_BLOCK,
     AST_NODE_IF,
+    AST_NODE_FOR,
+    AST_NODE_JUMP,
 
     AST_NODE_PRINT,
     COUNT_AST_NODES
@@ -98,6 +100,18 @@ typedef struct {
     AST_Node *consequence;
     AST_Node *antecedence;
 } AST_Node_If;
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *init;
+    AST_Node *condition;
+    AST_Node *update;
+    AST_Node *body;
+} AST_Node_For;
+
+typedef struct {
+    AST_Node node;
+} AST_Node_Jump;
 
 typedef struct {
     AST_Node  node;

@@ -26,7 +26,7 @@ static void compile_type(AST_Type *type) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 7, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -39,7 +39,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -65,7 +65,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -81,7 +81,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -104,7 +104,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 26, "");
+        static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
@@ -128,7 +128,7 @@ defer:
     return result;
 }
 
-static_assert(COUNT_AST_NODES == 7, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -198,6 +198,70 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         // End
         llvm_build_block(&c->llvm, end);
     } break;
+
+    case AST_NODE_FOR: {
+        AST_Node_For *forr = (AST_Node_For *) n;
+        compile_stmt(c, forr->init);
+
+        LLVM_Node_Block *body = llvm_block_new(&c->llvm);
+        LLVM_Node_Block *end = llvm_block_new(&c->llvm);
+
+        LLVM_Node_Block *start = body;
+        LLVM_Node_Block *update = start;
+        if (forr->update) {
+            update = llvm_block_new(&c->llvm);
+        }
+
+        LLVM_Node_Block *loop_break_save = c->loop_break;
+        LLVM_Node_Block *loop_condition_save = c->loop_continue;
+        c->loop_break = end;
+        c->loop_continue = update;
+        {
+            // Condition
+            if (forr->condition) {
+                start = llvm_block_new(&c->llvm);
+                llvm_build_jump(&c->llvm, start);
+                llvm_build_block(&c->llvm, start);
+
+                llvm_debug_set_pos(
+                    &c->llvm,
+                    llvm_build_branch(&c->llvm, compile_expr(c, forr->condition, false), body, end),
+                    forr->condition->token.pos.row,
+                    forr->condition->token.pos.col);
+            } else {
+                llvm_build_jump(&c->llvm, body);
+            }
+
+            // Body
+            llvm_build_block(&c->llvm, body);
+            compile_stmt(c, forr->body);
+
+            // Update
+            if (forr->update) {
+                llvm_build_jump(&c->llvm, update);
+                llvm_build_block(&c->llvm, update);
+                compile_expr(c, forr->update, false);
+            }
+
+            // Loop
+            llvm_build_jump(&c->llvm, start);
+
+            // End
+            llvm_build_block(&c->llvm, end);
+        }
+        c->loop_break = loop_break_save;
+        c->loop_continue = loop_condition_save;
+    } break;
+
+    case AST_NODE_JUMP:
+        if (n->token.kind == TOKEN_BREAK) {
+            llvm_build_jump(&c->llvm, c->loop_break);
+        } else if (n->token.kind == TOKEN_CONTINUE) {
+            llvm_build_jump(&c->llvm, c->loop_continue);
+        } else {
+            unreachable();
+        }
+        break;
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
