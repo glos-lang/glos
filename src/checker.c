@@ -232,6 +232,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             it->type = *decl->type->type.spec.type;
         }
 
+        // TODO: Do not allow declaration of variable with type `Type`
         if (decl->expr) {
             check_expr(c, decl->expr, REF_NIL);
             if (decl->type) {

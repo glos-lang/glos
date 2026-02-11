@@ -143,13 +143,17 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
         if (!it->llvm) {
             compile_type(&it->node.type);
-            it->llvm = (LLVM_Node *) llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm);
+            LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm);
+            llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            it->llvm = (LLVM_Node *) var;
         }
 
         if (decl->expr) {
             llvm_debug_set_pos(
                 &c->llvm,
                 llvm_build_store(&c->llvm, it->llvm, compile_expr(c, decl->expr, false)),
+
+                // TODO: Use the position of the `=`
                 n->token.pos.row,
                 n->token.pos.col);
         }
@@ -245,8 +249,9 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         fwrite(c->llvm.sb.data, sizeof(char), c->llvm.sb.count, f);
         fclose(f);
     }
-    sb_free(&c->llvm.sb);
-    sb_free(&c->globals);
+
+    llvm_free(&c->llvm);
+    da_free(&c->globals);
 
     const int code = cmd_wait(proc);
     if (code != 0) {

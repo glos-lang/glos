@@ -91,7 +91,8 @@ typedef struct {
 } LLVM_Node_Branch;
 
 struct LLVM_Node_Var {
-    LLVM_Node node;
+    LLVM_Node      node;
+    LLVM_Debug_Pos debug;
 };
 
 typedef struct {
@@ -154,12 +155,12 @@ static inline size_t llvm_block_iota(LLVM *l, LLVM_Node_Block *block) {
 }
 
 static inline void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
-    pos->iota = l->iota_debug++;
+    pos->iota = ++l->iota_debug;
     sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
 }
 
 static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
-    file->iota = l->iota_debug++;
+    file->iota = ++l->iota_debug;
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
@@ -383,6 +384,10 @@ void llvm_free(LLVM *l) {
 }
 
 void llvm_compile(LLVM *l) {
+    l->debug_i32_type = ++l->iota_debug;
+    l->debug_i64_type = ++l->iota_debug;
+    l->debug_bool_type = ++l->iota_debug;
+
     sb_push_cstr(
         &l->sb,
         "@.iprint = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\", align 1\n"
@@ -393,94 +398,140 @@ void llvm_compile(LLVM *l) {
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
             sb_sprintf(&l->sb, "@" SV_Fmt " = global ", SV_Arg(it->sv));
             llvm_type_emit(l, it->type);
-            sb_sprintf(&l->sb, " 0\n");
+            sb_sprintf(&l->sb, " zeroinitializer");
+
+            llvm_debug_pos_emit(l, it->debug);
+            sb_push(&l->sb, '\n');
             // TODO: Align
-            // TODO: Debug
-            // TODO: Booleans
+            // TODO: Booleans should be stored as `i8`
         }
     }
 
-    {
-        sb_push(&l->sb, '\n');
-        llvm_debug_file_emit(l, l->debug_file);
-        sb_push(&l->sb, '\n');
-
-        const size_t debug_version = l->iota_debug++;
-        const size_t debug_info_version = l->iota_debug++;
-        sb_sprintf(&l->sb, "!llvm.module.flags = !{!%zu, !%zu}\n", debug_version, debug_info_version);
-
-#ifdef PLATFORM_X86_64_WINDOWS
-        sb_sprintf(&l->sb, "!%zu = !{i32 2, !\"CodeView\", i32 1}\n", debug_version);
-#else
-        sb_sprintf(&l->sb, "!%zu = !{i32 7, !\"Dwarf Version\", i32 5}\n", debug_version);
-#endif // PLATFORM_X86_64_WINDOWS
-        sb_sprintf(&l->sb, "!%zu = !{i32 2, !\"Debug Info Version\", i32 3}\n", debug_info_version);
-
-        const size_t debug_compilation_unit = l->iota_debug++;
-        sb_push(&l->sb, '\n');
-        sb_sprintf(&l->sb, "!llvm.dbg.cu = !{!%zu}\n", debug_compilation_unit);
-        sb_sprintf(
-            &l->sb,
-            "!%zu = distinct !DICompileUnit("
-            "language: DW_LANG_C11, "
-            "file: !%zu, "
-            "producer: \"glos\", "
-            "isOptimized: false, "
-            "runtimeVersion: 0, "
-            "emissionKind: FullDebug, "
-            "globals: !{}, "
-            "splitDebugInlining: false, "
-            "nameTableKind: None)\n",
-            debug_compilation_unit,
-            l->debug_file->iota);
-
-        l->debug_main_fn = l->iota_debug++;
-        const size_t debug_main_fn_type = l->iota_debug++;
-        sb_sprintf(
-            &l->sb,
-            "\n"
-            "!%zu = distinct !DISubprogram("
-            "name: \"main\", "
-            "scope: !%zu, "
-            "file: !%zu, "
-            "line: 1, "
-            "type: !%zu, "
-            "scopeLine: 1, "
-            "flags: DIFlagPrototyped, "
-            "spFlags: DISPFlagDefinition, "
-            "unit: !%zu)\n",
-            l->debug_main_fn,
-            l->debug_file->iota,
-            l->debug_file->iota,
-            debug_main_fn_type,
-            debug_compilation_unit);
-
-        const size_t debug_i32_type = l->iota_debug++;
-        sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", debug_main_fn_type, debug_i32_type);
-        sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", debug_i32_type);
-    }
-
+    l->debug_main_fn = ++l->iota_debug;
     sb_sprintf(&l->sb, "\ndefine i32 @main() !dbg !%zu {\n", l->debug_main_fn);
     for (LLVM_Node *it = l->body.head; it; it = it->next) {
         llvm_node_compile(l, it);
     }
+    sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
 
-    sb_push_cstr(
+    sb_push(&l->sb, '\n');
+    llvm_debug_file_emit(l, l->debug_file);
+
+    const size_t debug_version = ++l->iota_debug;
+    const size_t debug_info_version = ++l->iota_debug;
+    sb_sprintf(&l->sb, "!llvm.module.flags = !{!%zu, !%zu}\n", debug_version, debug_info_version);
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    sb_sprintf(&l->sb, "!%zu = !{i32 2, !\"CodeView\", i32 1}\n", debug_version);
+#else
+    sb_sprintf(&l->sb, "!%zu = !{i32 7, !\"Dwarf Version\", i32 5}\n", debug_version);
+#endif // PLATFORM_X86_64_WINDOWS
+    sb_sprintf(&l->sb, "!%zu = !{i32 2, !\"Debug Info Version\", i32 3}\n", debug_info_version);
+
+    const size_t debug_globals_list = ++l->iota_debug;
+    const size_t debug_compilation_unit = ++l->iota_debug;
+    sb_sprintf(&l->sb, "!llvm.dbg.cu = !{!%zu}\n", debug_compilation_unit);
+    sb_sprintf(
         &l->sb,
-        "  ret i32 0\n"
-        "}\n");
+        "!%zu = distinct !DICompileUnit("
+        "language: DW_LANG_C11, "
+        "globals: !%zu, "
+        "file: !%zu, "
+        "producer: \"glos\", "
+        "isOptimized: false, "
+        "runtimeVersion: 0, "
+        "emissionKind: FullDebug, "
+        "splitDebugInlining: false, "
+        "nameTableKind: None)\n",
+        debug_compilation_unit,
+        debug_globals_list,
+        l->debug_file->iota);
 
-    if (l->debug_pos) {
-        sb_push(&l->sb, '\n');
-        for (LLVM_Debug_Pos *it = l->debug_pos; it; it = it->next) {
-            sb_sprintf(
-                &l->sb,
-                "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
-                it->iota,
-                it->row + 1,
-                it->col + 1,
-                l->debug_main_fn);
+    const size_t debug_main_fn_type = ++l->iota_debug;
+    sb_sprintf(
+        &l->sb,
+        "!%zu = distinct !DISubprogram("
+        "name: \"main\", "
+        "scope: !%zu, "
+        "file: !%zu, "
+        "line: %zu, "
+        "scopeLine: %zu, "
+        "type: !%zu, "
+        "flags: DIFlagPrototyped, "
+        "spFlags: DISPFlagDefinition, "
+        "unit: !%zu)\n",
+        l->debug_main_fn,
+        l->debug_file->iota,
+        l->debug_file->iota,
+        (size_t) 1,
+        (size_t) 1,
+        debug_main_fn_type,
+        debug_compilation_unit);
+
+    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)\n", l->debug_bool_type);
+    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
+    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
+    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", debug_main_fn_type, l->debug_i32_type);
+
+    for (LLVM_Node *it = l->vars.head; it; it = it->next) {
+        const size_t info = ++l->iota_debug;
+        sb_sprintf(
+            &l->sb, "!%zu = !DIGlobalVariableExpression(var: !%zu, expr: !DIExpression())\n", it->debug->iota, info);
+
+        size_t debug_type = 0;
+        static_assert(COUNT_LLVM_TYPES == 3, "");
+        switch (it->type.kind) {
+        case LLVM_TYPE_I0:
+            unreachable();
+            break;
+
+        case LLVM_TYPE_I1:
+            debug_type = l->debug_bool_type;
+            break;
+
+        case LLVM_TYPE_I64:
+            debug_type = l->debug_i64_type;
+            break;
+
+        default:
+            unreachable();
+            break;
         }
+
+        sb_sprintf(
+            &l->sb,
+            "!%zu = distinct !DIGlobalVariable(name: \"" SV_Fmt "\", "
+            "scope: !%zu, "
+            "file: !%zu, "
+            "line: %zu, "
+            "type: !%zu, "
+            "isLocal: false, "
+            "isDefinition: true)\n",
+            info,
+            SV_Arg(it->sv),
+            debug_compilation_unit,
+            l->debug_file->iota,
+            it->debug->row,
+            debug_type);
+    }
+
+    sb_sprintf(&l->sb, "!%zu = !{", debug_globals_list);
+    for (LLVM_Node *it = l->vars.head; it; it = it->next) {
+        sb_sprintf(&l->sb, "!%zu", it->debug->iota);
+        if (it->next) {
+            sb_push_cstr(&l->sb, ", ");
+        }
+    }
+    sb_push_cstr(&l->sb, "}\n");
+
+    for (LLVM_Debug_Pos *it = l->debug_pos; it; it = it->next) {
+        sb_sprintf(
+            &l->sb,
+            "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
+            it->iota,
+            it->row + 1,
+            it->col + 1,
+            l->debug_main_fn);
     }
 }
 
@@ -501,8 +552,15 @@ LLVM_Node_Block *llvm_block_new(LLVM *l) {
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type) {
     LLVM_Node_Var *var = (LLVM_Node_Var *) llvm_node_alloc(l, LLVM_NODE_VAR, type);
     var->node.sv = name;
+    var->node.debug = &var->debug;
     llvm_nodes_push(&l->vars, (LLVM_Node *) var);
     return var;
+}
+
+void llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col) {
+    unused(l); // For symmetry
+    var->debug.row = row;
+    var->debug.col = col;
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
