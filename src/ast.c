@@ -15,7 +15,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
 }
 
 static_assert(COUNT_AST_TYPES == 4, "");
-const char *ast_type_to_cstr(AST_Type type) {
+static const char *ast_type_to_cstr_impl(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_UNIT:
         return "()";
@@ -27,11 +27,19 @@ const char *ast_type_to_cstr(AST_Type type) {
         return "i64";
 
     case AST_TYPE_TYPE:
-        return "Type";
+        unreachable();
 
     default:
         unreachable();
     }
+}
+
+const char *ast_type_to_cstr(AST_Type type) {
+    if (type.kind == AST_TYPE_TYPE) {
+        return temp_sprintf("a type");
+    }
+
+    return temp_sprintf("'%s'", ast_type_to_cstr_impl(type));
 }
 
 bool ast_type_eq(AST_Type a, AST_Type b) {

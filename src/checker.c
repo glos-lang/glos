@@ -1,13 +1,23 @@
 #include "checker.h"
+#include <stdnoreturn.h>
 
-static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
-    if (ast_type_eq(actual->type, expected)) {
-        return actual->type;
+static noreturn void error_undefined(const AST_Node *n) {
+    fprintf(stderr, Pos_Fmt "ERROR: Undefined identifier '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
+    exit(1);
+}
+
+static noreturn void error_redefinition(const AST_Node *n, const AST_Node *previous) {
+    fprintf(stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
+    if (previous) {
+        fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(previous->token.pos));
     }
+    exit(1);
+}
 
+static noreturn void error_type_mismatch(AST_Node *actual, AST_Type expected) {
     fprintf(
         stderr,
-        Pos_Fmt "ERROR: Expected '%s', got '%s'\n",
+        Pos_Fmt "ERROR: Expected %s, got %s\n",
         Pos_Arg(actual->token.pos),
         ast_type_to_cstr(expected),
         ast_type_to_cstr(actual->type));
@@ -15,19 +25,20 @@ static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
     exit(1);
 }
 
+static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
+    if (ast_type_eq(actual->type, expected)) {
+        return actual->type;
+    }
+
+    error_type_mismatch(actual, expected);
+}
+
 static AST_Type ast_type_assert_node(AST_Node *actual, AST_Node *expected) {
     if (ast_type_eq(actual->type, expected->type)) {
         return actual->type;
     }
 
-    fprintf(
-        stderr,
-        Pos_Fmt "ERROR: Expected '%s', got '%s'\n",
-        Pos_Arg(actual->token.pos),
-        ast_type_to_cstr(expected->type),
-        ast_type_to_cstr(actual->type));
-
-    exit(1);
+    error_type_mismatch(actual, expected->type);
 }
 
 static AST_Type ast_type_assert_numeric(const AST_Node *n) {
@@ -40,6 +51,7 @@ static AST_Type ast_type_assert_numeric(const AST_Node *n) {
         Pos_Fmt "ERROR: Expected arithmetic type, got '%s'\n",
         Pos_Arg(n->token.pos),
         ast_type_to_cstr(n->type));
+
     exit(1);
 }
 
@@ -54,19 +66,6 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
 
     fprintf(
         stderr, Pos_Fmt "ERROR: Expected scalar type, got '%s'\n", Pos_Arg(n->token.pos), ast_type_to_cstr(n->type));
-    exit(1);
-}
-
-static void error_undefined(const AST_Node *n) {
-    fprintf(stderr, Pos_Fmt "ERROR: Undefined identifier '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
-    exit(1);
-}
-
-static void error_redefinition(const AST_Node *n, const AST_Node *previous) {
-    fprintf(stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
-    if (previous) {
-        fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(previous->token.pos));
-    }
     exit(1);
 }
 
@@ -232,9 +231,19 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             it->type = *decl->type->type.spec.type;
         }
 
-        // TODO: Do not allow declaration of variable with type `Type`
         if (decl->expr) {
             check_expr(c, decl->expr, REF_NIL);
+
+            if (decl->expr->type.kind == AST_TYPE_UNIT || decl->expr->type.kind == AST_TYPE_TYPE) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot store %s in a variable\n",
+                    Pos_Arg(decl->expr->token.pos),
+                    ast_type_to_cstr(decl->expr->type));
+
+                exit(1);
+            }
+
             if (decl->type) {
                 ast_type_assert(decl->expr, it->type);
             } else {
