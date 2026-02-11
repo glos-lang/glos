@@ -9,6 +9,8 @@
 #define EXE_FILE_EXTENSION ""
 #endif // PLATFORM_X86_64_WINDOWS
 
+#define TESTS_LIST_PATH "tests/tests.conf"
+
 static void usage(FILE *f, const char *program) {
     fprintf(
         f,
@@ -436,8 +438,8 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     const char *temp_save = temp_alloc(0);
 
     SV contents = {0};
-    if (!read_file_into_arena("tests.conf", &contents, &arena)) {
-        fprintf(stderr, "ERROR: Could not read file 'tests.conf'\n");
+    if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
+        fprintf(stderr, "ERROR: Could not read file '%s'\n", TESTS_LIST_PATH);
         return_defer(false);
     }
 
