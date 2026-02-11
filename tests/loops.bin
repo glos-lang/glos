@@ -1,5 +1,5 @@
 EXIT 0
-STDOUT 30
+STDOUT 50
 0
 1
 2
@@ -15,6 +15,16 @@ STDOUT 30
 3
 2
 1
+0
+1
+2
+3
+5
+0
+1
+2
+3
+4
 
 STDERR 0
 

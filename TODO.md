@@ -6,8 +6,10 @@
 - [X] Arithmetic comparisons
 - [X] Conditions
 - [X] Global variables
-- [ ] Loops
-- [ ] Type Casting
+- [X] Loops
+- [ ] Functions
 - [ ] Pointers
+- [ ] Type Casting
+- [ ] More integer types
 - [ ] External C functions
 - [ ] Bitwise operators

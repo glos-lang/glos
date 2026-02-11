@@ -9,7 +9,7 @@ typedef enum {
     POWER_PRE
 } Power;
 
-static_assert(COUNT_TOKENS == 27, "");
+static_assert(COUNT_TOKENS == 29, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -100,7 +100,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 8, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
@@ -111,6 +111,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
         [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
         [AST_NODE_IF] = sizeof(AST_Node_If),
         [AST_NODE_FOR] = sizeof(AST_Node_For),
+        [AST_NODE_JUMP] = sizeof(AST_Node_Jump),
 
         [AST_NODE_PRINT] = sizeof(AST_Node_Print),
     };
@@ -125,7 +126,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
 static AST_Node *parse_expr(Parser *p, Power mbp);
 static AST_Node *parse_stmt(Parser *p);
 
-static_assert(COUNT_TOKENS == 27, "");
+static_assert(COUNT_TOKENS == 29, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -244,12 +245,17 @@ static AST_Node *parse_for(Parser *p, Token token) {
         }
     }
 
-    token = expect_token(p, TOKEN_LBRACE);
-    forr->body = parse_block(p, token);
+    const bool inside_loop_save = p->in_loop;
+    p->in_loop = true;
+    {
+        token = expect_token(p, TOKEN_LBRACE);
+        forr->body = parse_block(p, token);
+    }
+    p->in_loop = inside_loop_save;
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_AST_NODES == 8, "");
+static_assert(COUNT_AST_NODES == 9, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
 
@@ -265,6 +271,15 @@ static AST_Node *parse_stmt(Parser *p) {
 
     case TOKEN_FOR:
         node = parse_for(p, token);
+        break;
+
+    case TOKEN_BREAK:
+    case TOKEN_CONTINUE:
+        if (!p->in_loop) {
+            error_unexpected(token);
+        }
+
+        node = ast_node_alloc(p, AST_NODE_JUMP, token);
         break;
 
     case TOKEN_PRINT: {

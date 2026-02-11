@@ -9,6 +9,9 @@ typedef struct {
 
     Decls globals;
 
+    LLVM_Node_Block *loop_break;
+    LLVM_Node_Block *loop_continue;
+
     // For debug information
     const char *path;
 } Compiler;
