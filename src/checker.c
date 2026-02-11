@@ -69,11 +69,6 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
     exit(1);
 }
 
-typedef enum {
-    REF_NIL,
-    REF_MUT,
-} Ref;
-
 static_assert(COUNT_AST_TYPES == 4, "");
 static const char *builtin_type_names[COUNT_AST_TYPES] = {
     [AST_TYPE_BOOL] = "bool",
@@ -81,7 +76,7 @@ static const char *builtin_type_names[COUNT_AST_TYPES] = {
 };
 
 static_assert(COUNT_AST_NODES == 7, "");
-static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
+static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return;
     }
@@ -133,7 +128,7 @@ static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        check_expr(c, unary->value, REF_NIL);
+        check_expr(c, unary->value, false);
 
         static_assert(COUNT_TOKENS == 26, "");
         switch (n->token.kind) {
@@ -159,8 +154,8 @@ static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
         case TOKEN_MUL:
         case TOKEN_DIV:
         case TOKEN_MOD:
-            check_expr(c, binary->lhs, REF_NIL);
-            check_expr(c, binary->rhs, REF_NIL);
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
             ast_type_assert_numeric(binary->lhs);
             n->type = ast_type_assert_node(binary->rhs, binary->lhs);
             break;
@@ -171,16 +166,16 @@ static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
         case TOKEN_LE:
         case TOKEN_EQ:
         case TOKEN_NE:
-            check_expr(c, binary->lhs, REF_NIL);
-            check_expr(c, binary->rhs, REF_NIL);
+            check_expr(c, binary->lhs, false);
+            check_expr(c, binary->rhs, false);
             ast_type_assert_numeric(binary->lhs);
             ast_type_assert_node(binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
             break;
 
         case TOKEN_SET:
-            check_expr(c, binary->lhs, REF_MUT);
-            check_expr(c, binary->rhs, REF_NIL);
+            check_expr(c, binary->lhs, true);
+            check_expr(c, binary->rhs, false);
             ast_type_assert_node(binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
             break;
@@ -194,7 +189,7 @@ static void check_expr(Compiler *c, AST_Node *n, Ref ref) {
         unreachable();
     }
 
-    if (!n->allow_ref && ref != REF_NIL) {
+    if (!n->allow_ref && ref) {
         fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference to value not in memory\n", Pos_Arg(n->token.pos));
         exit(1);
     }
@@ -226,13 +221,13 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         }
 
         if (decl->type) {
-            check_expr(c, decl->type, REF_NIL);
+            check_expr(c, decl->type, false);
             ast_type_assert(decl->type, (AST_Type) {.kind = AST_TYPE_TYPE});
             it->type = *decl->type->type.spec.type;
         }
 
         if (decl->expr) {
-            check_expr(c, decl->expr, REF_NIL);
+            check_expr(c, decl->expr, false);
 
             if (decl->expr->type.kind == AST_TYPE_UNIT || decl->expr->type.kind == AST_TYPE_TYPE) {
                 fprintf(
@@ -263,7 +258,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_IF: {
         AST_Node_If *iff = (AST_Node_If *) n;
-        check_expr(c, iff->condition, REF_NIL);
+        check_expr(c, iff->condition, false);
         ast_type_assert(iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
         check_stmt(c, iff->consequence);
         check_stmt(c, iff->antecedence);
@@ -271,12 +266,12 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
-        check_expr(c, print->value, REF_NIL);
+        check_expr(c, print->value, false);
         ast_type_assert_scalar(print->value);
     } break;
 
     default:
-        check_expr(c, n, REF_NIL);
+        check_expr(c, n, false);
         break;
     }
 }
