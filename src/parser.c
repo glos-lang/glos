@@ -107,7 +107,7 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
         [AST_NODE_UNARY] = sizeof(AST_Node_Unary),
         [AST_NODE_BINARY] = sizeof(AST_Node_Binary),
 
-        [AST_NODE_DECL] = sizeof(AST_Node_Decl),
+        [AST_NODE_DEFINE] = sizeof(AST_Node_Define),
         [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
         [AST_NODE_IF] = sizeof(AST_Node_If),
         [AST_NODE_FOR] = sizeof(AST_Node_For),
@@ -169,7 +169,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         switch (token.kind) {
         case TOKEN_COLON:
             if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                AST_Node_Decl *def = (AST_Node_Decl *) ast_node_alloc(p, AST_NODE_DECL, token);
+                AST_Node_Define *def = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
                 def->name = node;
 
                 token = peek_token(p);
@@ -236,8 +236,9 @@ static AST_Node *parse_for(Parser *p, Token token) {
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL);
-        if (forr->condition->kind == AST_NODE_DECL || (forr->condition->kind == AST_NODE_BINARY &&
-                                                       token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
+        if (forr->condition->kind == AST_NODE_DEFINE ||
+            (forr->condition->kind == AST_NODE_BINARY &&
+             token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
             buffer_token(p, expect_token(p, TOKEN_EOL));
         }
 

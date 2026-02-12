@@ -41,28 +41,28 @@ bool ast_type_eq(AST_Type a, AST_Type b);
 bool ast_type_is_numeric(AST_Type type);
 
 typedef enum {
-    AST_CONST_VALUE_INT,
-    AST_CONST_VALUE_TYPE,
-    COUNT_AST_CONST_VALUES
-} AST_Const_Value_Kind;
+    CONST_VALUE_INT,
+    CONST_VALUE_TYPE,
+    COUNT_CONST_VALUES
+} Const_Value_Kind;
 
 typedef struct {
-    AST_Const_Value_Kind kind;
+    Const_Value_Kind kind;
     union {
         long     integer;
         AST_Type type;
     } as;
-} AST_Const_Value;
+} Const_Value;
 
-#define const_value_int(n)  ((AST_Const_Value) {.kind = AST_CONST_VALUE_INT, .as.integer = (n)})
-#define const_value_type(t) ((AST_Const_Value) {.kind = AST_CONST_VALUE_TYPE, .as.type = (t)})
+#define const_value_int(n)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (n)})
+#define const_value_type(t) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (t)})
 
 typedef enum {
     AST_NODE_ATOM,
     AST_NODE_UNARY,
     AST_NODE_BINARY,
 
-    AST_NODE_DECL,
+    AST_NODE_DEFINE,
     AST_NODE_BLOCK,
     AST_NODE_IF,
     AST_NODE_FOR,
@@ -83,24 +83,16 @@ struct AST_Node {
     AST_Node *next;
 };
 
-typedef struct {
-    AST_Node_Atom *definition;
-} AST_Node_Atom_Reference;
-
-typedef struct {
-    bool            is_const;
-    AST_Const_Value const_value;
-
-    LLVM_Node *llvm;
-} AST_Node_Atom_Definition;
-
 struct AST_Node_Atom {
     AST_Node node;
-    // TODO: Consider spilling this. It is getting a bit confusing
-    union {
-        AST_Node_Atom_Reference  reference;
-        AST_Node_Atom_Definition definition;
-    } as;
+
+    // When this atom is a definition
+    bool        is_const;
+    Const_Value const_value;
+    LLVM_Node  *llvm;
+
+    // When this atom is a reference to another defining atom
+    AST_Node_Atom *definition;
 };
 
 typedef struct {
@@ -120,7 +112,7 @@ typedef struct {
     AST_Node *type;
     AST_Node *expr;
     bool      is_const;
-} AST_Node_Decl;
+} AST_Node_Define;
 
 typedef struct {
     AST_Node  node;

@@ -76,11 +76,11 @@ static const char *builtin_type_names[COUNT_AST_TYPES] = {
 static void check_ident(Compiler *c, AST_Node *n) {
     AST_Node_Atom *atom = (AST_Node_Atom *) n;
     AST_Node_Atom *definition = scope_find(&c->globals, n->token.sv);
-    atom->as.reference.definition = definition;
+    atom->definition = definition;
 
     if (definition) {
         n->type = definition->node.type;
-        n->is_memory = !definition->as.definition.is_const;
+        n->is_memory = !definition->is_const;
         return;
     }
 
@@ -196,9 +196,9 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 }
 
 static_assert(COUNT_AST_NODES == 9, "");
-static AST_Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
+static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
-        return (AST_Const_Value) {0};
+        return (Const_Value) {0};
     }
 
     switch (n->kind) {
@@ -217,10 +217,10 @@ static AST_Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
                 return const_value_type(n->type);
             }
 
-            AST_Node_Atom *definition = atom->as.reference.definition;
+            AST_Node_Atom *definition = atom->definition;
             assert(definition);
 
-            if (!definition->as.definition.is_const) {
+            if (!definition->is_const) {
                 fprintf(
                     stderr,
                     Pos_Fmt "ERROR: Cannot use runtime values in a constant expression\n",
@@ -228,7 +228,7 @@ static AST_Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
                 exit(1);
             }
 
-            return definition->as.definition.const_value;
+            return definition->const_value;
         }
 
         default:
@@ -239,7 +239,7 @@ static AST_Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        AST_Const_Value value = {0};
+        Const_Value     value = {0};
 
         static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
@@ -258,8 +258,8 @@ static AST_Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        AST_Const_Value  lhs = {0};
-        AST_Const_Value  rhs = {0};
+        Const_Value      lhs = {0};
+        Const_Value      rhs = {0};
 
         static_assert(COUNT_TOKENS == 29, "");
         switch (n->token.kind) {
@@ -337,12 +337,12 @@ static void check_stmt(Compiler *c, AST_Node *n) {
     }
 
     switch (n->kind) {
-    case AST_NODE_DECL: {
-        AST_Node_Decl *decl = (AST_Node_Decl *) n;
-        assert(decl->name->kind == AST_NODE_ATOM && decl->name->token.kind == TOKEN_IDENT);
+    case AST_NODE_DEFINE: {
+        AST_Node_Define *define = (AST_Node_Define *) n;
+        assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
 
-        AST_Node_Atom *it = (AST_Node_Atom *) decl->name;
-        AST_Node      *it_expr = decl->expr;
+        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+        AST_Node      *it_expr = define->expr;
 
         for (AST_Type_Kind kind = 0; kind < COUNT_AST_TYPES; kind++) {
             const char *name = builtin_type_names[kind];
@@ -356,16 +356,16 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             error_redefinition(it, previous);
         }
 
-        if (decl->type) {
-            check_expr(c, decl->type, false);
-            ast_type_assert(decl->type, (AST_Type) {.kind = AST_TYPE_TYPE});
-            it->node.type = *decl->type->type.spec.type;
+        if (define->type) {
+            check_expr(c, define->type, false);
+            ast_type_assert(define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
+            it->node.type = *define->type->type.spec.type;
         }
 
         if (it_expr) {
             check_expr(c, it_expr, false);
 
-            if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !decl->is_const)) {
+            if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
                 fprintf(
                     stderr,
                     Pos_Fmt "ERROR: Cannot store %s in a variable\n",
@@ -375,16 +375,16 @@ static void check_stmt(Compiler *c, AST_Node *n) {
                 exit(1);
             }
 
-            if (decl->type) {
+            if (define->type) {
                 ast_type_assert(it_expr, it->node.type);
             } else {
                 it->node.type = it_expr->type;
             }
         }
 
-        if (decl->is_const) {
-            it->as.definition.is_const = true;
-            it->as.definition.const_value = eval_const_expr(c, it_expr);
+        if (define->is_const) {
+            it->is_const = true;
+            it->const_value = eval_const_expr(c, it_expr);
         }
 
         scope_push(&c->globals, it);

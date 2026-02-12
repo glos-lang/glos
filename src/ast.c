@@ -91,12 +91,12 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
-    case AST_NODE_DECL: {
-        AST_Node_Decl *decl = (AST_Node_Decl *) n;
+    case AST_NODE_DEFINE: {
+        AST_Node_Define *define = (AST_Node_Define *) n;
         fprintf(f, "Define {\n");
-        ast_node_debug_impl(f, decl->name, depth + 1, "Name");
-        ast_node_debug_impl(f, decl->type, depth + 1, "Type");
-        ast_node_debug_impl(f, decl->expr, depth + 1, "Expr");
+        ast_node_debug_impl(f, define->name, depth + 1, "Name");
+        ast_node_debug_impl(f, define->type, depth + 1, "Type");
+        ast_node_debug_impl(f, define->expr, depth + 1, "Expr");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

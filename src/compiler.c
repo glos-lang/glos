@@ -47,20 +47,19 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_atom_int(&c->llvm, n->type.llvm, n->token.as.integer));
 
         case TOKEN_IDENT: {
-            AST_Node_Atom *definition = (AST_Node_Atom *) atom->as.reference.definition;
+            AST_Node_Atom *definition = (AST_Node_Atom *) atom->definition;
             assert(definition);
 
-            if (definition->as.definition.is_const) {
+            if (definition->is_const) {
                 debug = false;
-                AST_Const_Value const_value = definition->as.definition.const_value;
 
-                static_assert(COUNT_AST_CONST_VALUES == 2, "");
-                switch (const_value.kind) {
-                case AST_CONST_VALUE_INT:
-                    return_defer(llvm_atom_int(&c->llvm, n->type.llvm, const_value.as.integer));
+                static_assert(COUNT_CONST_VALUES == 2, "");
+                switch (definition->const_value.kind) {
+                case CONST_VALUE_INT:
+                    return_defer(llvm_atom_int(&c->llvm, n->type.llvm, definition->const_value.as.integer));
                     break;
 
-                case AST_CONST_VALUE_TYPE:
+                case CONST_VALUE_TYPE:
                     unreachable();
                     break;
 
@@ -72,9 +71,10 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
             if (ref) {
                 debug = false;
-                return_defer(definition->as.definition.llvm);
+                return_defer(definition->llvm);
             }
-            return_defer(llvm_build_load(&c->llvm, definition->as.definition.llvm, n->type.llvm));
+
+            return_defer(llvm_build_load(&c->llvm, definition->llvm, n->type.llvm));
         } break;
 
         default:
@@ -156,27 +156,27 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     }
 
     switch (n->kind) {
-    case AST_NODE_DECL: {
-        AST_Node_Decl *decl = (AST_Node_Decl *) n;
-        if (decl->is_const) {
+    case AST_NODE_DEFINE: {
+        AST_Node_Define *define = (AST_Node_Define *) n;
+        if (define->is_const) {
             return;
         }
 
-        assert(decl->name->kind == AST_NODE_ATOM && decl->name->token.kind == TOKEN_IDENT);
-        AST_Node_Atom *it = (AST_Node_Atom *) decl->name;
-        AST_Node      *it_expr = decl->expr;
+        assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+        AST_Node      *it_expr = define->expr;
 
-        if (!it->as.definition.llvm) {
+        if (!it->llvm) {
             compile_type(&it->node.type);
 
             LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm);
             llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
-            it->as.definition.llvm = (LLVM_Node *) var;
+            it->llvm = (LLVM_Node *) var;
 
             if (it_expr) {
                 llvm_debug_set_pos(
                     &c->llvm,
-                    llvm_build_store(&c->llvm, it->as.definition.llvm, compile_expr(c, it_expr, false)),
+                    llvm_build_store(&c->llvm, it->llvm, compile_expr(c, it_expr, false)),
                     n->token.pos.row,
                     n->token.pos.col);
             }

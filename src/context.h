@@ -5,7 +5,7 @@
 
 typedef Dynamic_Array(AST_Node_Atom *) Scope;
 
-void           scope_push(Scope *decls, AST_Node_Atom *node);
-AST_Node_Atom *scope_find(Scope *decls, SV name);
+void           scope_push(Scope *scope, AST_Node_Atom *node);
+AST_Node_Atom *scope_find(Scope *scope, SV name);
 
 #endif // CONTEXT_H
