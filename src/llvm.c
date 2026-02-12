@@ -46,7 +46,7 @@ struct LLVM_Debug_File {
 typedef struct {
     LLVM_Node node;
     union {
-        size_t integer;
+        long integer;
     } as;
 } LLVM_Node_Atom;
 
@@ -173,7 +173,7 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     switch (n->kind) {
     case LLVM_NODE_ATOM: {
         LLVM_Node_Atom *atom = (LLVM_Node_Atom *) n;
-        sb_sprintf(&l->sb, "%zu", atom->as.integer);
+        sb_sprintf(&l->sb, "%ld", atom->as.integer);
     } break;
 
     case LLVM_NODE_BLOCK:
@@ -602,7 +602,7 @@ LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     }
 }
 
-LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n) {
+LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n) {
     LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM, type);
     atom->as.integer = n;
     return (LLVM_Node *) atom;

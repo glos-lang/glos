@@ -173,12 +173,15 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 def->name = node;
 
                 token = peek_token(p);
-                if (token.kind != TOKEN_SET) {
+                if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
                     def->type = parse_expr(p, POWER_PRE);
                 }
 
                 if (read_token(p, TOKEN_SET)) {
                     def->expr = parse_expr(p, POWER_SET);
+                } else if (read_token(p, TOKEN_COLON)) {
+                    def->expr = parse_expr(p, POWER_SET);
+                    def->is_const = true;
                 }
                 return (AST_Node *) def;
             } else {

@@ -84,7 +84,7 @@ void llvm_compile(LLVM *l);
 LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
 LLVM_Type_Info llvm_type_info(LLVM_Type type);
 
-LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, size_t n);
+LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 

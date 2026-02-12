@@ -7,7 +7,7 @@ typedef struct {
     Cmd *cmd;
     LLVM llvm;
 
-    Decls globals;
+    Scope globals;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
