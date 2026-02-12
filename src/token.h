@@ -64,7 +64,7 @@ typedef struct {
     bool newline;
 
     union {
-        size_t integer;
+        long integer;
     } as;
 } Token;
 

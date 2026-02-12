@@ -40,7 +40,7 @@ static Power token_kind_to_power(Token_Kind kind) {
     }
 }
 
-static void error_unexpected(Token token) {
+static noreturn void error_unexpected(Token token) {
     fprintf(stderr, Pos_Fmt "ERROR: Unexpected %s\n", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
     exit(1);
 }
@@ -173,12 +173,15 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 def->name = node;
 
                 token = peek_token(p);
-                if (token.kind != TOKEN_SET) {
+                if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
                     def->type = parse_expr(p, POWER_PRE);
                 }
 
                 if (read_token(p, TOKEN_SET)) {
                     def->expr = parse_expr(p, POWER_SET);
+                } else if (read_token(p, TOKEN_COLON)) {
+                    def->expr = parse_expr(p, POWER_SET);
+                    def->is_const = true;
                 }
                 return (AST_Node *) def;
             } else {

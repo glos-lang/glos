@@ -1,0 +1,9 @@
+A :: 34 + 35
+B :: A * 4 + 144
+
+Int :: i64
+C: Int = A + 8 + B * 3
+
+print A
+print B
+print C

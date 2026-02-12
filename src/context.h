@@ -3,8 +3,9 @@
 
 #include "ast.h"
 
-typedef Dynamic_Array(AST_Node *) Decls;
+typedef Dynamic_Array(AST_Node_Atom *) Scope;
 
-AST_Node *decls_find(Decls *decls, SV name);
+void           scope_push(Scope *decls, AST_Node_Atom *node);
+AST_Node_Atom *scope_find(Scope *decls, SV name);
 
 #endif // CONTEXT_H

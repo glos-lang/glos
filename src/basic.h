@@ -23,6 +23,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdnoreturn.h>
 
 #include <stdint.h>
 #include <stdio.h>

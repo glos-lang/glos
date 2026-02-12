@@ -7,6 +7,7 @@
 - [X] Conditions
 - [X] Global variables
 - [X] Loops
+- [ ] Constants
 - [ ] Functions
 - [ ] Pointers
 - [ ] Type Casting
