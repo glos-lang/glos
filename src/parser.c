@@ -145,6 +145,11 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         unary->value = parse_expr(p, POWER_PRE);
     } break;
 
+    case TOKEN_LPAREN:
+        node = parse_expr(p, POWER_SET);
+        expect_token(p, TOKEN_RPAREN);
+        break;
+
     default:
         error_unexpected(token);
     }
@@ -228,8 +233,8 @@ static AST_Node *parse_for(Parser *p, Token token) {
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL);
-        if ((forr->condition->kind == AST_NODE_BINARY || forr->condition->kind == AST_NODE_DECL) &&
-            token_kind_to_power(forr->condition->token.kind) == POWER_SET) {
+        if (forr->condition->kind == AST_NODE_DECL || (forr->condition->kind == AST_NODE_BINARY &&
+                                                       token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
             buffer_token(p, expect_token(p, TOKEN_EOL));
         }
 
