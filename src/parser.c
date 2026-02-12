@@ -40,7 +40,7 @@ static Power token_kind_to_power(Token_Kind kind) {
     }
 }
 
-static noreturn void error_unexpected(Token token) {
+static void error_unexpected(Token token) {
     fprintf(stderr, Pos_Fmt "ERROR: Unexpected %s\n", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
     exit(1);
 }

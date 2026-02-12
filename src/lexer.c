@@ -95,7 +95,7 @@ static void skip_whitespace(Lexer *l) {
     }
 }
 
-static noreturn void error_invalid(Pos pos, SV sv, const char *label) {
+static void error_invalid(Pos pos, SV sv, const char *label) {
     if (isprint(*sv.data)) {
         fprintf(stderr, Pos_Fmt "ERROR: Invalid %s '%c'\n", Pos_Arg(pos), label, *sv.data);
     } else {

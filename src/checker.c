@@ -1,11 +1,11 @@
 #include "checker.h"
 
-static noreturn void error_undefined(const AST_Node *n) {
+static void error_undefined(const AST_Node *n) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined identifier '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
     exit(1);
 }
 
-static noreturn void error_redefinition(const AST_Node_Atom *n, const AST_Node_Atom *previous) {
+static void error_redefinition(const AST_Node_Atom *n, const AST_Node_Atom *previous) {
     fprintf(
         stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->node.token.pos), SV_Arg(n->node.token.sv));
     if (previous) {
@@ -14,7 +14,11 @@ static noreturn void error_redefinition(const AST_Node_Atom *n, const AST_Node_A
     exit(1);
 }
 
-static noreturn void error_type_mismatch(AST_Node *actual, AST_Type expected) {
+static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
+    if (ast_type_eq(actual->type, expected)) {
+        return actual->type;
+    }
+
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -25,20 +29,19 @@ static noreturn void error_type_mismatch(AST_Node *actual, AST_Type expected) {
     exit(1);
 }
 
-static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
-    if (ast_type_eq(actual->type, expected)) {
-        return actual->type;
-    }
-
-    error_type_mismatch(actual, expected);
-}
-
 static AST_Type ast_type_assert_node(AST_Node *actual, AST_Node *expected) {
     if (ast_type_eq(actual->type, expected->type)) {
         return actual->type;
     }
 
-    error_type_mismatch(actual, expected->type);
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Expected %s, got %s\n",
+        Pos_Arg(actual->token.pos),
+        ast_type_to_cstr(expected->type),
+        ast_type_to_cstr(actual->type));
+
+    exit(1);
 }
 
 static AST_Type ast_type_assert_numeric(const AST_Node *n) {
