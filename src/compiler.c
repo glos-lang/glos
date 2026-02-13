@@ -218,7 +218,9 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         if (!it->llvm) {
             compile_type(&it->node.type);
 
-            LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm);
+            LLVM_Node_Var *var =
+                llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, define->is_local, it_expr == NULL);
+
             llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
             it->llvm = (LLVM_Node *) var;
 
@@ -233,6 +235,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     } break;
 
     case AST_NODE_BLOCK: {
+        // TODO: Emit DILexicalBlock if necessary
         AST_Node_Block *block = (AST_Node_Block *) n;
         for (AST_Node *it = block->body.head; it; it = it->next) {
             compile_stmt(c, it);
@@ -391,6 +394,7 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     }
 
     llvm_free(&c->llvm);
+    da_free(&c->locals);
     da_free(&c->globals);
 
     const int code = cmd_wait(proc);

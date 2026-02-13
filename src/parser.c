@@ -228,8 +228,13 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             node = ast_node_alloc(p, AST_NODE_FN, token);
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
 
-            token = expect_token(p, TOKEN_LBRACE);
-            fn->body = parse_block(p, token);
+            const bool is_local_save = p->is_local;
+            p->is_local = true;
+            {
+                token = expect_token(p, TOKEN_LBRACE);
+                fn->body = parse_block(p, token);
+            }
+            p->is_local = is_local_save;
         }
     } break;
 
@@ -252,21 +257,22 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         switch (token.kind) {
         case TOKEN_COLON:
             if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                AST_Node_Define *def = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
-                def->name = node;
+                AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
+                define->name = node;
+                define->is_local = p->is_local;
 
                 token = peek_token(p);
                 if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
-                    def->type = parse_expr(p, POWER_PRE);
+                    define->type = parse_expr(p, POWER_PRE);
                 }
 
                 if (read_token(p, TOKEN_SET)) {
-                    def->expr = parse_expr(p, POWER_SET);
+                    define->expr = parse_expr(p, POWER_SET);
                 } else if (read_token(p, TOKEN_COLON)) {
-                    def->expr = parse_expr(p, POWER_SET);
-                    def->is_const = true;
+                    define->expr = parse_expr(p, POWER_SET);
+                    define->is_const = true;
                 }
-                return (AST_Node *) def;
+                return (AST_Node *) define;
             } else {
                 error_unexpected(token);
             }

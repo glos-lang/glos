@@ -102,15 +102,21 @@ typedef struct {
 struct LLVM_Node_Fn {
     LLVM_Node node;
 
-    LLVM_Debug_Pos debug_start;
-    LLVM_Debug_Pos debug_return;
-
+    LLVM_Nodes vars;
     LLVM_Nodes body;
+
+    LLVM_Debug_Pos debug;
+    LLVM_Debug_Pos debug_return;
 };
 
 struct LLVM_Node_Var {
-    LLVM_Node      node;
+    LLVM_Node node;
+    SV        name;
+
+    bool is_zeroed;
+
     LLVM_Debug_Pos debug;
+    size_t         debug_local;
 };
 
 typedef struct {
@@ -457,6 +463,32 @@ void llvm_free(LLVM *l) {
     sb_free(&l->sb);
 }
 
+// TODO: Temporary solution to permananent problem
+static size_t llvm_debug_for_type(LLVM *l, LLVM_Type type) {
+    static_assert(COUNT_LLVM_TYPES == 5, "");
+    switch (type.kind) {
+    case LLVM_TYPE_I0:
+        unreachable();
+        break;
+
+    case LLVM_TYPE_I1:
+        return l->debug_bool_type;
+
+    case LLVM_TYPE_I8:
+        return l->debug_i8_type;
+
+    case LLVM_TYPE_I64:
+        return l->debug_i64_type;
+
+    case LLVM_TYPE_FN:
+        return l->debug_fn_type;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 void llvm_compile(LLVM *l) {
     assert(l->main_fn);
 
@@ -491,18 +523,42 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->fns.head; it; it = it->next) {
         LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
-        fn->debug_start.iota = ++l->iota_debug;
+        fn->debug.iota = ++l->iota_debug;
 
         if (fn == l->main_fn) {
-            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug_start.iota);
+            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() #0 !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
         } else {
-            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug_start.iota);
+            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() #0 !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+        }
+
+        l->iota_local = 0;
+        for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
+            LLVM_Node_Var *var = (LLVM_Node_Var *) n;
+
+            n->iota = ++l->iota_local;
+            sb_push_cstr(&l->sb, "  ");
+            llvm_node_emit(l, n);
+            sb_push_cstr(&l->sb, " = alloca ");
+            llvm_type_emit(l, n->type, true);
+            sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(n->type).align);
+
+            if (var->is_zeroed) {
+                sb_push_cstr(&l->sb, "  store ");
+                llvm_type_emit(l, n->type, true);
+                sb_push_cstr(&l->sb, " zeroinitializer, ptr ");
+                llvm_node_emit(l, n);
+                sb_push(&l->sb, '\n');
+            }
+
+            var->debug_local = ++l->iota_debug;
+            var->debug.iota = ++l->iota_debug;
+            sb_push_cstr(&l->sb, "    #dbg_declare(ptr ");
+            llvm_node_emit(l, n);
+            sb_sprintf(&l->sb, ", !%zu, !DIExpression(), !%zu)\n", var->debug_local, var->debug.iota);
         }
 
         size_t first_row = fn->debug_return.row;
         bool   first_row_set = false;
-
-        l->iota_local = 0;
         for (LLVM_Node *n = fn->body.head; n; n = n->next) {
             if (n->debug && !first_row_set) {
                 first_row = n->debug->row;
@@ -533,14 +589,35 @@ void llvm_compile(LLVM *l) {
             "flags: DIFlagPrototyped, "
             "spFlags: DISPFlagDefinition, "
             "unit: !%zu)\n",
-            fn->debug_start.iota,
+            fn->debug.iota,
             SV_Arg(fn->node.sv),
             l->debug_file->iota,
             l->debug_file->iota,
-            fn->debug_start.row + 1,
+            fn->debug.row + 1,
             first_row + 1,
             debug_type,
             debug_compilation_unit);
+
+        for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
+            LLVM_Node_Var *var = (LLVM_Node_Var *) n;
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DILocalVariable(name: \"" SV_Fmt "\", scope: !%zu, file: !%zu, line: %zu, type: !%zu)\n",
+                var->debug_local,
+                SV_Arg(var->name),
+                fn->debug.iota,
+                l->debug_file->iota,
+                var->debug.row + 1,
+                llvm_debug_for_type(l, n->type));
+
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
+                var->debug.iota,
+                var->debug.row + 1,
+                var->debug.col + 1,
+                fn->debug.iota);
+        }
 
         if (fn != l->main_fn) {
             sb_sprintf(
@@ -549,11 +626,11 @@ void llvm_compile(LLVM *l) {
                 fn->debug_return.iota,
                 fn->debug_return.row + 1,
                 fn->debug_return.col + 1,
-                fn->debug_start.iota);
+                fn->debug.iota);
         }
     }
 
-    sb_push(&l->sb, '\n');
+    sb_push_cstr(&l->sb, "\nattributes #0 = { \"frame-pointer\"=\"all\" }\n");
 
     const size_t debug_version = ++l->iota_debug;
     const size_t debug_info_version = ++l->iota_debug;
@@ -592,38 +669,14 @@ void llvm_compile(LLVM *l) {
     sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{})\n", l->debug_fn_type);
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
-        const size_t info = ++l->iota_debug;
+        const size_t debug_var = ++l->iota_debug;
         sb_sprintf(
-            &l->sb, "!%zu = !DIGlobalVariableExpression(var: !%zu, expr: !DIExpression())\n", it->debug->iota, info);
+            &l->sb,
+            "!%zu = !DIGlobalVariableExpression(var: !%zu, expr: !DIExpression())\n",
+            it->debug->iota,
+            debug_var);
 
-        size_t debug_type = 0;
-        static_assert(COUNT_LLVM_TYPES == 5, "");
-        switch (it->type.kind) {
-        case LLVM_TYPE_I0:
-            unreachable();
-            break;
-
-        case LLVM_TYPE_I1:
-            debug_type = l->debug_bool_type;
-            break;
-
-        case LLVM_TYPE_I8:
-            debug_type = l->debug_i8_type;
-            break;
-
-        case LLVM_TYPE_I64:
-            debug_type = l->debug_i64_type;
-            break;
-
-        case LLVM_TYPE_FN:
-            debug_type = l->debug_fn_type;
-            break;
-
-        default:
-            unreachable();
-            break;
-        }
-
+        const size_t debug_type = llvm_debug_for_type(l, it->type);
         sb_sprintf(
             &l->sb,
             "!%zu = distinct !DIGlobalVariable(name: \"" SV_Fmt "\", "
@@ -633,7 +686,7 @@ void llvm_compile(LLVM *l) {
             "type: !%zu, "
             "isLocal: false, "
             "isDefinition: true)\n",
-            info,
+            debug_var,
             SV_Arg(it->sv),
             debug_compilation_unit,
             l->debug_file->iota,
@@ -657,7 +710,7 @@ void llvm_compile(LLVM *l) {
             it->iota,
             it->row + 1,
             it->col + 1,
-            it->fn->debug_start.iota);
+            it->fn->debug.iota);
     }
 }
 
@@ -700,15 +753,15 @@ LLVM_Node_Block *llvm_block_new(LLVM *l) {
 LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name) {
     LLVM_Node_Fn *fn = (LLVM_Node_Fn *) llvm_node_alloc(l, LLVM_NODE_FN, llvm_type_basic(LLVM_TYPE_FN));
     fn->node.sv = name;
-    fn->node.debug = &fn->debug_start;
+    fn->node.debug = &fn->debug;
     llvm_nodes_push(&l->fns, (LLVM_Node *) fn);
     return fn;
 }
 
 void llvm_fn_debug_set_start_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
-    fn->debug_start.row = row;
-    fn->debug_start.col = col;
-    fn->debug_start.fn = l->fn;
+    fn->debug.row = row;
+    fn->debug.col = col;
+    fn->debug.fn = l->fn;
 }
 
 void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
@@ -717,11 +770,17 @@ void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t 
     fn->debug_return.fn = l->fn;
 }
 
-LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type) {
+LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed) {
     LLVM_Node_Var *var = (LLVM_Node_Var *) llvm_node_alloc(l, LLVM_NODE_VAR, type);
-    var->node.sv = name;
     var->node.debug = &var->debug;
-    llvm_nodes_push(&l->vars, (LLVM_Node *) var);
+    var->name = name;
+    var->is_zeroed = is_zeroed;
+    if (is_local) {
+        llvm_nodes_push(&l->fn->vars, (LLVM_Node *) var);
+    } else {
+        var->node.sv = name;
+        llvm_nodes_push(&l->vars, (LLVM_Node *) var);
+    }
     return var;
 }
 

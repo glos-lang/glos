@@ -89,7 +89,10 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
 
 static void check_ident(Compiler *c, AST_Node *n) {
     AST_Node_Atom *atom = (AST_Node_Atom *) n;
-    AST_Node_Atom *definition = scope_find(&c->globals, n->token.sv);
+    AST_Node_Atom *definition = scope_find(c->locals, n->token.sv, c->fn_base);
+    if (!definition) {
+        definition = scope_find(c->globals, n->token.sv, 0);
+    }
     atom->definition = definition;
 
     if (definition) {
@@ -201,8 +204,15 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
-        check_stmt(c, fn->body);
-        n->type = (AST_Type) {.kind = AST_TYPE_FN};
+
+        const size_t fn_base_save = c->fn_base;
+        c->fn_base = c->locals.count;
+        {
+            check_stmt(c, fn->body);
+            n->type = (AST_Type) {.kind = AST_TYPE_FN};
+        }
+        c->locals.count = c->fn_base;
+        c->fn_base = fn_base_save;
     } break;
 
     case AST_NODE_CALL: {
@@ -388,13 +398,15 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         AST_Node_Atom *it = (AST_Node_Atom *) define->name;
         AST_Node      *it_expr = define->expr;
 
-        if (get_builtin_type_kind(it->node.token.sv, NULL)) {
-            error_redefinition(it, NULL);
-        }
+        if (!define->is_local) {
+            if (get_builtin_type_kind(it->node.token.sv, NULL)) {
+                error_redefinition(it, NULL);
+            }
 
-        AST_Node_Atom *previous = scope_find(&c->globals, it->node.token.sv);
-        if (previous) {
-            error_redefinition(it, previous);
+            AST_Node_Atom *previous = scope_find(c->globals, it->node.token.sv, 0);
+            if (previous) {
+                error_redefinition(it, previous);
+            }
         }
 
         if (define->type) {
@@ -432,7 +444,12 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             }
         }
 
-        scope_push(&c->globals, it);
+        if (define->is_local) {
+            it->is_local = true;
+            scope_push(&c->locals, it);
+        } else {
+            scope_push(&c->globals, it);
+        }
     } break;
 
     case AST_NODE_BLOCK: {

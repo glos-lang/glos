@@ -7,7 +7,10 @@ typedef struct {
     Cmd *cmd;
     LLVM llvm;
 
+    Scope locals;
     Scope globals;
+
+    size_t fn_base;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
