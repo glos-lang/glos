@@ -100,10 +100,12 @@ typedef struct {
 } LLVM_Node_Branch;
 
 struct LLVM_Node_Fn {
-    LLVM_Node      node;
-    LLVM_Debug_Pos debug;
-    LLVM_Debug_Pos ret;
-    LLVM_Nodes     body;
+    LLVM_Node node;
+
+    LLVM_Debug_Pos debug_start;
+    LLVM_Debug_Pos debug_return;
+
+    LLVM_Nodes body;
 };
 
 struct LLVM_Node_Var {
@@ -489,35 +491,40 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->fns.head; it; it = it->next) {
         LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
-        fn->debug.iota = ++l->iota_debug;
+        fn->debug_start.iota = ++l->iota_debug;
 
         if (fn == l->main_fn) {
-            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug_start.iota);
         } else {
-            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug_start.iota);
         }
+
+        size_t first_row = fn->debug_return.row;
+        bool   first_row_set = false;
 
         l->iota_local = 0;
         for (LLVM_Node *n = fn->body.head; n; n = n->next) {
+            if (n->debug && !first_row_set) {
+                first_row = n->debug->row;
+                first_row_set = true;
+            }
             llvm_node_compile(l, n);
         }
 
-        const char *debug_name = "<anonymous>";
-        size_t      debug_type = l->debug_fn_type;
+        size_t debug_type = l->debug_fn_type;
         if (fn == l->main_fn) {
-            debug_name = "main";
             debug_type = l->debug_main_fn_type;
             sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
         } else {
             sb_push_cstr(&l->sb, "  ret void");
-            llvm_debug_pos_emit(l, &fn->ret);
+            llvm_debug_pos_emit(l, &fn->debug_return);
             sb_push_cstr(&l->sb, "\n}\n");
         }
 
         sb_sprintf(
             &l->sb,
             "!%zu = distinct !DISubprogram("
-            "name: \"%s\", "
+            "name: \"" SV_Fmt "\", "
             "scope: !%zu, "
             "file: !%zu, "
             "line: %zu, "
@@ -526,12 +533,12 @@ void llvm_compile(LLVM *l) {
             "flags: DIFlagPrototyped, "
             "spFlags: DISPFlagDefinition, "
             "unit: !%zu)\n",
-            fn->debug.iota,
-            debug_name,
+            fn->debug_start.iota,
+            SV_Arg(fn->node.sv),
             l->debug_file->iota,
             l->debug_file->iota,
-            fn->debug.row + 1,
-            fn->debug.row + 1,
+            fn->debug_start.row + 1,
+            first_row + 1,
             debug_type,
             debug_compilation_unit);
 
@@ -539,10 +546,10 @@ void llvm_compile(LLVM *l) {
             sb_sprintf(
                 &l->sb,
                 "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
-                fn->ret.iota,
-                fn->ret.row + 1,
-                fn->ret.col + 1,
-                fn->debug.iota);
+                fn->debug_return.iota,
+                fn->debug_return.row + 1,
+                fn->debug_return.col + 1,
+                fn->debug_start.iota);
         }
     }
 
@@ -650,7 +657,7 @@ void llvm_compile(LLVM *l) {
             it->iota,
             it->row + 1,
             it->col + 1,
-            it->fn->debug.iota);
+            it->fn->debug_start.iota);
     }
 }
 
@@ -693,21 +700,21 @@ LLVM_Node_Block *llvm_block_new(LLVM *l) {
 LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name) {
     LLVM_Node_Fn *fn = (LLVM_Node_Fn *) llvm_node_alloc(l, LLVM_NODE_FN, llvm_type_basic(LLVM_TYPE_FN));
     fn->node.sv = name;
-    fn->node.debug = &fn->debug;
+    fn->node.debug = &fn->debug_start;
     llvm_nodes_push(&l->fns, (LLVM_Node *) fn);
     return fn;
 }
 
-void llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
-    fn->debug.row = row;
-    fn->debug.col = col;
-    fn->debug.fn = l->fn;
+void llvm_fn_debug_set_start_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
+    fn->debug_start.row = row;
+    fn->debug_start.col = col;
+    fn->debug_start.fn = l->fn;
 }
 
 void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
-    fn->ret.row = row;
-    fn->ret.col = col;
-    fn->ret.fn = l->fn;
+    fn->debug_return.row = row;
+    fn->debug_return.col = col;
+    fn->debug_return.fn = l->fn;
 }
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type) {

@@ -33,6 +33,35 @@ static void compile_type(AST_Type *type) {
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref);
 static void       compile_stmt(Compiler *c, AST_Node *n);
 
+static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
+    if (fn->llvm) {
+        return fn->llvm;
+    }
+
+    LLVM_Node_Fn *llvm_fn_save = c->llvm.fn;
+    {
+        SV name = {0};
+        if (fn->defined_as) {
+            name = fn->defined_as->node.token.sv;
+        } else {
+            name = sv_from_cstr(arena_sprintf(c->llvm.arena, "anonymous.%zu", ++c->iota_fn));
+        }
+
+        c->llvm.fn = llvm_fn_new(&c->llvm, name);
+        llvm_fn_debug_set_start_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
+
+        assert(fn->body->kind == AST_NODE_BLOCK);
+        AST_Node_Block *body = (AST_Node_Block *) fn->body;
+        llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, body->end.row, body->end.col);
+
+        fn->llvm = (LLVM_Node *) c->llvm.fn;
+        compile_stmt(c, fn->body);
+    }
+    c->llvm.fn = llvm_fn_save;
+
+    return fn->llvm;
+}
+
 static_assert(COUNT_AST_NODES == 11, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
@@ -60,10 +89,14 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             if (definition->is_const) {
                 debug = false;
 
-                static_assert(COUNT_CONST_VALUES == 2, "");
+                static_assert(COUNT_CONST_VALUES == 3, "");
                 switch (definition->const_value.kind) {
                 case CONST_VALUE_INT:
                     return_defer(llvm_atom_int(&c->llvm, n->type.llvm, definition->const_value.as.integer));
+                    break;
+
+                case CONST_VALUE_FN:
+                    return_defer(compile_fn(c, definition->const_value.as.fn));
                     break;
 
                 case CONST_VALUE_TYPE:
@@ -145,24 +178,8 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
     } break;
 
-    case AST_NODE_FN: {
-        AST_Node_Fn  *fn = (AST_Node_Fn *) n;
-        LLVM_Node_Fn *llvm_fn_save = c->llvm.fn;
-        {
-            const SV name = sv_from_cstr(arena_sprintf(c->llvm.arena, "anonymous.%zu", ++c->iota_fn));
-            c->llvm.fn = llvm_fn_new(&c->llvm, name);
-            llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, n->token.pos.row, n->token.pos.col);
-
-            assert(fn->body->kind == AST_NODE_BLOCK);
-            AST_Node_Block *body = (AST_Node_Block *) fn->body;
-            llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, body->end.row, body->end.col);
-
-            fn->llvm = (LLVM_Node *) c->llvm.fn;
-            compile_stmt(c, fn->body);
-        }
-        c->llvm.fn = llvm_fn_save;
-        return fn->llvm;
-    } break;
+    case AST_NODE_FN:
+        return compile_fn(c, (AST_Node_Fn *) n);
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;

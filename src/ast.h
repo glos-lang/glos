@@ -5,6 +5,7 @@
 #include "token.h"
 
 typedef struct AST_Node      AST_Node;
+typedef struct AST_Node_Fn   AST_Node_Fn;
 typedef struct AST_Node_Atom AST_Node_Atom;
 
 typedef struct {
@@ -44,20 +45,26 @@ bool ast_type_is_numeric(AST_Type type);
 
 typedef enum {
     CONST_VALUE_INT,
+
+    CONST_VALUE_FN,
     CONST_VALUE_TYPE,
+
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
 typedef struct {
     Const_Value_Kind kind;
     union {
-        long     integer;
-        AST_Type type;
+        long         integer;
+        AST_Type     type;
+        AST_Node_Fn *fn;
     } as;
 } Const_Value;
 
-#define const_value_int(n)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (n)})
-#define const_value_type(t) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (t)})
+#define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+
+#define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 typedef enum {
     AST_NODE_ATOM,
@@ -111,11 +118,13 @@ typedef struct {
     AST_Node *rhs;
 } AST_Node_Binary;
 
-typedef struct {
-    AST_Node   node;
-    AST_Node  *body;
-    LLVM_Node *llvm;
-} AST_Node_Fn;
+struct AST_Node_Fn {
+    AST_Node  node;
+    AST_Node *body;
+
+    AST_Node_Atom *defined_as;
+    LLVM_Node     *llvm;
+};
 
 typedef struct {
     AST_Node  node;

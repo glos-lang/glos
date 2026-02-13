@@ -97,7 +97,7 @@ LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 
 LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name);
-void          llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+void          llvm_fn_debug_set_start_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
 void          llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type);

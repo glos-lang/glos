@@ -361,9 +361,8 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     } break;
 
-    case AST_NODE_FN: {
-        todo();
-    } break;
+    case AST_NODE_FN:
+        return const_value_fn((AST_Node_Fn *) n);
 
     case AST_NODE_CALL: {
         todo();
@@ -427,6 +426,10 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         if (define->is_const) {
             it->is_const = true;
             it->const_value = eval_const_expr(c, it_expr);
+
+            if (it_expr->kind == AST_NODE_FN) {
+                ((AST_Node_Fn *) it_expr)->defined_as = it;
+            }
         }
 
         scope_push(&c->globals, it);

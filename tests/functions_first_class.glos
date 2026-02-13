@@ -1,0 +1,5 @@
+foo := () { print 69 }
+foo()
+
+foo = () { print 420 }
+foo()
