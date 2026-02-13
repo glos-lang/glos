@@ -19,6 +19,8 @@ typedef enum {
     AST_TYPE_BOOL,
     AST_TYPE_I64,
 
+    AST_TYPE_FN,
+
     AST_TYPE_TYPE,
     COUNT_AST_TYPES,
 } AST_Type_Kind;
@@ -61,6 +63,9 @@ typedef enum {
     AST_NODE_ATOM,
     AST_NODE_UNARY,
     AST_NODE_BINARY,
+
+    AST_NODE_FN,
+    AST_NODE_CALL,
 
     AST_NODE_DEFINE,
     AST_NODE_BLOCK,
@@ -107,6 +112,17 @@ typedef struct {
 } AST_Node_Binary;
 
 typedef struct {
+    AST_Node   node;
+    AST_Node  *body;
+    LLVM_Node *llvm;
+} AST_Node_Fn;
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *fn;
+} AST_Node_Call;
+
+typedef struct {
     AST_Node  node;
     AST_Node *name;
     AST_Node *type;
@@ -117,6 +133,7 @@ typedef struct {
 typedef struct {
     AST_Node  node;
     AST_Nodes body;
+    Pos       end;
 } AST_Node_Block;
 
 typedef struct {

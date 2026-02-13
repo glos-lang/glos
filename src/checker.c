@@ -67,11 +67,25 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
     exit(1);
 }
 
-static_assert(COUNT_AST_TYPES == 4, "");
-static const char *builtin_type_names[COUNT_AST_TYPES] = {
-    [AST_TYPE_BOOL] = "bool",
-    [AST_TYPE_I64] = "i64",
-};
+static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
+    static_assert(COUNT_AST_TYPES == 5, "");
+    static const char *names[COUNT_AST_TYPES] = {
+        [AST_TYPE_BOOL] = "bool",
+        [AST_TYPE_I64] = "i64",
+    };
+
+    for (AST_Type_Kind k = 0; k < len(names); k++) {
+        const char *it = names[k];
+        if (it && sv_match(name, it)) {
+            if (kind) {
+                *kind = k;
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static void check_ident(Compiler *c, AST_Node *n) {
     AST_Node_Atom *atom = (AST_Node_Atom *) n;
@@ -84,22 +98,22 @@ static void check_ident(Compiler *c, AST_Node *n) {
         return;
     }
 
-    for (AST_Type_Kind kind = 0; kind < COUNT_AST_TYPES; kind++) {
-        const char *name = builtin_type_names[kind];
-        if (name && sv_match(n->token.sv, name)) {
-            const AST_Type type = {.kind = kind};
-            n->type = (AST_Type) {
-                .kind = AST_TYPE_TYPE,
-                .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
-            };
-            return;
-        }
+    AST_Type_Kind kind;
+    if (get_builtin_type_kind(n->token.sv, &kind)) {
+        const AST_Type type = {.kind = kind};
+        n->type = (AST_Type) {
+            .kind = AST_TYPE_TYPE,
+            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
+        };
+        return;
     }
 
     error_undefined(n);
 }
 
-static_assert(COUNT_AST_NODES == 9, "");
+static void check_stmt(Compiler *c, AST_Node *n);
+
+static_assert(COUNT_AST_NODES == 11, "");
 static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return;
@@ -185,6 +199,29 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         }
     } break;
 
+    case AST_NODE_FN: {
+        AST_Node_Fn *fn = (AST_Node_Fn *) n;
+        check_stmt(c, fn->body);
+        n->type = (AST_Type) {.kind = AST_TYPE_FN};
+    } break;
+
+    case AST_NODE_CALL: {
+        AST_Node_Call *call = (AST_Node_Call *) n;
+        check_expr(c, call->fn, false);
+
+        if (call->fn->type.kind != AST_TYPE_FN) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot call %s\n",
+                Pos_Arg(call->fn->token.pos),
+                ast_type_to_cstr(call->fn->type));
+
+            exit(1);
+        }
+
+        n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
+    } break;
+
     default:
         unreachable();
     }
@@ -195,7 +232,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 9, "");
+static_assert(COUNT_AST_NODES == 11, "");
 static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -324,13 +361,21 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     } break;
 
+    case AST_NODE_FN: {
+        todo();
+    } break;
+
+    case AST_NODE_CALL: {
+        todo();
+    } break;
+
     default:
         unreachable();
         break;
     }
 }
 
-static_assert(COUNT_AST_NODES == 9, "");
+static_assert(COUNT_AST_NODES == 11, "");
 static void check_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -344,11 +389,8 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         AST_Node_Atom *it = (AST_Node_Atom *) define->name;
         AST_Node      *it_expr = define->expr;
 
-        for (AST_Type_Kind kind = 0; kind < COUNT_AST_TYPES; kind++) {
-            const char *name = builtin_type_names[kind];
-            if (name && sv_match(it->node.token.sv, name)) {
-                error_redefinition(it, NULL);
-            }
+        if (get_builtin_type_kind(it->node.token.sv, NULL)) {
+            error_redefinition(it, NULL);
         }
 
         AST_Node_Atom *previous = scope_find(&c->globals, it->node.token.sv);

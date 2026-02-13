@@ -248,6 +248,22 @@ void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
 }
 
+char *arena_sprintf(Arena *a, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    const int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    assert(n >= 0);
+    char *result = arena_alloc(a, n + 1);
+
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+
+    return result;
+}
+
 // FS
 bool read_fp(FILE *f, SV *out, SB *sb) {
     bool         result = true;

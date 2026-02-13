@@ -4,6 +4,7 @@
 #include "basic.h"
 
 typedef struct LLVM_Node       LLVM_Node;
+typedef struct LLVM_Node_Fn    LLVM_Node_Fn;
 typedef struct LLVM_Node_Var   LLVM_Node_Var;
 typedef struct LLVM_Node_Block LLVM_Node_Block;
 
@@ -20,6 +21,8 @@ typedef enum {
     LLVM_TYPE_I1,
     LLVM_TYPE_I8,
     LLVM_TYPE_I64,
+
+    LLVM_TYPE_FN,
     COUNT_LLVM_TYPES,
 } LLVM_Type_Kind;
 
@@ -62,18 +65,23 @@ typedef struct {
     Arena *arena;
     SB     sb;
 
-    LLVM_Nodes body;
+    LLVM_Nodes fns;
     LLVM_Nodes vars;
+
+    LLVM_Node_Fn *fn;
+    LLVM_Node_Fn *main_fn;
 
     size_t iota_local;
     size_t iota_debug;
 
+    // TODO: Temporary solutions to permanent problems
     size_t debug_bool_type;
     size_t debug_i8_type;
     size_t debug_i32_type;
     size_t debug_i64_type;
+    size_t debug_fn_type;
+    size_t debug_main_fn_type;
 
-    size_t           debug_main_fn;
     LLVM_Debug_Pos  *debug_pos;
     LLVM_Debug_File *debug_file;
 } LLVM;
@@ -88,6 +96,10 @@ LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 
+LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name);
+void          llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+void          llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type);
 void           llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col);
 
@@ -96,6 +108,8 @@ LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLV
 
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
 LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);
+
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn);
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);

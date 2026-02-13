@@ -14,17 +14,20 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 4, "");
+static_assert(COUNT_AST_TYPES == 5, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_UNIT:
-        return "()";
+        return "void";
 
     case AST_TYPE_BOOL:
         return "bool";
 
     case AST_TYPE_I64:
         return "i64";
+
+    case AST_TYPE_FN:
+        return "()";
 
     case AST_TYPE_TYPE:
         unreachable();
@@ -46,7 +49,7 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
     return a.kind == b.kind;
 }
 
-static_assert(COUNT_AST_TYPES == 4, "");
+static_assert(COUNT_AST_TYPES == 5, "");
 bool ast_type_is_numeric(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_I64:
@@ -60,7 +63,7 @@ bool ast_type_is_numeric(AST_Type type) {
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
-static_assert(COUNT_AST_NODES == 9, "");
+static_assert(COUNT_AST_NODES == 11, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -88,6 +91,20 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, "Binary '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
         ast_node_debug_impl(f, binary->lhs, depth + 1, "Lhs");
         ast_node_debug_impl(f, binary->rhs, depth + 1, "Rhs");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_FN: {
+        AST_Node_Fn *fn = (AST_Node_Fn *) n;
+        fprintf(f, "Fn {\n");
+        ast_node_debug_impl(f, fn->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_CALL: {
+        AST_Node_Call *call = (AST_Node_Call *) n;
+        fprintf(f, "Call {\n");
+        ast_node_debug_impl(f, call->fn, depth + 1, "Fn");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

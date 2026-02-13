@@ -12,7 +12,8 @@ typedef struct {
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
 
-    // For debug information
+    // TODO: Temporary solutions to permanent problems
+    size_t      iota_fn;
     const char *path;
 } Compiler;
 

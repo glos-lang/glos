@@ -1,6 +1,6 @@
 #include "compiler.h"
 
-static_assert(COUNT_AST_TYPES == 4, "");
+static_assert(COUNT_AST_TYPES == 5, "");
 static void compile_type(AST_Type *type) {
     if (!type) {
         return;
@@ -19,6 +19,10 @@ static void compile_type(AST_Type *type) {
         type->llvm = llvm_type_basic(LLVM_TYPE_I64);
         break;
 
+    case AST_TYPE_FN:
+        type->llvm = llvm_type_basic(LLVM_TYPE_FN);
+        break;
+
     case AST_TYPE_TYPE:
     default:
         unreachable();
@@ -26,7 +30,10 @@ static void compile_type(AST_Type *type) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 9, "");
+static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref);
+static void       compile_stmt(Compiler *c, AST_Node *n);
+
+static_assert(COUNT_AST_NODES == 11, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -138,18 +145,43 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
     } break;
 
+    case AST_NODE_FN: {
+        AST_Node_Fn  *fn = (AST_Node_Fn *) n;
+        LLVM_Node_Fn *llvm_fn_save = c->llvm.fn;
+        {
+            const SV name = sv_from_cstr(arena_sprintf(c->llvm.arena, "anonymous.%zu", ++c->iota_fn));
+            c->llvm.fn = llvm_fn_new(&c->llvm, name);
+            llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, n->token.pos.row, n->token.pos.col);
+
+            assert(fn->body->kind == AST_NODE_BLOCK);
+            AST_Node_Block *body = (AST_Node_Block *) fn->body;
+            llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, body->end.row, body->end.col);
+
+            fn->llvm = (LLVM_Node *) c->llvm.fn;
+            compile_stmt(c, fn->body);
+        }
+        c->llvm.fn = llvm_fn_save;
+        return fn->llvm;
+    } break;
+
+    case AST_NODE_CALL: {
+        AST_Node_Call *call = (AST_Node_Call *) n;
+        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false)));
+    } break;
+
     default:
         unreachable();
     }
 
 defer:
-    if (result && debug) {
+    assert(result);
+    if (debug) {
         llvm_debug_set_pos(&c->llvm, result, n->token.pos.row, n->token.pos.col);
     }
     return result;
 }
 
-static_assert(COUNT_AST_NODES == 9, "");
+static_assert(COUNT_AST_NODES == 11, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -306,6 +338,9 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     assert(c->llvm.arena);
 
     llvm_debug_set_file(&c->llvm, c->path);
+
+    c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"));
+    c->llvm.fn = c->llvm.main_fn;
     for (AST_Node *it = nodes.head; it; it = it->next) {
         compile_stmt(c, it);
     }

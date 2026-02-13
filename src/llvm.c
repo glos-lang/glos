@@ -8,10 +8,13 @@ typedef enum {
     LLVM_NODE_LOAD,
     LLVM_NODE_STORE,
 
+    LLVM_NODE_CALL,
+
     LLVM_NODE_BLOCK,
     LLVM_NODE_JUMP,
     LLVM_NODE_BRANCH,
 
+    LLVM_NODE_FN,
     LLVM_NODE_VAR,
 
     LLVM_NODE_PRINT,
@@ -35,6 +38,7 @@ struct LLVM_Debug_Pos {
     size_t row;
     size_t col;
 
+    LLVM_Node_Fn   *fn;
     LLVM_Debug_Pos *next;
 };
 
@@ -74,6 +78,11 @@ typedef struct {
     LLVM_Node *value;
 } LLVM_Node_Store;
 
+typedef struct {
+    LLVM_Node  node;
+    LLVM_Node *fn;
+} LLVM_Node_Call;
+
 struct LLVM_Node_Block {
     LLVM_Node node;
 };
@@ -89,6 +98,13 @@ typedef struct {
     LLVM_Node_Block *consequence;
     LLVM_Node_Block *antecedence;
 } LLVM_Node_Branch;
+
+struct LLVM_Node_Fn {
+    LLVM_Node      node;
+    LLVM_Debug_Pos debug;
+    LLVM_Debug_Pos ret;
+    LLVM_Nodes     body;
+};
 
 struct LLVM_Node_Var {
     LLVM_Node      node;
@@ -114,7 +130,7 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 10, "");
+static_assert(COUNT_LLVM_NODES == 12, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
@@ -124,10 +140,13 @@ static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) 
         [LLVM_NODE_LOAD] = sizeof(LLVM_Node_Load),
         [LLVM_NODE_STORE] = sizeof(LLVM_Node_Store),
 
+        [LLVM_NODE_CALL] = sizeof(LLVM_Node_Call),
+
         [LLVM_NODE_BLOCK] = sizeof(LLVM_Node_Block),
         [LLVM_NODE_JUMP] = sizeof(LLVM_Node_Jump),
         [LLVM_NODE_BRANCH] = sizeof(LLVM_Node_Branch),
 
+        [LLVM_NODE_FN] = sizeof(LLVM_Node_Fn),
         [LLVM_NODE_VAR] = sizeof(LLVM_Node_Var),
 
         [LLVM_NODE_PRINT] = sizeof(LLVM_Node_Print),
@@ -142,7 +161,7 @@ static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) 
 
 static LLVM_Node *llvm_node_build(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     LLVM_Node *node = llvm_node_alloc(l, kind, type);
-    llvm_nodes_push(&l->body, node);
+    llvm_nodes_push(&l->fn->body, node);
     return node;
 }
 
@@ -164,7 +183,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 10, "");
+static_assert(COUNT_LLVM_NODES == 12, "");
 static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -191,7 +210,7 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 4, "");
+static_assert(COUNT_LLVM_TYPES == 5, "");
 static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -208,6 +227,10 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
 
     case LLVM_TYPE_I64:
         sb_push_cstr(&l->sb, "i64");
+        break;
+
+    case LLVM_TYPE_FN:
+        sb_push_cstr(&l->sb, "ptr");
         break;
 
     default:
@@ -251,7 +274,7 @@ static void llvm_node_build_cast(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
     n->type.kind = to;
 }
 
-static_assert(COUNT_LLVM_NODES == 10, "");
+static_assert(COUNT_LLVM_NODES == 12, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -371,6 +394,16 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push(&l->sb, '\n');
     } break;
 
+    case LLVM_NODE_CALL: {
+        LLVM_Node_Call *call = (LLVM_Node_Call *) n;
+        sb_push_cstr(&l->sb, "  call void ");
+        llvm_node_emit(l, call->fn);
+        sb_push_cstr(&l->sb, "()");
+
+        llvm_debug_pos_emit(l, n->debug);
+        sb_push(&l->sb, '\n');
+    } break;
+
     case LLVM_NODE_BLOCK:
         sb_sprintf(&l->sb, ".%zu:\n", llvm_block_iota(l, (LLVM_Node_Block *) n));
         break;
@@ -423,13 +456,21 @@ void llvm_free(LLVM *l) {
 }
 
 void llvm_compile(LLVM *l) {
+    assert(l->main_fn);
+
     l->debug_bool_type = ++l->iota_debug;
     l->debug_i8_type = ++l->iota_debug;
     l->debug_i32_type = ++l->iota_debug;
     l->debug_i64_type = ++l->iota_debug;
+    l->debug_fn_type = ++l->iota_debug;
+    l->debug_main_fn_type = ++l->iota_debug;
 
+    const size_t debug_compilation_unit = ++l->iota_debug;
+
+    llvm_debug_file_emit(l, l->debug_file);
     sb_push_cstr(
         &l->sb,
+        "\n"
         "@.iprint = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\", align 1\n"
         "declare i32 @printf(ptr, ...)\n");
 
@@ -446,15 +487,66 @@ void llvm_compile(LLVM *l) {
         }
     }
 
-    l->debug_main_fn = ++l->iota_debug;
-    sb_sprintf(&l->sb, "\ndefine i32 @main() !dbg !%zu {\n", l->debug_main_fn);
-    for (LLVM_Node *it = l->body.head; it; it = it->next) {
-        llvm_node_compile(l, it);
+    for (LLVM_Node *it = l->fns.head; it; it = it->next) {
+        LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
+        fn->debug.iota = ++l->iota_debug;
+
+        if (fn == l->main_fn) {
+            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+        } else {
+            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+        }
+
+        l->iota_local = 0;
+        for (LLVM_Node *n = fn->body.head; n; n = n->next) {
+            llvm_node_compile(l, n);
+        }
+
+        const char *debug_name = "<anonymous>";
+        size_t      debug_type = l->debug_fn_type;
+        if (fn == l->main_fn) {
+            debug_name = "main";
+            debug_type = l->debug_main_fn_type;
+            sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
+        } else {
+            sb_push_cstr(&l->sb, "  ret void");
+            llvm_debug_pos_emit(l, &fn->ret);
+            sb_push_cstr(&l->sb, "\n}\n");
+        }
+
+        sb_sprintf(
+            &l->sb,
+            "!%zu = distinct !DISubprogram("
+            "name: \"%s\", "
+            "scope: !%zu, "
+            "file: !%zu, "
+            "line: %zu, "
+            "scopeLine: %zu, "
+            "type: !%zu, "
+            "flags: DIFlagPrototyped, "
+            "spFlags: DISPFlagDefinition, "
+            "unit: !%zu)\n",
+            fn->debug.iota,
+            debug_name,
+            l->debug_file->iota,
+            l->debug_file->iota,
+            fn->debug.row + 1,
+            fn->debug.row + 1,
+            debug_type,
+            debug_compilation_unit);
+
+        if (fn != l->main_fn) {
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
+                fn->ret.iota,
+                fn->ret.row + 1,
+                fn->ret.col + 1,
+                fn->debug.iota);
+        }
     }
-    sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
 
     sb_push(&l->sb, '\n');
-    llvm_debug_file_emit(l, l->debug_file);
 
     const size_t debug_version = ++l->iota_debug;
     const size_t debug_info_version = ++l->iota_debug;
@@ -468,7 +560,6 @@ void llvm_compile(LLVM *l) {
     sb_sprintf(&l->sb, "!%zu = !{i32 2, !\"Debug Info Version\", i32 3}\n", debug_info_version);
 
     const size_t debug_globals_list = ++l->iota_debug;
-    const size_t debug_compilation_unit = ++l->iota_debug;
     sb_sprintf(&l->sb, "!llvm.dbg.cu = !{!%zu}\n", debug_compilation_unit);
     sb_sprintf(
         &l->sb,
@@ -486,32 +577,12 @@ void llvm_compile(LLVM *l) {
         debug_globals_list,
         l->debug_file->iota);
 
-    const size_t debug_main_fn_type = ++l->iota_debug;
-    sb_sprintf(
-        &l->sb,
-        "!%zu = distinct !DISubprogram("
-        "name: \"main\", "
-        "scope: !%zu, "
-        "file: !%zu, "
-        "line: %zu, "
-        "scopeLine: %zu, "
-        "type: !%zu, "
-        "flags: DIFlagPrototyped, "
-        "spFlags: DISPFlagDefinition, "
-        "unit: !%zu)\n",
-        l->debug_main_fn,
-        l->debug_file->iota,
-        l->debug_file->iota,
-        (size_t) 1,
-        (size_t) 1,
-        debug_main_fn_type,
-        debug_compilation_unit);
-
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)\n", l->debug_bool_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i8\", size: 8, encoding: DW_ATE_signed)\n", l->debug_i8_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
-    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", debug_main_fn_type, l->debug_i32_type);
+    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", l->debug_main_fn_type, l->debug_i32_type);
+    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{})\n", l->debug_fn_type);
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         const size_t info = ++l->iota_debug;
@@ -519,7 +590,7 @@ void llvm_compile(LLVM *l) {
             &l->sb, "!%zu = !DIGlobalVariableExpression(var: !%zu, expr: !DIExpression())\n", it->debug->iota, info);
 
         size_t debug_type = 0;
-        static_assert(COUNT_LLVM_TYPES == 4, "");
+        static_assert(COUNT_LLVM_TYPES == 5, "");
         switch (it->type.kind) {
         case LLVM_TYPE_I0:
             unreachable();
@@ -535,6 +606,10 @@ void llvm_compile(LLVM *l) {
 
         case LLVM_TYPE_I64:
             debug_type = l->debug_i64_type;
+            break;
+
+        case LLVM_TYPE_FN:
+            debug_type = l->debug_fn_type;
             break;
 
         default:
@@ -555,7 +630,7 @@ void llvm_compile(LLVM *l) {
             SV_Arg(it->sv),
             debug_compilation_unit,
             l->debug_file->iota,
-            it->debug->row,
+            it->debug->row + 1,
             debug_type);
     }
 
@@ -575,7 +650,7 @@ void llvm_compile(LLVM *l) {
             it->iota,
             it->row + 1,
             it->col + 1,
-            l->debug_main_fn);
+            it->fn->debug.iota);
     }
 }
 
@@ -583,7 +658,7 @@ LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
     return (LLVM_Type) {.kind = kind};
 }
 
-static_assert(COUNT_LLVM_TYPES == 4, "");
+static_assert(COUNT_LLVM_TYPES == 5, "");
 LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -594,6 +669,9 @@ LLVM_Type_Info llvm_type_info(LLVM_Type type) {
         return (LLVM_Type_Info) {.align = 1, .size = 1};
 
     case LLVM_TYPE_I64:
+        return (LLVM_Type_Info) {.align = 8, .size = 8};
+
+    case LLVM_TYPE_FN:
         return (LLVM_Type_Info) {.align = 8, .size = 8};
 
     default:
@@ -612,6 +690,26 @@ LLVM_Node_Block *llvm_block_new(LLVM *l) {
     return (LLVM_Node_Block *) llvm_node_alloc(l, LLVM_NODE_BLOCK, llvm_type_basic(LLVM_TYPE_I0));
 }
 
+LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name) {
+    LLVM_Node_Fn *fn = (LLVM_Node_Fn *) llvm_node_alloc(l, LLVM_NODE_FN, llvm_type_basic(LLVM_TYPE_FN));
+    fn->node.sv = name;
+    fn->node.debug = &fn->debug;
+    llvm_nodes_push(&l->fns, (LLVM_Node *) fn);
+    return fn;
+}
+
+void llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
+    fn->debug.row = row;
+    fn->debug.col = col;
+    fn->debug.fn = l->fn;
+}
+
+void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
+    fn->ret.row = row;
+    fn->ret.col = col;
+    fn->ret.fn = l->fn;
+}
+
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type) {
     LLVM_Node_Var *var = (LLVM_Node_Var *) llvm_node_alloc(l, LLVM_NODE_VAR, type);
     var->node.sv = name;
@@ -621,9 +719,9 @@ LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type) {
 }
 
 void llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col) {
-    unused(l); // For symmetry
     var->debug.row = row;
     var->debug.col = col;
+    var->debug.fn = l->fn;
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
@@ -643,7 +741,7 @@ LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLV
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block) {
     LLVM_Node *node = (LLVM_Node *) block;
-    llvm_nodes_push(&l->body, node);
+    llvm_nodes_push(&l->fn->body, node);
     return node;
 }
 
@@ -675,6 +773,12 @@ LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value) {
     return (LLVM_Node *) store;
 }
 
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn) {
+    LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, llvm_type_basic(LLVM_TYPE_I0));
+    call->fn = fn;
+    return (LLVM_Node *) call;
+}
+
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value) {
     LLVM_Node_Print *print = (LLVM_Node_Print *) llvm_node_build(l, LLVM_NODE_PRINT, llvm_type_basic(LLVM_TYPE_I0));
     print->value = value;
@@ -690,6 +794,7 @@ void llvm_debug_set_pos(LLVM *l, LLVM_Node *n, size_t row, size_t col) {
     n->debug = arena_alloc(l->arena, sizeof(LLVM_Debug_Pos));
     n->debug->row = row;
     n->debug->col = col;
+    n->debug->fn = l->fn;
 
     n->debug->next = l->debug_pos;
     l->debug_pos = n->debug;
