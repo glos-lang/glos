@@ -21,6 +21,5 @@ jobs:
 
       - name: Build and Tests
         run: |
-          clang -v
           clang -o first.exe first.c
           ./first.exe -T
