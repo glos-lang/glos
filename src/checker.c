@@ -475,13 +475,18 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
-        check_stmt(c, forr->init);
-        check_expr(c, forr->condition, false);
-        if (forr->condition) {
-            ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+
+        const size_t locals_count_save = c->locals.count;
+        {
+            check_stmt(c, forr->init);
+            check_expr(c, forr->condition, false);
+            if (forr->condition) {
+                ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+            }
+            check_stmt(c, forr->update);
+            check_stmt(c, forr->body);
         }
-        check_stmt(c, forr->update);
-        check_stmt(c, forr->body);
+        c->locals.count = locals_count_save;
     } break;
 
     case AST_NODE_JUMP:
@@ -505,5 +510,3 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
         check_stmt(c, it);
     }
 }
-
-// TODO: Local scope in for

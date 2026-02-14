@@ -315,7 +315,10 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
-        compile_stmt(c, forr->init);
+        if (forr->init) {
+            llvm_debug_scope_push(&c->llvm, n->token.pos.row, n->token.pos.col);
+            compile_stmt(c, forr->init);
+        }
 
         LLVM_Node_Block *body = llvm_block_new(&c->llvm);
         LLVM_Node_Block *end = llvm_block_new(&c->llvm);
@@ -365,6 +368,10 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         }
         c->loop_break = loop_break_save;
         c->loop_continue = loop_condition_save;
+
+        if (forr->init) {
+            llvm_debug_scope_pop(&c->llvm);
+        }
     } break;
 
     case AST_NODE_JUMP:
