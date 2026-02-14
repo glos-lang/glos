@@ -1,0 +1,9 @@
+add_and_print :: (x: i64, y: i64) {
+    z := x + y
+    print z
+}
+
+main :: () {
+    add_and_print(34, 35)
+    add_and_print(200, 220)
+}

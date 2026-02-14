@@ -1,7 +1,7 @@
 #include "compiler.h"
 
 static_assert(COUNT_AST_TYPES == 5, "");
-static void compile_type(AST_Type *type) {
+static void compile_type(Compiler *c, AST_Type *type) {
     if (!type) {
         return;
     }
@@ -20,7 +20,17 @@ static void compile_type(AST_Type *type) {
         break;
 
     case AST_TYPE_FN:
-        type->llvm = llvm_type_basic(LLVM_TYPE_FN);
+        if (type->llvm.kind != LLVM_TYPE_FN) {
+            const size_t arity = type->spec.fn.arity;
+            LLVM_Type   *args = arena_alloc(c->llvm.arena, arity * sizeof(*args));
+            type->llvm = llvm_type_fn(args, arity);
+
+            for (size_t i = 0; i < arity; i++) {
+                AST_Type *it = &type->spec.fn.args[i];
+                compile_type(c, it);
+                args[i] = it->llvm;
+            }
+        }
         break;
 
     case AST_TYPE_TYPE:
@@ -47,12 +57,27 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
             name = arena_sprintf(c->llvm.arena, "main.anonymous.%zu", ++c->iota_fn);
         }
 
-        c->llvm.fn = llvm_fn_new(&c->llvm, sv_from_cstr(name));
+        compile_type(c, &fn->node.type);
+        c->llvm.fn = llvm_fn_new(&c->llvm, sv_from_cstr(name), fn->node.type.llvm);
         fn->llvm = (LLVM_Node *) c->llvm.fn;
         llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
 
         llvm_debug_scope_push(&c->llvm, fn->node.token.pos.row, fn->node.token.pos.col);
         {
+            size_t arg_iota = 0;
+            for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
+                assert(arg->kind == AST_NODE_DEFINE);
+                AST_Node_Define *define = (AST_Node_Define *) arg;
+
+                assert(define->name->kind == AST_NODE_ATOM);
+                AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+
+                LLVM_Node_Var *var = llvm_fn_arg_get(c->llvm.fn, arg_iota++);
+                llvm_var_set_name(var, it->node.token.sv);
+                llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+                it->llvm = (LLVM_Node *) var;
+            }
+
             assert(fn->body->kind == AST_NODE_BLOCK);
             AST_Node_Block *block = (AST_Node_Block *) fn->body;
 
@@ -77,11 +102,11 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     bool       debug = true;
     LLVM_Node *result = NULL;
 
-    compile_type(&n->type);
+    compile_type(c, &n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -132,7 +157,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -148,7 +173,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -171,7 +196,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
@@ -189,7 +214,15 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
-        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false)));
+        LLVM_Node    **args = arena_alloc(c->llvm.arena, call->arity * sizeof(*args));
+
+        size_t iota = 0;
+        for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
+            args[iota++] = compile_expr(c, arg, false);
+        }
+
+        assert(iota == call->arity);
+        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota));
     } break;
 
     default:
@@ -245,7 +278,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         AST_Node      *it_expr = define->expr;
 
         if (!it->llvm) {
-            compile_type(&it->node.type);
+            compile_type(c, &it->node.type);
 
             LLVM_Node_Var *var =
                 llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, define->is_local, it_expr == NULL);
@@ -417,6 +450,7 @@ static AST_Node_Fn *get_main(Compiler *c) {
 }
 
 void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
+    unused(nodes);
     assert(c->cmd);
     assert(c->llvm.arena);
 
@@ -434,7 +468,7 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
                 compile_fn(c, it->const_value.as.fn);
             }
         } else {
-            compile_type(&it->node.type);
+            compile_type(c, &it->node.type);
 
             LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, false, it->is_assigned);
             llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
@@ -446,9 +480,9 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         }
     }
 
-    c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"));
+    c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"), llvm_type_fn(NULL, 0));
     c->llvm.fn = c->llvm.main_fn;
-    llvm_build_call(&c->llvm, fn->llvm);
+    llvm_build_call(&c->llvm, fn->llvm, NULL, 0);
     llvm_compile(&c->llvm);
 
 #if 0

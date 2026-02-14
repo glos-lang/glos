@@ -104,7 +104,7 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -182,6 +182,10 @@ Token lexer_iter(Lexer *l) {
 
     case ':':
         token.kind = TOKEN_COLON;
+        break;
+
+    case ',':
+        token.kind = TOKEN_COMMA;
         break;
 
     case '(':

@@ -16,6 +16,7 @@ typedef enum {
     TOKEN_EOF,
     TOKEN_EOL,
     TOKEN_COLON,
+    TOKEN_COMMA,
 
     TOKEN_INT,
     TOKEN_BOOL,

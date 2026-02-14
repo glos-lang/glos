@@ -106,6 +106,7 @@ void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
 char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
 char *temp_sv_to_cstr(SV sv);
+void  temp_remove_null(void);
 
 // Arena Allocator
 typedef struct Arena_Region Arena_Region;

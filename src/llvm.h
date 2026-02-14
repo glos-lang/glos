@@ -3,6 +3,8 @@
 
 #include "basic.h"
 
+typedef struct LLVM_Type LLVM_Type;
+
 typedef struct LLVM_Node       LLVM_Node;
 typedef struct LLVM_Node_Fn    LLVM_Node_Fn;
 typedef struct LLVM_Node_Var   LLVM_Node_Var;
@@ -27,9 +29,12 @@ typedef enum {
     COUNT_LLVM_TYPES,
 } LLVM_Type_Kind;
 
-typedef struct {
+struct LLVM_Type {
     LLVM_Type_Kind kind;
-} LLVM_Type;
+
+    LLVM_Type *children;
+    size_t     children_count;
+};
 
 typedef struct {
     size_t align;
@@ -93,20 +98,23 @@ void llvm_free(LLVM *l);
 void llvm_compile(LLVM *l);
 
 LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
+LLVM_Type      llvm_type_fn(LLVM_Type *args, size_t arity);
 LLVM_Type_Info llvm_type_info(LLVM_Type type);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 
-LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name);
+LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type);
 void          llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+void          llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col); // TODO: Temporary
 
-// TODO: Temporary solution to a permananent problem
-void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+LLVM_Node_Var *llvm_fn_arg_get(LLVM_Node_Fn *fn, size_t index);
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed);
 void           llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col);
+
+void llvm_var_set_name(LLVM_Node_Var *var, SV name);
 
 void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n);
 void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node);
@@ -117,7 +125,7 @@ LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLV
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
 LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);
 
-LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn);
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arity);
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);

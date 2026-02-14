@@ -124,7 +124,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -147,7 +147,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -164,7 +164,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -208,8 +208,31 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         const size_t fn_base_save = c->fn_base;
         c->fn_base = c->locals.count;
         {
+            // TODO: Just directly allocate
+            {
+                const void *temp_save = temp_alloc(0);
+                AST_Type_Fn type = {.args = temp_alloc(0)};
+
+                for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
+                    check_stmt(c, arg); // TODO: Check for argument redefinition
+
+                    assert(arg->kind == AST_NODE_DEFINE);
+                    AST_Node_Define *define = (AST_Node_Define *) arg;
+
+                    assert(define->name->kind == AST_NODE_ATOM);
+                    AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+
+                    temp_alloc(sizeof(*type.args)); // Temporary memory is guaranteed to be contiguous with no alignment
+                    type.args[type.arity++] = it->node.type;
+                }
+
+                type.args = arena_clone(c->llvm.arena, type.args, type.arity * sizeof(*type.args));
+                temp_reset(temp_save);
+
+                n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = type};
+            }
+
             check_stmt(c, fn->body);
-            n->type = (AST_Type) {.kind = AST_TYPE_FN};
         }
         c->locals.count = c->fn_base;
         c->fn_base = fn_base_save;
@@ -219,13 +242,29 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Call *call = (AST_Node_Call *) n;
         check_expr(c, call->fn, false);
 
-        if (call->fn->type.kind != AST_TYPE_FN) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot call %s\n",
-                Pos_Arg(call->fn->token.pos),
-                ast_type_to_cstr(call->fn->type));
+        const AST_Type fn_type = call->fn->type;
+        if (fn_type.kind != AST_TYPE_FN) {
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot call %s\n", Pos_Arg(call->fn->token.pos), ast_type_to_cstr(fn_type));
+            exit(1);
+        }
 
+        call->arity = 0;
+        for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
+            check_expr(c, arg, false);
+            if (call->arity >= fn_type.spec.fn.arity) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Too many arguments, expected %zu\n",
+                    Pos_Arg(arg->token.pos),
+                    fn_type.spec.fn.arity);
+                exit(1);
+            }
+            ast_type_assert(arg, fn_type.spec.fn.args[call->arity++]);
+        }
+
+        if (call->arity < fn_type.spec.fn.arity) {
+            fprintf(
+                stderr, Pos_Fmt "ERROR: Too few arguments, expected %zu\n", Pos_Arg(call->end), fn_type.spec.fn.arity);
             exit(1);
         }
 
@@ -252,7 +291,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -288,7 +327,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -308,7 +347,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 29, "");
+        static_assert(COUNT_TOKENS == 30, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);

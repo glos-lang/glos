@@ -28,11 +28,17 @@ typedef enum {
 
 typedef struct AST_Type AST_Type;
 
+typedef struct {
+    AST_Type *args;
+    size_t    arity;
+} AST_Type_Fn;
+
 struct AST_Type {
     AST_Type_Kind kind;
 
     union {
-        AST_Type *type;
+        AST_Type   *type;
+        AST_Type_Fn fn;
     } spec;
 
     LLVM_Type llvm;
@@ -122,6 +128,7 @@ typedef struct {
 
 struct AST_Node_Fn {
     AST_Node  node;
+    AST_Nodes args;
     AST_Node *body;
 
     AST_Node_Atom *defined_as;
@@ -131,6 +138,9 @@ struct AST_Node_Fn {
 typedef struct {
     AST_Node  node;
     AST_Node *fn;
+    AST_Nodes args;
+    size_t    arity; // Calculated at checking phase
+    Pos       end;
 } AST_Node_Call;
 
 typedef struct {

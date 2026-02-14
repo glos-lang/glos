@@ -11,7 +11,7 @@ typedef enum {
     POWER_CALL
 } Power;
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -197,7 +197,7 @@ static AST_Node *parse_for(Parser *p, Token token) {
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_TOKENS == 29, "");
+static_assert(COUNT_TOKENS == 30, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -217,17 +217,46 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
     } break;
 
     case TOKEN_LPAREN: {
-        bool fn = false;
+        bool is_fn = false;
+
+        AST_Nodes fn_args = {0};
+
         if (read_token(p, TOKEN_RPAREN)) {
-            fn = true;
+            is_fn = true;
         } else {
-            node = parse_expr(p, POWER_SET);
-            expect_token(p, TOKEN_RPAREN);
+            node = parse_expr(p, POWER_NIL);
+            if (node->kind == AST_NODE_DEFINE) {
+                is_fn = true;
+
+                ((AST_Node_Define *) node)->is_local = true;
+                ast_nodes_push(&fn_args, node);
+
+                while (read_token(p, TOKEN_COMMA)) {
+                    if (peek_token(p).kind == TOKEN_RPAREN) {
+                        break;
+                    }
+
+                    node = parse_expr(p, POWER_NIL);
+                    if (node->kind != AST_NODE_DEFINE) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Expected argument, got expression\n", Pos_Arg(node->token.pos));
+                        exit(1);
+                    }
+
+                    ((AST_Node_Define *) node)->is_local = true;
+                    ast_nodes_push(&fn_args, node);
+                }
+                expect_token(p, TOKEN_RPAREN);
+            } else if (node->kind == AST_NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
+                error_unexpected(node->token);
+            } else {
+                expect_token(p, TOKEN_RPAREN);
+            }
         }
 
-        if (fn) {
+        if (is_fn) {
             node = ast_node_alloc(p, AST_NODE_FN, token);
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
+            fn->args = fn_args;
 
             const bool is_local_save = p->is_local;
             p->is_local = true;
@@ -283,7 +312,13 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             AST_Node_Call *call = (AST_Node_Call *) ast_node_alloc(p, AST_NODE_CALL, token);
             call->fn = node;
 
-            expect_token(p, TOKEN_RPAREN);
+            while (!read_token(p, TOKEN_RPAREN)) {
+                ast_nodes_push(&call->args, parse_expr(p, POWER_SET));
+                read_token(p, TOKEN_COMMA);
+            }
+
+            assert(p->ahead.kind == TOKEN_RPAREN);
+            call->end = p->ahead.pos;
             node = (AST_Node *) call;
         } break;
 
