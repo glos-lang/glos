@@ -34,6 +34,9 @@ static void compile_type(Compiler *c, AST_Type *type) {
         break;
 
     case AST_TYPE_TYPE:
+        unreachable();
+        break;
+
     default:
         unreachable();
         break;

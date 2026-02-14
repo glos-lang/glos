@@ -129,6 +129,8 @@ typedef struct {
 struct AST_Node_Fn {
     AST_Node  node;
     AST_Nodes args;
+
+    bool      is_type;
     AST_Node *body;
 
     AST_Node_Atom *defined_as;

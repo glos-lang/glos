@@ -75,8 +75,30 @@ const char *ast_type_to_cstr(AST_Type type) {
     return s;
 }
 
+static_assert(COUNT_AST_TYPES == 5, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
-    return a.kind == b.kind;
+    if (a.kind != b.kind) {
+        return false;
+    }
+
+    switch (a.kind) {
+    case AST_TYPE_FN: {
+        if (a.spec.fn.arity != b.spec.fn.arity) {
+            return false;
+        }
+
+        for (size_t i = 0; i < a.spec.fn.arity; i++) {
+            if (!ast_type_eq(a.spec.fn.args[i], b.spec.fn.args[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    default:
+        return true;
+    }
 }
 
 static_assert(COUNT_AST_TYPES == 5, "");

@@ -1,7 +1,13 @@
+apply :: (x: i64, f: (_: i64)) {
+    f(x)
+}
+
 main :: () {
     foo := () { print 69 }
     foo()
 
     foo = () { print 420 }
     foo()
+
+    apply(2674, (x: i64) { print x / 2 })
 }

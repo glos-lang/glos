@@ -232,7 +232,15 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
                 n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = type};
             }
 
-            check_stmt(c, fn->body);
+            if (fn->is_type) {
+                const AST_Type meta = {
+                    .kind = AST_TYPE_TYPE,
+                    .spec.type = arena_clone(c->llvm.arena, &n->type, sizeof(n->type)),
+                };
+                n->type = meta;
+            } else {
+                check_stmt(c, fn->body);
+            }
         }
         c->locals.count = c->fn_base;
         c->fn_base = fn_base_save;
@@ -410,8 +418,14 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     } break;
 
-    case AST_NODE_FN:
-        return const_value_fn((AST_Node_Fn *) n);
+    case AST_NODE_FN: {
+        AST_Node_Fn *fn = (AST_Node_Fn *) n;
+        if (fn->is_type) {
+            return const_value_type(fn->node.type);
+        } else {
+            return const_value_fn(fn);
+        }
+    }
 
     case AST_NODE_CALL: {
         todo();
@@ -549,3 +563,5 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
         check_stmt(c, it);
     }
 }
+
+// TODO: Implement recursion

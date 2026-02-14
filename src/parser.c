@@ -258,13 +258,14 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
             fn->args = fn_args;
 
-            const bool is_local_save = p->is_local;
-            p->is_local = true;
-            {
-                token = expect_token(p, TOKEN_LBRACE);
-                fn->body = parse_block(p, token);
+            if (peek_token(p).kind == TOKEN_LBRACE) {
+                const bool is_local_save = p->is_local;
+                p->is_local = true;
+                fn->body = parse_block(p, next_token(p));
+                p->is_local = is_local_save;
+            } else {
+                fn->is_type = true;
             }
-            p->is_local = is_local_save;
         }
     } break;
 
