@@ -1,4 +1,5 @@
 #include "parser.h"
+#include <stdbool.h>
 
 typedef enum {
     POWER_NIL,
@@ -301,6 +302,23 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
     return node;
 }
 
+static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
+    if (p->is_local != expected_is_local) {
+        if (!label) {
+            label = token_kind_to_cstr(token.kind);
+        }
+
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Unexpected %s in %s scope\n",
+            Pos_Arg(token.pos),
+            label,
+            p->is_local ? "local" : "file");
+
+        exit(1);
+    }
+}
+
 static_assert(COUNT_AST_NODES == 11, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
@@ -308,14 +326,17 @@ static AST_Node *parse_stmt(Parser *p) {
     Token token = next_token(p);
     switch (token.kind) {
     case TOKEN_LBRACE:
+        local_assert(p, true, token, NULL);
         node = parse_block(p, token);
         break;
 
     case TOKEN_IF:
+        local_assert(p, true, token, NULL);
         node = parse_if(p, token);
         break;
 
     case TOKEN_FOR:
+        local_assert(p, true, token, NULL);
         node = parse_for(p, token);
         break;
 
@@ -329,6 +350,7 @@ static AST_Node *parse_stmt(Parser *p) {
         break;
 
     case TOKEN_PRINT: {
+        local_assert(p, true, token, NULL);
         AST_Node_Print *print = (AST_Node_Print *) ast_node_alloc(p, AST_NODE_PRINT, token);
         print->value = parse_expr(p, POWER_SET);
         node = (AST_Node *) print;
@@ -338,6 +360,9 @@ static AST_Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL);
+        if (node->kind != AST_NODE_DEFINE) {
+            local_assert(p, true, node->token, "expression");
+        }
         break;
     }
 

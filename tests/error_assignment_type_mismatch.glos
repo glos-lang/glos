@@ -1,2 +1,4 @@
-x: i64
-x = true
+main :: () {
+    x: i64
+    x = true
+}

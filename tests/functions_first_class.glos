@@ -1,5 +1,7 @@
-foo := () { print 69 }
-foo()
+main :: () {
+    foo := () { print 69 }
+    foo()
 
-foo = () { print 420 }
-foo()
+    foo = () { print 420 }
+    foo()
+}

@@ -2,5 +2,5 @@ EXIT 1
 STDOUT 0
 
 STDERR 77
-tests/error_undefined_identifier.glos:1:7: ERROR: Undefined identifier 'foo'
+tests/error_undefined_identifier.glos:2:5: ERROR: Undefined identifier 'foo'
 

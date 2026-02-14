@@ -416,6 +416,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         }
 
         if (it_expr) {
+            it->is_assigned = true;
             check_expr(c, it_expr, false);
 
             if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
@@ -442,6 +443,8 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             if (it_expr->kind == AST_NODE_FN) {
                 ((AST_Node_Fn *) it_expr)->defined_as = it;
             }
+        } else if (!define->is_local && it_expr) {
+            it->const_value = eval_const_expr(c, it_expr);
         }
 
         if (define->is_local) {
@@ -502,3 +505,5 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
         check_stmt(c, it);
     }
 }
+
+// TODO: Local scope in for

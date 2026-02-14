@@ -121,11 +121,25 @@ struct LLVM_Node_Fn {
     LLVM_Debug_Scope *debug_scope;
 };
 
+typedef struct LLVM_Node_Var_Init LLVM_Node_Var_Init;
+
+struct LLVM_Node_Var_Init {
+    LLVM_Node *node;
+
+    LLVM_Type type;
+    long      n;
+
+    LLVM_Node_Var_Init *next;
+};
+
 struct LLVM_Node_Var {
     LLVM_Node node;
     SV        name;
 
     bool is_zeroed;
+
+    LLVM_Node_Var_Init *init_head;
+    LLVM_Node_Var_Init *init_tail;
 
     LLVM_Debug_Pos debug;
     size_t         debug_local;
@@ -194,6 +208,9 @@ static inline size_t llvm_block_iota(LLVM *l, LLVM_Node_Block *block) {
 }
 
 static inline void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
+    if (!pos) {
+        return;
+    }
     pos->iota = ++l->iota_debug;
     sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
 }
@@ -476,7 +493,7 @@ void llvm_free(LLVM *l) {
 }
 
 // TODO: Temporary solution to permananent problem
-static size_t llvm_debug_for_type(LLVM *l, LLVM_Type type) {
+static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type type) {
     static_assert(COUNT_LLVM_TYPES == 5, "");
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -493,7 +510,7 @@ static size_t llvm_debug_for_type(LLVM *l, LLVM_Type type) {
         return l->debug_i64_type;
 
     case LLVM_TYPE_FN:
-        return l->debug_fn_type;
+        return l->debug_fn_ptr_type;
 
     default:
         unreachable();
@@ -536,6 +553,16 @@ static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
         pos->scope->iota);
 }
 
+static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
+    if (init->node) {
+        sb_push_cstr(&l->sb, "ptr ");
+        llvm_node_emit(l, init->node);
+    } else {
+        llvm_type_emit(l, init->type, true);
+        sb_sprintf(&l->sb, " %ld", init->n);
+    }
+}
+
 void llvm_compile(LLVM *l) {
     assert(l->main_fn);
 
@@ -544,7 +571,7 @@ void llvm_compile(LLVM *l) {
     l->debug_i32_type = ++l->iota_debug;
     l->debug_i64_type = ++l->iota_debug;
     l->debug_fn_type = ++l->iota_debug;
-    l->debug_main_fn_type = ++l->iota_debug;
+    l->debug_fn_ptr_type = ++l->iota_debug;
 
     const size_t debug_compilation_unit = ++l->iota_debug;
 
@@ -558,9 +585,18 @@ void llvm_compile(LLVM *l) {
     if (l->vars.head) {
         sb_push(&l->sb, '\n');
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
+            LLVM_Node_Var *var = (LLVM_Node_Var *) it;
+
             sb_sprintf(&l->sb, "@" SV_Fmt " = global ", SV_Arg(it->sv));
-            llvm_type_emit(l, it->type, true);
-            sb_sprintf(&l->sb, " zeroinitializer");
+            if (var->init_head) {
+                for (LLVM_Node_Var_Init *it = var->init_head; it; it = it->next) {
+                    llvm_var_init_emit(l, it);
+                }
+            } else {
+                llvm_type_emit(l, it->type, true);
+                sb_push(&l->sb, ' ');
+                sb_sprintf(&l->sb, " zeroinitializer");
+            }
             sb_sprintf(&l->sb, ", align %zu", llvm_type_info(it->type).align);
 
             llvm_debug_pos_emit(l, it->debug);
@@ -573,7 +609,7 @@ void llvm_compile(LLVM *l) {
         fn->debug.iota = ++l->iota_debug;
 
         if (fn == l->main_fn) {
-            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() #0 !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
+            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() {\n", SV_Arg(it->sv));
         } else {
             sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "() #0 !dbg !%zu {\n", SV_Arg(it->sv), fn->debug.iota);
         }
@@ -616,15 +652,14 @@ void llvm_compile(LLVM *l) {
             llvm_node_compile(l, n);
         }
 
-        size_t debug_type = l->debug_fn_type;
         if (fn == l->main_fn) {
-            debug_type = l->debug_main_fn_type;
             sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
-        } else {
-            sb_push_cstr(&l->sb, "  ret void");
-            llvm_debug_pos_emit(l, &fn->debug_return);
-            sb_push_cstr(&l->sb, "\n}\n");
+            continue;
         }
+
+        sb_push_cstr(&l->sb, "  ret void");
+        llvm_debug_pos_emit(l, &fn->debug_return);
+        sb_push_cstr(&l->sb, "\n}\n");
 
         sb_sprintf(
             &l->sb,
@@ -644,10 +679,12 @@ void llvm_compile(LLVM *l) {
             l->debug_file->iota,
             fn->debug.row + 1,
             first_row + 1,
-            debug_type,
+            l->debug_fn_type,
             debug_compilation_unit);
 
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
+            const size_t debug_type = llvm_type_debug_compile(l, n->type);
+
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
             sb_sprintf(
                 &l->sb,
@@ -657,7 +694,7 @@ void llvm_compile(LLVM *l) {
                 fn->debug.iota,
                 l->debug_file->iota,
                 var->debug.row + 1,
-                llvm_debug_for_type(l, n->type));
+                debug_type);
 
             llvm_debug_pos_compile(l, n->debug);
         }
@@ -702,8 +739,12 @@ void llvm_compile(LLVM *l) {
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i8\", size: 8, encoding: DW_ATE_signed)\n", l->debug_i8_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
-    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{!%zu})\n", l->debug_main_fn_type, l->debug_i32_type);
     sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{})\n", l->debug_fn_type);
+    sb_sprintf(
+        &l->sb,
+        "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !%zu)\n",
+        l->debug_fn_ptr_type,
+        l->debug_fn_type);
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         const size_t debug_var = ++l->iota_debug;
@@ -713,7 +754,7 @@ void llvm_compile(LLVM *l) {
             it->debug->iota,
             debug_var);
 
-        const size_t debug_type = llvm_debug_for_type(l, it->type);
+        const size_t debug_type = llvm_type_debug_compile(l, it->type);
         sb_sprintf(
             &l->sb,
             "!%zu = distinct !DIGlobalVariable(name: \"" SV_Fmt "\", "
@@ -818,7 +859,32 @@ LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, boo
 void llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col) {
     var->debug.row = row;
     var->debug.col = col;
-    var->debug.scope = l->fn->debug_scope;
+    if (l->fn) {
+        var->debug.scope = l->fn->debug_scope;
+    }
+}
+
+static void llvm_var_init_push(LLVM_Node_Var *var, LLVM_Node_Var_Init *init) {
+    if (var->init_tail) {
+        var->init_tail->next = init;
+    } else {
+        var->init_head = init;
+    }
+
+    var->init_tail = init;
+}
+
+void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n) {
+    LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->type = type;
+    init->n = n;
+    llvm_var_init_push(var, init);
+}
+
+void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node) {
+    LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->node = node;
+    llvm_var_init_push(var, init);
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {

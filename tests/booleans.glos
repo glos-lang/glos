@@ -1,5 +1,7 @@
-print true
-print false
+main :: () {
+    print true
+    print false
 
-print !true
-print !false
+    print !true
+    print !false
+}

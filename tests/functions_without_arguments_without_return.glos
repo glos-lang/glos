@@ -3,5 +3,7 @@ foo :: () {
     print 420
 }
 
-foo()
-foo()
+main :: () {
+    foo()
+    foo()
+}

@@ -101,6 +101,7 @@ struct AST_Node_Atom {
     // When this atom is a definition
     bool        is_const;
     bool        is_local;
+    bool        is_assigned;
     Const_Value const_value;
     LLVM_Node  *llvm;
 

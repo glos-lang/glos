@@ -70,6 +70,8 @@ typedef struct {
     LLVM_Nodes vars;
 
     LLVM_Node_Fn *fn;
+
+    // TODO: Temporary solutions to permanent problems
     LLVM_Node_Fn *main_fn;
 
     size_t iota_local;
@@ -81,7 +83,7 @@ typedef struct {
     size_t debug_i32_type;
     size_t debug_i64_type;
     size_t debug_fn_type;
-    size_t debug_main_fn_type;
+    size_t debug_fn_ptr_type;
 
     LLVM_Debug_Pos  *debug_pos;
     LLVM_Debug_File *debug_file;
@@ -105,6 +107,9 @@ void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t 
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed);
 void           llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col);
+
+void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n);
+void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node);
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
 LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);

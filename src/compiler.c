@@ -40,14 +40,14 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
     LLVM_Node_Fn *llvm_fn_save = c->llvm.fn;
     {
-        SV name = {0};
+        const char *name = NULL;
         if (fn->defined_as) {
-            name = fn->defined_as->node.token.sv;
+            name = arena_sprintf(c->llvm.arena, "main." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
         } else {
-            name = sv_from_cstr(arena_sprintf(c->llvm.arena, "anonymous.%zu", ++c->iota_fn));
+            name = arena_sprintf(c->llvm.arena, "main.anonymous.%zu", ++c->iota_fn);
         }
 
-        c->llvm.fn = llvm_fn_new(&c->llvm, name);
+        c->llvm.fn = llvm_fn_new(&c->llvm, sv_from_cstr(name));
         fn->llvm = (LLVM_Node *) c->llvm.fn;
         llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
 
@@ -204,6 +204,29 @@ defer:
     return result;
 }
 
+static void compile_var_init(Compiler *c, AST_Node_Atom *atom) {
+    LLVM_Node_Var *var = (LLVM_Node_Var *) atom->llvm;
+
+    static_assert(COUNT_CONST_VALUES == 3, "");
+    switch (atom->const_value.kind) {
+    case CONST_VALUE_INT:
+        llvm_var_init_add_int(&c->llvm, var, atom->node.type.llvm, atom->const_value.as.integer);
+        break;
+
+    case CONST_VALUE_FN:
+        llvm_var_init_add_node(&c->llvm, var, compile_fn(c, atom->const_value.as.fn));
+        break;
+
+    case CONST_VALUE_TYPE:
+        unreachable();
+        break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 static_assert(COUNT_AST_NODES == 11, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
@@ -231,11 +254,15 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             it->llvm = (LLVM_Node *) var;
 
             if (it_expr) {
-                llvm_debug_set_pos(
-                    &c->llvm,
-                    llvm_build_store(&c->llvm, it->llvm, compile_expr(c, it_expr, false)),
-                    n->token.pos.row,
-                    n->token.pos.col);
+                if (define->is_local) {
+                    llvm_debug_set_pos(
+                        &c->llvm,
+                        llvm_build_store(&c->llvm, it->llvm, compile_expr(c, it_expr, false)),
+                        n->token.pos.row,
+                        n->token.pos.col);
+                } else {
+                    compile_var_init(c, it);
+                }
             }
         }
     } break;
@@ -362,20 +389,59 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     }
 }
 
+static AST_Node_Fn *get_main(Compiler *c) {
+    AST_Node_Atom *main = scope_find(c->globals, sv_from_cstr("main"), 0);
+    if (!main) {
+        fprintf(
+            stderr,
+            "ERROR: Function 'main' is not defined\n"
+            "\n"
+            "+ main :: () {\n"
+            "+ }\n");
+        exit(1);
+    }
+
+    if (!main->is_const || main->const_value.kind != CONST_VALUE_FN) {
+        fprintf(stderr, "ERROR: Identifier 'main' must be a constant function\n");
+        exit(1);
+    }
+
+    return main->const_value.as.fn;
+}
+
 void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     assert(c->cmd);
     assert(c->llvm.arena);
 
     llvm_debug_set_file(&c->llvm, c->path);
 
+    AST_Node_Fn *fn = get_main(c);
+    for (size_t i = 0; i < c->globals.count; i++) {
+        AST_Node_Atom *it = c->globals.data[i];
+        if (it->llvm) {
+            continue;
+        }
+
+        if (it->is_const) {
+            if (it->const_value.kind == CONST_VALUE_FN) {
+                compile_fn(c, it->const_value.as.fn);
+            }
+        } else {
+            compile_type(&it->node.type);
+
+            LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, false, it->is_assigned);
+            llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            it->llvm = (LLVM_Node *) var;
+
+            if (it->is_assigned) {
+                compile_var_init(c, it);
+            }
+        }
+    }
+
     c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"));
     c->llvm.fn = c->llvm.main_fn;
-
-    llvm_debug_scope_push(&c->llvm, 0, 0); // TODO: Temporary till entry function is implemented
-    for (AST_Node *it = nodes.head; it; it = it->next) {
-        compile_stmt(c, it);
-    }
-    llvm_debug_scope_pop(&c->llvm);
+    llvm_build_call(&c->llvm, fn->llvm);
     llvm_compile(&c->llvm);
 
 #if 0
@@ -415,3 +481,5 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         exit(1);
     }
 }
+
+// TODO: Prefix global variables with 'main' for consistency
