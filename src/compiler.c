@@ -48,14 +48,20 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
         }
 
         c->llvm.fn = llvm_fn_new(&c->llvm, name);
-        llvm_fn_debug_set_start_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
-
-        assert(fn->body->kind == AST_NODE_BLOCK);
-        AST_Node_Block *body = (AST_Node_Block *) fn->body;
-        llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, body->end.row, body->end.col);
-
         fn->llvm = (LLVM_Node *) c->llvm.fn;
-        compile_stmt(c, fn->body);
+        llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
+
+        llvm_debug_scope_push(&c->llvm, fn->node.token.pos.row, fn->node.token.pos.col);
+        {
+            assert(fn->body->kind == AST_NODE_BLOCK);
+            AST_Node_Block *block = (AST_Node_Block *) fn->body;
+
+            for (AST_Node *it = block->body.head; it; it = it->next) {
+                compile_stmt(c, it);
+            }
+            llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, block->end.row, block->end.col);
+        }
+        llvm_debug_scope_pop(&c->llvm);
     }
     c->llvm.fn = llvm_fn_save;
 
@@ -235,11 +241,14 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     } break;
 
     case AST_NODE_BLOCK: {
-        // TODO: Emit DILexicalBlock if necessary
+        llvm_debug_scope_push(&c->llvm, n->token.pos.row, n->token.pos.col);
+
         AST_Node_Block *block = (AST_Node_Block *) n;
         for (AST_Node *it = block->body.head; it; it = it->next) {
             compile_stmt(c, it);
         }
+
+        llvm_debug_scope_pop(&c->llvm);
     } break;
 
     case AST_NODE_IF: {
@@ -361,9 +370,12 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
 
     c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"));
     c->llvm.fn = c->llvm.main_fn;
+
+    llvm_debug_scope_push(&c->llvm, 0, 0); // TODO: Temporary till entry function is implemented
     for (AST_Node *it = nodes.head; it; it = it->next) {
         compile_stmt(c, it);
     }
+    llvm_debug_scope_pop(&c->llvm);
     llvm_compile(&c->llvm);
 
 #if 0

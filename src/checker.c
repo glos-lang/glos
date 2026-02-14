@@ -454,9 +454,12 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_BLOCK: {
         AST_Node_Block *block = (AST_Node_Block *) n;
+
+        const size_t locals_count_save = c->locals.count;
         for (AST_Node *it = block->body.head; it; it = it->next) {
             check_stmt(c, it);
         }
+        c->locals.count = locals_count_save;
     } break;
 
     case AST_NODE_IF: {

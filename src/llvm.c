@@ -38,13 +38,23 @@ struct LLVM_Debug_Pos {
     size_t row;
     size_t col;
 
-    LLVM_Node_Fn   *fn;
-    LLVM_Debug_Pos *next;
+    LLVM_Debug_Scope *scope;
+    LLVM_Debug_Pos   *next;
 };
 
 struct LLVM_Debug_File {
     size_t      iota;
     const char *path;
+};
+
+struct LLVM_Debug_Scope {
+    size_t iota;
+
+    size_t row;
+    size_t col;
+
+    LLVM_Node_Fn     *fn;
+    LLVM_Debug_Scope *outer;
 };
 
 typedef struct {
@@ -107,6 +117,8 @@ struct LLVM_Node_Fn {
 
     LLVM_Debug_Pos debug;
     LLVM_Debug_Pos debug_return;
+
+    LLVM_Debug_Scope *debug_scope;
 };
 
 struct LLVM_Node_Var {
@@ -489,6 +501,41 @@ static size_t llvm_debug_for_type(LLVM *l, LLVM_Type type) {
     }
 }
 
+static void llvm_debug_scope_compile(LLVM *l, LLVM_Debug_Scope *scope) {
+    if (!scope || scope->iota) {
+        return;
+    }
+
+    if (!scope->outer) {
+        // This is the toplevel scope of a function
+        scope->iota = scope->fn->debug.iota;
+        return;
+    }
+
+    llvm_debug_scope_compile(l, scope->outer);
+
+    scope->iota = ++l->iota_debug;
+    sb_sprintf(
+        &l->sb,
+        "!%zu = distinct !DILexicalBlock(scope: !%zu, file: !%zu, line: %zu, column: %zu)\n",
+        scope->iota,
+        scope->outer->iota,
+        l->debug_file->iota,
+        scope->row + 1,
+        scope->col + 1);
+}
+
+static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
+    llvm_debug_scope_compile(l, pos->scope);
+    sb_sprintf(
+        &l->sb,
+        "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
+        pos->iota,
+        pos->row + 1,
+        pos->col + 1,
+        pos->scope->iota);
+}
+
 void llvm_compile(LLVM *l) {
     assert(l->main_fn);
 
@@ -554,7 +601,7 @@ void llvm_compile(LLVM *l) {
             var->debug.iota = ++l->iota_debug;
             sb_push_cstr(&l->sb, "  call void @llvm.dbg.declare(metadata ptr ");
             llvm_node_emit(l, n);
-            sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())\n", var->debug_local);
+            sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())", var->debug_local);
             llvm_debug_pos_emit(l, n->debug);
             sb_push(&l->sb, '\n');
         }
@@ -612,23 +659,11 @@ void llvm_compile(LLVM *l) {
                 var->debug.row + 1,
                 llvm_debug_for_type(l, n->type));
 
-            sb_sprintf(
-                &l->sb,
-                "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
-                var->debug.iota,
-                var->debug.row + 1,
-                var->debug.col + 1,
-                fn->debug.iota);
+            llvm_debug_pos_compile(l, n->debug);
         }
 
         if (fn != l->main_fn) {
-            sb_sprintf(
-                &l->sb,
-                "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
-                fn->debug_return.iota,
-                fn->debug_return.row + 1,
-                fn->debug_return.col + 1,
-                fn->debug.iota);
+            llvm_debug_pos_compile(l, &fn->debug_return);
         }
     }
 
@@ -706,13 +741,7 @@ void llvm_compile(LLVM *l) {
     sb_push_cstr(&l->sb, "}\n");
 
     for (LLVM_Debug_Pos *it = l->debug_pos; it; it = it->next) {
-        sb_sprintf(
-            &l->sb,
-            "!%zu = !DILocation(line: %zu, column: %zu, scope: !%zu)\n",
-            it->iota,
-            it->row + 1,
-            it->col + 1,
-            it->fn->debug.iota);
+        llvm_debug_pos_compile(l, it);
     }
 }
 
@@ -760,16 +789,16 @@ LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name) {
     return fn;
 }
 
-void llvm_fn_debug_set_start_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
+void llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
+    unused(l);
     fn->debug.row = row;
     fn->debug.col = col;
-    fn->debug.fn = l->fn;
 }
 
 void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
     fn->debug_return.row = row;
     fn->debug_return.col = col;
-    fn->debug_return.fn = l->fn;
+    fn->debug_return.scope = l->fn->debug_scope;
 }
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed) {
@@ -789,7 +818,7 @@ LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, boo
 void llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col) {
     var->debug.row = row;
     var->debug.col = col;
-    var->debug.fn = l->fn;
+    var->debug.scope = l->fn->debug_scope;
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
@@ -862,8 +891,24 @@ void llvm_debug_set_pos(LLVM *l, LLVM_Node *n, size_t row, size_t col) {
     n->debug = arena_alloc(l->arena, sizeof(LLVM_Debug_Pos));
     n->debug->row = row;
     n->debug->col = col;
-    n->debug->fn = l->fn;
+    n->debug->scope = l->fn->debug_scope;
 
     n->debug->next = l->debug_pos;
     l->debug_pos = n->debug;
+}
+
+void llvm_debug_scope_push(LLVM *l, size_t row, size_t col) {
+    LLVM_Debug_Scope *scope = arena_alloc(l->arena, sizeof(LLVM_Debug_Scope));
+    scope->row = row;
+    scope->col = col;
+
+    scope->fn = l->fn;
+    scope->outer = l->fn->debug_scope;
+
+    l->fn->debug_scope = scope;
+}
+
+void llvm_debug_scope_pop(LLVM *l) {
+    assert(l->fn->debug_scope);
+    l->fn->debug_scope = l->fn->debug_scope->outer;
 }

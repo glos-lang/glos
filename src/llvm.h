@@ -8,8 +8,9 @@ typedef struct LLVM_Node_Fn    LLVM_Node_Fn;
 typedef struct LLVM_Node_Var   LLVM_Node_Var;
 typedef struct LLVM_Node_Block LLVM_Node_Block;
 
-typedef struct LLVM_Debug_Pos  LLVM_Debug_Pos;
-typedef struct LLVM_Debug_File LLVM_Debug_File;
+typedef struct LLVM_Debug_Pos   LLVM_Debug_Pos;
+typedef struct LLVM_Debug_File  LLVM_Debug_File;
+typedef struct LLVM_Debug_Scope LLVM_Debug_Scope;
 
 typedef struct {
     LLVM_Node *head;
@@ -97,8 +98,10 @@ LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 
 LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name);
-void          llvm_fn_debug_set_start_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
-void          llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+void          llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
+
+// TODO: Temporary solution to a permananent problem
+void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed);
 void           llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col);
@@ -119,5 +122,8 @@ LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value);
 
 void llvm_debug_set_file(LLVM *l, const char *path);
 void llvm_debug_set_pos(LLVM *l, LLVM_Node *n, size_t row, size_t col);
+
+void llvm_debug_scope_push(LLVM *l, size_t row, size_t col);
+void llvm_debug_scope_pop(LLVM *l);
 
 #endif // LLVM_H
