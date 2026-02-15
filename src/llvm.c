@@ -648,6 +648,10 @@ static void llvm_debug_scope_compile(LLVM *l, LLVM_Debug_Scope *scope) {
 }
 
 static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
+    if (!pos->iota) {
+        return;
+    }
+
     llvm_debug_scope_compile(l, pos->scope);
     sb_sprintf(
         &l->sb,
@@ -772,12 +776,24 @@ void llvm_compile(LLVM *l) {
 
         size_t first_row = 0;
         bool   first_row_set = false;
+        bool   skip = false;
         for (LLVM_Node *n = fn->body.head; n; n = n->next) {
             if (n->debug && !first_row_set) {
                 first_row = n->debug->row;
                 first_row_set = true;
             }
-            llvm_node_compile(l, n);
+
+            if (n->kind == LLVM_NODE_BLOCK) {
+                skip = false;
+            }
+
+            if (!skip) {
+                llvm_node_compile(l, n);
+            }
+
+            if (n->kind == LLVM_NODE_JUMP || n->kind == LLVM_NODE_BRANCH || n->kind == LLVM_NODE_RETURN) {
+                skip = true;
+            }
         }
         sb_push_cstr(&l->sb, "}\n");
 

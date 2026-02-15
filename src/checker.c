@@ -150,6 +150,10 @@ static bool is_atom_true(AST_Node *n) {
     return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && n->token.as.integer;
 }
 
+static bool is_atom_false(AST_Node *n) {
+    return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
+}
+
 static_assert(COUNT_AST_NODES == 12, "");
 static bool always_returns(AST_Node *n) {
     if (!n) {
@@ -169,12 +173,16 @@ static bool always_returns(AST_Node *n) {
 
     case AST_NODE_IF: {
         AST_Node_If *iff = (AST_Node_If *) n;
+        if (is_atom_true(iff->condition)) {
+            return always_returns(iff->consequence);
+        }
+
+        if (is_atom_false(iff->condition)) {
+            return always_returns(iff->antecedence);
+        }
+
         if (!iff->antecedence) {
-            if (is_atom_true(iff->condition)) {
-                return always_returns(iff->consequence);
-            } else {
-                return false;
-            }
+            return false;
         }
         return always_returns(iff->consequence) && always_returns(iff->antecedence);
     }

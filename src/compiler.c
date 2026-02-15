@@ -92,7 +92,6 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
             LLVM_Node *returnn = NULL;
             if (fn->returnn) {
-                // TODO: See if this is even needed anymore for functions with proper return
                 returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
             }
             llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
@@ -437,9 +436,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         }
 
         llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, value), n->token.pos.row, n->token.pos.col);
-
-        // TODO: Just make the backend not emit "regular" nodes after br/return
-        llvm_build_block(&c->llvm, llvm_block_new(&c->llvm));
     } break;
 
     case AST_NODE_PRINT: {
