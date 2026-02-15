@@ -239,7 +239,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
 }
 
 static_assert(COUNT_LLVM_NODES == 14, "");
-static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
+static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     if (!n) {
         return;
     }
@@ -302,7 +302,7 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     }
 }
 
-static size_t llvm_cast_compile(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
+static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) {
     if (n->type.kind == to || n->kind == LLVM_NODE_ATOM) {
         return n->iota;
     }
@@ -386,6 +386,13 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_BINARY: {
         LLVM_Node_Binary *binary = (LLVM_Node_Binary *) n;
 
+        size_t ptrtoint_lhs = 0;
+        size_t ptrtoint_rhs = 0;
+        if (n->type.kind == LLVM_TYPE_PTR && (binary->kind == LLVM_BINARY_ADD || binary->kind == LLVM_BINARY_SUB)) {
+            ptrtoint_lhs = llvm_cast_compile(l, binary->lhs, LLVM_TYPE_I64);
+            ptrtoint_rhs = llvm_cast_compile(l, binary->rhs, LLVM_TYPE_I64);
+        }
+
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
         llvm_node_emit(l, n);
@@ -411,14 +418,35 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         assert(op);
 
         sb_sprintf(&l->sb, "%s ", op);
-        llvm_type_emit(l, binary->lhs->type, false);
+        if (ptrtoint_lhs || ptrtoint_rhs) {
+            sb_push_cstr(&l->sb, "i64");
+        } else {
+            llvm_type_emit(l, binary->lhs->type, false);
+        }
         sb_push(&l->sb, ' ');
-        llvm_node_emit(l, binary->lhs);
+
+        if (ptrtoint_lhs) {
+            sb_sprintf(&l->sb, "%%.%zu", ptrtoint_lhs);
+        } else {
+            llvm_node_emit(l, binary->lhs);
+        }
+
         sb_sprintf(&l->sb, ", ");
-        llvm_node_emit(l, binary->rhs);
+
+        if (ptrtoint_rhs) {
+            sb_sprintf(&l->sb, "%%.%zu", ptrtoint_rhs);
+        } else {
+            llvm_node_emit(l, binary->rhs);
+        }
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
+
+        if (ptrtoint_lhs || ptrtoint_rhs) {
+            n->type.kind = LLVM_TYPE_I64;
+            n->iota = llvm_cast_compile(l, n, LLVM_TYPE_PTR);
+            n->type.kind = LLVM_TYPE_PTR;
+        }
     } break;
 
     case LLVM_NODE_LOAD: {
@@ -556,7 +584,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         if (value) {
             sb_sprintf(&l->sb, "%%.%zu", value);
         } else {
-            // `print->value` is a variable
+            // `print->value` is an atom
             llvm_node_emit(l, print->value);
         }
 
@@ -1219,7 +1247,3 @@ void llvm_debug_scope_pop(LLVM *l) {
     assert(l->fn->debug_scope);
     l->fn->debug_scope = l->fn->debug_scope->outer;
 }
-
-// TODO: Addition for pointers
-// TODO: See if debug info is correct for pointers and variables and functions
-// TODO: See what happens if we take reference to function

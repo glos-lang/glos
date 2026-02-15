@@ -748,7 +748,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
         if (it_expr) {
             it->is_assigned = true;
-            check_expr(c, it_expr, false, define->is_const);
+            check_expr(c, it_expr, false, !define->is_local || define->is_const);
 
             if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
                 fprintf(
