@@ -7,7 +7,7 @@ typedef enum {
 
     LLVM_NODE_LOAD,
     LLVM_NODE_STORE,
-
+    LLVM_NODE_CAST,
     LLVM_NODE_CALL,
 
     LLVM_NODE_BLOCK,
@@ -89,6 +89,11 @@ typedef struct {
     LLVM_Node *ptr;
     LLVM_Node *value;
 } LLVM_Node_Store;
+
+typedef struct {
+    LLVM_Node  node;
+    LLVM_Node *value;
+} LLVM_Node_Cast;
 
 typedef struct {
     LLVM_Node   node;
@@ -175,7 +180,7 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 13, "");
+static_assert(COUNT_LLVM_NODES == 14, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
@@ -184,7 +189,7 @@ static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) 
 
         [LLVM_NODE_LOAD] = sizeof(LLVM_Node_Load),
         [LLVM_NODE_STORE] = sizeof(LLVM_Node_Store),
-
+        [LLVM_NODE_CAST] = sizeof(LLVM_Node_Cast),
         [LLVM_NODE_CALL] = sizeof(LLVM_Node_Call),
 
         [LLVM_NODE_BLOCK] = sizeof(LLVM_Node_Block),
@@ -232,7 +237,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 13, "");
+static_assert(COUNT_LLVM_NODES == 14, "");
 static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -295,14 +300,14 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     }
 }
 
-static void llvm_node_build_cast(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
+static size_t llvm_cast_compile(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to, bool change_node) {
     if (n->type.kind == to) {
-        return;
+        return n->iota;
     }
 
     if (n->kind == LLVM_NODE_ATOM) {
         n->type.kind = to;
-        return;
+        return n->iota;
     }
 
     const size_t temp = ++l->iota_local;
@@ -327,11 +332,16 @@ static void llvm_node_build_cast(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
     sb_push_cstr(&l->sb, " to ");
     llvm_type_emit(l, (LLVM_Type) {.kind = to}, false);
     sb_push(&l->sb, '\n');
-    n->iota = temp;
-    n->type.kind = to;
+
+    if (change_node) {
+        n->iota = temp;
+        n->type.kind = to;
+    }
+
+    return temp;
 }
 
-static_assert(COUNT_LLVM_NODES == 13, "");
+static_assert(COUNT_LLVM_NODES == 14, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -429,14 +439,14 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         if (n->type.kind == LLVM_TYPE_I1) {
             n->type.kind = LLVM_TYPE_I8;
-            llvm_node_build_cast(l, n, LLVM_TYPE_I1);
+            llvm_cast_compile(l, n, LLVM_TYPE_I1, true);
         }
     } break;
 
     case LLVM_NODE_STORE: {
         LLVM_Node_Store *store = (LLVM_Node_Store *) n;
         if (store->value->type.kind == LLVM_TYPE_I1) {
-            llvm_node_build_cast(l, store->value, LLVM_TYPE_I8);
+            llvm_cast_compile(l, store->value, LLVM_TYPE_I8, true);
         }
 
         sb_push_cstr(&l->sb, "  store ");
@@ -449,6 +459,11 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
+    } break;
+
+    case LLVM_NODE_CAST: {
+        LLVM_Node_Cast *cast = (LLVM_Node_Cast *) n;
+        n->iota = llvm_cast_compile(l, cast->value, n->type.kind, false);
     } break;
 
     case LLVM_NODE_CALL: {
@@ -529,7 +544,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
-        llvm_node_build_cast(l, print->value, LLVM_TYPE_I64);
+        llvm_cast_compile(l, print->value, LLVM_TYPE_I64, true);
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
@@ -1117,6 +1132,17 @@ LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value) {
     store->ptr = ptr;
     store->value = value;
     return (LLVM_Node *) store;
+}
+
+LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type) {
+    if (value->kind == LLVM_NODE_ATOM) {
+        value->type = type;
+        return value;
+    }
+
+    LLVM_Node_Cast *cast = (LLVM_Node_Cast *) llvm_node_build(l, LLVM_NODE_CAST, type);
+    cast->value = value;
+    return (LLVM_Node *) cast;
 }
 
 LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arity) {

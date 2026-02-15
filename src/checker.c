@@ -14,6 +14,16 @@ static void error_redefinition(const AST_Node_Atom *n, const AST_Node_Atom *prev
     exit(1);
 }
 
+static void error_too_few_arguments(Pos pos, size_t expected) {
+    fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected %zu\n", Pos_Arg(pos), expected);
+    exit(1);
+}
+
+static void error_too_many_arguments(Pos pos, size_t expected) {
+    fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected %zu\n", Pos_Arg(pos), expected);
+    exit(1);
+}
+
 static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
     if (ast_type_eq(actual->type, expected)) {
         return actual->type;
@@ -55,11 +65,7 @@ static AST_Type ast_type_assert_numeric(const AST_Node *n) {
 }
 
 static AST_Type ast_type_assert_scalar(const AST_Node *n) {
-    if (ast_type_is_numeric(n->type)) {
-        return n->type;
-    }
-
-    if (n->type.kind == AST_TYPE_BOOL) {
+    if (ast_type_is_scalar(n->type)) {
         return n->type;
     }
 
@@ -368,32 +374,59 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         check_expr(c, call->fn, false);
 
         const AST_Type fn_type = call->fn->type;
-        if (fn_type.kind != AST_TYPE_FN) {
-            fprintf(stderr, Pos_Fmt "ERROR: Cannot call %s\n", Pos_Arg(call->fn->token.pos), ast_type_to_cstr(fn_type));
-            exit(1);
-        }
-
-        call->arity = 0;
-        for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-            check_expr(c, arg, false);
-            if (call->arity >= fn_type.spec.fn.arity) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Too many arguments, expected %zu\n",
-                    Pos_Arg(arg->token.pos),
-                    fn_type.spec.fn.arity);
+        if (fn_type.kind == AST_TYPE_TYPE) {
+            call->is_type_cast = true;
+            if (!call->args.head) {
+                error_too_few_arguments(call->end, 1);
+                exit(1);
+            } else if (call->args.head->next) {
+                error_too_many_arguments(call->args.head->next->token.pos, 1);
                 exit(1);
             }
-            ast_type_assert(arg, fn_type.spec.fn.args[call->arity++]);
-        }
 
-        if (call->arity < fn_type.spec.fn.arity) {
-            fprintf(
-                stderr, Pos_Fmt "ERROR: Too few arguments, expected %zu\n", Pos_Arg(call->end), fn_type.spec.fn.arity);
-            exit(1);
-        }
+            n->type = *fn_type.spec.type;
+            if (ast_type_is_scalar(n->type)) {
+                check_expr(c, call->args.head, false);
+                ast_type_assert_scalar(call->args.head);
+            } else {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot cast to %s\n",
+                    Pos_Arg(call->fn->token.pos),
+                    ast_type_to_cstr(n->type));
 
-        n->type = *fn_type.spec.fn.returnn;
+                exit(1);
+            }
+
+            if (ast_type_eq(n->type, call->args.head->type)) {
+                call->type_cast = TYPE_CAST_NOP;
+            } else if (ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_BOOL})) {
+                call->type_cast = TYPE_CAST_TO_BOOL;
+            } else {
+                call->type_cast = TYPE_CAST_NORMAL;
+            }
+        } else {
+            if (fn_type.kind != AST_TYPE_FN) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot call %s\n", Pos_Arg(call->fn->token.pos), ast_type_to_cstr(fn_type));
+                exit(1);
+            }
+
+            call->arity = 0;
+            for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
+                check_expr(c, arg, false);
+                if (call->arity >= fn_type.spec.fn.arity) {
+                    error_too_many_arguments(arg->token.pos, fn_type.spec.fn.arity);
+                }
+                ast_type_assert(arg, fn_type.spec.fn.args[call->arity++]);
+            }
+
+            if (call->arity < fn_type.spec.fn.arity) {
+                error_too_few_arguments(call->end, fn_type.spec.fn.arity);
+            }
+
+            n->type = *fn_type.spec.fn.returnn;
+        }
     } break;
 
     default:
@@ -545,7 +578,32 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     }
 
     case AST_NODE_CALL: {
-        todo();
+        AST_Node_Call *call = (AST_Node_Call *) n;
+        if (!call->is_type_cast) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot call functions in a constant expression\n",
+                Pos_Arg(call->fn->token.pos));
+
+            exit(1);
+        }
+
+        const Const_Value value = eval_const_expr(c, call->args.head);
+
+        static_assert(COUNT_TYPE_CASTS == 3, "");
+        switch (call->type_cast) {
+        case TYPE_CAST_NOP:
+            return value;
+
+        case TYPE_CAST_NORMAL:
+            return value;
+
+        case TYPE_CAST_TO_BOOL:
+            return const_value_int(value.as.integer != 0);
+
+        default:
+            unreachable();
+        }
     } break;
 
     default:

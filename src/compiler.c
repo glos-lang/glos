@@ -224,7 +224,32 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
-        LLVM_Node    **args = arena_alloc(c->llvm.arena, call->arity * sizeof(*args));
+        if (call->is_type_cast) {
+            LLVM_Node *value = compile_expr(c, call->args.head, false);
+
+            static_assert(COUNT_TYPE_CASTS == 3, "");
+            switch (call->type_cast) {
+            case TYPE_CAST_NOP:
+                debug = false;
+                return_defer(value);
+
+            case TYPE_CAST_NORMAL:
+                return_defer(llvm_build_cast(&c->llvm, value, n->type.llvm));
+
+            case TYPE_CAST_TO_BOOL:
+                return_defer(llvm_build_binary(
+                    &c->llvm,
+                    LLVM_BINARY_NE,
+                    n->type.llvm,
+                    value,
+                    llvm_atom_int(&c->llvm, call->args.head->type.llvm, 0)));
+
+            default:
+                unreachable();
+            }
+        }
+
+        LLVM_Node **args = arena_alloc(c->llvm.arena, call->arity * sizeof(*args));
 
         size_t iota = 0;
         for (AST_Node *arg = call->args.head; arg; arg = arg->next) {

@@ -49,6 +49,7 @@ const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
 bool ast_type_is_numeric(AST_Type type);
+bool ast_type_is_scalar(AST_Type type);
 
 typedef enum {
     CONST_VALUE_INT,
@@ -144,12 +145,24 @@ struct AST_Node_Fn {
     LLVM_Node     *llvm;
 };
 
+typedef enum {
+    TYPE_CAST_NOP,
+    TYPE_CAST_NORMAL,
+    TYPE_CAST_TO_BOOL,
+    COUNT_TYPE_CASTS,
+} Type_Cast;
+
 typedef struct {
     AST_Node  node;
     AST_Node *fn;
+
     AST_Nodes args;
     size_t    arity; // Calculated at checking phase
-    Pos       end;
+
+    Pos end;
+
+    bool      is_type_cast;
+    Type_Cast type_cast;
 } AST_Node_Call;
 
 typedef struct {

@@ -119,6 +119,18 @@ bool ast_type_is_numeric(AST_Type type) {
     }
 }
 
+bool ast_type_is_scalar(AST_Type type) {
+    if (ast_type_is_numeric(type)) {
+        return true;
+    }
+
+    if (type.kind == AST_TYPE_BOOL) {
+        return true;
+    }
+
+    return false;
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
