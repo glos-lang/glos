@@ -34,6 +34,8 @@ typedef enum {
     TOKEN_DIV,
     TOKEN_MOD,
 
+    TOKEN_BAND,
+
     TOKEN_SET,
 
     TOKEN_LNOT,

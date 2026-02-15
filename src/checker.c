@@ -54,13 +54,22 @@ static AST_Type ast_type_assert_node(AST_Node *actual, AST_Node *expected) {
     exit(1);
 }
 
-static AST_Type ast_type_assert_numeric(const AST_Node *n) {
+static AST_Type ast_type_assert_numeric(const AST_Node *n, bool pointers_allowed) {
     if (ast_type_is_numeric(n->type)) {
         return n->type;
     }
 
+    if (ast_type_is_pointer(n->type) && pointers_allowed) {
+        return n->type;
+    }
+
+    const char *label = "arithmetic";
+    if (!pointers_allowed) {
+        label = "numeric";
+    }
+
     fprintf(
-        stderr, Pos_Fmt "ERROR: Expected arithmetic value, got %s\n", Pos_Arg(n->token.pos), ast_type_to_cstr(n->type));
+        stderr, Pos_Fmt "ERROR: Expected %s value, got %s\n", Pos_Arg(n->token.pos), label, ast_type_to_cstr(n->type));
     exit(1);
 }
 
@@ -237,7 +246,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -268,15 +277,61 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        check_expr(c, unary->value, false, constant);
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
-            n->type = ast_type_assert_numeric(unary->value);
+            check_expr(c, unary->value, false, constant);
+            n->type = ast_type_assert_numeric(unary->value, false);
+            break;
+
+        case TOKEN_MUL:
+            if (constant) {
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot dereference in a constant expression\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            check_expr(c, unary->value, false, constant);
+            if (!unary->value->type.ref) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Expected typed pointer, got %s\n",
+                    Pos_Arg(unary->value->token.pos),
+                    ast_type_to_cstr(unary->value->type));
+                exit(1);
+            }
+
+            n->type = unary->value->type;
+            n->type.ref--;
+            n->is_memory = true;
+            break;
+
+        case TOKEN_BAND:
+            if (constant) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot take reference in a constant expression\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            check_expr(c, unary->value, false, constant);
+            n->type = unary->value->type;
+
+            if (n->type.kind == AST_TYPE_TYPE) {
+                n->type.spec.type->ref++;
+            } else {
+                if (!unary->value->is_memory) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot take reference to value not in memory\n",
+                        Pos_Arg(unary->value->token.pos));
+                    exit(1);
+                }
+                n->type.ref++;
+            }
             break;
 
         case TOKEN_LNOT:
+            check_expr(c, unary->value, false, constant);
             n->type = ast_type_assert(unary->value, (AST_Type) {.kind = AST_TYPE_BOOL});
             break;
 
@@ -287,16 +342,29 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
+            check_expr(c, binary->lhs, false, constant);
+            check_expr(c, binary->rhs, false, constant);
+            ast_type_assert_numeric(binary->lhs, true);
+            n->type = ast_type_assert_node(binary->rhs, binary->lhs);
+            break;
+
         case TOKEN_MUL:
         case TOKEN_DIV:
         case TOKEN_MOD:
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
-            ast_type_assert_numeric(binary->lhs);
+            ast_type_assert_numeric(binary->lhs, false);
+            n->type = ast_type_assert_node(binary->rhs, binary->lhs);
+            break;
+
+        case TOKEN_BAND:
+            check_expr(c, binary->lhs, false, constant);
+            check_expr(c, binary->rhs, false, constant);
+            ast_type_assert_numeric(binary->lhs, false);
             n->type = ast_type_assert_node(binary->rhs, binary->lhs);
             break;
 
@@ -308,15 +376,15 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
         case TOKEN_NE:
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
-            ast_type_assert_numeric(binary->lhs);
+            ast_type_assert_numeric(binary->lhs, true);
             ast_type_assert_node(binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
             break;
 
         case TOKEN_SET:
             assert(!constant);
-            check_expr(c, binary->lhs, true, false);
-            check_expr(c, binary->rhs, false, false);
+            check_expr(c, binary->lhs, true, constant);
+            check_expr(c, binary->rhs, false, constant);
             ast_type_assert_node(binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
             break;
@@ -434,6 +502,8 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 exit(1);
             }
 
+            // TODO: Don't allow calling pointer to function
+
             call->arity = 0;
             for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
                 check_expr(c, arg, false, constant);
@@ -471,7 +541,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -498,11 +568,16 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
             return const_value_int(-value.as.integer);
+
+        case TOKEN_MUL:
+        case TOKEN_BAND:
+            unreachable();
+            break;
 
         case TOKEN_LNOT:
             value = eval_const_expr(c, unary->value);
@@ -518,7 +593,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -544,6 +619,11 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(lhs.as.integer % rhs.as.integer);
+
+        case TOKEN_BAND:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            return const_value_int(lhs.as.integer & rhs.as.integer);
 
         case TOKEN_GT:
             lhs = eval_const_expr(c, binary->lhs);

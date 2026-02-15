@@ -26,6 +26,7 @@ typedef enum {
     LLVM_TYPE_I32,
     LLVM_TYPE_I64,
 
+    LLVM_TYPE_PTR,
     LLVM_TYPE_FN,
     COUNT_LLVM_TYPES,
 } LLVM_Type_Kind;
@@ -35,6 +36,10 @@ struct LLVM_Type {
     size_t         debug;
 
     union {
+        struct {
+            LLVM_Type *type;
+        } ptr;
+
         struct {
             LLVM_Type *args;
             size_t     arity;
@@ -106,6 +111,7 @@ void llvm_compile(LLVM *l);
 
 LLVM_Type_Info llvm_type_info(LLVM_Type type);
 LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
+LLVM_Type      llvm_type_ptr(LLVM *l, LLVM_Type type);
 LLVM_Type      llvm_type_fn(LLVM *l, LLVM_Type *args, size_t arity, LLVM_Type returnn);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
