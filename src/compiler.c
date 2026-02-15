@@ -23,7 +23,9 @@ static void compile_type(Compiler *c, AST_Type *type) {
         if (type->llvm.kind != LLVM_TYPE_FN) {
             const size_t arity = type->spec.fn.arity;
             LLVM_Type   *args = arena_alloc(c->llvm.arena, arity * sizeof(*args));
-            type->llvm = llvm_type_fn(args, arity);
+
+            compile_type(c, type->spec.fn.returnn);
+            type->llvm = llvm_type_fn(&c->llvm, args, arity, type->spec.fn.returnn->llvm);
 
             for (size_t i = 0; i < arity; i++) {
                 AST_Type *it = &type->spec.fn.args[i];
@@ -87,7 +89,12 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
             for (AST_Node *it = block->body.head; it; it = it->next) {
                 compile_stmt(c, it);
             }
-            llvm_fn_debug_set_return_pos(&c->llvm, c->llvm.fn, block->end.row, block->end.col);
+
+            LLVM_Node *returnn = NULL;
+            if (fn->returnn) {
+                returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
+            }
+            llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
         }
         llvm_debug_scope_pop(&c->llvm);
     }
@@ -96,7 +103,7 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -109,7 +116,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -160,7 +167,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = compile_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
@@ -176,7 +183,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -199,7 +206,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
@@ -263,7 +270,7 @@ static void compile_var_init(Compiler *c, AST_Node_Atom *atom) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -420,6 +427,20 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         }
         break;
 
+    case AST_NODE_RETURN: {
+        AST_Node_Return *returnn = (AST_Node_Return *) n;
+
+        LLVM_Node *value = compile_expr(c, returnn->value, false);
+        if (n->type.kind == AST_TYPE_UNIT) {
+            value = NULL;
+        }
+
+        llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, value), n->token.pos.row, n->token.pos.col);
+
+        // TODO: Just make the backend not emit "regular" nodes after br/return
+        llvm_build_block(&c->llvm, llvm_block_new(&c->llvm));
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         LLVM_Node      *value = compile_expr(c, print->value, false);
@@ -432,6 +453,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     }
 }
 
+// TODO: Check signature of main
 static AST_Node_Fn *get_main(Compiler *c) {
     AST_Node_Atom *main = scope_find(c->globals, sv_from_cstr("main"), 0);
     if (!main) {
@@ -483,9 +505,12 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
         }
     }
 
-    c->llvm.main_fn = llvm_fn_new(&c->llvm, sv_from_cstr("main"), llvm_type_fn(NULL, 0));
+    c->llvm.main_fn =
+        llvm_fn_new(&c->llvm, sv_from_cstr("main"), llvm_type_fn(&c->llvm, NULL, 0, llvm_type_basic(LLVM_TYPE_I32)));
+
     c->llvm.fn = c->llvm.main_fn;
     llvm_build_call(&c->llvm, fn->llvm, NULL, 0);
+    llvm_build_return(&c->llvm, llvm_atom_int(&c->llvm, llvm_type_basic(LLVM_TYPE_I32), 0));
     llvm_compile(&c->llvm);
 
 #if 0
@@ -526,4 +551,5 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     }
 }
 
+// TODO: Emit debug information for function signatures correctly
 // TODO: Prefix global variables with 'main' for consistency

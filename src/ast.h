@@ -31,6 +31,7 @@ typedef struct AST_Type AST_Type;
 typedef struct {
     AST_Type *args;
     size_t    arity;
+    AST_Type *returnn;
 } AST_Type_Fn;
 
 struct AST_Type {
@@ -84,7 +85,9 @@ typedef enum {
     AST_NODE_BLOCK,
     AST_NODE_IF,
     AST_NODE_FOR,
+
     AST_NODE_JUMP,
+    AST_NODE_RETURN,
 
     AST_NODE_PRINT,
     COUNT_AST_NODES
@@ -129,9 +132,10 @@ typedef struct {
 struct AST_Node_Fn {
     AST_Node  node;
     AST_Nodes args;
-
-    bool      is_type;
+    AST_Node *returnn;
     AST_Node *body;
+
+    bool is_type;
 
     AST_Node_Atom *defined_as;
     LLVM_Node     *llvm;
@@ -179,6 +183,11 @@ typedef struct {
 typedef struct {
     AST_Node node;
 } AST_Node_Jump;
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *value;
+} AST_Node_Return;
 
 typedef struct {
     AST_Node  node;

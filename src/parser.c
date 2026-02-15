@@ -1,5 +1,4 @@
 #include "parser.h"
-#include <stdbool.h>
 
 typedef enum {
     POWER_NIL,
@@ -11,7 +10,7 @@ typedef enum {
     POWER_CALL
 } Power;
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 32, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -105,7 +104,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
@@ -119,7 +118,9 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
         [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
         [AST_NODE_IF] = sizeof(AST_Node_If),
         [AST_NODE_FOR] = sizeof(AST_Node_For),
+
         [AST_NODE_JUMP] = sizeof(AST_Node_Jump),
+        [AST_NODE_RETURN] = sizeof(AST_Node_Return),
 
         [AST_NODE_PRINT] = sizeof(AST_Node_Print),
     };
@@ -197,7 +198,7 @@ static AST_Node *parse_for(Parser *p, Token token) {
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 32, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -257,6 +258,10 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             node = ast_node_alloc(p, AST_NODE_FN, token);
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
             fn->args = fn_args;
+
+            if (read_token(p, TOKEN_ARROW)) {
+                fn->returnn = parse_expr(p, POWER_PRE);
+            }
 
             if (peek_token(p).kind == TOKEN_LBRACE) {
                 const bool is_local_save = p->is_local;
@@ -355,7 +360,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
 
@@ -384,6 +389,16 @@ static AST_Node *parse_stmt(Parser *p) {
 
         node = ast_node_alloc(p, AST_NODE_JUMP, token);
         break;
+
+    case TOKEN_RETURN: {
+        local_assert(p, true, token, NULL);
+        node = ast_node_alloc(p, AST_NODE_RETURN, token);
+
+        AST_Node_Return *returnn = (AST_Node_Return *) node;
+        if (!peek_token(p).newline) {
+            returnn->value = parse_expr(p, POWER_SET);
+        }
+    } break;
 
     case TOKEN_PRINT: {
         local_assert(p, true, token, NULL);

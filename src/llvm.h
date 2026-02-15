@@ -23,6 +23,7 @@ typedef enum {
     LLVM_TYPE_I0,
     LLVM_TYPE_I1,
     LLVM_TYPE_I8,
+    LLVM_TYPE_I32,
     LLVM_TYPE_I64,
 
     LLVM_TYPE_FN,
@@ -34,6 +35,8 @@ struct LLVM_Type {
 
     LLVM_Type *children;
     size_t     children_count;
+
+    LLVM_Type *returnn;
 };
 
 typedef struct {
@@ -97,17 +100,17 @@ typedef struct {
 void llvm_free(LLVM *l);
 void llvm_compile(LLVM *l);
 
-LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
-LLVM_Type      llvm_type_fn(LLVM_Type *args, size_t arity);
 LLVM_Type_Info llvm_type_info(LLVM_Type type);
+LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
+LLVM_Type      llvm_type_fn(LLVM *l, LLVM_Type *args, size_t arity, LLVM_Type returnn);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
+LLVM_Node *llvm_atom_zero(LLVM *l, LLVM_Type type);
 
 LLVM_Node_Block *llvm_block_new(LLVM *l);
 
 LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type);
 void          llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col);
-void          llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col); // TODO: Temporary
 
 LLVM_Node_Var *llvm_fn_arg_get(LLVM_Node_Fn *fn, size_t index);
 
@@ -130,6 +133,7 @@ LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arit
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, LLVM_Node_Block *antecedence);
+LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value);
 
 LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value);
 

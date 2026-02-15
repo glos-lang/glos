@@ -104,7 +104,7 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 30, "");
+static_assert(COUNT_TOKENS == 32, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -166,6 +166,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_BREAK;
         } else if (sv_match(token.sv, "continue")) {
             token.kind = TOKEN_CONTINUE;
+        } else if (sv_match(token.sv, "return")) {
+            token.kind = TOKEN_RETURN;
         } else if (sv_match(token.sv, "print")) {
             token.kind = TOKEN_PRINT;
         } else {
@@ -209,7 +211,11 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '-':
-        token.kind = TOKEN_SUB;
+        if (match_char(l, '>')) {
+            token.kind = TOKEN_ARROW;
+        } else {
+            token.kind = TOKEN_SUB;
+        }
         break;
 
     case '*':

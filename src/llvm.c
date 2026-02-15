@@ -13,6 +13,7 @@ typedef enum {
     LLVM_NODE_BLOCK,
     LLVM_NODE_JUMP,
     LLVM_NODE_BRANCH,
+    LLVM_NODE_RETURN,
 
     LLVM_NODE_FN,
     LLVM_NODE_VAR,
@@ -62,6 +63,7 @@ typedef struct {
     union {
         long integer;
     } as;
+    bool is_zeroed;
 } LLVM_Node_Atom;
 
 typedef struct {
@@ -111,6 +113,11 @@ typedef struct {
     LLVM_Node_Block *antecedence;
 } LLVM_Node_Branch;
 
+typedef struct {
+    LLVM_Node  node;
+    LLVM_Node *value;
+} LLVM_Node_Return;
+
 struct LLVM_Node_Fn {
     LLVM_Node  node;
     LLVM_Nodes vars;
@@ -119,9 +126,7 @@ struct LLVM_Node_Fn {
     LLVM_Node_Var **args;
     size_t          arity;
 
-    LLVM_Debug_Pos debug;
-    LLVM_Debug_Pos debug_return;
-
+    LLVM_Debug_Pos    debug;
     LLVM_Debug_Scope *debug_scope;
 };
 
@@ -170,7 +175,7 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 12, "");
+static_assert(COUNT_LLVM_NODES == 13, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
@@ -185,6 +190,7 @@ static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) 
         [LLVM_NODE_BLOCK] = sizeof(LLVM_Node_Block),
         [LLVM_NODE_JUMP] = sizeof(LLVM_Node_Jump),
         [LLVM_NODE_BRANCH] = sizeof(LLVM_Node_Branch),
+        [LLVM_NODE_RETURN] = sizeof(LLVM_Node_Return),
 
         [LLVM_NODE_FN] = sizeof(LLVM_Node_Fn),
         [LLVM_NODE_VAR] = sizeof(LLVM_Node_Var),
@@ -226,7 +232,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 12, "");
+static_assert(COUNT_LLVM_NODES == 13, "");
 static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -235,7 +241,11 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     switch (n->kind) {
     case LLVM_NODE_ATOM: {
         LLVM_Node_Atom *atom = (LLVM_Node_Atom *) n;
-        sb_sprintf(&l->sb, "%ld", atom->as.integer);
+        if (atom->is_zeroed) {
+            sb_push_cstr(&l->sb, "zeroinitializer");
+        } else {
+            sb_sprintf(&l->sb, "%ld", atom->as.integer);
+        }
     } break;
 
     case LLVM_NODE_BLOCK:
@@ -253,7 +263,7 @@ static void llvm_node_emit(LLVM *l, LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 5, "");
+static_assert(COUNT_LLVM_TYPES == 6, "");
 static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -266,6 +276,10 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
 
     case LLVM_TYPE_I8:
         sb_push_cstr(&l->sb, "i8");
+        break;
+
+    case LLVM_TYPE_I32:
+        sb_push_cstr(&l->sb, "i32");
         break;
 
     case LLVM_TYPE_I64:
@@ -317,7 +331,7 @@ static void llvm_node_build_cast(LLVM *l, LLVM_Node *n, LLVM_Type_Kind to) {
     n->type.kind = to;
 }
 
-static_assert(COUNT_LLVM_NODES == 12, "");
+static_assert(COUNT_LLVM_NODES == 13, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -439,7 +453,15 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
     case LLVM_NODE_CALL: {
         LLVM_Node_Call *call = (LLVM_Node_Call *) n;
-        sb_push_cstr(&l->sb, "  call ");
+        sb_push_cstr(&l->sb, "  ");
+
+        if (n->type.kind != LLVM_TYPE_I0) {
+            n->iota = ++l->iota_local;
+            llvm_node_emit(l, n);
+            sb_push_cstr(&l->sb, " = ");
+        }
+
+        sb_push_cstr(&l->sb, "call ");
         llvm_type_emit(l, n->type, false);
         sb_push(&l->sb, ' ');
 
@@ -489,6 +511,22 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push(&l->sb, '\n');
     } break;
 
+    case LLVM_NODE_RETURN: {
+        LLVM_Node_Return *returnn = (LLVM_Node_Return *) n;
+
+        if (returnn->value) {
+            sb_push_cstr(&l->sb, "  ret ");
+            llvm_type_emit(l, n->type, false);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, returnn->value);
+        } else {
+            sb_push_cstr(&l->sb, "  ret void");
+        }
+
+        llvm_debug_pos_emit(l, n->debug);
+        sb_push(&l->sb, '\n');
+    } break;
+
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
         llvm_node_build_cast(l, print->value, LLVM_TYPE_I64);
@@ -514,7 +552,7 @@ void llvm_free(LLVM *l) {
 
 // TODO: Temporary solution to permananent problem
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type type) {
-    static_assert(COUNT_LLVM_TYPES == 5, "");
+    static_assert(COUNT_LLVM_TYPES == 6, "");
     switch (type.kind) {
     case LLVM_TYPE_I0:
         unreachable();
@@ -525,6 +563,9 @@ static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type type) {
 
     case LLVM_TYPE_I8:
         return l->debug_i8_type;
+
+    case LLVM_TYPE_I32:
+        return l->debug_i32_type;
 
     case LLVM_TYPE_I64:
         return l->debug_i64_type;
@@ -631,7 +672,9 @@ void llvm_compile(LLVM *l) {
         if (fn == l->main_fn) {
             sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() {\n", SV_Arg(it->sv));
         } else {
-            sb_sprintf(&l->sb, "\ndefine void @" SV_Fmt "(", SV_Arg(it->sv));
+            sb_sprintf(&l->sb, "\ndefine ");
+            llvm_type_emit(l, *fn->node.type.returnn, false);
+            sb_sprintf(&l->sb, " @" SV_Fmt "(", SV_Arg(it->sv));
             for (size_t i = 0; i < fn->arity; i++) {
                 if (i > 0) {
                     sb_push_cstr(&l->sb, ", ");
@@ -685,7 +728,7 @@ void llvm_compile(LLVM *l) {
             sb_push(&l->sb, '\n');
         }
 
-        size_t first_row = fn->debug_return.row;
+        size_t first_row = 0;
         bool   first_row_set = false;
         for (LLVM_Node *n = fn->body.head; n; n = n->next) {
             if (n->debug && !first_row_set) {
@@ -694,15 +737,11 @@ void llvm_compile(LLVM *l) {
             }
             llvm_node_compile(l, n);
         }
+        sb_push_cstr(&l->sb, "}\n");
 
         if (fn == l->main_fn) {
-            sb_push_cstr(&l->sb, "  ret i32 0\n}\n");
             continue;
         }
-
-        sb_push_cstr(&l->sb, "  ret void");
-        llvm_debug_pos_emit(l, &fn->debug_return);
-        sb_push_cstr(&l->sb, "\n}\n");
 
         sb_sprintf(
             &l->sb,
@@ -740,10 +779,6 @@ void llvm_compile(LLVM *l) {
                 debug_type);
 
             llvm_debug_pos_compile(l, n->debug);
-        }
-
-        if (fn != l->main_fn) {
-            llvm_debug_pos_compile(l, &fn->debug_return);
         }
     }
 
@@ -829,15 +864,7 @@ void llvm_compile(LLVM *l) {
     }
 }
 
-LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
-    return (LLVM_Type) {.kind = kind};
-}
-
-LLVM_Type llvm_type_fn(LLVM_Type *args, size_t arity) {
-    return (LLVM_Type) {.kind = LLVM_TYPE_FN, .children = args, .children_count = arity};
-}
-
-static_assert(COUNT_LLVM_TYPES == 5, "");
+static_assert(COUNT_LLVM_TYPES == 6, "");
 LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -846,6 +873,9 @@ LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     case LLVM_TYPE_I1:
     case LLVM_TYPE_I8:
         return (LLVM_Type_Info) {.align = 1, .size = 1};
+
+    case LLVM_TYPE_I32:
+        return (LLVM_Type_Info) {.align = 4, .size = 4};
 
     case LLVM_TYPE_I64:
         return (LLVM_Type_Info) {.align = 8, .size = 8};
@@ -859,9 +889,28 @@ LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     }
 }
 
+LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
+    return (LLVM_Type) {.kind = kind};
+}
+
+LLVM_Type llvm_type_fn(LLVM *l, LLVM_Type *args, size_t arity, LLVM_Type returnn) {
+    return (LLVM_Type) {
+        .kind = LLVM_TYPE_FN,
+        .children = args,
+        .children_count = arity,
+        .returnn = arena_clone(l->arena, &returnn, sizeof(returnn)),
+    };
+}
+
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n) {
     LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM, type);
     atom->as.integer = n;
+    return (LLVM_Node *) atom;
+}
+
+LLVM_Node *llvm_atom_zero(LLVM *l, LLVM_Type type) {
+    LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM, type);
+    atom->is_zeroed = true;
     return (LLVM_Node *) atom;
 }
 
@@ -895,12 +944,6 @@ void llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
     unused(l);
     fn->debug.row = row;
     fn->debug.col = col;
-}
-
-void llvm_fn_debug_set_return_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
-    fn->debug_return.row = row;
-    fn->debug_return.col = col;
-    fn->debug_return.scope = l->fn->debug_scope;
 }
 
 LLVM_Node_Var *llvm_fn_arg_get(LLVM_Node_Fn *fn, size_t index) {
@@ -993,6 +1036,19 @@ llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, L
     return (LLVM_Node *) branch;
 }
 
+LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value) {
+    LLVM_Type type;
+    if (value) {
+        type = value->type;
+    } else {
+        type = llvm_type_basic(LLVM_TYPE_I0);
+    }
+
+    LLVM_Node_Return *returnn = (LLVM_Node_Return *) llvm_node_build(l, LLVM_NODE_RETURN, type);
+    returnn->value = value;
+    return (LLVM_Node *) returnn;
+}
+
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type) {
     LLVM_Node_Load *load = (LLVM_Node_Load *) llvm_node_build(l, LLVM_NODE_LOAD, type);
     load->ptr = ptr;
@@ -1007,7 +1063,8 @@ LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value) {
 }
 
 LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arity) {
-    LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, llvm_type_basic(LLVM_TYPE_I0));
+    assert(fn->type.kind == LLVM_TYPE_FN);
+    LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, *fn->type.returnn);
     call->fn = fn;
     call->args = args;
     call->arity = arity;

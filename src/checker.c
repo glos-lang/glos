@@ -116,7 +116,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
 
 static void check_stmt(Compiler *c, AST_Node *n);
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return;
@@ -124,7 +124,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -147,7 +147,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_expr(c, unary->value, false);
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value);
@@ -164,7 +164,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -207,11 +207,14 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
 
         const size_t fn_base_save = c->fn_base;
         c->fn_base = c->locals.count;
+
+        AST_Node_Fn *fn_current_save = c->fn_current;
+        c->fn_current = fn;
         {
             // TODO: Just directly allocate
             {
                 const void *temp_save = temp_alloc(0);
-                AST_Type_Fn type = {.args = temp_alloc(0)};
+                AST_Type_Fn fn_type = {.args = temp_alloc(0)};
 
                 for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
                     check_stmt(c, arg); // TODO: Check for argument redefinition
@@ -222,14 +225,24 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
                     assert(define->name->kind == AST_NODE_ATOM);
                     AST_Node_Atom *it = (AST_Node_Atom *) define->name;
 
-                    temp_alloc(sizeof(*type.args)); // Temporary memory is guaranteed to be contiguous with no alignment
-                    type.args[type.arity++] = it->node.type;
+                    // Temporary memory is guaranteed to be contiguous with no alignment
+                    temp_alloc(sizeof(*fn_type.args));
+                    fn_type.args[fn_type.arity++] = it->node.type;
                 }
 
-                type.args = arena_clone(c->llvm.arena, type.args, type.arity * sizeof(*type.args));
+                fn_type.args = arena_clone(c->llvm.arena, fn_type.args, fn_type.arity * sizeof(*fn_type.args));
                 temp_reset(temp_save);
 
-                n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = type};
+                if (fn->returnn) {
+                    check_expr(c, fn->returnn, false);
+                    ast_type_assert(fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
+                    fn_type.returnn = fn->returnn->type.spec.type;
+                } else {
+                    fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                    fn_type.returnn->kind = AST_TYPE_UNIT;
+                }
+
+                n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
             }
 
             if (fn->is_type) {
@@ -244,6 +257,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         }
         c->locals.count = c->fn_base;
         c->fn_base = fn_base_save;
+        c->fn_current = fn_current_save;
     } break;
 
     case AST_NODE_CALL: {
@@ -276,7 +290,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
             exit(1);
         }
 
-        n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
+        n->type = *fn_type.spec.fn.returnn;
     } break;
 
     default:
@@ -289,7 +303,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -299,7 +313,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -335,7 +349,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -355,7 +369,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 30, "");
+        static_assert(COUNT_TOKENS == 32, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -437,7 +451,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static void check_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -546,6 +560,20 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         // Pass
         break;
 
+    case AST_NODE_RETURN: {
+        AST_Node_Return *returnn = (AST_Node_Return *) n;
+        const AST_Type   expected = *c->fn_current->node.type.spec.fn.returnn;
+
+        n->type.kind = AST_TYPE_UNIT;
+        if (returnn->value) {
+            check_expr(c, returnn->value, false);
+            ast_type_assert(returnn->value, expected);
+            n->type = returnn->value->type;
+        } else {
+            ast_type_assert(n, expected);
+        }
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         check_expr(c, print->value, false);
@@ -565,3 +593,4 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
 }
 
 // TODO: Implement recursion
+// TODO: Implement return checking

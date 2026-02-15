@@ -33,23 +33,30 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
 
     case AST_TYPE_FN:
         temp_sprintf("(");
-        temp_remove_null();
 
         for (size_t i = 0; i < type.spec.fn.arity; i++) {
             if (i) {
-                temp_sprintf(", ");
                 temp_remove_null();
+                temp_sprintf(", ");
             }
 
+            temp_remove_null();
             temp_sprintf("_: ");
-            temp_remove_null();
 
-            ast_type_to_cstr_impl(type.spec.fn.args[i]);
             temp_remove_null();
+            ast_type_to_cstr_impl(type.spec.fn.args[i]);
         }
 
-        temp_sprintf(")");
         temp_remove_null();
+        temp_sprintf(")");
+
+        if (type.spec.fn.returnn->kind != AST_TYPE_UNIT) {
+            temp_remove_null();
+            temp_sprintf(" -> ");
+
+            temp_remove_null();
+            ast_type_to_cstr_impl(*type.spec.fn.returnn);
+        }
         break;
 
     case AST_TYPE_TYPE:
@@ -93,7 +100,7 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
             }
         }
 
-        return true;
+        return ast_type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
     }
 
     default:
@@ -128,7 +135,7 @@ static void ast_nodes_debug_impl(FILE *f, AST_Nodes ns, int depth, const char *l
     }
 }
 
-static_assert(COUNT_AST_NODES == 11, "");
+static_assert(COUNT_AST_NODES == 12, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -221,6 +228,13 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
             unreachable();
         }
         break;
+
+    case AST_NODE_RETURN: {
+        AST_Node_Return *returnn = (AST_Node_Return *) n;
+        fprintf(f, "Return {\n");
+        ast_node_debug_impl(f, returnn->value, depth + 1, "Value");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;

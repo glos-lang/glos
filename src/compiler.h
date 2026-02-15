@@ -10,7 +10,8 @@ typedef struct {
     Scope locals;
     Scope globals;
 
-    size_t fn_base;
+    AST_Node_Fn *fn_current;
+    size_t       fn_base;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
