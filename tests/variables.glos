@@ -2,8 +2,13 @@ first := 69
 second: i64 = 420
 third: i64
 
-third = 3
+main :: () {
+    third = 3
 
-print first
-print second
-print first + 8 + second * third
+    print first
+    print second
+    print first + 8 + second * third
+
+    local := 80085
+    print local
+}

@@ -1,0 +1,11 @@
+print_i64  :: (x: i64)  { print x }
+print_bool :: (x: bool) { print x }
+
+main :: () {
+    print_i64(i64(true))
+    print_i64(i64(false))
+
+    print_bool(bool(-69))
+    print_bool(bool(0))
+    print_bool(bool(420))
+}

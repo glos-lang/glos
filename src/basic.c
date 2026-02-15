@@ -175,6 +175,12 @@ char *temp_sv_to_cstr(SV sv) {
     return p;
 }
 
+void temp_remove_null(void) {
+    if (temp_count && temp_data[temp_count - 1] == '\0') {
+        temp_count--;
+    }
+}
+
 // Arena Allocator
 #define ARENA_MINIMUM_CAPACITY 16000
 
@@ -246,6 +252,22 @@ void arena_reset(Arena *a, const void *ptr) {
 
 void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
+}
+
+char *arena_sprintf(Arena *a, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    const int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    assert(n >= 0);
+    char *result = arena_alloc(a, n + 1);
+
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+
+    return result;
 }
 
 // FS

@@ -106,6 +106,7 @@ void  temp_reset(const void *p);
 void *temp_alloc(size_t n);
 char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
 char *temp_sv_to_cstr(SV sv);
+void  temp_remove_null(void);
 
 // Arena Allocator
 typedef struct Arena_Region Arena_Region;
@@ -119,6 +120,7 @@ void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
 void  arena_reset(Arena *a, const void *ptr);
 void *arena_clone(Arena *a, const void *data, size_t size);
+char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
 
 // FS
 bool read_fp(FILE *f, SV *out, SB *sb);

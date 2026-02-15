@@ -1,0 +1,9 @@
+foo :: () {
+    print 69
+    print 420
+}
+
+main :: () {
+    foo()
+    foo()
+}

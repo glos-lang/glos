@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         .path = input,
     };
     check_nodes(&compiler, parser.nodes);
-    compiler_build(&compiler, parser.nodes, output);
+    compiler_build(&compiler, output);
 
     if (run) {
         cmd.count = 0;

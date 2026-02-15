@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 102
+tests/error_nested_functions_inside_identifier_used_outside.glos:3:5: ERROR: Undefined identifier 'x'
+
