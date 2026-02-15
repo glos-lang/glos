@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 108
+tests/error_untyped_integer_literal_auto_cast_too_large.glos:1:9: ERROR: Number '420' is too large for 'i8'
+

@@ -1,0 +1,21 @@
+a :: (x: i8)  { print x }
+b :: (x: i16) { print x }
+c :: (x: i32) { print x }
+d :: (x: i64) { print x }
+
+e :: (x: u8)  { print x }
+f :: (x: u16) { print x }
+g :: (x: u32) { print x }
+h :: (x: u64) { print x }
+
+main :: () {
+    a(69)
+    b(420)
+    c(1337)
+    d(80085)
+
+    e(69)
+    f(420)
+    g(1337)
+    h(80085)
+}

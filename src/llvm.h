@@ -22,9 +22,16 @@ typedef struct {
 typedef enum {
     LLVM_TYPE_I0,
     LLVM_TYPE_I1,
+
     LLVM_TYPE_I8,
+    LLVM_TYPE_I16,
     LLVM_TYPE_I32,
     LLVM_TYPE_I64,
+
+    LLVM_TYPE_U8,
+    LLVM_TYPE_U16,
+    LLVM_TYPE_U32,
+    LLVM_TYPE_U64,
 
     LLVM_TYPE_PTR,
     LLVM_TYPE_FN,
@@ -95,14 +102,7 @@ typedef struct {
 
     size_t iota_local;
     size_t iota_debug;
-
-    // TODO: Temporary solutions to permanent problems
-    size_t debug_bool_type;
-    size_t debug_i8_type;
-    size_t debug_i32_type;
-    size_t debug_i64_type;
-    // size_t debug_fn_type;
-    // size_t debug_fn_ptr_type;
+    size_t basic_type_debugs[COUNT_LLVM_TYPES];
 
     LLVM_Debug_Pos  *debug_pos;
     LLVM_Debug_File *debug_file;

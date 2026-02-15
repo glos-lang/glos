@@ -18,7 +18,16 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n);
 typedef enum {
     AST_TYPE_UNIT,
     AST_TYPE_BOOL,
+
+    AST_TYPE_I8,
+    AST_TYPE_I16,
+    AST_TYPE_I32,
     AST_TYPE_I64,
+    AST_TYPE_U8,
+    AST_TYPE_U16,
+    AST_TYPE_U32,
+    AST_TYPE_U64,
+    AST_TYPE_INT,
 
     AST_TYPE_FN,
 
@@ -50,6 +59,7 @@ const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
 bool ast_type_is_numeric(AST_Type type);
+bool ast_type_is_integer(AST_Type type);
 bool ast_type_is_pointer(AST_Type type);
 bool ast_type_is_scalar(AST_Type type);
 
