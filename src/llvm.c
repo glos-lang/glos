@@ -398,13 +398,15 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_BINARYS == 12, "");
+        static_assert(COUNT_LLVM_BINARYS == 13, "");
         static const char *ops[COUNT_LLVM_BINARYS] = {
             [LLVM_BINARY_ADD] = "add",
             [LLVM_BINARY_SUB] = "sub",
             [LLVM_BINARY_MUL] = "mul",
             [LLVM_BINARY_DIV] = "sdiv",
             [LLVM_BINARY_MOD] = "srem",
+
+            [LLVM_BINARY_BAND] = "and",
 
             [LLVM_BINARY_GT] = "icmp sgt",
             [LLVM_BINARY_GE] = "icmp sge",

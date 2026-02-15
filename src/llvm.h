@@ -69,6 +69,8 @@ typedef enum {
     LLVM_BINARY_DIV,
     LLVM_BINARY_MOD,
 
+    LLVM_BINARY_BAND,
+
     LLVM_BINARY_GT,
     LLVM_BINARY_GE,
     LLVM_BINARY_LT,

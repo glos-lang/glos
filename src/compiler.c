@@ -209,7 +209,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             [TOKEN_DIV] = LLVM_BINARY_DIV,
             [TOKEN_MOD] = LLVM_BINARY_MOD,
 
-            // TODO: TOKEN_BAND
+            [TOKEN_BAND] = LLVM_BINARY_BAND,
 
             [TOKEN_GT] = LLVM_BINARY_GT,
             [TOKEN_GE] = LLVM_BINARY_GE,
