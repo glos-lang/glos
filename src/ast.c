@@ -17,6 +17,10 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
 static_assert(COUNT_AST_TYPES == 5, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
     const char *s = temp_alloc(0);
+    for (size_t i = 0; i < type.ref; i++) {
+        temp_sprintf("&");
+        temp_remove_null();
+    }
 
     switch (type.kind) {
     case AST_TYPE_UNIT:
@@ -84,7 +88,7 @@ const char *ast_type_to_cstr(AST_Type type) {
 
 static_assert(COUNT_AST_TYPES == 5, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
-    if (a.kind != b.kind) {
+    if (a.kind != b.kind || a.ref != b.ref) {
         return false;
     }
 
@@ -110,6 +114,10 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
 
 static_assert(COUNT_AST_TYPES == 5, "");
 bool ast_type_is_numeric(AST_Type type) {
+    if (type.ref) {
+        return false;
+    }
+
     switch (type.kind) {
     case AST_TYPE_I64:
         return true;
@@ -119,8 +127,12 @@ bool ast_type_is_numeric(AST_Type type) {
     }
 }
 
+bool ast_type_is_pointer(AST_Type type) {
+    return type.ref != 0;
+}
+
 bool ast_type_is_scalar(AST_Type type) {
-    if (ast_type_is_numeric(type)) {
+    if (ast_type_is_numeric(type) || ast_type_is_pointer(type)) {
         return true;
     }
 

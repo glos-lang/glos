@@ -1,0 +1,9 @@
+main :: () {
+    x: i64 = 69
+    y: &i64 = &x
+    z: &&i64 = &y
+
+    print x
+    **z = 420
+    print x
+}

@@ -36,6 +36,7 @@ typedef struct {
 
 struct AST_Type {
     AST_Type_Kind kind;
+    size_t        ref;
 
     union {
         AST_Type   *type;
@@ -49,6 +50,7 @@ const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
 bool ast_type_is_numeric(AST_Type type);
+bool ast_type_is_pointer(AST_Type type);
 bool ast_type_is_scalar(AST_Type type);
 
 typedef enum {

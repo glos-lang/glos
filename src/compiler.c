@@ -6,6 +6,14 @@ static void compile_type(Compiler *c, AST_Type *type) {
         return;
     }
 
+    if (type->ref) {
+        AST_Type base = *type;
+        base.ref--;
+        compile_type(c, &base);
+        type->llvm = llvm_type_ptr(&c->llvm, base.llvm);
+        return;
+    }
+
     switch (type->kind) {
     case AST_TYPE_UNIT:
         type->llvm = llvm_type_basic(LLVM_TYPE_I0);
@@ -116,7 +124,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -134,19 +142,15 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 switch (definition->const_value.kind) {
                 case CONST_VALUE_INT:
                     return_defer(llvm_atom_int(&c->llvm, n->type.llvm, definition->const_value.as.integer));
-                    break;
 
                 case CONST_VALUE_FN:
                     return_defer(compile_fn(c, definition->const_value.as.fn));
-                    break;
 
                 case CONST_VALUE_TYPE:
                     unreachable();
-                    break;
 
                 default:
                     unreachable();
-                    break;
                 }
             }
 
@@ -156,7 +160,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
 
             return_defer(llvm_build_load(&c->llvm, definition->llvm, n->type.llvm));
-        } break;
+        }
 
         default:
             unreachable();
@@ -165,14 +169,28 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        LLVM_Node      *value = compile_expr(c, unary->value, false);
+        LLVM_Node      *value = NULL;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
+            value = compile_expr(c, unary->value, false);
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_NEG, n->type.llvm, value));
 
+        case TOKEN_MUL:
+            value = compile_expr(c, unary->value, false);
+            if (ref) {
+                debug = false;
+                return_defer(value);
+            }
+            return_defer(llvm_build_load(&c->llvm, value, n->type.llvm));
+
+        case TOKEN_BAND:
+            debug = false;
+            return_defer(compile_expr(c, unary->value, true));
+
         case TOKEN_LNOT:
+            value = compile_expr(c, unary->value, false);
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_LNOT, n->type.llvm, value));
 
         default:
@@ -183,13 +201,15 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
             [TOKEN_MUL] = LLVM_BINARY_MUL,
             [TOKEN_DIV] = LLVM_BINARY_DIV,
             [TOKEN_MOD] = LLVM_BINARY_MOD,
+
+            [TOKEN_BAND] = LLVM_BINARY_BAND,
 
             [TOKEN_GT] = LLVM_BINARY_GT,
             [TOKEN_GE] = LLVM_BINARY_GE,
@@ -206,7 +226,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 32, "");
+        static_assert(COUNT_TOKENS == 33, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);

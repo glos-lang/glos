@@ -5,12 +5,14 @@ typedef enum {
     POWER_SET,
     POWER_CMP,
     POWER_ADD,
+    POWER_BOR,
     POWER_MUL,
     POWER_PRE,
-    POWER_CALL
+    POWER_CALL,
+    POWER_REFER,
 } Power;
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -27,6 +29,9 @@ static Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_DIV:
     case TOKEN_MOD:
         return POWER_MUL;
+
+    case TOKEN_BAND:
+        return POWER_BOR;
 
     case TOKEN_SET:
         return POWER_SET;
@@ -198,7 +203,7 @@ static AST_Node *parse_for(Parser *p, Token token) {
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_TOKENS == 32, "");
+static_assert(COUNT_TOKENS == 33, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -211,10 +216,17 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         break;
 
     case TOKEN_SUB:
+    case TOKEN_MUL:
     case TOKEN_LNOT: {
         node = ast_node_alloc(p, AST_NODE_UNARY, token);
         AST_Node_Unary *unary = (AST_Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE);
+    } break;
+
+    case TOKEN_BAND: {
+        node = ast_node_alloc(p, AST_NODE_UNARY, token);
+        AST_Node_Unary *unary = (AST_Node_Unary *) node;
+        unary->value = parse_expr(p, POWER_REFER);
     } break;
 
     case TOKEN_LPAREN: {

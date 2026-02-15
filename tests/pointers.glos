@@ -1,0 +1,45 @@
+f :: () {
+    x := 69
+    p := &x
+
+    print x
+    *p = 420
+    print x
+}
+
+g :: () {
+    a := 69
+    b := 420
+
+    y := &a
+    z := &y
+
+    print a
+    print b
+
+    *y = 420
+
+    print a
+    print b
+
+    *z = &b
+    *y = 69
+
+    print a
+    print b
+
+    **z = 1337
+
+    print a
+    print b
+}
+
+main :: () {
+    f()
+    g()
+
+    x: i64
+    y := &x
+    z := y + &i64(80085)
+    print z - y
+}
