@@ -550,33 +550,77 @@ void llvm_free(LLVM *l) {
     sb_free(&l->sb);
 }
 
+static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type);
+
+static size_t llvm_type_fn_debug_compile(LLVM *l, LLVM_Type *type) {
+    assert(type->kind == LLVM_TYPE_FN);
+
+    if (type->returnn->kind != LLVM_TYPE_I0) {
+        llvm_type_debug_compile(l, type->returnn);
+    }
+
+    for (size_t i = 0; i < type->children_count; i++) {
+        llvm_type_debug_compile(l, &type->children[i]);
+    }
+
+    type->debug = ++l->iota_debug;
+    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{", type->debug);
+
+    if (type->returnn->kind != LLVM_TYPE_I0) {
+        sb_sprintf(&l->sb, "!%zu", type->returnn->debug);
+        if (type->children_count) {
+            sb_push_cstr(&l->sb, ", ");
+        }
+    }
+
+    for (size_t i = 0; i < type->children_count; i++) {
+        if (i) {
+            sb_push_cstr(&l->sb, ", ");
+        }
+        sb_sprintf(&l->sb, "!%zu", type->children[i].debug);
+    }
+
+    sb_push_cstr(&l->sb, "})\n");
+    return type->debug;
+}
+
 // TODO: Temporary solution to permananent problem
-static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type type) {
+static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
     static_assert(COUNT_LLVM_TYPES == 6, "");
-    switch (type.kind) {
+    switch (type->kind) {
     case LLVM_TYPE_I0:
         unreachable();
         break;
 
     case LLVM_TYPE_I1:
-        return l->debug_bool_type;
+        type->debug = l->debug_bool_type;
+        break;
 
     case LLVM_TYPE_I8:
-        return l->debug_i8_type;
+        type->debug = l->debug_i8_type;
+        break;
 
     case LLVM_TYPE_I32:
-        return l->debug_i32_type;
+        type->debug = l->debug_i32_type;
+        break;
 
     case LLVM_TYPE_I64:
-        return l->debug_i64_type;
+        type->debug = l->debug_i64_type;
+        break;
 
-    case LLVM_TYPE_FN:
-        return l->debug_fn_ptr_type;
+    case LLVM_TYPE_FN: {
+        llvm_type_fn_debug_compile(l, type);
+        const size_t debug = ++l->iota_debug;
+        sb_sprintf(&l->sb, "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !%zu)\n", debug, type->debug);
+        type->debug = debug;
+    } break;
 
     default:
         unreachable();
         break;
     }
+
+    return type->debug;
 }
 
 static void llvm_debug_scope_compile(LLVM *l, LLVM_Debug_Scope *scope) {
@@ -631,8 +675,6 @@ void llvm_compile(LLVM *l) {
     l->debug_i8_type = ++l->iota_debug;
     l->debug_i32_type = ++l->iota_debug;
     l->debug_i64_type = ++l->iota_debug;
-    l->debug_fn_type = ++l->iota_debug;
-    l->debug_fn_ptr_type = ++l->iota_debug;
 
     const size_t debug_compilation_unit = ++l->iota_debug;
 
@@ -743,6 +785,7 @@ void llvm_compile(LLVM *l) {
             continue;
         }
 
+        const size_t debug_fn_type = llvm_type_fn_debug_compile(l, &fn->node.type);
         sb_sprintf(
             &l->sb,
             "!%zu = distinct !DISubprogram("
@@ -761,22 +804,27 @@ void llvm_compile(LLVM *l) {
             l->debug_file->iota,
             fn->debug.row + 1,
             first_row + 1,
-            l->debug_fn_type,
+            debug_fn_type,
             debug_compilation_unit);
 
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
-            const size_t debug_type = llvm_type_debug_compile(l, n->type);
+            const size_t debug_type = llvm_type_debug_compile(l, &n->type);
 
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
             sb_sprintf(
                 &l->sb,
-                "!%zu = !DILocalVariable(name: \"" SV_Fmt "\", scope: !%zu, file: !%zu, line: %zu, type: !%zu)\n",
+                "!%zu = !DILocalVariable(name: \"" SV_Fmt "\", scope: !%zu, file: !%zu, line: %zu, type: !%zu",
                 var->debug_local,
                 SV_Arg(var->name),
                 fn->debug.iota,
                 l->debug_file->iota,
                 var->debug.row + 1,
                 debug_type);
+
+            if (var->is_arg) {
+                sb_sprintf(&l->sb, ", arg: %zu", var->arg_index + 1);
+            }
+            sb_push_cstr(&l->sb, ")\n");
 
             llvm_debug_pos_compile(l, n->debug);
         }
@@ -817,12 +865,6 @@ void llvm_compile(LLVM *l) {
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i8\", size: 8, encoding: DW_ATE_signed)\n", l->debug_i8_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
     sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
-    sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{})\n", l->debug_fn_type);
-    sb_sprintf(
-        &l->sb,
-        "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !%zu)\n",
-        l->debug_fn_ptr_type,
-        l->debug_fn_type);
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         const size_t debug_var = ++l->iota_debug;
@@ -832,7 +874,7 @@ void llvm_compile(LLVM *l) {
             it->debug->iota,
             debug_var);
 
-        const size_t debug_type = llvm_type_debug_compile(l, it->type);
+        const size_t debug_type = llvm_type_debug_compile(l, &it->type);
         sb_sprintf(
             &l->sb,
             "!%zu = distinct !DIGlobalVariable(name: \"" SV_Fmt "\", "

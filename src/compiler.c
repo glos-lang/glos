@@ -551,5 +551,4 @@ void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
     }
 }
 
-// TODO: Emit debug information for function signatures correctly
 // TODO: Prefix global variables with 'main' for consistency

@@ -32,10 +32,11 @@ typedef enum {
 
 struct LLVM_Type {
     LLVM_Type_Kind kind;
+    size_t         debug;
 
+    // TODO: Put under union
     LLVM_Type *children;
     size_t     children_count;
-
     LLVM_Type *returnn;
 };
 
@@ -90,8 +91,8 @@ typedef struct {
     size_t debug_i8_type;
     size_t debug_i32_type;
     size_t debug_i64_type;
-    size_t debug_fn_type;
-    size_t debug_fn_ptr_type;
+    // size_t debug_fn_type;
+    // size_t debug_fn_ptr_type;
 
     LLVM_Debug_Pos  *debug_pos;
     LLVM_Debug_File *debug_file;
