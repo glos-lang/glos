@@ -117,6 +117,97 @@ static void check_ident(Compiler *c, AST_Node *n) {
 static void check_stmt(Compiler *c, AST_Node *n);
 
 static_assert(COUNT_AST_NODES == 12, "");
+static bool loop_breaks(AST_Node *n) {
+    if (!n) {
+        return false;
+    }
+
+    switch (n->kind) {
+    case AST_NODE_BLOCK: {
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            if (loop_breaks(it)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case AST_NODE_IF: {
+        AST_Node_If *iff = (AST_Node_If *) n;
+        return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
+    }
+
+    case AST_NODE_JUMP:
+        return n->token.kind == TOKEN_BREAK;
+
+    default:
+        return false;
+    }
+}
+
+static bool is_atom_true(AST_Node *n) {
+    return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && n->token.as.integer;
+}
+
+static_assert(COUNT_AST_NODES == 12, "");
+static bool always_returns(AST_Node *n) {
+    if (!n) {
+        return false;
+    }
+
+    switch (n->kind) {
+    case AST_NODE_BLOCK: {
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            if (always_returns(it)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case AST_NODE_IF: {
+        AST_Node_If *iff = (AST_Node_If *) n;
+        if (!iff->antecedence) {
+            if (is_atom_true(iff->condition)) {
+                return always_returns(iff->consequence);
+            } else {
+                return false;
+            }
+        }
+        return always_returns(iff->consequence) && always_returns(iff->antecedence);
+    }
+
+    case AST_NODE_FOR: {
+        AST_Node_For *forr = (AST_Node_For *) n;
+        if (forr->init && always_returns(forr->init)) {
+            return true;
+        }
+
+        bool infinite = false;
+        if (!forr->condition) {
+            infinite = true;
+        } else if (is_atom_true(forr->condition)) {
+            infinite = true;
+        }
+
+        if (infinite) {
+            return !loop_breaks(forr->body);
+        }
+
+        return false;
+    }
+
+    case AST_NODE_RETURN:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static_assert(COUNT_AST_NODES == 12, "");
 static void check_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return;
@@ -251,8 +342,14 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
                     .spec.type = arena_clone(c->llvm.arena, &n->type, sizeof(n->type)),
                 };
                 n->type = meta;
-            } else {
+            } else if (fn->body) {
                 check_stmt(c, fn->body);
+                if (fn->returnn && !always_returns(fn->body)) {
+                    assert(fn->body->kind == AST_NODE_BLOCK);
+                    const Pos end = ((AST_Node_Block *) fn->body)->end;
+                    fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
+                    exit(1);
+                }
             }
         }
         c->locals.count = c->fn_base;

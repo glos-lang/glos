@@ -92,6 +92,7 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
             LLVM_Node *returnn = NULL;
             if (fn->returnn) {
+                // TODO: See if this is even needed anymore for functions with proper return
                 returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
             }
             llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
@@ -461,8 +462,10 @@ static AST_Node_Fn *get_main(Compiler *c) {
             stderr,
             "ERROR: Function 'main' is not defined\n"
             "\n"
-            "+ main :: () {\n"
-            "+ }\n");
+            "```\n"
+            "main :: () {\n"
+            "}\n"
+            "```\n");
         exit(1);
     }
 

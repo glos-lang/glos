@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 72
+tests/error_expected_return.glos:1:19: ERROR: Expected return statement
+
