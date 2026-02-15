@@ -555,36 +555,35 @@ static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type);
 static size_t llvm_type_fn_debug_compile(LLVM *l, LLVM_Type *type) {
     assert(type->kind == LLVM_TYPE_FN);
 
-    if (type->returnn->kind != LLVM_TYPE_I0) {
-        llvm_type_debug_compile(l, type->returnn);
+    if (type->fn.returnn->kind != LLVM_TYPE_I0) {
+        llvm_type_debug_compile(l, type->fn.returnn);
     }
 
-    for (size_t i = 0; i < type->children_count; i++) {
-        llvm_type_debug_compile(l, &type->children[i]);
+    for (size_t i = 0; i < type->fn.arity; i++) {
+        llvm_type_debug_compile(l, &type->fn.args[i]);
     }
 
     type->debug = ++l->iota_debug;
     sb_sprintf(&l->sb, "!%zu = !DISubroutineType(types: !{", type->debug);
 
-    if (type->returnn->kind != LLVM_TYPE_I0) {
-        sb_sprintf(&l->sb, "!%zu", type->returnn->debug);
-        if (type->children_count) {
+    if (type->fn.returnn->kind != LLVM_TYPE_I0) {
+        sb_sprintf(&l->sb, "!%zu", type->fn.returnn->debug);
+        if (type->fn.arity) {
             sb_push_cstr(&l->sb, ", ");
         }
     }
 
-    for (size_t i = 0; i < type->children_count; i++) {
+    for (size_t i = 0; i < type->fn.arity; i++) {
         if (i) {
             sb_push_cstr(&l->sb, ", ");
         }
-        sb_sprintf(&l->sb, "!%zu", type->children[i].debug);
+        sb_sprintf(&l->sb, "!%zu", type->fn.args[i].debug);
     }
 
     sb_push_cstr(&l->sb, "})\n");
     return type->debug;
 }
 
-// TODO: Temporary solution to permananent problem
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
     static_assert(COUNT_LLVM_TYPES == 6, "");
     switch (type->kind) {
@@ -719,14 +718,14 @@ void llvm_compile(LLVM *l) {
             sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() {\n", SV_Arg(it->sv));
         } else {
             sb_sprintf(&l->sb, "\ndefine ");
-            llvm_type_emit(l, *fn->node.type.returnn, false);
+            llvm_type_emit(l, *fn->node.type.fn.returnn, false);
             sb_sprintf(&l->sb, " @" SV_Fmt "(", SV_Arg(it->sv));
             for (size_t i = 0; i < fn->arity; i++) {
                 if (i > 0) {
                     sb_push_cstr(&l->sb, ", ");
                 }
 
-                llvm_type_emit(l, fn->node.type.children[i], false);
+                llvm_type_emit(l, fn->node.type.fn.args[i], false);
                 sb_sprintf(&l->sb, " %%a%zu", i);
             }
             sb_sprintf(&l->sb, ") #0 !dbg !%zu {\n", fn->debug.iota);
@@ -954,9 +953,9 @@ LLVM_Type llvm_type_basic(LLVM_Type_Kind kind) {
 LLVM_Type llvm_type_fn(LLVM *l, LLVM_Type *args, size_t arity, LLVM_Type returnn) {
     return (LLVM_Type) {
         .kind = LLVM_TYPE_FN,
-        .children = args,
-        .children_count = arity,
-        .returnn = arena_clone(l->arena, &returnn, sizeof(returnn)),
+        .fn = args,
+        .fn.arity = arity,
+        .fn.returnn = arena_clone(l->arena, &returnn, sizeof(returnn)),
     };
 }
 
@@ -981,13 +980,13 @@ LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type) {
     fn->node.sv = name;
     fn->node.debug = &fn->debug;
 
-    fn->args = arena_alloc(l->arena, type.children_count * sizeof(*fn->args));
-    fn->arity = type.children_count;
+    fn->args = arena_alloc(l->arena, type.fn.arity * sizeof(*fn->args));
+    fn->arity = type.fn.arity;
 
     LLVM_Node_Fn *fn_save = l->fn;
     l->fn = fn;
-    for (size_t i = 0; i < type.children_count; i++) {
-        LLVM_Node_Var *var = llvm_var_new(l, (SV) {0}, type.children[i], true, false);
+    for (size_t i = 0; i < fn->arity; i++) {
+        LLVM_Node_Var *var = llvm_var_new(l, (SV) {0}, type.fn.args[i], true, false);
         var->is_arg = true;
         var->arg_index = i;
         fn->args[i] = var;
@@ -1005,7 +1004,7 @@ void llvm_fn_debug_set_pos(LLVM *l, LLVM_Node_Fn *fn, size_t row, size_t col) {
 }
 
 LLVM_Node_Var *llvm_fn_arg_get(LLVM_Node_Fn *fn, size_t index) {
-    assert(index < fn->node.type.children_count);
+    assert(index < fn->node.type.fn.arity);
     return fn->args[index];
 }
 
@@ -1122,7 +1121,7 @@ LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value) {
 
 LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arity) {
     assert(fn->type.kind == LLVM_TYPE_FN);
-    LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, *fn->type.returnn);
+    LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, *fn->type.fn.returnn);
     call->fn = fn;
     call->args = args;
     call->arity = arity;

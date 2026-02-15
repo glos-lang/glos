@@ -450,7 +450,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     }
 }
 
-// TODO: Check signature of main
 static AST_Node_Fn *get_main(Compiler *c) {
     AST_Node_Atom *main = scope_find(c->globals, sv_from_cstr("main"), 0);
     if (!main) {
@@ -466,15 +465,25 @@ static AST_Node_Fn *get_main(Compiler *c) {
     }
 
     if (!main->is_const || main->const_value.kind != CONST_VALUE_FN) {
-        fprintf(stderr, "ERROR: Identifier 'main' must be a constant function\n");
+        fprintf(
+            stderr, Pos_Fmt "ERROR: Identifier 'main' must be a constant function\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
 
+    const AST_Type_Fn signature = main->node.type.spec.fn;
+    if (signature.arity) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
+
+    if (signature.returnn->kind != AST_TYPE_UNIT) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
     return main->const_value.as.fn;
 }
 
-void compiler_build(Compiler *c, AST_Nodes nodes, const char *output) {
-    unused(nodes);
+void compiler_build(Compiler *c, const char *output) {
     assert(c->cmd);
     assert(c->llvm.arena);
 

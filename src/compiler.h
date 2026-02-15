@@ -21,7 +21,6 @@ typedef struct {
     const char *path;
 } Compiler;
 
-// TODO: Remove argument 'nodes'
-void compiler_build(Compiler *c, AST_Nodes nodes, const char *output);
+void compiler_build(Compiler *c, const char *output);
 
 #endif // COMPILER_H

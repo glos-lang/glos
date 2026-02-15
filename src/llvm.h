@@ -34,10 +34,13 @@ struct LLVM_Type {
     LLVM_Type_Kind kind;
     size_t         debug;
 
-    // TODO: Put under union
-    LLVM_Type *children;
-    size_t     children_count;
-    LLVM_Type *returnn;
+    union {
+        struct {
+            LLVM_Type *args;
+            size_t     arity;
+            LLVM_Type *returnn;
+        } fn;
+    };
 };
 
 typedef struct {

@@ -698,4 +698,3 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
 }
 
 // TODO: Implement recursion
-// TODO: Implement return checking
