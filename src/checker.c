@@ -465,11 +465,36 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 error_too_many_arguments(call->args.head->next->token.pos, 1);
                 exit(1);
             }
-
             n->type = *fn_type.spec.type;
+
+            check_expr(c, call->args.head, false, constant);
+            const AST_Type from_type = call->args.head->type;
+
             if (ast_type_is_scalar(n->type)) {
-                check_expr(c, call->args.head, false, constant);
                 ast_type_assert_scalar(call->args.head);
+
+                bool ok = true;
+                if (!ast_type_is_pointer(from_type) && ast_type_is_pointer(n->type)) {
+                    // !ptr -> ptr
+                    if (from_type.kind != AST_TYPE_I64) {
+                        ok = false;
+                    }
+                } else if (ast_type_is_pointer(from_type) && !ast_type_is_pointer(n->type)) {
+                    // ptr -> !ptr
+                    if (n->type.kind != AST_TYPE_I64) {
+                        ok = false;
+                    }
+                }
+
+                if (!ok) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot cast %s to %s\n",
+                        Pos_Arg(call->fn->token.pos),
+                        ast_type_to_cstr(from_type),
+                        ast_type_to_cstr(n->type));
+                    exit(1);
+                }
             } else {
                 fprintf(
                     stderr,
@@ -479,7 +504,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 exit(1);
             }
 
-            if (ast_type_eq(n->type, call->args.head->type)) {
+            if (ast_type_eq(n->type, from_type)) {
                 call->type_cast = TYPE_CAST_NOP;
             } else if (ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_BOOL})) {
                 call->type_cast = TYPE_CAST_TO_BOOL;
@@ -502,7 +527,14 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 exit(1);
             }
 
-            // TODO: Don't allow calling pointer to function
+            if (fn_type.ref) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot call %s without deferencing it first\n",
+                    Pos_Arg(call->fn->token.pos),
+                    ast_type_to_cstr(fn_type));
+                exit(1);
+            }
 
             call->arity = 0;
             for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
