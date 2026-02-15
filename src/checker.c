@@ -89,6 +89,11 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
 
 static void check_ident(Compiler *c, AST_Node *n) {
     AST_Node_Atom *atom = (AST_Node_Atom *) n;
+    if (sv_match(n->token.sv, "_")) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
+        exit(1);
+    }
+
     AST_Node_Atom *definition = scope_find(c->locals, n->token.sv, c->fn_base);
     if (!definition) {
         definition = scope_find(c->globals, n->token.sv, 0);
@@ -310,39 +315,32 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Fn *fn_current_save = c->fn_current;
         c->fn_current = fn;
         {
-            // TODO: Just directly allocate
-            {
-                const void *temp_save = temp_alloc(0);
-                AST_Type_Fn fn_type = {.args = temp_alloc(0)};
+            AST_Type_Fn fn_type = {
+                .args = arena_alloc(c->llvm.arena, fn->arity * sizeof(*fn_type.args)),
+            };
 
-                for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
-                    check_stmt(c, arg); // TODO: Check for argument redefinition
+            for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
+                check_stmt(c, arg);
 
-                    assert(arg->kind == AST_NODE_DEFINE);
-                    AST_Node_Define *define = (AST_Node_Define *) arg;
+                assert(arg->kind == AST_NODE_DEFINE);
+                AST_Node_Define *define = (AST_Node_Define *) arg;
 
-                    assert(define->name->kind == AST_NODE_ATOM);
-                    AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+                assert(define->name->kind == AST_NODE_ATOM);
+                AST_Node_Atom *it = (AST_Node_Atom *) define->name;
 
-                    // Temporary memory is guaranteed to be contiguous with no alignment
-                    temp_alloc(sizeof(*fn_type.args));
-                    fn_type.args[fn_type.arity++] = it->node.type;
-                }
-
-                fn_type.args = arena_clone(c->llvm.arena, fn_type.args, fn_type.arity * sizeof(*fn_type.args));
-                temp_reset(temp_save);
-
-                if (fn->returnn) {
-                    check_expr(c, fn->returnn, false);
-                    ast_type_assert(fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
-                    fn_type.returnn = fn->returnn->type.spec.type;
-                } else {
-                    fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
-                    fn_type.returnn->kind = AST_TYPE_UNIT;
-                }
-
-                n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
+                fn_type.args[fn_type.arity++] = it->node.type;
             }
+
+            if (fn->returnn) {
+                check_expr(c, fn->returnn, false);
+                ast_type_assert(fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
+                fn_type.returnn = fn->returnn->type.spec.type;
+            } else {
+                fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                fn_type.returnn->kind = AST_TYPE_UNIT;
+            }
+
+            n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
 
             if (fn->is_type) {
                 const AST_Type meta = {
@@ -569,8 +567,26 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
         AST_Node_Atom *it = (AST_Node_Atom *) define->name;
         AST_Node      *it_expr = define->expr;
+        const bool     it_is_underscore = sv_match(it->node.token.sv, "_");
+        if (define->is_arg) {
+            if (!it_is_underscore) {
+                for (size_t i = c->fn_base; i < c->locals.count; i++) {
+                    AST_Node_Atom *previous = c->locals.data[i];
+                    if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
+                        error_redefinition(it, previous);
+                    }
+                }
+            }
+        } else if (!define->is_local) {
+            if (it_is_underscore) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Identifier '_' cannot be defined as a global variable\n",
+                    Pos_Arg(it->node.token.pos));
 
-        if (!define->is_local) {
+                exit(1);
+            }
+
             if (get_builtin_type_kind(it->node.token.sv, NULL)) {
                 error_redefinition(it, NULL);
             }
@@ -621,9 +637,13 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
         if (define->is_local) {
             it->is_local = true;
-            scope_push(&c->locals, it);
+            if (!it_is_underscore) {
+                scope_push(&c->locals, it);
+            }
         } else {
-            scope_push(&c->globals, it);
+            if (!it_is_underscore) {
+                scope_push(&c->globals, it);
+            }
         }
     } break;
 
@@ -697,4 +717,5 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
     }
 }
 
-// TODO: Implement recursion
+// TODO: Implement recursion.
+//       -> This will be implemented as a byproduct of out-of-order definitions

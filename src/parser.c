@@ -221,6 +221,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         bool is_fn = false;
 
         AST_Nodes fn_args = {0};
+        size_t    fn_arity = 0;
 
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
@@ -229,8 +230,11 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             if (node->kind == AST_NODE_DEFINE) {
                 is_fn = true;
 
-                ((AST_Node_Define *) node)->is_local = true;
+                AST_Node_Define *define = (AST_Node_Define *) node;
+                define->is_arg = true;
+                define->is_local = true;
                 ast_nodes_push(&fn_args, node);
+                fn_arity++;
 
                 while (read_token(p, TOKEN_COMMA)) {
                     if (peek_token(p).kind == TOKEN_RPAREN) {
@@ -243,8 +247,11 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                         exit(1);
                     }
 
-                    ((AST_Node_Define *) node)->is_local = true;
+                    define = (AST_Node_Define *) node;
+                    define->is_arg = true;
+                    define->is_local = true;
                     ast_nodes_push(&fn_args, node);
+                    fn_arity++;
                 }
                 expect_token(p, TOKEN_RPAREN);
             } else if (node->kind == AST_NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
@@ -258,6 +265,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             node = ast_node_alloc(p, AST_NODE_FN, token);
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
             fn->args = fn_args;
+            fn->arity = fn_arity;
 
             if (read_token(p, TOKEN_ARROW)) {
                 fn->returnn = parse_expr(p, POWER_PRE);

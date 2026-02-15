@@ -130,8 +130,11 @@ typedef struct {
 } AST_Node_Binary;
 
 struct AST_Node_Fn {
-    AST_Node  node;
+    AST_Node node;
+
     AST_Nodes args;
+    size_t    arity;
+
     AST_Node *returnn;
     AST_Node *body;
 
@@ -155,6 +158,7 @@ typedef struct {
     AST_Node *type;
     AST_Node *expr;
 
+    bool is_arg;
     bool is_const;
     bool is_local;
 } AST_Node_Define;
