@@ -14,7 +14,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 13, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -65,6 +65,10 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
 
     case AST_TYPE_INT:
         temp_sprintf("i64");
+        break;
+
+    case AST_TYPE_RAWPTR:
+        temp_sprintf("rawptr");
         break;
 
     case AST_TYPE_FN:
@@ -118,7 +122,7 @@ const char *ast_type_to_cstr(AST_Type type) {
     return s;
 }
 
-static_assert(COUNT_AST_TYPES == 13, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -148,7 +152,7 @@ bool ast_type_is_numeric(AST_Type type) {
     return ast_type_is_integer(type);
 }
 
-static_assert(COUNT_AST_TYPES == 13, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_is_integer(AST_Type type) {
     if (type.ref) {
         return false;
@@ -159,10 +163,12 @@ bool ast_type_is_integer(AST_Type type) {
     case AST_TYPE_I16:
     case AST_TYPE_I32:
     case AST_TYPE_I64:
+
     case AST_TYPE_U8:
     case AST_TYPE_U16:
     case AST_TYPE_U32:
     case AST_TYPE_U64:
+
     case AST_TYPE_INT:
         return true;
 
@@ -172,7 +178,7 @@ bool ast_type_is_integer(AST_Type type) {
 }
 
 bool ast_type_is_pointer(AST_Type type) {
-    return type.ref != 0;
+    return type.ref != 0 || type.kind == AST_TYPE_RAWPTR;
 }
 
 bool ast_type_is_scalar(AST_Type type) {
@@ -180,7 +186,7 @@ bool ast_type_is_scalar(AST_Type type) {
         return true;
     }
 
-    if (type.kind == AST_TYPE_BOOL) {
+    if (type.kind == AST_TYPE_BOOL || type.kind == AST_TYPE_FN) {
         return true;
     }
 

@@ -25,7 +25,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 13, "");
+    static_assert(COUNT_AST_TYPES == 14, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -180,7 +180,7 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 13, "");
+    static_assert(COUNT_AST_TYPES == 14, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
 
@@ -188,10 +188,13 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
         [AST_TYPE_I16] = "i16",
         [AST_TYPE_I32] = "i32",
         [AST_TYPE_I64] = "i64",
+
         [AST_TYPE_U8] = "u8",
         [AST_TYPE_U16] = "u16",
         [AST_TYPE_U32] = "u32",
         [AST_TYPE_U64] = "u64",
+
+        [AST_TYPE_RAWPTR] = "rawptr",
     };
 
     for (AST_Type_Kind k = 0; k < len(names); k++) {
@@ -405,6 +408,12 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
             check_expr(c, unary->value, false, constant);
             if (!unary->value->type.ref) {
+                if (unary->value->type.kind == AST_TYPE_RAWPTR) {
+                    fprintf(
+                        stderr, Pos_Fmt "ERROR: Cannot dereference raw pointer\n", Pos_Arg(unary->value->token.pos));
+                    exit(1);
+                }
+
                 fprintf(
                     stderr,
                     Pos_Fmt "ERROR: Expected typed pointer, got %s\n",
@@ -596,14 +605,20 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 ast_type_assert_scalar(call->args.head);
 
                 bool ok = true;
-                if (!ast_type_is_pointer(from_type) && ast_type_is_pointer(n->type)) {
-                    // !ptr -> ptr
+                if (from_type.kind == AST_TYPE_FN && !from_type.ref) {
+                    // fn -> rawptr
+                    ok = ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_RAWPTR});
+                } else if (n->type.kind == AST_TYPE_FN && !n->type.ref) {
+                    // rawptr -> fn
+                    ok = ast_type_eq(from_type, (AST_Type) {.kind = AST_TYPE_RAWPTR});
+                } else if (!ast_type_is_pointer(from_type) && ast_type_is_pointer(n->type)) {
+                    // i64/u64 -> ptr
                     if (from_type.kind != AST_TYPE_I64 && from_type.kind != AST_TYPE_U64 &&
                         from_type.kind != AST_TYPE_INT) {
                         ok = false;
                     }
                 } else if (ast_type_is_pointer(from_type) && !ast_type_is_pointer(n->type)) {
-                    // ptr -> !ptr
+                    // ptr -> i64/u64
                     if (n->type.kind != AST_TYPE_I64 && n->type.kind != AST_TYPE_U64 && n->type.kind != AST_TYPE_INT) {
                         ok = false;
                     }

@@ -1,6 +1,6 @@
 #include "compiler.h"
 
-static_assert(COUNT_AST_TYPES == 13, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {
     if (!type) {
         return;
@@ -38,6 +38,10 @@ static void compile_type(Compiler *c, AST_Type *type) {
     case AST_TYPE_I64:
     case AST_TYPE_INT:
         type->llvm = llvm_type_basic(LLVM_TYPE_I64);
+        break;
+
+    case AST_TYPE_RAWPTR:
+        type->llvm = llvm_type_basic(LLVM_TYPE_PTR);
         break;
 
     case AST_TYPE_U8:

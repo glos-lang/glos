@@ -23,11 +23,14 @@ typedef enum {
     AST_TYPE_I16,
     AST_TYPE_I32,
     AST_TYPE_I64,
+
     AST_TYPE_U8,
     AST_TYPE_U16,
     AST_TYPE_U32,
     AST_TYPE_U64,
+
     AST_TYPE_INT,
+    AST_TYPE_RAWPTR,
 
     AST_TYPE_FN,
 
