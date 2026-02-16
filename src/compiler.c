@@ -163,7 +163,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -210,7 +210,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = NULL;
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -236,6 +236,10 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             value = compile_expr(c, unary->value, false);
             return_defer(llvm_build_unary(&c->llvm, LLVM_UNARY_LNOT, n->type.llvm, value));
 
+        case TOKEN_SIZEOF:
+            debug = false;
+            return_defer(llvm_atom_int(&c->llvm, n->type.llvm, compile_sizeof(c, &unary->value->type)));
+
         default:
             unreachable();
         }
@@ -244,7 +248,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 39, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -272,7 +276,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 38, "");
+        static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
@@ -581,6 +585,14 @@ static AST_Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
     return main->const_value.as.fn;
+}
+
+size_t compile_sizeof(Compiler *c, AST_Type *type) {
+    if (type->kind == AST_TYPE_TYPE) {
+        type = type->spec.type;
+    }
+    compile_type(c, type);
+    return llvm_type_info(type->llvm).size;
 }
 
 void compiler_build(Compiler *c, const char *output) {

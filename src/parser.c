@@ -13,7 +13,7 @@ typedef enum {
     POWER_REFER,
 } Power;
 
-static_assert(COUNT_TOKENS == 38, "");
+static_assert(COUNT_TOKENS == 39, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -221,7 +221,7 @@ static void not_in_extern_assert(Parser *p, Token token) {
     }
 }
 
-static_assert(COUNT_TOKENS == 38, "");
+static_assert(COUNT_TOKENS == 39, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -311,6 +311,14 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 fn->is_type = true;
             }
         }
+    } break;
+
+    case TOKEN_SIZEOF: {
+        node = ast_node_alloc(p, AST_NODE_UNARY, token);
+        AST_Node_Unary *unary = (AST_Node_Unary *) node;
+        expect_token(p, TOKEN_LPAREN);
+        unary->value = parse_expr(p, POWER_SET);
+        expect_token(p, TOKEN_RPAREN);
     } break;
 
     default:

@@ -21,6 +21,7 @@ typedef struct {
     const char *path;
 } Compiler;
 
-void compiler_build(Compiler *c, const char *output);
+size_t compile_sizeof(Compiler *c, AST_Type *type);
+void   compiler_build(Compiler *c, const char *output);
 
 #endif // COMPILER_H
