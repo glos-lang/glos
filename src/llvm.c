@@ -401,12 +401,19 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_UNARYS == 3, "");
+        static_assert(COUNT_LLVM_UNARYS == 4, "");
         switch (unary->kind) {
         case LLVM_UNARY_NEG:
             sb_push_cstr(&l->sb, "sub ");
             llvm_type_emit(l, n->type, false);
             sb_push_cstr(&l->sb, " 0, ");
+            llvm_node_emit(l, unary->value);
+            break;
+
+        case LLVM_UNARY_BNOT:
+            sb_push_cstr(&l->sb, "xor ");
+            llvm_type_emit(l, n->type, false);
+            sb_push_cstr(&l->sb, " -1, ");
             llvm_node_emit(l, unary->value);
             break;
 
@@ -442,7 +449,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_node_emit(l, n);
         sb_push_cstr(&l->sb, " = ");
 
-        static_assert(COUNT_LLVM_BINARYS == 13, "");
+        static_assert(COUNT_LLVM_BINARYS == 16, "");
         typedef struct {
             const char *i;
             const char *u;
@@ -455,6 +462,9 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
             [LLVM_BINARY_DIV] = {.i = "sdiv", .u = "udiv"},
             [LLVM_BINARY_MOD] = {.i = "srem", .u = "urem"},
 
+            [LLVM_BINARY_SHL] = {.i = "shl"},
+            [LLVM_BINARY_SHR] = {.i = "ashr", .u = "lshr"},
+            [LLVM_BINARY_BOR] = {.i = "or"},
             [LLVM_BINARY_BAND] = {.i = "and"},
 
             [LLVM_BINARY_GT] = {.i = "icmp sgt", .u = "icmp ugt"},

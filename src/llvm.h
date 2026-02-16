@@ -63,6 +63,7 @@ typedef struct {
 typedef enum {
     LLVM_UNARY_NOP,
     LLVM_UNARY_NEG,
+    LLVM_UNARY_BNOT,
     LLVM_UNARY_LNOT,
     COUNT_LLVM_UNARYS
 } LLVM_Unary_Kind;
@@ -76,6 +77,9 @@ typedef enum {
     LLVM_BINARY_DIV,
     LLVM_BINARY_MOD,
 
+    LLVM_BINARY_SHL,
+    LLVM_BINARY_SHR,
+    LLVM_BINARY_BOR,
     LLVM_BINARY_BAND,
 
     LLVM_BINARY_GT,
