@@ -59,6 +59,8 @@ typedef enum {
     TOKEN_CONTINUE,
     TOKEN_RETURN,
 
+    TOKEN_EXTERN,
+
     TOKEN_PRINT,
     COUNT_TOKENS
 } Token_Kind;

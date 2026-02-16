@@ -1,6 +1,0 @@
-EXIT 1
-STDOUT 0
-
-STDERR 65
-tests/error_unexpected_break.glos:1:1: ERROR: Unexpected 'break'
-

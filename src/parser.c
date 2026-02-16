@@ -13,7 +13,7 @@ typedef enum {
     POWER_REFER,
 } Power;
 
-static_assert(COUNT_TOKENS == 37, "");
+static_assert(COUNT_TOKENS == 38, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -115,7 +115,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 12, "");
+static_assert(COUNT_AST_NODES == 13, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
@@ -132,6 +132,8 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
 
         [AST_NODE_JUMP] = sizeof(AST_Node_Jump),
         [AST_NODE_RETURN] = sizeof(AST_Node_Return),
+
+        [AST_NODE_EXTERN] = sizeof(AST_Node_Extern),
 
         [AST_NODE_PRINT] = sizeof(AST_Node_Print),
     };
@@ -209,7 +211,17 @@ static AST_Node *parse_for(Parser *p, Token token) {
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_TOKENS == 37, "");
+static void not_in_extern_assert(Parser *p, Token token) {
+    if (p->in_extern) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Extern blocks can only have variable and function definitions\n",
+            Pos_Arg(token.pos));
+        exit(1);
+    }
+}
+
+static_assert(COUNT_TOKENS == 38, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -323,6 +335,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
                 define->name = node;
                 define->is_local = p->is_local;
+                define->is_extern = p->in_extern;
 
                 token = peek_token(p);
                 if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
@@ -330,10 +343,35 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 }
 
                 if (read_token(p, TOKEN_SET)) {
+                    if (p->in_extern) {
+                        assert(p->ahead.kind == TOKEN_SET);
+                        fprintf(
+                            stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->ahead.pos));
+                        exit(1);
+                    }
+
                     define->expr = parse_expr(p, POWER_SET);
                 } else if (read_token(p, TOKEN_COLON)) {
                     define->expr = parse_expr(p, POWER_SET);
                     define->is_const = true;
+
+                    if (p->in_extern) {
+                        if (define->expr->kind != AST_NODE_FN) {
+                            not_in_extern_assert(p, define->expr->token);
+                        }
+
+                        AST_Node_Fn *fn = (AST_Node_Fn *) define->expr;
+                        if (fn->body) {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: External function cannot have body\n",
+                                Pos_Arg(fn->body->token.pos));
+                            exit(1);
+                        }
+
+                        fn->is_type = false;
+                        fn->is_extern = true;
+                    }
                 }
                 return (AST_Node *) define;
             } else {
@@ -387,37 +425,47 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_AST_NODES == 12, "");
+static_assert(COUNT_AST_NODES == 13, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
 
     Token token = next_token(p);
     switch (token.kind) {
     case TOKEN_LBRACE:
+        not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         node = parse_block(p, token);
         break;
 
     case TOKEN_IF:
+        not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         node = parse_if(p, token);
         break;
 
     case TOKEN_FOR:
+        not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         node = parse_for(p, token);
         break;
 
     case TOKEN_BREAK:
     case TOKEN_CONTINUE:
+        not_in_extern_assert(p, token);
         if (!p->in_loop) {
-            error_unexpected(token);
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot use %s outside of a loop\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
         }
 
         node = ast_node_alloc(p, AST_NODE_JUMP, token);
         break;
 
     case TOKEN_RETURN: {
+        not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         node = ast_node_alloc(p, AST_NODE_RETURN, token);
 
@@ -427,7 +475,25 @@ static AST_Node *parse_stmt(Parser *p) {
         }
     } break;
 
+    case TOKEN_EXTERN: {
+        if (p->in_extern) {
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot have nested externs\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        node = ast_node_alloc(p, AST_NODE_EXTERN, token);
+        AST_Node_Extern *externn = (AST_Node_Extern *) node;
+
+        expect_token(p, TOKEN_LBRACE);
+        p->in_extern = true;
+        while (!read_token(p, TOKEN_RBRACE)) {
+            ast_nodes_push(&externn->nodes, parse_stmt(p));
+        }
+        p->in_extern = false;
+    } break;
+
     case TOKEN_PRINT: {
+        not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         AST_Node_Print *print = (AST_Node_Print *) ast_node_alloc(p, AST_NODE_PRINT, token);
         print->value = parse_expr(p, POWER_SET);
@@ -439,6 +505,7 @@ static AST_Node *parse_stmt(Parser *p) {
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL);
         if (node->kind != AST_NODE_DEFINE) {
+            not_in_extern_assert(p, token);
             local_assert(p, true, node->token, "expression");
         }
         break;
