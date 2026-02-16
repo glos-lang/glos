@@ -1,0 +1,10 @@
+main :: () {
+    extern {
+        exit :: (code: i32)
+        putchar :: (ch: i32) -> i32
+    }
+
+    putchar(69)
+    putchar(10)
+    exit(69)
+}

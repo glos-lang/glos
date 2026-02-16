@@ -126,7 +126,9 @@ typedef struct {
 struct LLVM_Node_Fn {
     LLVM_Node  node;
     LLVM_Nodes vars;
+
     LLVM_Nodes body;
+    bool       is_extern;
 
     LLVM_Node_Var **args;
     size_t          arity;
@@ -869,22 +871,35 @@ void llvm_compile(LLVM *l) {
         LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
         fn->debug.iota = ++l->iota_debug;
 
-        if (fn == l->main_fn) {
-            sb_sprintf(&l->sb, "\ndefine i32 @" SV_Fmt "() {\n", SV_Arg(it->sv));
+        if (fn->is_extern) {
+            sb_push_cstr(&l->sb, "\ndeclare ");
         } else {
-            sb_sprintf(&l->sb, "\ndefine ");
-            llvm_type_emit(l, *fn->node.type.fn.returnn, false);
-            sb_sprintf(&l->sb, " @" SV_Fmt "(", SV_Arg(it->sv));
-            for (size_t i = 0; i < fn->arity; i++) {
-                if (i > 0) {
-                    sb_push_cstr(&l->sb, ", ");
-                }
+            sb_push_cstr(&l->sb, "\ndefine ");
+        }
 
-                llvm_type_emit(l, fn->node.type.fn.args[i], false);
+        llvm_type_emit(l, *fn->node.type.fn.returnn, false);
+        sb_sprintf(&l->sb, " @" SV_Fmt "(", SV_Arg(it->sv));
+        for (size_t i = 0; i < fn->arity; i++) {
+            if (i > 0) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+
+            llvm_type_emit(l, fn->node.type.fn.args[i], false);
+            if (!fn->is_extern) {
                 sb_sprintf(&l->sb, " %%a%zu", i);
             }
-            sb_sprintf(&l->sb, ") #0 !dbg !%zu {\n", fn->debug.iota);
         }
+
+        sb_push(&l->sb, ')');
+        if (fn->is_extern) {
+            sb_push(&l->sb, '\n');
+            continue;
+        }
+
+        if (fn != l->main_fn) {
+            sb_sprintf(&l->sb, " #0 !dbg !%zu", fn->debug.iota);
+        }
+        sb_push_cstr(&l->sb, " {\n");
 
         l->iota_local = 0;
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
@@ -1142,10 +1157,11 @@ LLVM_Node_Block *llvm_block_new(LLVM *l) {
     return (LLVM_Node_Block *) llvm_node_alloc(l, LLVM_NODE_BLOCK, llvm_type_basic(LLVM_TYPE_I0));
 }
 
-LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type) {
+LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type, bool is_extern) {
     LLVM_Node_Fn *fn = (LLVM_Node_Fn *) llvm_node_alloc(l, LLVM_NODE_FN, type);
     fn->node.sv = name;
     fn->node.debug = &fn->debug;
+    fn->is_extern = is_extern;
 
     fn->args = arena_alloc(l->arena, type.fn.arity * sizeof(*fn->args));
     fn->arity = type.fn.arity;

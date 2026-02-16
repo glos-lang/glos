@@ -12,6 +12,7 @@ typedef struct {
     bool  peeked;
 
     bool in_loop;
+    bool in_extern;
     bool is_local;
 
     AST_Nodes nodes;

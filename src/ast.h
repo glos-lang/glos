@@ -102,6 +102,8 @@ typedef enum {
     AST_NODE_JUMP,
     AST_NODE_RETURN,
 
+    AST_NODE_EXTERN,
+
     AST_NODE_PRINT,
     COUNT_AST_NODES
 } AST_Node_Kind;
@@ -152,6 +154,7 @@ struct AST_Node_Fn {
     AST_Node *body;
 
     bool is_type;
+    bool is_extern;
 
     AST_Node_Atom *defined_as;
     LLVM_Node     *llvm;
@@ -217,6 +220,11 @@ typedef struct {
     AST_Node  node;
     AST_Node *value;
 } AST_Node_Return;
+
+typedef struct {
+    AST_Node  node;
+    AST_Nodes nodes;
+} AST_Node_Extern;
 
 typedef struct {
     AST_Node  node;

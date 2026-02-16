@@ -195,15 +195,26 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
 static void ast_nodes_debug_impl(FILE *f, AST_Nodes ns, int depth, const char *label) {
     fprintf(f, Indent_Fmt, Indent_Arg(depth));
     if (label) {
-        fprintf(f, "%s = ", label);
+        fprintf(f, "%s = {", label);
+        if (ns.head) {
+            fprintf(f, "\n");
+        } else {
+            fprintf(f, "}\n");
+            return;
+        }
     }
 
+    const size_t child_depth = depth + (label != NULL);
     for (AST_Node *it = ns.head; it; it = it->next) {
-        ast_node_debug_impl(f, it, depth, NULL);
+        ast_node_debug_impl(f, it, child_depth, NULL);
+    }
+
+    if (label) {
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     }
 }
 
-static_assert(COUNT_AST_NODES == 12, "");
+static_assert(COUNT_AST_NODES == 13, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -302,6 +313,19 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, "Return {\n");
         ast_node_debug_impl(f, returnn->value, depth + 1, "Value");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_EXTERN: {
+        AST_Node_Extern *externn = (AST_Node_Extern *) n;
+        if (externn->nodes.head) {
+            fprintf(f, "Extern {\n");
+            for (AST_Node *it = externn->nodes.head; it; it = it->next) {
+                ast_node_debug_impl(f, it, depth + 1, NULL);
+            }
+            fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+        } else {
+            fprintf(f, "Extern {}\n");
+        }
     } break;
 
     case AST_NODE_PRINT: {
