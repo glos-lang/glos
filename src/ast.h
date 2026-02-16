@@ -125,6 +125,7 @@ struct AST_Node_Atom {
     // When this atom is a definition
     bool        is_const;
     bool        is_local;
+    bool        is_extern;
     bool        is_assigned;
     Const_Value const_value;
     LLVM_Node  *llvm;
@@ -189,6 +190,7 @@ typedef struct {
     bool is_arg;
     bool is_const;
     bool is_local;
+    bool is_extern;
 } AST_Node_Define;
 
 typedef struct {

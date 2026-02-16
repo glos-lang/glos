@@ -335,6 +335,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
                 define->name = node;
                 define->is_local = p->is_local;
+                define->is_extern = p->in_extern;
 
                 token = peek_token(p);
                 if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {

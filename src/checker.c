@@ -953,6 +953,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             it->const_value = eval_const_expr(c, it_expr);
         }
 
+        it->is_extern = define->is_extern;
         if (define->is_local) {
             it->is_local = true;
             if (!it_is_underscore) {

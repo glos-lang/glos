@@ -377,10 +377,12 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         if (!it->llvm) {
             compile_type(c, &it->node.type);
 
-            LLVM_Node_Var *var =
-                llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, define->is_local, it_expr == NULL);
+            LLVM_Node_Var *var = llvm_var_new(
+                &c->llvm, it->node.token.sv, it->node.type.llvm, define->is_local, it_expr == NULL, it->is_extern);
 
-            llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            if (!define->is_extern) {
+                llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            }
             it->llvm = (LLVM_Node *) var;
 
             if (it_expr) {
@@ -597,8 +599,12 @@ void compiler_build(Compiler *c, const char *output) {
         } else {
             compile_type(c, &it->node.type);
 
-            LLVM_Node_Var *var = llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, false, it->is_assigned);
-            llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            LLVM_Node_Var *var =
+                llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, false, it->is_assigned, it->is_extern);
+
+            if (!it->is_extern) {
+                llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+            }
             it->llvm = (LLVM_Node *) var;
 
             if (it->is_assigned) {
