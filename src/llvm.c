@@ -849,7 +849,11 @@ static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
         llvm_node_emit(l, init->node);
     } else {
         llvm_type_emit(l, init->type, true);
-        sb_sprintf(&l->sb, " %ld", init->n);
+        if (init->type.kind == LLVM_TYPE_PTR) {
+            sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->n);
+        } else {
+            sb_sprintf(&l->sb, " %ld", init->n);
+        }
     }
 }
 
@@ -1383,4 +1387,3 @@ void llvm_debug_scope_pop(LLVM *l) {
 }
 
 // TODO: Check whether external variables work once imports are implemented. It works on x86_64 Linux so far...
-// TODO: When defining global pointer variable with assignment, use inttoptr
