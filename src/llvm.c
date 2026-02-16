@@ -355,6 +355,14 @@ static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) 
         return n->iota;
     }
 
+    if (from_signed == LLVM_TYPE_FN && to_signed == LLVM_TYPE_PTR) {
+        return n->iota;
+    }
+
+    if (from_signed == LLVM_TYPE_PTR && to_signed == LLVM_TYPE_FN) {
+        return n->iota;
+    }
+
     const size_t temp = ++l->iota_local;
     sb_sprintf(&l->sb, "  %%.%zu = ", temp);
 
@@ -564,6 +572,10 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_CAST: {
         LLVM_Node_Cast *cast = (LLVM_Node_Cast *) n;
         n->iota = llvm_cast_compile(l, cast->value, n->type.kind);
+        if (!n->iota) {
+            // It was a variable
+            n->sv = cast->value->sv;
+        }
     } break;
 
     case LLVM_NODE_CALL: {
@@ -762,15 +774,20 @@ static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
         type->debug = *debug;
     } break;
 
-    case LLVM_TYPE_PTR: {
-        llvm_type_debug_compile(l, type->ptr.type);
-        type->debug = ++l->iota_debug;
-        sb_sprintf(
-            &l->sb,
-            "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !%zu)\n",
-            type->debug,
-            type->ptr.type->debug);
-    } break;
+    case LLVM_TYPE_PTR:
+        if (type->ptr.type) {
+            llvm_type_debug_compile(l, type->ptr.type);
+            type->debug = ++l->iota_debug;
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !%zu)\n",
+                type->debug,
+                type->ptr.type->debug);
+        } else {
+            type->debug = ++l->iota_debug;
+            sb_sprintf(&l->sb, "!%zu = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null)\n", type->debug);
+        }
+        break;
 
     case LLVM_TYPE_FN: {
         llvm_type_fn_debug_compile(l, type);
@@ -1366,3 +1383,4 @@ void llvm_debug_scope_pop(LLVM *l) {
 }
 
 // TODO: Check whether external variables work once imports are implemented. It works on x86_64 Linux so far...
+// TODO: When defining global pointer variable with assignment, use inttoptr

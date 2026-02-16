@@ -1,0 +1,8 @@
+foo :: () {
+    print 69
+}
+
+main :: () {
+    raw := rawptr(foo)
+    ()(raw)()
+}

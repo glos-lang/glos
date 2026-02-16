@@ -1,7 +1,7 @@
 SIZEOF_I32 :: 4 // TODO: sizeof()
 
 extern {
-    calloc :: (count: i64, size: i64) -> u64 // TODO: rawptr
+    calloc :: (count: i64, size: i64) -> rawptr
     putchar :: (ch: i32) -> i32
 }
 
