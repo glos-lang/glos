@@ -4,6 +4,7 @@ typedef enum {
     POWER_NIL,
     POWER_SET,
     POWER_CMP,
+    POWER_SHL,
     POWER_ADD,
     POWER_BOR,
     POWER_MUL,
@@ -12,7 +13,7 @@ typedef enum {
     POWER_REFER,
 } Power;
 
-static_assert(COUNT_TOKENS == 33, "");
+static_assert(COUNT_TOKENS == 37, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_COLON:
@@ -30,6 +31,11 @@ static Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_MOD:
         return POWER_MUL;
 
+    case TOKEN_SHL:
+    case TOKEN_SHR:
+        return POWER_SHL;
+
+    case TOKEN_BOR:
     case TOKEN_BAND:
         return POWER_BOR;
 
@@ -203,7 +209,7 @@ static AST_Node *parse_for(Parser *p, Token token) {
     return (AST_Node *) forr;
 }
 
-static_assert(COUNT_TOKENS == 33, "");
+static_assert(COUNT_TOKENS == 37, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -217,6 +223,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
 
     case TOKEN_SUB:
     case TOKEN_MUL:
+    case TOKEN_BNOT:
     case TOKEN_LNOT: {
         node = ast_node_alloc(p, AST_NODE_UNARY, token);
         AST_Node_Unary *unary = (AST_Node_Unary *) node;

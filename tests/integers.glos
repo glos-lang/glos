@@ -8,7 +8,12 @@ main :: () {
     print 10 % 4 * (100 + 110)
 
     // Bitwise
+    print 276 >> 2
+    print 105 << 2
+    print ~-70
+    print 160 | 260
     print 77 & 103
+    print ~-419 + 10 & 3
 
     // Comparisons
     print 2 > 1

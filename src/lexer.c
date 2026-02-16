@@ -104,7 +104,7 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 33, "");
+static_assert(COUNT_TOKENS == 37, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -230,8 +230,16 @@ Token lexer_iter(Lexer *l) {
         token.kind = TOKEN_MOD;
         break;
 
+    case '|':
+        token.kind = TOKEN_BOR;
+        break;
+
     case '&':
         token.kind = TOKEN_BAND;
+        break;
+
+    case '~':
+        token.kind = TOKEN_BNOT;
         break;
 
     case '!':
@@ -243,7 +251,9 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '>':
-        if (match_char(l, '=')) {
+        if (match_char(l, '>')) {
+            token.kind = TOKEN_SHR;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_GE;
         } else {
             token.kind = TOKEN_GT;
@@ -251,7 +261,9 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '<':
-        if (match_char(l, '=')) {
+        if (match_char(l, '<')) {
+            token.kind = TOKEN_SHL;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_LE;
         } else {
             token.kind = TOKEN_LT;

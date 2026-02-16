@@ -347,6 +347,7 @@ static bool always_returns(AST_Node *n) {
     }
 }
 
+// TODO: Consider whether the `ref` parameter is even needed
 static_assert(COUNT_AST_NODES == 12, "");
 static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
     if (!n) {
@@ -357,7 +358,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -389,7 +390,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, false, constant);
@@ -441,6 +442,11 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             }
             break;
 
+        case TOKEN_BNOT:
+            check_expr(c, unary->value, false, constant);
+            n->type = ast_type_assert_numeric(unary->value, false);
+            break;
+
         case TOKEN_LNOT:
             check_expr(c, unary->value, false, constant);
             n->type = ast_type_assert(c, unary->value, (AST_Type) {.kind = AST_TYPE_BOOL});
@@ -453,7 +459,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -472,6 +478,9 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             n->type = ast_type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
+        case TOKEN_SHL:
+        case TOKEN_SHR:
+        case TOKEN_BOR:
         case TOKEN_BAND:
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
@@ -685,7 +694,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -712,7 +721,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -722,6 +731,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         case TOKEN_BAND:
             unreachable();
             break;
+
+        case TOKEN_BNOT:
+            value = eval_const_expr(c, unary->value);
+            return const_value_int(~value.as.integer);
 
         case TOKEN_LNOT:
             value = eval_const_expr(c, unary->value);
@@ -737,7 +750,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 33, "");
+        static_assert(COUNT_TOKENS == 37, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -763,6 +776,21 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(lhs.as.integer % rhs.as.integer);
+
+        case TOKEN_SHL:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            return const_value_int(lhs.as.integer << rhs.as.integer);
+
+        case TOKEN_SHR:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            return const_value_int(lhs.as.integer >> rhs.as.integer);
+
+        case TOKEN_BOR:
+            lhs = eval_const_expr(c, binary->lhs);
+            rhs = eval_const_expr(c, binary->rhs);
+            return const_value_int(lhs.as.integer | rhs.as.integer);
 
         case TOKEN_BAND:
             lhs = eval_const_expr(c, binary->lhs);
