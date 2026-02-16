@@ -1,21 +1,19 @@
-SIZEOF_I32 :: 4 // TODO: sizeof()
-
 extern {
     calloc :: (count: i64, size: i64) -> rawptr
     putchar :: (ch: i32) -> i32
 }
 
 board_new :: (n: i64) -> &i32 {
-    return &i32(calloc(n, SIZEOF_I32))
+    return &i32(calloc(n, sizeof(i32)))
 }
 
 // TODO: Slices
 board_get :: (b: &i32, i: i64) -> i32 {
-    return *(b + &i32(i * SIZEOF_I32))
+    return *(b + &i32(i * sizeof(i32)))
 }
 
 board_set :: (b: &i32, i: i64, v: i32) {
-    *(b + &i32(i * SIZEOF_I32)) = v
+    *(b + &i32(i * sizeof(i32))) = v
 }
 
 main :: () {

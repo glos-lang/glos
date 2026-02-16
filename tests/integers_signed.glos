@@ -10,6 +10,12 @@ main :: () {
     print c
     print d
 
+    // Sizes
+    print sizeof(a)
+    print sizeof(b)
+    print sizeof(c)
+    print sizeof(d)
+
     // Comparisons
     print u64(1) > 0
     print u64(1) > -1

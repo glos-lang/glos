@@ -1,0 +1,7 @@
+foo :: (x: u8) {
+    print x
+}
+
+main :: () {
+    foo(sizeof(rawptr))
+}
