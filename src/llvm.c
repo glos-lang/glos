@@ -269,7 +269,7 @@ static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 7, "");
+static_assert(COUNT_LLVM_TYPES == 12, "");
 static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -281,14 +281,22 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
         break;
 
     case LLVM_TYPE_I8:
+    case LLVM_TYPE_U8:
         sb_push_cstr(&l->sb, "i8");
         break;
 
+    case LLVM_TYPE_I16:
+    case LLVM_TYPE_U16:
+        sb_push_cstr(&l->sb, "i16");
+        break;
+
     case LLVM_TYPE_I32:
+    case LLVM_TYPE_U32:
         sb_push_cstr(&l->sb, "i32");
         break;
 
     case LLVM_TYPE_I64:
+    case LLVM_TYPE_U64:
         sb_push_cstr(&l->sb, "i64");
         break;
 
@@ -302,8 +310,44 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     }
 }
 
+static_assert(COUNT_LLVM_TYPES == 12, "");
+static bool llvm_type_kind_is_signed(LLVM_Type_Kind kind) {
+    switch (kind) {
+    case LLVM_TYPE_I8:
+    case LLVM_TYPE_I16:
+    case LLVM_TYPE_I32:
+    case LLVM_TYPE_I64:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static_assert(COUNT_LLVM_TYPES == 12, "");
+static LLVM_Type_Kind llvm_type_kind_to_signed(LLVM_Type_Kind kind) {
+    switch (kind) {
+    case LLVM_TYPE_U8:
+        return LLVM_TYPE_I8;
+
+    case LLVM_TYPE_U16:
+        return LLVM_TYPE_I16;
+
+    case LLVM_TYPE_U32:
+        return LLVM_TYPE_I32;
+
+    case LLVM_TYPE_U64:
+        return LLVM_TYPE_I64;
+
+    default:
+        return kind;
+    }
+}
+
 static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) {
-    if (n->type.kind == to || n->kind == LLVM_NODE_ATOM) {
+    const LLVM_Type_Kind from_signed = llvm_type_kind_to_signed(n->type.kind);
+    const LLVM_Type_Kind to_signed = llvm_type_kind_to_signed(to);
+    if (from_signed == to_signed || n->kind == LLVM_NODE_ATOM) {
         return n->iota;
     }
 
@@ -316,14 +360,14 @@ static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) 
     } else if (to == LLVM_TYPE_PTR) {
         // Integer -> Pointer
         sb_push_cstr(&l->sb, "inttoptr");
-    } else if (n->type.kind < to) {
+    } else if (from_signed < to_signed) {
         // Lower -> Higher
-        if (n->type.kind == LLVM_TYPE_I1) {
-            sb_push_cstr(&l->sb, "zext");
-        } else {
+        if (llvm_type_kind_is_signed(n->type.kind)) {
             sb_push_cstr(&l->sb, "sext");
+        } else {
+            sb_push_cstr(&l->sb, "zext");
         }
-    } else if (n->type.kind > to) {
+    } else if (from_signed > to_signed) {
         // Higher -> Lower
         sb_push_cstr(&l->sb, "trunc");
     }
@@ -399,27 +443,37 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         sb_push_cstr(&l->sb, " = ");
 
         static_assert(COUNT_LLVM_BINARYS == 13, "");
-        static const char *ops[COUNT_LLVM_BINARYS] = {
-            [LLVM_BINARY_ADD] = "add",
-            [LLVM_BINARY_SUB] = "sub",
-            [LLVM_BINARY_MUL] = "mul",
-            [LLVM_BINARY_DIV] = "sdiv",
-            [LLVM_BINARY_MOD] = "srem",
+        typedef struct {
+            const char *i;
+            const char *u;
+        } Op;
 
-            [LLVM_BINARY_BAND] = "and",
+        static const Op ops[COUNT_LLVM_BINARYS] = {
+            [LLVM_BINARY_ADD] = {.i = "add"},
+            [LLVM_BINARY_SUB] = {.i = "sub"},
+            [LLVM_BINARY_MUL] = {.i = "mul"},
+            [LLVM_BINARY_DIV] = {.i = "sdiv", .u = "udiv"},
+            [LLVM_BINARY_MOD] = {.i = "srem", .u = "urem"},
 
-            [LLVM_BINARY_GT] = "icmp sgt",
-            [LLVM_BINARY_GE] = "icmp sge",
-            [LLVM_BINARY_LT] = "icmp slt",
-            [LLVM_BINARY_LE] = "icmp sle",
-            [LLVM_BINARY_EQ] = "icmp eq",
-            [LLVM_BINARY_NE] = "icmp ne",
+            [LLVM_BINARY_BAND] = {.i = "and"},
+
+            [LLVM_BINARY_GT] = {.i = "icmp sgt", .u = "icmp ugt"},
+            [LLVM_BINARY_GE] = {.i = "icmp sge", .u = "icmp uge"},
+            [LLVM_BINARY_LT] = {.i = "icmp slt", .u = "icmp ult"},
+            [LLVM_BINARY_LE] = {.i = "icmp sle", .u = "icmp ule"},
+            [LLVM_BINARY_EQ] = {.i = "icmp eq"},
+            [LLVM_BINARY_NE] = {.i = "icmp ne"},
         };
 
-        const char *op = ops[binary->kind];
-        assert(op);
+        const Op op = ops[binary->kind];
+        assert(op.i);
 
-        sb_sprintf(&l->sb, "%s ", op);
+        if (op.u && !llvm_type_kind_is_signed(binary->lhs->type.kind)) {
+            sb_sprintf(&l->sb, "%s ", op.u);
+        } else {
+            sb_sprintf(&l->sb, "%s ", op.i);
+        }
+
         if (ptrtoint_lhs || ptrtoint_rhs) {
             sb_push_cstr(&l->sb, "i64");
         } else {
@@ -576,12 +630,14 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
     case LLVM_NODE_PRINT: {
         LLVM_Node_Print *print = (LLVM_Node_Print *) n;
-        const size_t     value = llvm_cast_compile(l, print->value, LLVM_TYPE_I64);
+
+        const bool   is_signed = llvm_type_kind_is_signed(print->value->type.kind);
+        const size_t value = llvm_cast_compile(l, print->value, is_signed ? LLVM_TYPE_I64 : LLVM_TYPE_U64);
 
         n->iota = ++l->iota_local;
         sb_push_cstr(&l->sb, "  ");
         llvm_node_emit(l, n);
-        sb_push_cstr(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.iprint, i64 ");
+        sb_sprintf(&l->sb, " = call i32 (ptr, ...) @printf(ptr @.%cprint, i64 ", is_signed ? 'i' : 'u');
 
         if (value) {
             sb_sprintf(&l->sb, "%%.%zu", value);
@@ -638,28 +694,59 @@ static size_t llvm_type_fn_debug_compile(LLVM *l, LLVM_Type *type) {
     return type->debug;
 }
 
+static_assert(COUNT_LLVM_TYPES == 12, "");
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
-    static_assert(COUNT_LLVM_TYPES == 7, "");
+    static_assert(COUNT_LLVM_TYPES == 12, "");
     switch (type->kind) {
     case LLVM_TYPE_I0:
         unreachable();
         break;
 
     case LLVM_TYPE_I1:
-        type->debug = l->debug_bool_type;
-        break;
-
     case LLVM_TYPE_I8:
-        type->debug = l->debug_i8_type;
-        break;
-
+    case LLVM_TYPE_I16:
     case LLVM_TYPE_I32:
-        type->debug = l->debug_i32_type;
-        break;
-
     case LLVM_TYPE_I64:
-        type->debug = l->debug_i64_type;
-        break;
+    case LLVM_TYPE_U8:
+    case LLVM_TYPE_U16:
+    case LLVM_TYPE_U32:
+    case LLVM_TYPE_U64: {
+        size_t *debug = &l->basic_type_debugs[type->kind];
+        if (!*debug) {
+            *debug = ++l->iota_debug;
+
+            typedef struct {
+                const char *name;
+                const char *encoding;
+            } Desc;
+
+            static const Desc descs[COUNT_LLVM_TYPES] = {
+                [LLVM_TYPE_I1] = {.name = "bool", .encoding = "DW_ATE_boolean"},
+
+                [LLVM_TYPE_I8] = {.name = "i8", .encoding = "DW_ATE_signed"},
+                [LLVM_TYPE_I16] = {.name = "i16", .encoding = "DW_ATE_signed"},
+                [LLVM_TYPE_I32] = {.name = "i32", .encoding = "DW_ATE_signed"},
+                [LLVM_TYPE_I64] = {.name = "i64", .encoding = "DW_ATE_signed"},
+
+                [LLVM_TYPE_U8] = {.name = "u8", .encoding = "DW_ATE_unsigned"},
+                [LLVM_TYPE_U16] = {.name = "u16", .encoding = "DW_ATE_unsigned"},
+                [LLVM_TYPE_U32] = {.name = "u32", .encoding = "DW_ATE_unsigned"},
+                [LLVM_TYPE_U64] = {.name = "u64", .encoding = "DW_ATE_unsigned"},
+            };
+
+            const Desc desc = descs[type->kind];
+            assert(desc.name);
+
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DIBasicType(name: \"%s\", size: %zu, encoding: %s)\n",
+                *debug,
+                desc.name,
+                llvm_type_info(*type).size * 8,
+                desc.encoding);
+        }
+        type->debug = *debug;
+    } break;
 
     case LLVM_TYPE_PTR: {
         llvm_type_debug_compile(l, type->ptr.type);
@@ -737,12 +824,6 @@ static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
 
 void llvm_compile(LLVM *l) {
     assert(l->main_fn);
-
-    l->debug_bool_type = ++l->iota_debug;
-    l->debug_i8_type = ++l->iota_debug;
-    l->debug_i32_type = ++l->iota_debug;
-    l->debug_i64_type = ++l->iota_debug;
-
     const size_t debug_compilation_unit = ++l->iota_debug;
 
     llvm_debug_file_emit(l, l->debug_file);
@@ -750,6 +831,7 @@ void llvm_compile(LLVM *l) {
         &l->sb,
         "\n"
         "@.iprint = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\", align 1\n"
+        "@.uprint = private unnamed_addr constant [5 x i8] c\"%zu\\0A\\00\", align 1\n"
         "declare i32 @printf(ptr, ...)\n");
 
     if (l->vars.head) {
@@ -939,11 +1021,6 @@ void llvm_compile(LLVM *l) {
         debug_globals_list,
         l->debug_file->iota);
 
-    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)\n", l->debug_bool_type);
-    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i8\", size: 8, encoding: DW_ATE_signed)\n", l->debug_i8_type);
-    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i32\", size: 32, encoding: DW_ATE_signed)\n", l->debug_i32_type);
-    sb_sprintf(&l->sb, "!%zu = !DIBasicType(name: \"i64\", size: 64, encoding: DW_ATE_signed)\n", l->debug_i64_type);
-
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         LLVM_Node_Var *var = (LLVM_Node_Var *) it;
 
@@ -986,7 +1063,7 @@ void llvm_compile(LLVM *l) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 7, "");
+static_assert(COUNT_LLVM_TYPES == 12, "");
 LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -994,12 +1071,19 @@ LLVM_Type_Info llvm_type_info(LLVM_Type type) {
 
     case LLVM_TYPE_I1:
     case LLVM_TYPE_I8:
+    case LLVM_TYPE_U8:
         return (LLVM_Type_Info) {.align = 1, .size = 1};
 
+    case LLVM_TYPE_I16:
+    case LLVM_TYPE_U16:
+        return (LLVM_Type_Info) {.align = 2, .size = 2};
+
     case LLVM_TYPE_I32:
+    case LLVM_TYPE_U32:
         return (LLVM_Type_Info) {.align = 4, .size = 4};
 
     case LLVM_TYPE_I64:
+    case LLVM_TYPE_U64:
         return (LLVM_Type_Info) {.align = 8, .size = 8};
 
     case LLVM_TYPE_PTR:

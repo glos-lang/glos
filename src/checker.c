@@ -24,32 +24,129 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
     exit(1);
 }
 
-static AST_Type ast_type_assert(AST_Node *actual, AST_Type expected) {
-    if (ast_type_eq(actual->type, expected)) {
-        return actual->type;
+static void check_int_limit(AST_Node *n, size_t value) {
+    static_assert(COUNT_AST_TYPES == 13, "");
+    const size_t int_limits[COUNT_AST_TYPES] = {
+        [AST_TYPE_I8] = INT8_MAX,
+        [AST_TYPE_I16] = INT16_MAX,
+        [AST_TYPE_I32] = INT32_MAX,
+        [AST_TYPE_I64] = INT64_MAX,
+
+        [AST_TYPE_U8] = UINT8_MAX,
+        [AST_TYPE_U16] = UINT16_MAX,
+        [AST_TYPE_U32] = UINT32_MAX,
+        [AST_TYPE_U64] = UINT64_MAX,
+
+        [AST_TYPE_INT] = INT64_MAX,
+    };
+
+    if (value > int_limits[n->type.kind]) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Number '%zu' is too large for %s\n",
+            Pos_Arg(n->token.pos),
+            value,
+            ast_type_to_cstr(n->type));
+        exit(1);
+    }
+}
+
+static_assert(COUNT_AST_NODES == 12, "");
+static void cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
+    switch (n->kind) {
+    case AST_NODE_ATOM:
+        switch (n->token.kind) {
+        case TOKEN_INT:
+            n->type = expected;
+            check_int_limit(n, n->token.as.integer);
+            break;
+
+        case TOKEN_IDENT: {
+            AST_Node_Atom *atom = (AST_Node_Atom *) n;
+            assert(atom->definition->is_const); // Only constants can be defined as untyped int
+
+            n->type = expected;
+            check_int_limit(n, atom->definition->const_value.as.integer);
+        } break;
+
+        default:
+            unreachable();
+        }
+        break;
+
+    case AST_NODE_UNARY: {
+        AST_Node_Unary *unary = (AST_Node_Unary *) n;
+        cast_untyped(c, unary->value, expected);
+        n->type = expected;
+    } break;
+
+    case AST_NODE_BINARY: {
+        AST_Node_Binary *binary = (AST_Node_Binary *) n;
+        cast_untyped(c, binary->lhs, expected);
+        cast_untyped(c, binary->rhs, expected);
+        n->type = expected;
+    } break;
+
+    case AST_NODE_RETURN: {
+        AST_Node_Return *ret = (AST_Node_Return *) n;
+        cast_untyped(c, ret->value, expected);
+        n->type = ret->value->type;
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
+static bool try_auto_cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
+    if (ast_type_is_integer(expected) && ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_INT})) {
+        if (expected.kind != AST_TYPE_INT) {
+            cast_untyped(c, n, expected);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+static AST_Type ast_type_assert(Compiler *c, AST_Node *n, AST_Type expected) {
+    if (ast_type_eq(n->type, expected)) {
+        return n->type;
+    }
+
+    if (try_auto_cast_untyped(c, n, expected)) {
+        return expected;
     }
 
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
-        Pos_Arg(actual->token.pos),
+        Pos_Arg(n->token.pos),
         ast_type_to_cstr(expected),
-        ast_type_to_cstr(actual->type));
+        ast_type_to_cstr(n->type));
 
     exit(1);
 }
 
-static AST_Type ast_type_assert_node(AST_Node *actual, AST_Node *expected) {
-    if (ast_type_eq(actual->type, expected->type)) {
-        return actual->type;
+static AST_Type ast_type_assert_node(Compiler *c, AST_Node *a, AST_Node *b) {
+    if (ast_type_eq(a->type, b->type)) {
+        return a->type;
+    }
+
+    if (try_auto_cast_untyped(c, b, a->type)) {
+        return a->type;
+    }
+
+    if (try_auto_cast_untyped(c, a, b->type)) {
+        return b->type;
     }
 
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
-        Pos_Arg(actual->token.pos),
-        ast_type_to_cstr(expected->type),
-        ast_type_to_cstr(actual->type));
+        Pos_Arg(a->token.pos),
+        ast_type_to_cstr(b->type),
+        ast_type_to_cstr(a->type));
 
     exit(1);
 }
@@ -83,10 +180,18 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 5, "");
+    static_assert(COUNT_AST_TYPES == 13, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
+
+        [AST_TYPE_I8] = "i8",
+        [AST_TYPE_I16] = "i16",
+        [AST_TYPE_I32] = "i32",
         [AST_TYPE_I64] = "i64",
+        [AST_TYPE_U8] = "u8",
+        [AST_TYPE_U16] = "u16",
+        [AST_TYPE_U32] = "u32",
+        [AST_TYPE_U64] = "u64",
     };
 
     for (AST_Type_Kind k = 0; k < len(names); k++) {
@@ -100,6 +205,12 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
     }
 
     return false;
+}
+
+static void type_untyped_literal(AST_Node *n) {
+    if (n->type.kind == AST_TYPE_INT) {
+        n->type.kind = AST_TYPE_I64;
+    }
 }
 
 static void check_ident(Compiler *c, AST_Node *n) {
@@ -253,7 +364,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             break;
 
         case TOKEN_INT:
-            n->type = (AST_Type) {.kind = AST_TYPE_I64};
+            n->type = (AST_Type) {.kind = AST_TYPE_INT};
             break;
 
         case TOKEN_IDENT:
@@ -332,7 +443,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
         case TOKEN_LNOT:
             check_expr(c, unary->value, false, constant);
-            n->type = ast_type_assert(unary->value, (AST_Type) {.kind = AST_TYPE_BOOL});
+            n->type = ast_type_assert(c, unary->value, (AST_Type) {.kind = AST_TYPE_BOOL});
             break;
 
         default:
@@ -349,7 +460,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
             ast_type_assert_numeric(binary->lhs, true);
-            n->type = ast_type_assert_node(binary->rhs, binary->lhs);
+            n->type = ast_type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_MUL:
@@ -358,14 +469,14 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
             ast_type_assert_numeric(binary->lhs, false);
-            n->type = ast_type_assert_node(binary->rhs, binary->lhs);
+            n->type = ast_type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_BAND:
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
             ast_type_assert_numeric(binary->lhs, false);
-            n->type = ast_type_assert_node(binary->rhs, binary->lhs);
+            n->type = ast_type_assert_node(c, binary->rhs, binary->lhs);
             break;
 
         case TOKEN_GT:
@@ -377,7 +488,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             check_expr(c, binary->lhs, false, constant);
             check_expr(c, binary->rhs, false, constant);
             ast_type_assert_numeric(binary->lhs, true);
-            ast_type_assert_node(binary->rhs, binary->lhs);
+            ast_type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
             break;
 
@@ -385,7 +496,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             assert(!constant);
             check_expr(c, binary->lhs, true, constant);
             check_expr(c, binary->rhs, false, constant);
-            ast_type_assert_node(binary->rhs, binary->lhs);
+            ast_type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
             break;
 
@@ -421,7 +532,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
 
             if (fn->returnn) {
                 check_expr(c, fn->returnn, false, constant);
-                ast_type_assert(fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
+                ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
                 fn_type.returnn = fn->returnn->type.spec.type;
             } else {
                 fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
@@ -476,12 +587,13 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 bool ok = true;
                 if (!ast_type_is_pointer(from_type) && ast_type_is_pointer(n->type)) {
                     // !ptr -> ptr
-                    if (from_type.kind != AST_TYPE_I64) {
+                    if (from_type.kind != AST_TYPE_I64 && from_type.kind != AST_TYPE_U64 &&
+                        from_type.kind != AST_TYPE_INT) {
                         ok = false;
                     }
                 } else if (ast_type_is_pointer(from_type) && !ast_type_is_pointer(n->type)) {
                     // ptr -> !ptr
-                    if (n->type.kind != AST_TYPE_I64) {
+                    if (n->type.kind != AST_TYPE_I64 && n->type.kind != AST_TYPE_U64 && n->type.kind != AST_TYPE_INT) {
                         ok = false;
                     }
                 }
@@ -542,7 +654,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
                 if (call->arity >= fn_type.spec.fn.arity) {
                     error_too_many_arguments(arg->token.pos, fn_type.spec.fn.arity);
                 }
-                ast_type_assert(arg, fn_type.spec.fn.args[call->arity++]);
+                ast_type_assert(c, arg, fn_type.spec.fn.args[call->arity++]);
             }
 
             if (call->arity < fn_type.spec.fn.arity) {
@@ -774,7 +886,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
 
         if (define->type) {
             check_expr(c, define->type, false, define->is_const);
-            ast_type_assert(define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
+            ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
             it->node.type = *define->type->type.spec.type;
         }
 
@@ -793,8 +905,11 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             }
 
             if (define->type) {
-                ast_type_assert(it_expr, it->node.type);
+                ast_type_assert(c, it_expr, it->node.type);
             } else {
+                if (!define->is_const) {
+                    type_untyped_literal(it_expr);
+                }
                 it->node.type = it_expr->type;
             }
         }
@@ -835,7 +950,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
     case AST_NODE_IF: {
         AST_Node_If *iff = (AST_Node_If *) n;
         check_expr(c, iff->condition, false, false);
-        ast_type_assert(iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+        ast_type_assert(c, iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
         check_stmt(c, iff->consequence);
         check_stmt(c, iff->antecedence);
     } break;
@@ -848,7 +963,7 @@ static void check_stmt(Compiler *c, AST_Node *n) {
             check_stmt(c, forr->init);
             check_expr(c, forr->condition, false, false);
             if (forr->condition) {
-                ast_type_assert(forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
+                ast_type_assert(c, forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
             }
             check_stmt(c, forr->update);
             check_stmt(c, forr->body);
@@ -867,10 +982,10 @@ static void check_stmt(Compiler *c, AST_Node *n) {
         n->type.kind = AST_TYPE_UNIT;
         if (returnn->value) {
             check_expr(c, returnn->value, false, false);
-            ast_type_assert(returnn->value, expected);
+            ast_type_assert(c, returnn->value, expected);
             n->type = returnn->value->type;
         } else {
-            ast_type_assert(n, expected);
+            ast_type_assert(c, n, expected);
         }
     } break;
 

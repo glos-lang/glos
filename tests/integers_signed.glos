@@ -1,0 +1,16 @@
+main :: () {
+    a := i8(69)
+    b := i16(420)
+    c := i32(1337)
+    d := i64(80085)
+
+    // Basics
+    print a
+    print b
+    print c
+    print d
+
+    // Comparisons
+    print u64(1) > 0
+    print u64(1) > -1
+}

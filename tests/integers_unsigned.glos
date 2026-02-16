@@ -1,0 +1,11 @@
+main :: () {
+    a := u8(69)
+    b := u16(420)
+    c := u32(1337)
+    d := u64(80085)
+
+    print a
+    print b
+    print c
+    print d
+}

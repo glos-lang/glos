@@ -14,7 +14,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 5, "");
+static_assert(COUNT_AST_TYPES == 13, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -31,7 +31,39 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
         temp_sprintf("bool");
         break;
 
+    case AST_TYPE_I8:
+        temp_sprintf("i8");
+        break;
+
+    case AST_TYPE_I16:
+        temp_sprintf("i16");
+        break;
+
+    case AST_TYPE_I32:
+        temp_sprintf("i32");
+        break;
+
     case AST_TYPE_I64:
+        temp_sprintf("i64");
+        break;
+
+    case AST_TYPE_U8:
+        temp_sprintf("u8");
+        break;
+
+    case AST_TYPE_U16:
+        temp_sprintf("u16");
+        break;
+
+    case AST_TYPE_U32:
+        temp_sprintf("u32");
+        break;
+
+    case AST_TYPE_U64:
+        temp_sprintf("u64");
+        break;
+
+    case AST_TYPE_INT:
         temp_sprintf("i64");
         break;
 
@@ -86,7 +118,7 @@ const char *ast_type_to_cstr(AST_Type type) {
     return s;
 }
 
-static_assert(COUNT_AST_TYPES == 5, "");
+static_assert(COUNT_AST_TYPES == 13, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -112,14 +144,26 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
     }
 }
 
-static_assert(COUNT_AST_TYPES == 5, "");
 bool ast_type_is_numeric(AST_Type type) {
+    return ast_type_is_integer(type);
+}
+
+static_assert(COUNT_AST_TYPES == 13, "");
+bool ast_type_is_integer(AST_Type type) {
     if (type.ref) {
         return false;
     }
 
     switch (type.kind) {
+    case AST_TYPE_I8:
+    case AST_TYPE_I16:
+    case AST_TYPE_I32:
     case AST_TYPE_I64:
+    case AST_TYPE_U8:
+    case AST_TYPE_U16:
+    case AST_TYPE_U32:
+    case AST_TYPE_U64:
+    case AST_TYPE_INT:
         return true;
 
     default:
