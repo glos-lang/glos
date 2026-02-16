@@ -419,18 +419,20 @@ static void check_expr(Compiler *c, AST_Node *n, bool ref, bool constant) {
             break;
 
         case TOKEN_BAND:
-            if (constant) {
-                fprintf(
-                    stderr, Pos_Fmt "ERROR: Cannot take reference in a constant expression\n", Pos_Arg(n->token.pos));
-                exit(1);
-            }
-
             check_expr(c, unary->value, false, constant);
             n->type = unary->value->type;
 
             if (n->type.kind == AST_TYPE_TYPE) {
                 n->type.spec.type->ref++;
             } else {
+                if (constant) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot take reference in a constant expression\n",
+                        Pos_Arg(n->token.pos));
+                    exit(1);
+                }
+
                 if (!unary->value->is_memory) {
                     fprintf(
                         stderr,
@@ -728,9 +730,14 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return const_value_int(-value.as.integer);
 
         case TOKEN_MUL:
-        case TOKEN_BAND:
             unreachable();
             break;
+
+        case TOKEN_BAND:
+            value = eval_const_expr(c, unary->value);
+            assert(value.kind == CONST_VALUE_TYPE);
+            value.as.type.ref++;
+            return value;
 
         case TOKEN_BNOT:
             value = eval_const_expr(c, unary->value);

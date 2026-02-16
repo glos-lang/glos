@@ -660,3 +660,4 @@ void compiler_build(Compiler *c, const char *output) {
 }
 
 // TODO: Prefix global variables with 'main' for consistency
+// TODO: Prefix local constant functions with name of the outer function

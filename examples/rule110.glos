@@ -1,0 +1,42 @@
+SIZEOF_I32 :: 4 // TODO: sizeof()
+
+extern {
+    calloc :: (count: i64, size: i64) -> u64 // TODO: rawptr
+    putchar :: (ch: i32) -> i32
+}
+
+board_new :: (n: i64) -> &i32 {
+    return &i32(calloc(n, SIZEOF_I32))
+}
+
+// TODO: Slices
+board_get :: (b: &i32, i: i64) -> i32 {
+    return *(b + &i32(i * SIZEOF_I32))
+}
+
+board_set :: (b: &i32, i: i64, v: i32) {
+    *(b + &i32(i * SIZEOF_I32)) = v
+}
+
+main :: () {
+    BOARD_CAP :: 30
+    b := board_new(BOARD_CAP)
+
+    board_set(b, BOARD_CAP - 2, 1)
+    for i := 0; i < BOARD_CAP - 2; i = i + 1 {
+        for j := 0; j < BOARD_CAP; j = j + 1 {
+            if bool(board_get(b, j)) {
+                putchar(42)
+            } else {
+                putchar(32)
+            }
+        }
+        putchar(10)
+
+        pattern := (board_get(b, 0) << 1) | board_get(b, 1)
+        for j := 1; j < BOARD_CAP - 1; j = j + 1 {
+            pattern = ((pattern << 1) & 7) | board_get(b, j + 1)
+            board_set(b, j, (110 >> pattern) & 1)
+        }
+    }
+}
