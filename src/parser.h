@@ -13,7 +13,8 @@ typedef struct {
 
     bool in_loop;
     bool in_extern;
-    bool is_local;
+
+    AST_Node_Fn *fn_current;
 
     AST_Nodes nodes;
 } Parser;

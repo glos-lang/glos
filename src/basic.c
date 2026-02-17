@@ -250,10 +250,6 @@ void arena_reset(Arena *a, const void *ptr) {
     unreachable();
 }
 
-void *arena_clone(Arena *a, const void *data, size_t size) {
-    return memcpy(arena_alloc(a, size), data, size);
-}
-
 char *arena_sprintf(Arena *a, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -268,6 +264,19 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) {
     va_end(args);
 
     return result;
+}
+
+void *arena_clone(Arena *a, const void *data, size_t size) {
+    return memcpy(arena_alloc(a, size), data, size);
+}
+
+void *arena_clone_from_temp(Arena *a, const void *p) {
+    assert((const char *) p >= temp_data && (const char *) p <= temp_data + temp_count);
+    const size_t start = (const char *) p - temp_data;
+
+    void *memory = arena_clone(a, p, temp_count - start);
+    temp_count = start;
+    return memory;
 }
 
 // FS

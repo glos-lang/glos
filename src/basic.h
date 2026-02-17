@@ -119,8 +119,10 @@ typedef struct {
 void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
 void  arena_reset(Arena *a, const void *ptr);
-void *arena_clone(Arena *a, const void *data, size_t size);
 char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
+
+void *arena_clone(Arena *a, const void *data, size_t size);
+void *arena_clone_from_temp(Arena *a, const void *p);
 
 // FS
 bool read_fp(FILE *f, SV *out, SB *sb);

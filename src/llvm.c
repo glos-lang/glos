@@ -264,7 +264,7 @@ static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
 
     default:
         if (n->sv.count) {
-            sb_sprintf(&l->sb, "@" SV_Fmt, SV_Arg(n->sv));
+            sb_sprintf(&l->sb, "@\"" SV_Fmt "\"", SV_Arg(n->sv));
         } else {
             assert(n->iota);
             sb_sprintf(&l->sb, "%%.%zu", n->iota);
@@ -874,7 +874,7 @@ void llvm_compile(LLVM *l) {
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) it;
 
-            sb_sprintf(&l->sb, "@" SV_Fmt " = %s ", SV_Arg(it->sv), var->is_extern ? "external global" : "global");
+            sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = %s ", SV_Arg(it->sv), var->is_extern ? "external global" : "global");
             if (var->init_head) {
                 for (LLVM_Node_Var_Init *it = var->init_head; it; it = it->next) {
                     llvm_var_init_emit(l, it);
@@ -903,7 +903,7 @@ void llvm_compile(LLVM *l) {
         }
 
         llvm_type_emit(l, *fn->node.type.fn.returnn, false);
-        sb_sprintf(&l->sb, " @" SV_Fmt "(", SV_Arg(it->sv));
+        sb_sprintf(&l->sb, " @\"" SV_Fmt "\"(", SV_Arg(it->sv));
         for (size_t i = 0; i < fn->arity; i++) {
             if (i > 0) {
                 sb_push_cstr(&l->sb, ", ");

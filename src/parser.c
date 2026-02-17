@@ -297,16 +297,17 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             AST_Node_Fn *fn = (AST_Node_Fn *) node;
             fn->args = fn_args;
             fn->arity = fn_arity;
+            fn->outer_fn = p->fn_current;
 
             if (read_token(p, TOKEN_ARROW)) {
                 fn->returnn = parse_expr(p, POWER_PRE);
             }
 
             if (peek_token(p).kind == TOKEN_LBRACE) {
-                const bool is_local_save = p->is_local;
-                p->is_local = true;
+                AST_Node_Fn *fn_current_save = p->fn_current;
+                p->fn_current = fn;
                 fn->body = parse_block(p, next_token(p));
-                p->is_local = is_local_save;
+                p->fn_current = fn_current_save;
             } else {
                 fn->is_type = true;
             }
@@ -342,7 +343,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
                 AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
                 define->name = node;
-                define->is_local = p->is_local;
+                define->is_local = p->fn_current != NULL;
                 define->is_extern = p->in_extern;
 
                 token = peek_token(p);
@@ -417,7 +418,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
 }
 
 static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
-    if (p->is_local != expected_is_local) {
+    if ((p->fn_current != NULL) != expected_is_local) {
         if (!label) {
             label = token_kind_to_cstr(token.kind);
         }
@@ -427,7 +428,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
             Pos_Fmt "ERROR: Unexpected %s in %s scope\n",
             Pos_Arg(token.pos),
             label,
-            p->is_local ? "local" : "file");
+            p->fn_current ? "local" : "file");
 
         exit(1);
     }

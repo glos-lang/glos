@@ -89,6 +89,23 @@ static void compile_type(Compiler *c, AST_Type *type) {
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref);
 static void       compile_stmt(Compiler *c, AST_Node *n);
 
+static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
+    const char *name = NULL;
+    if (fn->outer_fn) {
+        name = temp_emit_fn_name(c, fn->outer_fn);
+    } else {
+        name = temp_sprintf("main");
+    }
+
+    temp_remove_null();
+    if (fn->defined_as) {
+        temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
+    } else {
+        temp_sprintf(".anonymous.%zu", c->iota_fn++);
+    }
+    return name;
+}
+
 static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
     if (fn->llvm) {
         return fn->llvm;
@@ -103,13 +120,7 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
             return fn->llvm;
         }
 
-        const char *name = NULL;
-        if (fn->defined_as) {
-            name = arena_sprintf(c->llvm.arena, "main." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
-        } else {
-            name = arena_sprintf(c->llvm.arena, "main.anonymous.%zu", ++c->iota_fn);
-        }
-
+        const char *name = arena_clone_from_temp(c->llvm.arena, temp_emit_fn_name(c, fn));
         c->llvm.fn = llvm_fn_new(&c->llvm, sv_from_cstr(name), fn->node.type.llvm, false);
         fn->llvm = (LLVM_Node *) c->llvm.fn;
         llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
@@ -365,6 +376,27 @@ static void compile_var_init(Compiler *c, AST_Node_Atom *atom) {
     }
 }
 
+static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
+    compile_type(c, &it->node.type);
+
+    SV name = it->node.token.sv;
+    if (!it->is_local && !it->is_extern) {
+        name = sv_from_cstr(arena_sprintf(c->llvm.arena, "main." SV_Fmt, SV_Arg(name)));
+    }
+
+    LLVM_Node_Var *var =
+        llvm_var_new(&c->llvm, name, it->node.type.llvm, it->is_local, !it->is_assigned, it->is_extern);
+
+    if (!it->is_extern) {
+        llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
+    }
+    it->llvm = (LLVM_Node *) var;
+
+    if (!it->is_local && it->is_assigned) {
+        compile_var_init(c, it);
+    }
+}
+
 static_assert(COUNT_AST_NODES == 13, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
@@ -383,16 +415,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         AST_Node      *it_expr = define->expr;
 
         if (!it->llvm) {
-            compile_type(c, &it->node.type);
-
-            LLVM_Node_Var *var = llvm_var_new(
-                &c->llvm, it->node.token.sv, it->node.type.llvm, define->is_local, it_expr == NULL, it->is_extern);
-
-            if (!define->is_extern) {
-                llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
-            }
-            it->llvm = (LLVM_Node *) var;
-
+            compile_var_def(c, it);
             if (it_expr) {
                 if (define->is_local) {
                     llvm_debug_set_pos(
@@ -400,8 +423,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
                         llvm_build_store(&c->llvm, it->llvm, compile_expr(c, it_expr, false)),
                         n->token.pos.row,
                         n->token.pos.col);
-                } else {
-                    compile_var_init(c, it);
                 }
             }
         }
@@ -613,19 +634,7 @@ void compiler_build(Compiler *c, const char *output) {
                 compile_fn(c, it->const_value.as.fn);
             }
         } else {
-            compile_type(c, &it->node.type);
-
-            LLVM_Node_Var *var =
-                llvm_var_new(&c->llvm, it->node.token.sv, it->node.type.llvm, false, it->is_assigned, it->is_extern);
-
-            if (!it->is_extern) {
-                llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
-            }
-            it->llvm = (LLVM_Node *) var;
-
-            if (it->is_assigned) {
-                compile_var_init(c, it);
-            }
+            compile_var_def(c, it);
         }
     }
 
@@ -674,6 +683,3 @@ void compiler_build(Compiler *c, const char *output) {
         exit(1);
     }
 }
-
-// TODO: Prefix global variables with 'main' for consistency
-// TODO: Prefix local constant functions with name of the outer function

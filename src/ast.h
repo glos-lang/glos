@@ -160,8 +160,10 @@ struct AST_Node_Fn {
     bool is_type;
     bool is_extern;
 
+    AST_Node_Fn   *outer_fn;
     AST_Node_Atom *defined_as;
-    LLVM_Node     *llvm;
+
+    LLVM_Node *llvm;
 };
 
 typedef enum {
