@@ -4,9 +4,10 @@
 #include "llvm.h"
 #include "token.h"
 
-typedef struct AST_Node      AST_Node;
-typedef struct AST_Node_Fn   AST_Node_Fn;
-typedef struct AST_Node_Atom AST_Node_Atom;
+typedef struct AST_Node        AST_Node;
+typedef struct AST_Node_Fn     AST_Node_Fn;
+typedef struct AST_Node_Atom   AST_Node_Atom;
+typedef struct AST_Node_Define AST_Node_Define;
 
 typedef struct {
     AST_Node *head;
@@ -90,6 +91,12 @@ typedef struct {
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 typedef enum {
+    CHECK_TODO,
+    CHECK_DOING,
+    CHECK_DONE,
+} Check_Level;
+
+typedef enum {
     AST_NODE_ATOM,
     AST_NODE_UNARY,
     AST_NODE_BINARY,
@@ -126,12 +133,14 @@ struct AST_Node_Atom {
     AST_Node node;
 
     // When this atom is a definition
-    bool        is_const;
-    bool        is_local;
-    bool        is_extern;
-    bool        is_assigned;
-    Const_Value const_value;
-    LLVM_Node  *llvm;
+    bool             is_const;
+    bool             is_local;
+    bool             is_extern;
+    bool             is_assigned;
+    Check_Level      check_level;
+    Const_Value      const_value;
+    AST_Node_Define *definition_stmt;
+    LLVM_Node       *llvm;
 
     // When this atom is a reference to another defining atom
     AST_Node_Atom *definition;
@@ -186,7 +195,7 @@ typedef struct {
     Type_Cast type_cast;
 } AST_Node_Call;
 
-typedef struct {
+struct AST_Node_Define {
     AST_Node  node;
     AST_Node *name;
     AST_Node *type;
@@ -196,7 +205,7 @@ typedef struct {
     bool is_const;
     bool is_local;
     bool is_extern;
-} AST_Node_Define;
+};
 
 typedef struct {
     AST_Node  node;

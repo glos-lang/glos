@@ -4,14 +4,14 @@
 #include "context.h"
 
 typedef struct {
-    Cmd *cmd;
-    LLVM llvm;
-
     Scope locals;
     Scope globals;
 
     AST_Node_Fn *fn_current;
     size_t       fn_base;
+
+    Cmd *cmd;
+    LLVM llvm;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;

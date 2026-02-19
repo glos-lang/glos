@@ -1,0 +1,21 @@
+foo :: (x: bool) {
+    if x {
+        print 1337
+    } else {
+        print 69
+    }
+    bar(x)
+}
+
+bar :: (x: bool) {
+    if x {
+        print 80085
+    } else {
+        print 420
+        foo(true)
+    }
+}
+
+main :: () {
+    foo(false)
+}
