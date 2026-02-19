@@ -229,7 +229,7 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static void check_expr(Compiler *c, AST_Node *n, bool toplevel, bool constant);
+static void check_expr(Compiler *c, AST_Node *n, bool toplevel);
 static void check_stmt(Compiler *c, AST_Node *n, bool toplevel);
 
 static void check_ident(Compiler *c, AST_Node *n) {
@@ -379,15 +379,13 @@ static bool always_returns(AST_Node *n) {
 }
 
 static_assert(COUNT_AST_NODES == 13, "");
-static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
+static void check_expr(Compiler *c, AST_Node *n, bool pre) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        AST_Node_Atom *atom = (AST_Node_Atom *) n;
-
         static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
@@ -400,16 +398,6 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
 
         case TOKEN_IDENT:
             check_ident(c, n);
-            if (constant) {
-                AST_Node_Atom *definition = atom->definition;
-                if (definition && !definition->is_const) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Cannot use variables in a constant expression\n",
-                        Pos_Arg(n->token.pos));
-                    exit(1);
-                }
-            }
             break;
 
         default:
@@ -419,7 +407,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        check_expr(c, unary->value, pre, constant);
+        check_expr(c, unary->value, pre);
 
         static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
@@ -428,11 +416,6 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
             break;
 
         case TOKEN_MUL:
-            if (constant) {
-                fprintf(stderr, Pos_Fmt "ERROR: Cannot dereference in a constant expression\n", Pos_Arg(n->token.pos));
-                exit(1);
-            }
-
             if (!unary->value->type.ref) {
                 if (unary->value->type.kind == AST_TYPE_RAWPTR) {
                     fprintf(
@@ -459,14 +442,6 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
             if (n->type.kind == AST_TYPE_TYPE) {
                 n->type.spec.type->ref++;
             } else {
-                if (constant) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Cannot take reference in a constant expression\n",
-                        Pos_Arg(n->token.pos));
-                    exit(1);
-                }
-
                 ast_node_assert_can_be_referenced(unary->value);
                 n->type.ref++;
             }
@@ -491,8 +466,8 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        check_expr(c, binary->lhs, pre, constant);
-        check_expr(c, binary->rhs, pre, constant);
+        check_expr(c, binary->lhs, pre);
+        check_expr(c, binary->rhs, pre);
 
         static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
@@ -529,7 +504,6 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
             break;
 
         case TOKEN_SET:
-            assert(!constant);
             ast_node_assert_can_be_referenced(binary->lhs);
             ast_type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
@@ -566,7 +540,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
             }
 
             if (fn->returnn) {
-                check_expr(c, fn->returnn, pre, constant);
+                check_expr(c, fn->returnn, pre);
                 ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
                 fn_type.returnn = fn->returnn->type.spec.type;
             } else {
@@ -599,7 +573,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
-        check_expr(c, call->fn, pre, constant);
+        check_expr(c, call->fn, pre);
 
         const AST_Type fn_type = call->fn->type;
         if (fn_type.kind == AST_TYPE_TYPE) {
@@ -613,7 +587,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
             }
             n->type = *fn_type.spec.type;
 
-            check_expr(c, call->args.head, pre, constant);
+            check_expr(c, call->args.head, pre);
             const AST_Type from_type = call->args.head->type;
 
             if (ast_type_is_scalar(n->type)) {
@@ -665,15 +639,6 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
                 call->type_cast = TYPE_CAST_NORMAL;
             }
         } else {
-            if (constant) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot call functions in a constant expression\n",
-                    Pos_Arg(call->fn->token.pos));
-
-                exit(1);
-            }
-
             if (fn_type.kind != AST_TYPE_FN) {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Cannot call %s\n", Pos_Arg(call->fn->token.pos), ast_type_to_cstr(fn_type));
@@ -691,7 +656,7 @@ static void check_expr(Compiler *c, AST_Node *n, bool pre, bool constant) {
 
             call->arity = 0;
             for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-                check_expr(c, arg, pre, constant);
+                check_expr(c, arg, pre);
                 if (call->arity >= fn_type.spec.fn.arity) {
                     error_too_many_arguments(arg->token.pos, fn_type.spec.fn.arity);
                 }
@@ -733,9 +698,14 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
                 return const_value_type(n->type);
             }
 
-            AST_Node_Atom *definition = atom->definition;
-            assert(definition);
-            return definition->const_value;
+            assert(atom->definition);
+            if (!atom->definition->is_const) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            return atom->definition->const_value;
         }
 
         default:
@@ -755,14 +725,20 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return const_value_int(-value.as.integer);
 
         case TOKEN_MUL:
-            unreachable();
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot dereference in a constant expression\n", Pos_Arg(n->token.pos));
+            exit(1);
             break;
 
         case TOKEN_BAND:
             value = eval_const_expr(c, unary->value);
-            assert(value.kind == CONST_VALUE_TYPE);
-            value.as.type.ref++;
-            return value;
+            if (value.kind == CONST_VALUE_TYPE) {
+                value.as.type.ref++;
+                return value;
+            }
+
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference in a constant expression\n", Pos_Arg(n->token.pos));
+            exit(1);
+            break;
 
         case TOKEN_BNOT:
             value = eval_const_expr(c, unary->value);
@@ -879,7 +855,13 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
-        assert(call->is_type_cast);
+        if (!call->is_type_cast) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot call functions in a constant expression\n",
+                Pos_Arg(call->fn->token.pos));
+            exit(1);
+        }
 
         const Const_Value value = eval_const_expr(c, call->args.head);
         static_assert(COUNT_TYPE_CASTS == 3, "");
@@ -945,21 +927,22 @@ static void check_stmt(Compiler *c, AST_Node *n, bool pre) {
         }
 
         if (define->type) {
-            check_expr(c, define->type, pre, define->is_const);
+            check_expr(c, define->type, pre);
             ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
             it->node.type = *define->type->type.spec.type;
         }
 
         if (it_expr) {
             it->is_assigned = true;
-            check_expr(c, it_expr, pre, !define->is_local || define->is_const);
+            check_expr(c, it_expr, pre);
 
             if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Cannot store %s in a variable\n",
+                    Pos_Fmt "ERROR: Cannot store %s in a %s\n",
                     Pos_Arg(it_expr->token.pos),
-                    ast_type_to_cstr(it_expr->type));
+                    ast_type_to_cstr(it_expr->type),
+                    define->is_const ? "constant" : "variable");
 
                 exit(1);
             }
@@ -1009,7 +992,7 @@ static void check_stmt(Compiler *c, AST_Node *n, bool pre) {
     case AST_NODE_IF: {
         assert(!pre);
         AST_Node_If *iff = (AST_Node_If *) n;
-        check_expr(c, iff->condition, false, false);
+        check_expr(c, iff->condition, false);
         ast_type_assert(c, iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
         check_stmt(c, iff->consequence, false);
         check_stmt(c, iff->antecedence, false);
@@ -1022,7 +1005,7 @@ static void check_stmt(Compiler *c, AST_Node *n, bool pre) {
         const size_t locals_count_save = c->locals.count;
         {
             check_stmt(c, forr->init, false);
-            check_expr(c, forr->condition, false, false);
+            check_expr(c, forr->condition, false);
             if (forr->condition) {
                 ast_type_assert(c, forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
             }
@@ -1043,7 +1026,7 @@ static void check_stmt(Compiler *c, AST_Node *n, bool pre) {
 
         n->type.kind = AST_TYPE_UNIT;
         if (returnn->value) {
-            check_expr(c, returnn->value, false, false);
+            check_expr(c, returnn->value, false);
             ast_type_assert(c, returnn->value, expected);
             n->type = returnn->value->type;
         } else {
@@ -1061,13 +1044,13 @@ static void check_stmt(Compiler *c, AST_Node *n, bool pre) {
     case AST_NODE_PRINT: {
         assert(!pre);
         AST_Node_Print *print = (AST_Node_Print *) n;
-        check_expr(c, print->value, false, false);
+        check_expr(c, print->value, false);
         ast_type_assert_scalar(print->value);
     } break;
 
     default:
         assert(!pre);
-        check_expr(c, n, false, false);
+        check_expr(c, n, false);
         break;
     }
 }
