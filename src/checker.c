@@ -1,6 +1,7 @@
 #include "checker.h"
 #include "ast.h"
 #include "basic.h"
+#include "context.h"
 #include "token.h"
 
 static void error_undefined(const AST_Node *n) {
@@ -230,7 +231,7 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static void check_node(Compiler *c, AST_Node *n, bool full);
+static void check_node(Compiler *c, AST_Node *n);
 
 static void check_ident(Compiler *c, AST_Node *n) {
     AST_Node_Atom *atom = (AST_Node_Atom *) n;
@@ -239,24 +240,31 @@ static void check_ident(Compiler *c, AST_Node *n) {
         exit(1);
     }
 
-    AST_Node_Atom *definition = scope_find(c->locals, n->token.sv, c->fn_base);
+    AST_Node_Atom *definition = context_find_local(&c->context, n->token.sv);
     if (!definition) {
-        definition = scope_find(c->globals, n->token.sv, 0);
+        definition = scope_find(c->globals, n->token.sv);
     }
     atom->definition = definition;
 
     if (definition) {
-        switch (definition->node.check_level) {
-        case CHECK_TODO:
-            check_node(c, (AST_Node *) definition->definition_stmt, false);
-            break;
+        switch (definition->inference_status) {
+        case UNINFERRED: {
+            Context_Fn *context_fn_save = c->context.current;
 
-        case CHECK_DOING:
-            fprintf(stderr, Pos_Fmt "ERROR: Reference loop\n", Pos_Arg(n->token.pos));
+            // TODO: This should be the context it was defined it
+            // For now, only globals can be forward referenced, but later local constants might be considered
+            c->context.current = NULL;
+
+            check_node(c, (AST_Node *) definition->definition_stmt);
+            context_restore_fn(&c->context, context_fn_save);
+        } break;
+
+        case INFERRING:
+            fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
             exit(1);
             break;
 
-        case CHECK_DONE:
+        case INFERRED:
             // Pass
             break;
         }
@@ -589,17 +597,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 }
 
 static_assert(COUNT_AST_NODES == 13, "");
-static void check_node(Compiler *c, AST_Node *n, bool full) {
+static void check_node(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
     }
-
-    if (n->check_level == CHECK_DONE) {
-        return;
-    }
-
-    bool should_set_done = true;
-    n->check_level = CHECK_DOING;
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
@@ -624,7 +625,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
 
     case AST_NODE_UNARY: {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
-        check_node(c, unary->value, full);
+        check_node(c, unary->value);
 
         static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
@@ -683,8 +684,8 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        check_node(c, binary->lhs, full);
-        check_node(c, binary->rhs, full);
+        check_node(c, binary->lhs);
+        check_node(c, binary->rhs);
 
         static_assert(COUNT_TOKENS == 39, "");
         switch (n->token.kind) {
@@ -734,11 +735,8 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
 
-        const size_t fn_base_save = c->fn_base;
-        c->fn_base = c->locals.count;
-
-        AST_Node_Fn *fn_current_save = c->fn_current;
-        c->fn_current = fn;
+        Context_Fn context_fn = {.fn = fn, .outer = c->context.current};
+        context_push_fn(&c->context, &context_fn);
 
         {
             if (fn->signature_checked) {
@@ -747,7 +745,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                     AST_Node_Define *define = (AST_Node_Define *) arg;
 
                     assert(define->name->kind == AST_NODE_ATOM);
-                    da_push(&c->locals, (AST_Node_Atom *) define->name);
+                    context_push_local(&c->context, (AST_Node_Atom *) define->name);
                 }
             } else {
                 AST_Type_Fn fn_type = {
@@ -755,7 +753,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                 };
 
                 for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
-                    check_node(c, arg, full);
+                    check_node(c, arg);
 
                     assert(arg->kind == AST_NODE_DEFINE);
                     AST_Node_Define *define = (AST_Node_Define *) arg;
@@ -767,7 +765,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                 }
 
                 if (fn->returnn) {
-                    check_node(c, fn->returnn, full);
+                    check_node(c, fn->returnn);
                     ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
                     fn_type.returnn = fn->returnn->type.spec.type;
                 } else {
@@ -781,7 +779,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                 if (fn->defined_as) {
                     // The body of a function is irrelevant for outer expressions
                     fn->defined_as->node.type = n->type;
-                    fn->defined_as->node.check_level = CHECK_DONE;
+                    fn->defined_as->inference_status = INFERRED;
                 }
             }
 
@@ -792,28 +790,22 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                 };
                 n->type = meta;
             } else if (fn->body) {
-                if (full) {
-                    check_node(c, fn->body, full);
-                    if (fn->returnn && !always_returns(fn->body)) {
-                        assert(fn->body->kind == AST_NODE_BLOCK);
-                        const Pos end = ((AST_Node_Block *) fn->body)->end;
-                        fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
-                        exit(1);
-                    }
-                } else {
-                    should_set_done = false;
+                check_node(c, fn->body);
+                if (fn->returnn && !always_returns(fn->body)) {
+                    assert(fn->body->kind == AST_NODE_BLOCK);
+                    const Pos end = ((AST_Node_Block *) fn->body)->end;
+                    fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
+                    exit(1);
                 }
             }
         }
 
-        c->locals.count = c->fn_base;
-        c->fn_base = fn_base_save;
-        c->fn_current = fn_current_save;
+        context_pop_fn(&c->context);
     } break;
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
-        check_node(c, call->fn, full);
+        check_node(c, call->fn);
 
         const AST_Type fn_type = call->fn->type;
         if (fn_type.kind == AST_TYPE_TYPE) {
@@ -827,7 +819,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
             }
             n->type = *fn_type.spec.type;
 
-            check_node(c, call->args.head, full);
+            check_node(c, call->args.head);
             const AST_Type from_type = call->args.head->type;
 
             if (ast_type_is_scalar(n->type)) {
@@ -896,7 +888,7 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
 
             call->arity = 0;
             for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-                check_node(c, arg, full);
+                check_node(c, arg);
                 if (call->arity >= fn_type.spec.fn.arity) {
                     error_too_many_arguments(arg->token.pos, fn_type.spec.fn.arity);
                 }
@@ -919,18 +911,14 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
         AST_Node      *it_expr = define->expr;
         const bool     it_is_underscore = sv_match(it->node.token.sv, "_");
 
-        bool it_needs_checking = it->node.check_level != CHECK_DONE;
-        if (define->is_const && it_expr->kind == AST_NODE_FN) {
-            if (((AST_Node_Fn *) it_expr)->node.check_level != CHECK_DONE) {
-                it_needs_checking = true;
-            }
-        }
+        assert(it->inference_status != INFERRING); // It is already checked
+        if (it->inference_status == UNINFERRED) {
+            it->inference_status = INFERRING;
 
-        if (it_needs_checking) {
             if (define->is_arg) {
                 if (!it_is_underscore) {
-                    for (size_t i = c->fn_base; i < c->locals.count; i++) {
-                        AST_Node_Atom *previous = c->locals.data[i];
+                    for (size_t i = c->context.current->begin; i < c->context.current->end; i++) {
+                        AST_Node_Atom *previous = c->context.locals.data[i];
                         if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
                             error_redefinition(it, previous);
                         }
@@ -939,14 +927,14 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
             }
 
             if (define->type) {
-                check_node(c, define->type, full);
+                check_node(c, define->type);
                 ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
                 it->node.type = *define->type->type.spec.type;
             }
 
             if (it_expr) {
                 it->is_assigned = true;
-                check_node(c, it_expr, full);
+                check_node(c, it_expr);
 
                 if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
                     fprintf(
@@ -969,14 +957,9 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
                 }
             }
 
-            bool should_set_done_for_it = true;
             if (define->is_const) {
                 if (it_expr->kind == AST_NODE_FN) {
                     ((AST_Node_Fn *) it_expr)->defined_as = it;
-                    if (!full) {
-                        should_set_done = false;
-                        should_set_done_for_it = false;
-                    }
                 }
 
                 it->is_const = true;
@@ -989,48 +972,46 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
             if (define->is_local) {
                 it->is_local = true;
                 if (!it_is_underscore) {
-                    scope_push(&c->locals, it);
+                    context_push_local(&c->context, it);
                 }
             }
 
-            if (should_set_done_for_it) {
-                it->node.check_level = CHECK_DONE;
-            }
+            it->inference_status = INFERRED;
         }
     } break;
 
     case AST_NODE_BLOCK: {
         AST_Node_Block *block = (AST_Node_Block *) n;
 
-        const size_t locals_count_save = c->locals.count;
+        const size_t context_end_save = c->context.current->end;
         for (AST_Node *it = block->body.head; it; it = it->next) {
-            check_node(c, it, full);
+            check_node(c, it);
         }
-        c->locals.count = locals_count_save;
+        context_set_end(&c->context, context_end_save);
     } break;
 
     case AST_NODE_IF: {
         AST_Node_If *iff = (AST_Node_If *) n;
-        check_node(c, iff->condition, full);
+        check_node(c, iff->condition);
         ast_type_assert(c, iff->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
-        check_node(c, iff->consequence, full);
-        check_node(c, iff->antecedence, full);
+        check_node(c, iff->consequence);
+        check_node(c, iff->antecedence);
     } break;
 
     case AST_NODE_FOR: {
         AST_Node_For *forr = (AST_Node_For *) n;
 
-        const size_t locals_count_save = c->locals.count;
+        const size_t context_end_save = c->context.current->end;
         {
-            check_node(c, forr->init, full);
-            check_node(c, forr->condition, full);
+            check_node(c, forr->init);
+            check_node(c, forr->condition);
             if (forr->condition) {
                 ast_type_assert(c, forr->condition, (AST_Type) {.kind = AST_TYPE_BOOL});
             }
-            check_node(c, forr->update, full);
-            check_node(c, forr->body, full);
+            check_node(c, forr->update);
+            check_node(c, forr->body);
         }
-        c->locals.count = locals_count_save;
+        context_set_end(&c->context, context_end_save);
     } break;
 
     case AST_NODE_JUMP:
@@ -1039,11 +1020,11 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
 
     case AST_NODE_RETURN: {
         AST_Node_Return *returnn = (AST_Node_Return *) n;
-        const AST_Type   expected = *c->fn_current->node.type.spec.fn.returnn;
+        const AST_Type   expected = *c->context.current->fn->node.type.spec.fn.returnn;
 
         n->type.kind = AST_TYPE_UNIT;
         if (returnn->value) {
-            check_node(c, returnn->value, full);
+            check_node(c, returnn->value);
             ast_type_assert(c, returnn->value, expected);
             n->type = returnn->value->type;
         } else {
@@ -1054,23 +1035,19 @@ static void check_node(Compiler *c, AST_Node *n, bool full) {
     case AST_NODE_EXTERN: {
         AST_Node_Extern *externn = (AST_Node_Extern *) n;
         for (AST_Node *it = externn->nodes.head; it; it = it->next) {
-            check_node(c, it, full);
+            check_node(c, it);
         }
     } break;
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
-        check_node(c, print->value, full);
+        check_node(c, print->value);
         ast_type_assert_scalar(print->value);
     } break;
 
     default:
-        check_node(c, n, full);
+        check_node(c, n);
         break;
-    }
-
-    if (should_set_done) {
-        n->check_level = CHECK_DONE;
     }
 }
 
@@ -1097,7 +1074,7 @@ static void define_toplevel(Compiler *c, AST_Node *n) {
             error_redefinition(it, NULL);
         }
 
-        AST_Node_Atom *previous = scope_find(c->globals, it->node.token.sv, 0);
+        AST_Node_Atom *previous = scope_find(c->globals, it->node.token.sv);
         if (previous) {
             error_redefinition(it, previous);
         }
@@ -1128,8 +1105,6 @@ void check_nodes(Compiler *c, AST_Nodes nodes) {
     }
 
     for (AST_Node *it = nodes.head; it; it = it->next) {
-        check_node(c, it, true);
+        check_node(c, it);
     }
 }
-
-// TODO: The mechanism using `full` is quite finicky, switch to checker context

@@ -91,10 +91,10 @@ typedef struct {
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 typedef enum {
-    CHECK_TODO,
-    CHECK_DOING,
-    CHECK_DONE,
-} Check_Level;
+    UNINFERRED,
+    INFERRING,
+    INFERRED,
+} Inference_Status;
 
 typedef enum {
     AST_NODE_ATOM,
@@ -124,8 +124,7 @@ struct AST_Node {
     Token    token;
     AST_Type type;
 
-    bool        is_memory;
-    Check_Level check_level;
+    bool is_memory;
 
     AST_Node *next;
 };
@@ -140,6 +139,7 @@ struct AST_Node_Atom {
     bool             is_assigned;
     Const_Value      const_value;
     AST_Node_Define *definition_stmt;
+    Inference_Status inference_status;
     LLVM_Node       *llvm;
 
     // When this atom is a reference to another defining atom
