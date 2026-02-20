@@ -1,0 +1,8 @@
+main :: () {
+    N :: 420
+    {
+        N :: 69
+        print N
+    }
+    print N
+}

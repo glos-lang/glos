@@ -101,6 +101,7 @@ int main(int argc, char **argv) {
         cmd.count = 0;
         cmd_push(&cmd, temp_sprintf("./%s", output));
         cmd_push_many(&cmd, argv, argc);
+        // TODO: This makes the error message worse in case the process could not be started
         result = cmd_run_sync(&cmd, (Cmd_Stdio) {0});
         delete_file(output);
     }

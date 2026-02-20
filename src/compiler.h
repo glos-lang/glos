@@ -4,20 +4,18 @@
 #include "context.h"
 
 typedef struct {
+    Scope   globals;
+    Context context;
+
     Cmd *cmd;
     LLVM llvm;
-
-    Scope locals;
-    Scope globals;
-
-    AST_Node_Fn *fn_current;
-    size_t       fn_base;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
 
+    size_t iota_anonymous_fn;
+
     // TODO: Temporary solutions to permanent problems
-    size_t      iota_fn;
     const char *path;
 } Compiler;
 

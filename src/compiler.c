@@ -101,7 +101,7 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
     if (fn->defined_as) {
         temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
     } else {
-        temp_sprintf(".anonymous.%zu", c->iota_fn++);
+        temp_sprintf(".anonymous.%zu", c->iota_anonymous_fn++);
     }
     return name;
 }
@@ -202,6 +202,10 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 default:
                     unreachable();
                 }
+            }
+
+            if (!definition->llvm) {
+                compile_stmt(c, (AST_Node *) definition->definition_stmt);
             }
 
             if (ref) {
@@ -576,7 +580,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 }
 
 static AST_Node_Fn *get_main(Compiler *c) {
-    AST_Node_Atom *main = scope_find(c->globals, sv_from_cstr("main"), 0);
+    AST_Node_Atom *main = scope_find(c->globals, sv_from_cstr("main"));
     if (!main) {
         fprintf(
             stderr,
@@ -674,8 +678,8 @@ void compiler_build(Compiler *c, const char *output) {
     }
 
     llvm_free(&c->llvm);
-    da_free(&c->locals);
     da_free(&c->globals);
+    da_free(&c->context.locals);
 
     const int code = cmd_wait(proc);
     if (code != 0) {

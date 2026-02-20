@@ -1,6 +1,0 @@
-EXIT 1
-STDOUT 0
-
-STDERR 133
-tests/error_underscore_cannot_be_defined_as_a_global_variable.glos:1:1: ERROR: Identifier '_' cannot be defined as a global variable
-

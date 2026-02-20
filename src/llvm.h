@@ -152,7 +152,7 @@ LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, LLVM_Node_Block *antecedence);
 LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value);
 
-LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value);
+LLVM_Node *llvm_build_print(LLVM *l, LLVM_Node *value); // TODO: Not needed anymore
 
 void llvm_debug_set_file(LLVM *l, const char *path);
 void llvm_debug_set_pos(LLVM *l, LLVM_Node *n, size_t row, size_t col);
