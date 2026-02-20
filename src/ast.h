@@ -124,7 +124,8 @@ struct AST_Node {
     Token    token;
     AST_Type type;
 
-    bool is_memory;
+    bool        is_memory;
+    Check_Level check_level;
 
     AST_Node *next;
 };
@@ -137,7 +138,6 @@ struct AST_Node_Atom {
     bool             is_local;
     bool             is_extern;
     bool             is_assigned;
-    Check_Level      check_level;
     Const_Value      const_value;
     AST_Node_Define *definition_stmt;
     LLVM_Node       *llvm;
@@ -168,6 +168,8 @@ struct AST_Node_Fn {
 
     bool is_type;
     bool is_extern;
+
+    bool signature_checked;
 
     AST_Node_Fn   *outer_fn;
     AST_Node_Atom *defined_as;
