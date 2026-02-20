@@ -4,6 +4,8 @@
 #include "llvm.h"
 #include "token.h"
 
+typedef struct Context_Fn Context_Fn;
+
 typedef struct AST_Node        AST_Node;
 typedef struct AST_Node_Fn     AST_Node_Fn;
 typedef struct AST_Node_Atom   AST_Node_Atom;
@@ -132,18 +134,25 @@ struct AST_Node {
 struct AST_Node_Atom {
     AST_Node node;
 
-    // When this atom is a definition
-    bool             is_const;
-    bool             is_local;
-    bool             is_extern;
-    bool             is_assigned;
-    Const_Value      const_value;
+    // When this atom is a definition {
+    bool is_local;
+    bool is_extern;
+    bool is_assigned;
+
     AST_Node_Define *definition_stmt;
     Inference_Status inference_status;
-    LLVM_Node       *llvm;
 
-    // When this atom is a reference to another defining atom
+    Context_Fn *context;
+
+    bool        is_const;
+    Const_Value const_value;
+
+    LLVM_Node *llvm;
+    // }
+
+    // When this atom is a reference to another defining atom {
     AST_Node_Atom *definition;
+    // }
 };
 
 typedef struct {

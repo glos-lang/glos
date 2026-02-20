@@ -1,0 +1,11 @@
+main :: () {
+    putchar(CHAR_E)
+    putchar(CHAR_NEWLINE)
+
+    extern {
+        putchar :: (c: i32) -> i32
+    }
+
+    CHAR_E :: 69
+    CHAR_NEWLINE :: 10
+}

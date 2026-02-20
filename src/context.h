@@ -8,8 +8,6 @@ typedef Dynamic_Array(AST_Node_Atom *) Scope;
 void           scope_push(Scope *scope, AST_Node_Atom *node);
 AST_Node_Atom *scope_find(Scope scope, SV name);
 
-typedef struct Context_Fn Context_Fn;
-
 struct Context_Fn {
     AST_Node_Fn *fn;
 
@@ -18,6 +16,8 @@ struct Context_Fn {
 
     Context_Fn *outer;
 };
+
+AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts);
 
 typedef struct {
     Scope       locals;

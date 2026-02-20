@@ -250,11 +250,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
         switch (definition->inference_status) {
         case UNINFERRED: {
             Context_Fn *context_fn_save = c->context.current;
-
-            // TODO: This should be the context it was defined it
-            // For now, only globals can be forward referenced, but later local constants might be considered
-            c->context.current = NULL;
-
+            c->context.current = definition->context;
             check_node(c, (AST_Node *) definition->definition_stmt);
             context_restore_fn(&c->context, context_fn_save);
         } break;
@@ -592,6 +588,74 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     default:
         unreachable();
+        break;
+    }
+}
+
+static_assert(COUNT_AST_NODES == 13, "");
+static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_start) {
+    switch (n->kind) {
+    case AST_NODE_DEFINE: {
+        AST_Node_Define *define = (AST_Node_Define *) n;
+        assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+
+        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+        AST_Node      *it_expr = define->expr;
+
+        // TODO: This, and related fields, should be done in the parser itself
+        it->is_const = define->is_const;
+
+        if (!sv_match(it->node.token.sv, "_")) {
+            if (define->is_local) {
+                if (define->is_const) {
+                    const Context_Fn *fn = c->context.current;
+
+                    assert(fn->end <= c->context.locals.count);
+                    assert(block_start <= c->context.locals.count);
+                    assert(block_start <= fn->end);
+                    for (size_t i = fn->end; i > block_start; i--) {
+                        AST_Node_Atom *previous = c->context.locals.data[i - 1];
+                        if (!previous->is_const) {
+                            continue;
+                        }
+
+                        if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
+                            error_redefinition(it, previous);
+                            break;
+                        }
+                    }
+
+                    it->context = c->context.current;
+                    context_push_local(&c->context, it);
+                }
+            } else {
+                if (get_builtin_type_kind(it->node.token.sv, NULL)) {
+                    error_redefinition(it, NULL);
+                }
+
+                AST_Node_Atom *previous = scope_find(c->globals, it->node.token.sv);
+                if (previous) {
+                    error_redefinition(it, previous);
+                }
+
+                da_push(&c->globals, it);
+            }
+
+            if (define->is_const && it_expr->kind == AST_NODE_FN) {
+                ((AST_Node_Fn *) it_expr)->defined_as = it;
+            }
+        }
+    } break;
+
+    case AST_NODE_EXTERN: {
+        AST_Node_Extern *externn = (AST_Node_Extern *) n;
+        for (AST_Node *it = externn->nodes.head; it; it = it->next) {
+            define_orderless_nodes(c, it, block_start);
+        }
+    } break;
+
+    default:
+        // Pass
         break;
     }
 }
@@ -971,7 +1035,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             it->is_extern = define->is_extern;
             if (define->is_local) {
                 it->is_local = true;
-                if (!it_is_underscore) {
+                if (!it_is_underscore && !it->is_const) {
                     context_push_local(&c->context, it);
                 }
             }
@@ -984,6 +1048,10 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Block *block = (AST_Node_Block *) n;
 
         const size_t context_end_save = c->context.current->end;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            define_orderless_nodes(c, it, context_end_save);
+        }
+
         for (AST_Node *it = block->body.head; it; it = it->next) {
             check_node(c, it);
         }
@@ -1051,57 +1119,9 @@ static void check_node(Compiler *c, AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
-static void define_toplevel(Compiler *c, AST_Node *n) {
-    switch (n->kind) {
-    case AST_NODE_DEFINE: {
-        AST_Node_Define *define = (AST_Node_Define *) n;
-        assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-
-        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-        AST_Node      *it_expr = define->expr;
-
-        if (sv_match(it->node.token.sv, "_")) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Identifier '_' cannot be defined as a global variable\n",
-                Pos_Arg(it->node.token.pos));
-
-            exit(1);
-        }
-
-        if (get_builtin_type_kind(it->node.token.sv, NULL)) {
-            error_redefinition(it, NULL);
-        }
-
-        AST_Node_Atom *previous = scope_find(c->globals, it->node.token.sv);
-        if (previous) {
-            error_redefinition(it, previous);
-        }
-
-        if (define->is_const && it_expr->kind == AST_NODE_FN) {
-            ((AST_Node_Fn *) it_expr)->defined_as = it;
-        }
-
-        da_push(&c->globals, it);
-    } break;
-
-    case AST_NODE_EXTERN: {
-        AST_Node_Extern *externn = (AST_Node_Extern *) n;
-        for (AST_Node *it = externn->nodes.head; it; it = it->next) {
-            define_toplevel(c, it);
-        }
-    } break;
-
-    default:
-        // Pass
-        break;
-    }
-}
-
 void check_nodes(Compiler *c, AST_Nodes nodes) {
     for (AST_Node *it = nodes.head; it; it = it->next) {
-        define_toplevel(c, it);
+        define_orderless_nodes(c, it, 0);
     }
 
     for (AST_Node *it = nodes.head; it; it = it->next) {

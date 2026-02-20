@@ -17,7 +17,7 @@ AST_Node_Atom *scope_find(Scope scope, SV name) {
     return NULL;
 }
 
-static AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_constants) {
+AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts) {
     if (!fn) {
         return NULL;
     }
@@ -26,7 +26,7 @@ static AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals,
     assert(fn->end <= locals->count);
     for (size_t i = fn->end; i > fn->begin; i--) {
         AST_Node_Atom *it = locals->data[i - 1];
-        if (!it->is_const && only_constants) {
+        if (!it->is_const && only_consts) {
             continue;
         }
 
