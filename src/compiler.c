@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "llvm.h"
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {

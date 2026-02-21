@@ -64,6 +64,7 @@ typedef struct {
         long integer;
     } as;
     bool is_zeroed;
+    bool is_casted_to_ptr;
 } LLVM_Node_Atom;
 
 typedef struct {
@@ -254,7 +255,11 @@ static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
         if (atom->is_zeroed) {
             sb_push_cstr(&l->sb, "zeroinitializer");
         } else {
-            sb_sprintf(&l->sb, "%ld", atom->as.integer);
+            if (atom->is_casted_to_ptr) {
+                sb_sprintf(&l->sb, "inttoptr (i64 %ld to ptr)", atom->as.integer);
+            } else {
+                sb_sprintf(&l->sb, "%ld", atom->as.integer);
+            }
         }
     } break;
 
@@ -351,7 +356,12 @@ static LLVM_Type_Kind llvm_type_kind_to_signed(LLVM_Type_Kind kind) {
 static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) {
     const LLVM_Type_Kind from_signed = llvm_type_kind_to_signed(n->type.kind);
     const LLVM_Type_Kind to_signed = llvm_type_kind_to_signed(to);
-    if (from_signed == to_signed || n->kind == LLVM_NODE_ATOM) {
+    if (from_signed == to_signed) {
+        return n->iota;
+    }
+
+    if (n->kind == LLVM_NODE_ATOM) {
+        ((LLVM_Node_Atom *) n)->is_casted_to_ptr = to == LLVM_TYPE_PTR;
         return n->iota;
     }
 
@@ -451,7 +461,9 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
         size_t ptrtoint_lhs = 0;
         size_t ptrtoint_rhs = 0;
+        bool   is_ptr_arithmetic = false;
         if (n->type.kind == LLVM_TYPE_PTR && (binary->kind == LLVM_BINARY_ADD || binary->kind == LLVM_BINARY_SUB)) {
+            is_ptr_arithmetic = true;
             ptrtoint_lhs = llvm_cast_compile(l, binary->lhs, LLVM_TYPE_I64);
             ptrtoint_rhs = llvm_cast_compile(l, binary->rhs, LLVM_TYPE_I64);
         }
@@ -496,7 +508,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
             sb_sprintf(&l->sb, "%s ", op.i);
         }
 
-        if (ptrtoint_lhs || ptrtoint_rhs) {
+        if (is_ptr_arithmetic) {
             sb_push_cstr(&l->sb, "i64");
         } else {
             llvm_type_emit(l, binary->lhs->type, false);
@@ -520,7 +532,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
 
-        if (ptrtoint_lhs || ptrtoint_rhs) {
+        if (is_ptr_arithmetic) {
             n->type.kind = LLVM_TYPE_I64;
             n->iota = llvm_cast_compile(l, n, LLVM_TYPE_PTR);
             n->type.kind = LLVM_TYPE_PTR;
@@ -1332,6 +1344,7 @@ LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value) {
 LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type) {
     if (value->kind == LLVM_NODE_ATOM) {
         value->type = type;
+        ((LLVM_Node_Atom *) value)->is_casted_to_ptr = type.kind == LLVM_TYPE_PTR;
         return value;
     }
 

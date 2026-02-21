@@ -803,48 +803,37 @@ static void check_node(Compiler *c, AST_Node *n) {
         context_push_fn(&c->context, &context_fn);
 
         {
-            if (fn->signature_checked) {
-                for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
-                    assert(arg->kind == AST_NODE_DEFINE);
-                    AST_Node_Define *define = (AST_Node_Define *) arg;
+            AST_Type_Fn fn_type = {
+                .args = arena_alloc(c->llvm.arena, fn->arity * sizeof(*fn_type.args)),
+            };
 
-                    assert(define->name->kind == AST_NODE_ATOM);
-                    context_push_local(&c->context, (AST_Node_Atom *) define->name);
-                }
+            for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
+                check_node(c, arg);
+
+                assert(arg->kind == AST_NODE_DEFINE);
+                AST_Node_Define *define = (AST_Node_Define *) arg;
+
+                assert(define->name->kind == AST_NODE_ATOM);
+                AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+
+                fn_type.args[fn_type.arity++] = it->node.type;
+            }
+
+            if (fn->returnn) {
+                check_node(c, fn->returnn);
+                ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
+                fn_type.returnn = fn->returnn->type.spec.type;
             } else {
-                AST_Type_Fn fn_type = {
-                    .args = arena_alloc(c->llvm.arena, fn->arity * sizeof(*fn_type.args)),
-                };
+                fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                fn_type.returnn->kind = AST_TYPE_UNIT;
+            }
 
-                for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
-                    check_node(c, arg);
+            n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
 
-                    assert(arg->kind == AST_NODE_DEFINE);
-                    AST_Node_Define *define = (AST_Node_Define *) arg;
-
-                    assert(define->name->kind == AST_NODE_ATOM);
-                    AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-
-                    fn_type.args[fn_type.arity++] = it->node.type;
-                }
-
-                if (fn->returnn) {
-                    check_node(c, fn->returnn);
-                    ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
-                    fn_type.returnn = fn->returnn->type.spec.type;
-                } else {
-                    fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
-                    fn_type.returnn->kind = AST_TYPE_UNIT;
-                }
-
-                n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
-
-                fn->signature_checked = true;
-                if (fn->defined_as) {
-                    // The body of a function is irrelevant for outer expressions
-                    fn->defined_as->node.type = n->type;
-                    fn->defined_as->inference_status = INFERRED;
-                }
+            if (fn->defined_as) {
+                // The body of a function is irrelevant for outer expressions
+                fn->defined_as->node.type = n->type;
+                fn->defined_as->inference_status = INFERRED;
             }
 
             if (fn->is_type) {

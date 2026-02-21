@@ -1,3 +1,4 @@
+#include "basic.h"
 #include "checker.h"
 #include "compiler.h"
 #include "parser.h"
@@ -98,11 +99,19 @@ int main(int argc, char **argv) {
     compiler_build(&compiler, output);
 
     if (run) {
+        const char *child_name = temp_sprintf("./%s", output);
+
         cmd.count = 0;
-        cmd_push(&cmd, temp_sprintf("./%s", output));
+        cmd_push(&cmd, child_name);
         cmd_push_many(&cmd, argv, argc);
-        // TODO: This makes the error message worse in case the process could not be started
-        result = cmd_run_sync(&cmd, (Cmd_Stdio) {0});
+
+        const Proc child_proc = cmd_run_async(&cmd, (Cmd_Stdio) {0});
+        if (child_proc == PROC_INVALID) {
+            fprintf(stderr, "ERROR: Could not start process '%s'\n", child_name);
+            exit(1);
+        }
+
+        result = cmd_wait(child_proc);
         delete_file(output);
     }
 
