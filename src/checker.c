@@ -231,58 +231,6 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static void check_node(Compiler *c, AST_Node *n);
-
-static void check_ident(Compiler *c, AST_Node *n) {
-    AST_Node_Atom *atom = (AST_Node_Atom *) n;
-    if (sv_match(n->token.sv, "_")) {
-        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
-        exit(1);
-    }
-
-    AST_Node_Atom *definition = context_find_local(&c->context, n->token.sv);
-    if (!definition) {
-        definition = scope_find(c->globals, n->token.sv);
-    }
-    atom->definition = definition;
-
-    if (definition) {
-        switch (definition->inference_status) {
-        case UNINFERRED: {
-            Context_Fn *context_fn_save = c->context.current;
-            c->context.current = definition->context;
-            check_node(c, (AST_Node *) definition->definition_stmt);
-            context_restore_fn(&c->context, context_fn_save);
-        } break;
-
-        case INFERRING:
-            fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
-            exit(1);
-            break;
-
-        case INFERRED:
-            // Pass
-            break;
-        }
-
-        n->type = definition->node.type;
-        n->is_memory = !definition->is_const;
-        return;
-    }
-
-    AST_Type_Kind kind;
-    if (get_builtin_type_kind(n->token.sv, &kind)) {
-        const AST_Type type = {.kind = kind};
-        n->type = (AST_Type) {
-            .kind = AST_TYPE_TYPE,
-            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
-        };
-        return;
-    }
-
-    error_undefined(n);
-}
-
 static_assert(COUNT_AST_NODES == 13, "");
 static bool loop_breaks(AST_Node *n) {
     if (!n) {
@@ -399,7 +347,6 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return const_value_int(n->token.as.integer);
 
         case TOKEN_IDENT: {
-            check_ident(c, n);
             if (n->type.kind == AST_TYPE_TYPE) {
                 return const_value_type(n->type);
             }
@@ -657,6 +604,116 @@ static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_
     }
 }
 
+static void check_node(Compiler *c, AST_Node *n);
+
+static void check_definition(Compiler *c, AST_Node_Atom *it, AST_Node *type, AST_Node *it_expr) {
+    assert(it->check_status != CHECKING); // It is already checked
+    if (it->check_status == CHECKED) {
+        return;
+    }
+    it->check_status = CHECKING;
+
+    if (type) {
+        check_node(c, type);
+        ast_type_assert(c, type, (AST_Type) {.kind = AST_TYPE_TYPE});
+        it->node.type = *type->type.spec.type;
+    }
+
+    if (it_expr) {
+        check_node(c, it_expr);
+
+        if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !it->is_const)) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot store %s in a %s\n",
+                Pos_Arg(it_expr->token.pos),
+                ast_type_to_cstr(it_expr->type),
+                it->is_const ? "constant" : "variable");
+
+            exit(1);
+        }
+
+        if (type) {
+            ast_type_assert(c, it_expr, it->node.type);
+        } else {
+            if (!it->is_const) {
+                ast_node_finalize_type_of_untyped(it_expr);
+            }
+            it->node.type = it_expr->type;
+        }
+    }
+
+    if (it->is_const) {
+        if (it_expr->kind == AST_NODE_FN) {
+            ((AST_Node_Fn *) it_expr)->defined_as = it;
+        }
+
+        it->const_value = eval_const_expr(c, it_expr);
+    } else if (!it->is_local && it_expr) {
+        it->const_value = eval_const_expr(c, it_expr);
+    }
+
+    if (it->is_local) {
+        if (!it->is_const && !sv_match(it->node.token.sv, "_")) {
+            context_push_local(&c->context, it);
+        }
+    }
+
+    it->check_status = CHECKED;
+}
+
+static void check_ident(Compiler *c, AST_Node *n) {
+    AST_Node_Atom *atom = (AST_Node_Atom *) n;
+    if (sv_match(n->token.sv, "_")) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
+        exit(1);
+    }
+
+    AST_Node_Atom *definition = context_find_local(&c->context, n->token.sv);
+    if (!definition) {
+        definition = scope_find(c->globals, n->token.sv);
+    }
+    atom->definition = definition;
+
+    if (definition) {
+        switch (definition->check_status) {
+        case UNCHECKED: {
+            Context_Fn *context_fn_save = c->context.current;
+            c->context.current = definition->context;
+
+            // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
+            check_definition(c, definition, definition->definition_node->type, definition->assignment_node);
+            context_restore_fn(&c->context, context_fn_save);
+        } break;
+
+        case CHECKING:
+            fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
+            exit(1);
+            break;
+
+        case CHECKED:
+            // Pass
+            break;
+        }
+
+        n->type = definition->node.type;
+        n->is_memory = !definition->is_const;
+        return;
+    }
+
+    AST_Type_Kind kind;
+    if (get_builtin_type_kind(n->token.sv, &kind)) {
+        const AST_Type type = {.kind = kind};
+        n->type = (AST_Type) {
+            .kind = AST_TYPE_TYPE,
+            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
+        };
+        return;
+    }
+
+    error_undefined(n);
+}
+
 static_assert(COUNT_AST_NODES == 13, "");
 static void check_node(Compiler *c, AST_Node *n) {
     if (!n) {
@@ -837,7 +894,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             if (fn->defined_as) {
                 // The body of a function is irrelevant for outer expressions
                 fn->defined_as->node.type = n->type;
-                fn->defined_as->inference_status = INFERRED;
+                fn->defined_as->check_status = CHECKED;
             }
 
             if (fn->is_type) {
@@ -963,63 +1020,7 @@ static void check_node(Compiler *c, AST_Node *n) {
     case AST_NODE_DEFINE: {
         AST_Node_Define *define = (AST_Node_Define *) n;
         assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-
-        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-        AST_Node      *it_expr = define->expr;
-        const bool     it_is_underscore = sv_match(it->node.token.sv, "_");
-
-        assert(it->inference_status != INFERRING); // It is already checked
-        if (it->inference_status == UNINFERRED) {
-            it->inference_status = INFERRING;
-
-            if (define->type) {
-                check_node(c, define->type);
-                ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
-                it->node.type = *define->type->type.spec.type;
-            }
-
-            if (it_expr) {
-                check_node(c, it_expr);
-
-                if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !define->is_const)) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Cannot store %s in a %s\n",
-                        Pos_Arg(it_expr->token.pos),
-                        ast_type_to_cstr(it_expr->type),
-                        define->is_const ? "constant" : "variable");
-
-                    exit(1);
-                }
-
-                if (define->type) {
-                    ast_type_assert(c, it_expr, it->node.type);
-                } else {
-                    if (!define->is_const) {
-                        ast_node_finalize_type_of_untyped(it_expr);
-                    }
-                    it->node.type = it_expr->type;
-                }
-            }
-
-            if (define->is_const) {
-                if (it_expr->kind == AST_NODE_FN) {
-                    ((AST_Node_Fn *) it_expr)->defined_as = it;
-                }
-
-                it->const_value = eval_const_expr(c, it_expr);
-            } else if (!it->is_local && it_expr) {
-                it->const_value = eval_const_expr(c, it_expr);
-            }
-
-            if (it->is_local) {
-                if (!it_is_underscore && !it->is_const) {
-                    context_push_local(&c->context, it);
-                }
-            }
-
-            it->inference_status = INFERRED;
-        }
+        check_definition(c, (AST_Node_Atom *) define->name, define->type, define->expr);
     } break;
 
     case AST_NODE_BLOCK: {

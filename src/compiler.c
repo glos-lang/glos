@@ -207,7 +207,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
 
             if (!definition->llvm) {
-                compile_stmt(c, (AST_Node *) definition->definition_stmt);
+                compile_stmt(c, (AST_Node *) definition->definition_node);
             }
 
             if (ref) {

@@ -93,10 +93,10 @@ typedef struct {
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 typedef enum {
-    UNINFERRED,
-    INFERRING,
-    INFERRED,
-} Inference_Status;
+    UNCHECKED,
+    CHECKING,
+    CHECKED,
+} Check_Status;
 
 typedef enum {
     AST_NODE_ATOM,
@@ -139,10 +139,12 @@ struct AST_Node_Atom {
     bool is_extern;
     bool is_assigned;
 
-    AST_Node_Define *definition_stmt;
-    Inference_Status inference_status;
+    AST_Node_Define *definition_node;
+    AST_Node        *assignment_node;
+    bool             is_assignment_const;
 
-    Context_Fn *context;
+    Context_Fn  *context;
+    Check_Status check_status;
 
     bool        is_const;
     Const_Value const_value;

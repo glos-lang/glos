@@ -223,14 +223,16 @@ static void not_in_extern_assert(Parser *p, Token token) {
 }
 
 static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
-    AST_Node *name = define->name;
-    if (name->kind == AST_NODE_ATOM && name->token.kind == TOKEN_IDENT) {
-        AST_Node_Atom *atom = (AST_Node_Atom *) name;
-        atom->is_const = define->is_const;
-        atom->is_local = p->fn_current != NULL;
-        atom->is_extern = p->in_extern;
-        atom->is_assigned = define->expr != NULL;
-        atom->definition_stmt = define;
+    const bool is_assignment_const = define->expr && (define->is_const || p->fn_current == NULL);
+    if (define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
+        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+        it->is_const = define->is_const;
+        it->is_local = p->fn_current != NULL;
+        it->is_extern = p->in_extern;
+        it->is_assigned = define->expr != NULL;
+        it->definition_node = define;
+        it->assignment_node = define->expr;
+        it->is_assignment_const = is_assignment_const;
     } else {
         unreachable();
     }
@@ -369,7 +371,6 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
             } else {
                 error_unexpected(token);
             }
-
             define->name = node;
 
             token = peek_token(p);
