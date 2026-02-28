@@ -49,7 +49,7 @@ struct LLVM_Type {
 
         struct {
             LLVM_Type *args;
-            size_t     arity;
+            size_t     args_count;
             LLVM_Type *returnn;
         } fn;
     };
@@ -118,7 +118,7 @@ void llvm_compile(LLVM *l);
 LLVM_Type_Info llvm_type_info(LLVM_Type type);
 LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
 LLVM_Type      llvm_type_ptr(LLVM *l, LLVM_Type type);
-LLVM_Type      llvm_type_fn(LLVM *l, LLVM_Type *args, size_t arity, LLVM_Type returnn);
+LLVM_Type      llvm_type_fn(LLVM *l, LLVM_Type *args, size_t args_count, LLVM_Type returnn);
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 LLVM_Node *llvm_atom_zero(LLVM *l, LLVM_Type type);
@@ -145,7 +145,7 @@ LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
 LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);
 LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type);
 
-LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t arity);
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count);
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);

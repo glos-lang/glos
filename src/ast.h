@@ -44,9 +44,9 @@ typedef enum {
 typedef struct AST_Type AST_Type;
 
 typedef struct {
-    AST_Type *args;
-    size_t    arity;
-    AST_Type *returnn;
+    AST_Node_Atom **args;
+    size_t          args_count;
+    AST_Type       *returnn;
 } AST_Type_Fn;
 
 struct AST_Type {
@@ -93,10 +93,10 @@ typedef struct {
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 typedef enum {
-    UNINFERRED,
-    INFERRING,
-    INFERRED,
-} Inference_Status;
+    UNCHECKED,
+    CHECKING,
+    CHECKED,
+} Check_Status;
 
 typedef enum {
     AST_NODE_ATOM,
@@ -139,10 +139,12 @@ struct AST_Node_Atom {
     bool is_extern;
     bool is_assigned;
 
-    AST_Node_Define *definition_stmt;
-    Inference_Status inference_status;
+    AST_Node_Define *definition_node;
+    AST_Node        *assignment_node;
+    bool             is_assignment_const;
 
-    Context_Fn *context;
+    Context_Fn  *context;
+    Check_Status check_status;
 
     bool        is_const;
     Const_Value const_value;
@@ -170,7 +172,7 @@ struct AST_Node_Fn {
     AST_Node node;
 
     AST_Nodes args;
-    size_t    arity;
+    size_t    args_count;
 
     AST_Node *returnn;
     AST_Node *body;
@@ -196,7 +198,7 @@ typedef struct {
     AST_Node *fn;
 
     AST_Nodes args;
-    size_t    arity; // Calculated at checking phase
+    size_t    args_count; // Calculated at checking phase
 
     Pos end;
 
@@ -210,10 +212,8 @@ struct AST_Node_Define {
     AST_Node *type;
     AST_Node *expr;
 
-    bool is_arg;
-    bool is_const;
-    bool is_local;
-    bool is_extern;
+    bool   is_const;
+    size_t count;
 };
 
 typedef struct {

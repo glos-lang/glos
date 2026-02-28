@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "ast.h"
 #include "llvm.h"
 
 static_assert(COUNT_AST_TYPES == 14, "");
@@ -63,14 +64,14 @@ static void compile_type(Compiler *c, AST_Type *type) {
 
     case AST_TYPE_FN:
         if (type->llvm.kind != LLVM_TYPE_FN) {
-            const size_t arity = type->spec.fn.arity;
-            LLVM_Type   *args = arena_alloc(c->llvm.arena, arity * sizeof(*args));
+            const size_t args_count = type->spec.fn.args_count;
+            LLVM_Type   *args = arena_alloc(c->llvm.arena, args_count * sizeof(*args));
 
             compile_type(c, type->spec.fn.returnn);
-            type->llvm = llvm_type_fn(&c->llvm, args, arity, type->spec.fn.returnn->llvm);
+            type->llvm = llvm_type_fn(&c->llvm, args, args_count, type->spec.fn.returnn->llvm);
 
-            for (size_t i = 0; i < arity; i++) {
-                AST_Type *it = &type->spec.fn.args[i];
+            for (size_t i = 0; i < args_count; i++) {
+                AST_Type *it = &type->spec.fn.args[i]->node.type;
                 compile_type(c, it);
                 args[i] = it->llvm;
             }
@@ -206,7 +207,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
 
             if (!definition->llvm) {
-                compile_stmt(c, (AST_Node *) definition->definition_stmt);
+                compile_stmt(c, (AST_Node *) definition->definition_node);
             }
 
             if (ref) {
@@ -335,14 +336,14 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
         }
 
-        LLVM_Node **args = arena_alloc(c->llvm.arena, call->arity * sizeof(*args));
+        LLVM_Node **args = arena_alloc(c->llvm.arena, call->args_count * sizeof(*args));
 
         size_t iota = 0;
         for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
             args[iota++] = compile_expr(c, arg, false);
         }
 
-        assert(iota == call->arity);
+        assert(iota == call->args_count);
         return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota));
     } break;
 
@@ -422,7 +423,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         if (!it->llvm) {
             compile_var_def(c, it);
             if (it_expr) {
-                if (define->is_local) {
+                if (it->is_local) {
                     llvm_debug_set_pos(
                         &c->llvm,
                         llvm_build_store(&c->llvm, it->llvm, compile_expr(c, it_expr, false)),
@@ -601,7 +602,7 @@ static AST_Node_Fn *get_main(Compiler *c) {
     }
 
     const AST_Type_Fn signature = main->node.type.spec.fn;
-    if (signature.arity) {
+    if (signature.args_count) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
