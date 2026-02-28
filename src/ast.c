@@ -74,17 +74,18 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
     case AST_TYPE_FN:
         temp_sprintf("(");
 
-        for (size_t i = 0; i < type.spec.fn.arity; i++) {
+        for (size_t i = 0; i < type.spec.fn.args_count; i++) {
+            AST_Node_Atom *it = type.spec.fn.args[i];
             if (i) {
                 temp_remove_null();
                 temp_sprintf(", ");
             }
 
             temp_remove_null();
-            temp_sprintf("_: ");
+            temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
 
             temp_remove_null();
-            ast_type_to_cstr_impl(type.spec.fn.args[i]);
+            ast_type_to_cstr_impl(it->node.type);
         }
 
         temp_remove_null();
@@ -130,12 +131,12 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
 
     switch (a.kind) {
     case AST_TYPE_FN: {
-        if (a.spec.fn.arity != b.spec.fn.arity) {
+        if (a.spec.fn.args_count != b.spec.fn.args_count) {
             return false;
         }
 
-        for (size_t i = 0; i < a.spec.fn.arity; i++) {
-            if (!ast_type_eq(a.spec.fn.args[i], b.spec.fn.args[i])) {
+        for (size_t i = 0; i < a.spec.fn.args_count; i++) {
+            if (!ast_type_eq(a.spec.fn.args[i]->node.type, b.spec.fn.args[i]->node.type)) {
                 return false;
             }
         }

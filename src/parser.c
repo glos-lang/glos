@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "basic.h"
 
 typedef enum {
     POWER_NIL,
@@ -221,6 +222,20 @@ static void not_in_extern_assert(Parser *p, Token token) {
     }
 }
 
+static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
+    AST_Node *name = define->name;
+    if (name->kind == AST_NODE_ATOM && name->token.kind == TOKEN_IDENT) {
+        AST_Node_Atom *atom = (AST_Node_Atom *) name;
+        atom->is_const = define->is_const;
+        atom->is_local = p->fn_current != NULL;
+        atom->is_extern = p->in_extern;
+        atom->is_assigned = define->expr != NULL;
+        atom->definition_stmt = define;
+    } else {
+        unreachable();
+    }
+}
+
 static_assert(COUNT_TOKENS == 39, "");
 static AST_Node *parse_expr(Parser *p, Power mbp) {
     AST_Node *node = NULL;
@@ -250,41 +265,12 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
 
     case TOKEN_LPAREN: {
         bool is_fn = false;
-
-        AST_Nodes fn_args = {0};
-        size_t    fn_arity = 0;
-
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
         } else {
             node = parse_expr(p, POWER_NIL);
             if (node->kind == AST_NODE_DEFINE) {
                 is_fn = true;
-
-                AST_Node_Define *define = (AST_Node_Define *) node;
-                define->is_arg = true;
-                define->is_local = true;
-                ast_nodes_push(&fn_args, node);
-                fn_arity++;
-
-                while (read_token(p, TOKEN_COMMA)) {
-                    if (peek_token(p).kind == TOKEN_RPAREN) {
-                        break;
-                    }
-
-                    node = parse_expr(p, POWER_NIL);
-                    if (node->kind != AST_NODE_DEFINE) {
-                        fprintf(stderr, Pos_Fmt "ERROR: Expected argument, got expression\n", Pos_Arg(node->token.pos));
-                        exit(1);
-                    }
-
-                    define = (AST_Node_Define *) node;
-                    define->is_arg = true;
-                    define->is_local = true;
-                    ast_nodes_push(&fn_args, node);
-                    fn_arity++;
-                }
-                expect_token(p, TOKEN_RPAREN);
             } else if (node->kind == AST_NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
                 error_unexpected(node->token);
             } else {
@@ -293,24 +279,61 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         }
 
         if (is_fn) {
-            node = ast_node_alloc(p, AST_NODE_FN, token);
-            AST_Node_Fn *fn = (AST_Node_Fn *) node;
-            fn->args = fn_args;
-            fn->arity = fn_arity;
+            AST_Node_Fn *fn = (AST_Node_Fn *) ast_node_alloc(p, AST_NODE_FN, token);
             fn->outer_fn = p->fn_current;
+
+            AST_Node_Fn *fn_current_save = p->fn_current;
+            p->fn_current = fn;
+
+            if (node) {
+                definition_atom_setup(p, (AST_Node_Define *) node);
+            }
+
+            while (node) {
+                AST_Node_Define *define = (AST_Node_Define *) node;
+                if (define->is_const) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Expected argument, got constant definition\n",
+                        Pos_Arg(node->token.pos));
+                    exit(1);
+                }
+
+                if (define->expr) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Argument definition cannot have assignment\n",
+                        Pos_Arg(node->token.pos));
+                    exit(1);
+                }
+
+                ast_nodes_push(&fn->args, node);
+                fn->args_count++;
+
+                if (read_token(p, TOKEN_RPAREN)) {
+                    break;
+                }
+                expect_token(p, TOKEN_COMMA);
+
+                node = parse_expr(p, POWER_NIL);
+                if (node->kind != AST_NODE_DEFINE) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Expected argument, got expression\n", Pos_Arg(node->token.pos));
+                    exit(1);
+                }
+            }
 
             if (read_token(p, TOKEN_ARROW)) {
                 fn->returnn = parse_expr(p, POWER_PRE);
             }
 
             if (peek_token(p).kind == TOKEN_LBRACE) {
-                AST_Node_Fn *fn_current_save = p->fn_current;
-                p->fn_current = fn;
                 fn->body = parse_block(p, next_token(p));
-                p->fn_current = fn_current_save;
             } else {
                 fn->is_type = true;
             }
+
+            p->fn_current = fn_current_save;
+            node = (AST_Node *) fn;
         }
     } break;
 
@@ -339,55 +362,55 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         p->peeked = false;
 
         switch (token.kind) {
-        case TOKEN_COLON:
+        case TOKEN_COLON: {
+            AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
             if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
-                define->name = node;
-                define->is_local = p->fn_current != NULL;
-                define->is_extern = p->in_extern;
-                ((AST_Node_Atom *) node)->definition_stmt = define;
-
-                token = peek_token(p);
-                if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
-                    define->type = parse_expr(p, POWER_PRE);
-                }
-
-                if (read_token(p, TOKEN_SET)) {
-                    if (p->in_extern) {
-                        assert(p->ahead.kind == TOKEN_SET);
-                        fprintf(
-                            stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->ahead.pos));
-                        exit(1);
-                    }
-
-                    define->expr = parse_expr(p, POWER_SET);
-                } else if (read_token(p, TOKEN_COLON)) {
-                    define->expr = parse_expr(p, POWER_SET);
-                    define->is_const = true;
-
-                    if (p->in_extern) {
-                        if (define->expr->kind != AST_NODE_FN) {
-                            not_in_extern_assert(p, define->expr->token);
-                        }
-
-                        AST_Node_Fn *fn = (AST_Node_Fn *) define->expr;
-                        if (fn->body) {
-                            fprintf(
-                                stderr,
-                                Pos_Fmt "ERROR: External function cannot have body\n",
-                                Pos_Arg(fn->body->token.pos));
-                            exit(1);
-                        }
-
-                        fn->is_type = false;
-                        fn->is_extern = true;
-                    }
-                }
-                return (AST_Node *) define;
+                // OK
             } else {
                 error_unexpected(token);
             }
-            break;
+
+            define->name = node;
+
+            token = peek_token(p);
+            if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
+                define->type = parse_expr(p, POWER_PRE);
+            }
+
+            if (read_token(p, TOKEN_SET)) {
+                if (p->in_extern) {
+                    assert(p->ahead.kind == TOKEN_SET);
+                    fprintf(stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->ahead.pos));
+                    exit(1);
+                }
+
+                define->expr = parse_expr(p, POWER_SET);
+            } else if (read_token(p, TOKEN_COLON)) {
+                define->expr = parse_expr(p, POWER_SET);
+                define->is_const = true;
+
+                if (p->in_extern) {
+                    if (define->expr->kind != AST_NODE_FN) {
+                        not_in_extern_assert(p, define->expr->token);
+                    }
+
+                    AST_Node_Fn *fn = (AST_Node_Fn *) define->expr;
+                    if (fn->body) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: External function cannot have body\n",
+                            Pos_Arg(fn->body->token.pos));
+                        exit(1);
+                    }
+
+                    fn->is_type = false;
+                    fn->is_extern = true;
+                }
+            }
+
+            definition_atom_setup(p, define);
+            return (AST_Node *) define;
+        } break;
 
         case TOKEN_LPAREN: {
             AST_Node_Call *call = (AST_Node_Call *) ast_node_alloc(p, AST_NODE_CALL, token);
@@ -426,10 +449,10 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
 
         fprintf(
             stderr,
-            Pos_Fmt "ERROR: Unexpected %s in %s scope\n",
+            Pos_Fmt "ERROR: Unexpected %s %s function\n",
             Pos_Arg(token.pos),
             label,
-            p->fn_current ? "local" : "file");
+            p->fn_current ? "inside" : "outside");
 
         exit(1);
     }

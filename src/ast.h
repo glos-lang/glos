@@ -44,9 +44,9 @@ typedef enum {
 typedef struct AST_Type AST_Type;
 
 typedef struct {
-    AST_Type *args;
-    size_t    arity;
-    AST_Type *returnn;
+    AST_Node_Atom **args;
+    size_t          args_count;
+    AST_Type       *returnn;
 } AST_Type_Fn;
 
 struct AST_Type {
@@ -170,7 +170,7 @@ struct AST_Node_Fn {
     AST_Node node;
 
     AST_Nodes args;
-    size_t    arity;
+    size_t    args_count;
 
     AST_Node *returnn;
     AST_Node *body;
@@ -196,7 +196,7 @@ typedef struct {
     AST_Node *fn;
 
     AST_Nodes args;
-    size_t    arity; // Calculated at checking phase
+    size_t    args_count; // Calculated at checking phase
 
     Pos end;
 
@@ -210,10 +210,7 @@ struct AST_Node_Define {
     AST_Node *type;
     AST_Node *expr;
 
-    bool is_arg;
     bool is_const;
-    bool is_local;
-    bool is_extern;
 };
 
 typedef struct {
