@@ -308,7 +308,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
                 }
 
                 ast_nodes_push(&fn->args, node);
-                fn->args_count++;
+                fn->args_count += define->count;
 
                 if (read_token(p, TOKEN_RPAREN)) {
                     break;
@@ -365,7 +365,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp) {
         case TOKEN_COLON: {
             AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
             if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                // OK
+                define->count = 1;
             } else {
                 error_unexpected(token);
             }

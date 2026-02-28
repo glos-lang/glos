@@ -210,7 +210,8 @@ struct AST_Node_Define {
     AST_Node *type;
     AST_Node *expr;
 
-    bool is_const;
+    bool   is_const;
+    size_t count;
 };
 
 typedef struct {
