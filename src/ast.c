@@ -15,8 +15,10 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
+    assert(!type.is_type);
+
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
         temp_sprintf("&");
@@ -128,9 +130,6 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
         }
     } break;
 
-    case AST_TYPE_TYPE:
-        unreachable();
-
     default:
         unreachable();
     }
@@ -139,7 +138,7 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
 }
 
 const char *ast_type_to_cstr(AST_Type type) {
-    if (type.kind == AST_TYPE_TYPE) {
+    if (type.is_type) {
         return temp_sprintf("a type");
     }
 
@@ -151,10 +150,18 @@ const char *ast_type_to_cstr(AST_Type type) {
     return s;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
+    }
+
+    if (a.is_type) {
+        return b.is_type;
+    }
+
+    if (b.is_type) {
+        return a.is_type;
     }
 
     switch (a.kind) {
@@ -199,13 +206,22 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
     }
 }
 
+static_assert(COUNT_AST_TYPES == 14, "");
+bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind) {
+    if (type.is_type) {
+        return false;
+    }
+
+    return type.kind == kind;
+}
+
 bool ast_type_is_numeric(AST_Type type) {
     return ast_type_is_integer(type);
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_is_integer(AST_Type type) {
-    if (type.ref) {
+    if (type.ref || type.is_type) {
         return false;
     }
 
@@ -229,10 +245,17 @@ bool ast_type_is_integer(AST_Type type) {
 }
 
 bool ast_type_is_pointer(AST_Type type) {
+    if (type.is_type) {
+        return false;
+    }
     return type.ref != 0 || type.kind == AST_TYPE_RAWPTR;
 }
 
 bool ast_type_is_scalar(AST_Type type) {
+    if (type.is_type) {
+        return false;
+    }
+
     if (ast_type_is_numeric(type) || ast_type_is_pointer(type)) {
         return true;
     }

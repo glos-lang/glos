@@ -3,7 +3,7 @@
 #include "basic.h"
 #include "llvm.h"
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {
     if (!type) {
         return;
@@ -84,9 +84,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
 
         // TODO: Think of a better solution
         AST_Type *common = &type->spec.structt.definition->node.type;
-        while (common->kind == AST_TYPE_TYPE) {
-            common = common->spec.type;
-        }
+        assert(common->kind == AST_TYPE_STRUCT);
 
         if (common->llvm.kind != LLVM_TYPE_STRUCT) {
             const char           *name = temp_sprintf("anon.%zu", c->iota_anonymous_struct++);
@@ -104,10 +102,6 @@ static void compile_type(Compiler *c, AST_Type *type) {
         }
         type->llvm = common->llvm;
     } break;
-
-    case AST_TYPE_TYPE:
-        unreachable();
-        break;
 
     default:
         unreachable();
@@ -600,7 +594,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         AST_Node_Return *returnn = (AST_Node_Return *) n;
 
         LLVM_Node *value = compile_expr(c, returnn->value, false);
-        if (n->type.kind == AST_TYPE_UNIT) {
+        if (ast_type_kind_eq(n->type, AST_TYPE_UNIT)) {
             value = NULL;
         }
 
@@ -652,7 +646,7 @@ static AST_Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (signature.returnn->kind != AST_TYPE_UNIT) {
+    if (!ast_type_kind_eq(*signature.returnn, AST_TYPE_UNIT)) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
@@ -660,9 +654,6 @@ static AST_Node_Fn *get_main(Compiler *c) {
 }
 
 size_t compile_sizeof(Compiler *c, AST_Type *type) {
-    if (type->kind == AST_TYPE_TYPE) {
-        type = type->spec.type;
-    }
     compile_type(c, type);
     return llvm_type_info(type->llvm).size;
 }

@@ -30,7 +30,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 15, "");
+    static_assert(COUNT_AST_TYPES == 14, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -108,8 +108,8 @@ static void cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
 }
 
 static bool try_auto_cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
-    if (ast_type_is_integer(expected) && ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_INT})) {
-        if (expected.kind != AST_TYPE_INT) {
+    if (ast_type_is_integer(expected) && ast_type_kind_eq(n->type, AST_TYPE_INT)) {
+        if (!ast_type_kind_eq(expected, AST_TYPE_INT)) {
             cast_untyped(c, n, expected);
         }
         return true;
@@ -188,8 +188,17 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
     exit(1);
 }
 
+static AST_Type ast_type_assert_type(const AST_Node *n) {
+    if (n->type.is_type) {
+        return n->type;
+    }
+
+    fprintf(stderr, Pos_Fmt "ERROR: Expected a type, got %s\n", Pos_Arg(n->token.pos), ast_type_to_cstr(n->type));
+    exit(1);
+}
+
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 15, "");
+    static_assert(COUNT_AST_TYPES == 14, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
 
@@ -220,7 +229,7 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
 }
 
 static void ast_node_finalize_type_of_untyped(AST_Node *n) {
-    if (n->type.kind == AST_TYPE_INT) {
+    if (ast_type_kind_eq(n->type, AST_TYPE_INT)) {
         n->type.kind = AST_TYPE_I64;
     }
 }
@@ -348,7 +357,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return const_value_int(n->token.as.integer);
 
         case TOKEN_IDENT: {
-            if (n->type.kind == AST_TYPE_TYPE) {
+            if (n->type.is_type) {
                 return const_value_type(n->type);
             }
 
@@ -618,14 +627,14 @@ static void check_definition(Compiler *c, AST_Node_Atom *it, AST_Node *type, AST
 
     if (type) {
         check_node(c, type);
-        ast_type_assert(c, type, (AST_Type) {.kind = AST_TYPE_TYPE});
-        it->node.type = *type->type.spec.type;
+        it->node.type = ast_type_assert_type(type);
+        it->node.type.is_type = false;
     }
 
     if (it_expr) {
         check_node(c, it_expr);
 
-        if (it_expr->type.kind == AST_TYPE_UNIT || (it_expr->type.kind == AST_TYPE_TYPE && !it->is_const)) {
+        if (ast_type_kind_eq(it_expr->type, AST_TYPE_UNIT) || (it_expr->type.is_type && !it->is_const)) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot store %s in a %s\n",
@@ -702,11 +711,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
 
     AST_Type_Kind kind;
     if (get_builtin_type_kind(n->token.sv, &kind)) {
-        const AST_Type type = {.kind = kind};
-        n->type = (AST_Type) {
-            .kind = AST_TYPE_TYPE,
-            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
-        };
+        n->type = (AST_Type) {.kind = kind, .is_type = true};
         return;
     }
 
@@ -752,7 +757,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
         case TOKEN_MUL:
             if (!unary->value->type.ref) {
-                if (unary->value->type.kind == AST_TYPE_RAWPTR) {
+                if (ast_type_kind_eq(unary->value->type, AST_TYPE_RAWPTR)) {
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Cannot dereference raw pointer\n", Pos_Arg(unary->value->token.pos));
                     exit(1);
@@ -773,13 +778,10 @@ static void check_node(Compiler *c, AST_Node *n) {
 
         case TOKEN_BAND:
             n->type = unary->value->type;
-
-            if (n->type.kind == AST_TYPE_TYPE) {
-                n->type.spec.type->ref++; // TODO: This causes problems
-            } else {
+            if (!n->type.is_type) {
                 ast_node_assert_can_be_referenced(unary->value);
-                n->type.ref++;
             }
+            n->type.ref++;
             break;
 
         case TOKEN_BNOT:
@@ -854,7 +856,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, member->lhs);
         ast_node_assert_can_be_referenced(member->lhs); // TODO: All structures exist in memory, but for now check this
 
-        if (member->lhs->type.kind != AST_TYPE_STRUCT) {
+        if (!ast_type_kind_eq(member->lhs->type, AST_TYPE_STRUCT)) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot access field of %s\n",
@@ -917,8 +919,9 @@ static void check_node(Compiler *c, AST_Node *n) {
 
             if (fn->returnn) {
                 check_node(c, fn->returnn);
-                ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
-                fn_type_spec.returnn = fn->returnn->type.spec.type;
+                ast_type_assert_type(fn->returnn);
+                fn_type_spec.returnn = arena_clone(c->llvm.arena, &fn->returnn->type, sizeof(AST_Type));
+                fn_type_spec.returnn->is_type = false;
             } else {
                 fn_type_spec.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
                 fn_type_spec.returnn->kind = AST_TYPE_UNIT;
@@ -933,11 +936,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             }
 
             if (fn->is_type) {
-                const AST_Type meta = {
-                    .kind = AST_TYPE_TYPE,
-                    .spec.type = arena_clone(c->llvm.arena, &n->type, sizeof(n->type)),
-                };
-                n->type = meta;
+                n->type.is_type = true;
             } else if (fn->body) {
                 check_node(c, fn->body);
                 if (fn->returnn && !always_returns(fn->body)) {
@@ -961,11 +960,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             .definition = structt,
         };
 
-        const AST_Type type = {.kind = AST_TYPE_STRUCT, .spec.structt = structt_type_spec};
-        n->type = (AST_Type) {
-            .kind = AST_TYPE_TYPE,
-            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
-        };
+        n->type = (AST_Type) {.kind = AST_TYPE_STRUCT, .is_type = true, .spec.structt = structt_type_spec};
 
         size_t iota = 0;
         for (AST_Node *field = structt->fields.head; field; field = field->next) {
@@ -985,8 +980,8 @@ static void check_node(Compiler *c, AST_Node *n) {
             structt_type_spec.fields[iota++] = it;
 
             check_node(c, define->type);
-            ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
-            it->node.type = *define->type->type.spec.type;
+            it->node.type = ast_type_assert_type(define->type);
+            it->node.type.is_type = false;
         }
     } break;
 
@@ -995,8 +990,20 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, call->fn);
 
         const AST_Type fn_type = call->fn->type;
-        if (fn_type.kind == AST_TYPE_TYPE) {
+        if (fn_type.is_type) {
             call->is_type_cast = true;
+            n->type = fn_type;
+            n->type.is_type = false;
+
+            if (!ast_type_is_scalar(n->type)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot cast to %s\n",
+                    Pos_Arg(call->fn->token.pos),
+                    ast_type_to_cstr(n->type));
+                exit(1);
+            }
+
             if (!call->args.head) {
                 error_too_few_arguments(call->end, 1);
                 exit(1);
@@ -1004,7 +1011,6 @@ static void check_node(Compiler *c, AST_Node *n) {
                 error_too_many_arguments(call->args.head->next->token.pos, 1);
                 exit(1);
             }
-            n->type = *fn_type.spec.type;
 
             check_node(c, call->args.head);
             const AST_Type from_type = call->args.head->type;
@@ -1013,21 +1019,22 @@ static void check_node(Compiler *c, AST_Node *n) {
                 ast_type_assert_scalar(call->args.head);
 
                 bool ok = true;
-                if (from_type.kind == AST_TYPE_FN && !from_type.ref) {
+                if (ast_type_kind_eq(from_type, AST_TYPE_FN) && !from_type.ref) {
                     // fn -> rawptr
                     ok = ast_type_eq(n->type, (AST_Type) {.kind = AST_TYPE_RAWPTR});
-                } else if (n->type.kind == AST_TYPE_FN && !n->type.ref) {
+                } else if (ast_type_kind_eq(n->type, AST_TYPE_FN) && !n->type.ref) {
                     // rawptr -> fn
                     ok = ast_type_eq(from_type, (AST_Type) {.kind = AST_TYPE_RAWPTR});
                 } else if (!ast_type_is_pointer(from_type) && ast_type_is_pointer(n->type)) {
                     // i64/u64 -> ptr
-                    if (from_type.kind != AST_TYPE_I64 && from_type.kind != AST_TYPE_U64 &&
-                        from_type.kind != AST_TYPE_INT) {
+                    if (!ast_type_kind_eq(from_type, AST_TYPE_I64) && !ast_type_kind_eq(from_type, AST_TYPE_U64) &&
+                        !ast_type_kind_eq(from_type, AST_TYPE_INT)) {
                         ok = false;
                     }
                 } else if (ast_type_is_pointer(from_type) && !ast_type_is_pointer(n->type)) {
                     // ptr -> i64/u64
-                    if (n->type.kind != AST_TYPE_I64 && n->type.kind != AST_TYPE_U64 && n->type.kind != AST_TYPE_INT) {
+                    if (!ast_type_kind_eq(n->type, AST_TYPE_I64) && !ast_type_kind_eq(n->type, AST_TYPE_U64) &&
+                        !ast_type_kind_eq(n->type, AST_TYPE_INT)) {
                         ok = false;
                     }
                 }
@@ -1042,12 +1049,7 @@ static void check_node(Compiler *c, AST_Node *n) {
                     exit(1);
                 }
             } else {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot cast to %s\n",
-                    Pos_Arg(call->fn->token.pos),
-                    ast_type_to_cstr(n->type));
-                exit(1);
+                unreachable();
             }
 
             if (ast_type_eq(n->type, from_type)) {
@@ -1058,7 +1060,7 @@ static void check_node(Compiler *c, AST_Node *n) {
                 call->type_cast = TYPE_CAST_NORMAL;
             }
         } else {
-            if (fn_type.kind != AST_TYPE_FN) {
+            if (!ast_type_kind_eq(fn_type, AST_TYPE_FN)) {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Cannot call %s\n", Pos_Arg(call->fn->token.pos), ast_type_to_cstr(fn_type));
                 exit(1);

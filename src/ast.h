@@ -41,7 +41,6 @@ typedef enum {
     AST_TYPE_FN,
     AST_TYPE_STRUCT,
 
-    AST_TYPE_TYPE,
     COUNT_AST_TYPES,
 } AST_Type_Kind;
 
@@ -65,8 +64,11 @@ struct AST_Type {
     AST_Type_Kind kind;
     size_t        ref;
 
+    // A :: 69  // typeof(A) => AST_Type { kind = AST_TYPE_I64, is_type = false }
+    // B :: i64 // typeof(B) => AST_Type { kind = AST_TYPE_I64, is_type = true  }
+    bool is_type;
+
     union {
-        AST_Type       *type;
         AST_Type_Fn     fn;
         AST_Type_Struct structt;
     } spec;
@@ -77,6 +79,7 @@ struct AST_Type {
 const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
+bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind);
 bool ast_type_is_numeric(AST_Type type);
 bool ast_type_is_integer(AST_Type type);
 bool ast_type_is_pointer(AST_Type type);
