@@ -1,0 +1,11 @@
+Vec2 :: struct {
+    x: i32,
+    y: i32
+}
+
+main :: () {
+    v: Vec2
+    v.x = 34
+    v.y = 35
+    print v.x + v.y
+}

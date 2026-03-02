@@ -6,10 +6,13 @@
 
 typedef struct Context_Fn Context_Fn;
 
-typedef struct AST_Node        AST_Node;
-typedef struct AST_Node_Fn     AST_Node_Fn;
+typedef struct AST_Node AST_Node;
+
 typedef struct AST_Node_Atom   AST_Node_Atom;
 typedef struct AST_Node_Define AST_Node_Define;
+
+typedef struct AST_Node_Fn     AST_Node_Fn;
+typedef struct AST_Node_Struct AST_Node_Struct;
 
 typedef struct {
     AST_Node *head;
@@ -36,6 +39,7 @@ typedef enum {
     AST_TYPE_RAWPTR,
 
     AST_TYPE_FN,
+    AST_TYPE_STRUCT,
 
     AST_TYPE_TYPE,
     COUNT_AST_TYPES,
@@ -44,18 +48,27 @@ typedef enum {
 typedef struct AST_Type AST_Type;
 
 typedef struct {
+    // TODO: Instead of AST_Node_Atom, use struct { Pos pos; SV name; AST_Type type; }
     AST_Node_Atom **args;
     size_t          args_count;
     AST_Type       *returnn;
 } AST_Type_Fn;
+
+typedef struct {
+    AST_Node_Atom **fields;
+    size_t          fields_count;
+
+    AST_Node_Struct *definition;
+} AST_Type_Struct;
 
 struct AST_Type {
     AST_Type_Kind kind;
     size_t        ref;
 
     union {
-        AST_Type   *type;
-        AST_Type_Fn fn;
+        AST_Type       *type;
+        AST_Type_Fn     fn;
+        AST_Type_Struct structt;
     } spec;
 
     LLVM_Type llvm;
@@ -102,8 +115,11 @@ typedef enum {
     AST_NODE_ATOM,
     AST_NODE_UNARY,
     AST_NODE_BINARY,
+    AST_NODE_MEMBER,
 
     AST_NODE_FN,
+    AST_NODE_STRUCT,
+
     AST_NODE_CALL,
 
     AST_NODE_DEFINE,
@@ -168,6 +184,15 @@ typedef struct {
     AST_Node *rhs;
 } AST_Node_Binary;
 
+typedef struct {
+    AST_Node  node;
+    AST_Node *lhs;
+    Token     field;
+
+    AST_Node_Atom *definition;
+    size_t         definition_index;
+} AST_Node_Member;
+
 struct AST_Node_Fn {
     AST_Node node;
 
@@ -184,6 +209,15 @@ struct AST_Node_Fn {
     AST_Node_Atom *defined_as;
 
     LLVM_Node *llvm;
+};
+
+struct AST_Node_Struct {
+    AST_Node node;
+
+    AST_Nodes fields;
+    size_t    fields_count;
+
+    AST_Node_Atom *defined_as;
 };
 
 typedef enum {

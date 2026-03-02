@@ -1,10 +1,12 @@
 #include "llvm.h"
+#include "basic.h"
 
 typedef enum {
     LLVM_NODE_ATOM,
     LLVM_NODE_UNARY,
     LLVM_NODE_BINARY,
 
+    LLVM_NODE_GEP,
     LLVM_NODE_LOAD,
     LLVM_NODE_STORE,
     LLVM_NODE_CAST,
@@ -79,6 +81,18 @@ typedef struct {
     LLVM_Node       *lhs;
     LLVM_Node       *rhs;
 } LLVM_Node_Binary;
+
+typedef struct {
+    LLVM_Node  node;
+    LLVM_Node *base;
+    LLVM_Type  base_type;
+
+    bool is_field_index;
+    union {
+        size_t     field_index;
+        LLVM_Node *slice_index;
+    };
+} LLVM_Node_GEP;
 
 typedef struct {
     LLVM_Node  node;
@@ -186,13 +200,14 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static_assert(COUNT_LLVM_NODES == 15, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
         [LLVM_NODE_UNARY] = sizeof(LLVM_Node_Unary),
         [LLVM_NODE_BINARY] = sizeof(LLVM_Node_Binary),
 
+        [LLVM_NODE_GEP] = sizeof(LLVM_Node_GEP),
         [LLVM_NODE_LOAD] = sizeof(LLVM_Node_Load),
         [LLVM_NODE_STORE] = sizeof(LLVM_Node_Store),
         [LLVM_NODE_CAST] = sizeof(LLVM_Node_Cast),
@@ -243,7 +258,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static_assert(COUNT_LLVM_NODES == 15, "");
 static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     if (!n) {
         return;
@@ -278,7 +293,7 @@ static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -314,12 +329,16 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
         sb_push_cstr(&l->sb, "ptr");
         break;
 
+    case LLVM_TYPE_STRUCT:
+        sb_sprintf(&l->sb, "%%struct." SV_Fmt, SV_Arg(type.structt.name));
+        break;
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static bool llvm_type_kind_is_signed(LLVM_Type_Kind kind) {
     switch (kind) {
     case LLVM_TYPE_I8:
@@ -333,7 +352,7 @@ static bool llvm_type_kind_is_signed(LLVM_Type_Kind kind) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static LLVM_Type_Kind llvm_type_kind_to_signed(LLVM_Type_Kind kind) {
     switch (kind) {
     case LLVM_TYPE_U8:
@@ -405,7 +424,7 @@ static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) 
     return temp;
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static_assert(COUNT_LLVM_NODES == 15, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -537,6 +556,29 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
             n->iota = llvm_cast_compile(l, n, LLVM_TYPE_PTR);
             n->type.kind = LLVM_TYPE_PTR;
         }
+    } break;
+
+    case LLVM_NODE_GEP: {
+        LLVM_Node_GEP *gep = (LLVM_Node_GEP *) n;
+        n->iota = ++l->iota_local;
+
+        sb_push_cstr(&l->sb, "  ");
+        llvm_node_emit(l, n);
+        sb_push_cstr(&l->sb, " = getelementptr inbounds ");
+        llvm_type_emit(l, gep->base_type, false);
+        sb_push_cstr(&l->sb, ", ptr ");
+        llvm_node_emit(l, gep->base);
+        if (gep->is_field_index) {
+            sb_sprintf(&l->sb, ", i32 0, i32 %zu", gep->field_index);
+        } else {
+            sb_push_cstr(&l->sb, ", ");
+            llvm_type_emit(l, gep->slice_index->type, false);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, gep->slice_index);
+        }
+
+        llvm_debug_pos_emit(l, n->debug);
+        sb_push(&l->sb, '\n');
     } break;
 
     case LLVM_NODE_LOAD: {
@@ -696,6 +738,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
 void llvm_free(LLVM *l) {
     sb_free(&l->sb);
+    da_free(&l->structs);
 }
 
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type);
@@ -732,9 +775,8 @@ static size_t llvm_type_fn_debug_compile(LLVM *l, LLVM_Type *type) {
     return type->debug;
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
-    static_assert(COUNT_LLVM_TYPES == 12, "");
     switch (type->kind) {
     case LLVM_TYPE_I0:
         unreachable();
@@ -808,6 +850,56 @@ static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
         type->debug = debug;
     } break;
 
+    case LLVM_TYPE_STRUCT: {
+        type->debug = ++l->iota_debug;
+
+        const LLVM_Type_Info   info = llvm_type_info(*type); // Pre-calculate offsets
+        const LLVM_Type_Struct spec = type->structt;
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            LLVM_Field      *field = &spec.fields[i];
+            LLVM_Field_Info *field_info = &spec.fields_infos[i];
+            llvm_type_debug_compile(l, &field->type);
+
+            field_info->debug = ++l->iota_debug;
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DIDerivedType("
+                "tag: DW_TAG_member, "
+                "name: \"" SV_Fmt "\", "
+                "scope: !%zu, "
+                "file: !%zu, "
+                "baseType: !%zu, "
+                "size: %zu, "
+                "offset: %zu)\n",
+                field_info->debug,
+                SV_Arg(field->name),
+                type->debug,
+                l->debug_file->iota,
+                field->type.debug,
+                field_info->size * 8,
+                field_info->offset * 8);
+        }
+
+        sb_sprintf(
+            &l->sb,
+            "!%zu = !DICompositeType("
+            "tag: DW_TAG_structure_type, "
+            "file: !%zu, "
+            "size: %zu, "
+            "elements: !{",
+            type->debug,
+            l->debug_file->iota,
+            info.size * 8);
+
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            if (i) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+            sb_sprintf(&l->sb, "!%zu", spec.fields_infos[i].debug);
+        }
+        sb_sprintf(&l->sb, "})\n");
+    } break;
+
     default:
         unreachable();
         break;
@@ -863,6 +955,8 @@ static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
         llvm_type_emit(l, init->type, true);
         if (init->type.kind == LLVM_TYPE_PTR) {
             sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->n);
+        } else if (init->type.kind == LLVM_TYPE_STRUCT) {
+            todo();
         } else {
             sb_sprintf(&l->sb, " %ld", init->n);
         }
@@ -880,6 +974,18 @@ void llvm_compile(LLVM *l) {
         "@.iprint = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\", align 1\n"
         "@.uprint = private unnamed_addr constant [5 x i8] c\"%zu\\0A\\00\", align 1\n"
         "declare i32 @printf(ptr, ...)\n");
+
+    for (size_t i = 0; i < l->structs.count; i++) {
+        LLVM_Type_Struct it = l->structs.data[i].structt;
+        sb_sprintf(&l->sb, "%%struct." SV_Fmt " = type {", SV_Arg(it.name));
+        for (size_t j = 0; j < it.fields_count; j++) {
+            if (j) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+            llvm_type_emit(l, it.fields[j].type, true);
+        }
+        sb_push_cstr(&l->sb, "}\n");
+    }
 
     if (l->vars.head) {
         sb_push(&l->sb, '\n');
@@ -1125,32 +1231,73 @@ void llvm_compile(LLVM *l) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
-        return (LLVM_Type_Info) {.align = 0, .size = 0};
+        return (LLVM_Type_Info) {.size = 0, .align = 0};
 
     case LLVM_TYPE_I1:
     case LLVM_TYPE_I8:
     case LLVM_TYPE_U8:
-        return (LLVM_Type_Info) {.align = 1, .size = 1};
+        return (LLVM_Type_Info) {.size = 1, .align = 1};
 
     case LLVM_TYPE_I16:
     case LLVM_TYPE_U16:
-        return (LLVM_Type_Info) {.align = 2, .size = 2};
+        return (LLVM_Type_Info) {.size = 2, .align = 2};
 
     case LLVM_TYPE_I32:
     case LLVM_TYPE_U32:
-        return (LLVM_Type_Info) {.align = 4, .size = 4};
+        return (LLVM_Type_Info) {.size = 4, .align = 4};
 
     case LLVM_TYPE_I64:
     case LLVM_TYPE_U64:
-        return (LLVM_Type_Info) {.align = 8, .size = 8};
+        return (LLVM_Type_Info) {.size = 8, .align = 8};
 
     case LLVM_TYPE_PTR:
     case LLVM_TYPE_FN:
-        return (LLVM_Type_Info) {.align = 8, .size = 8};
+        return (LLVM_Type_Info) {.size = 8, .align = 8};
+
+    case LLVM_TYPE_STRUCT: {
+        LLVM_Type_Struct *spec = &type.structt;
+        if (!spec->is_info_ready) {
+            spec->info.size = 0;
+            spec->info.align = 1;
+
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                LLVM_Field       field = spec->fields[i];
+                LLVM_Field_Info *field_info = &spec->fields_infos[i];
+
+                const LLVM_Type_Info type_info = llvm_type_info(field.type);
+                field_info->size = type_info.size;
+                field_info->align = type_info.align;
+                // if (!packed) {
+                spec->info.align = max(spec->info.align, field_info->align);
+                // }
+            }
+
+            size_t offset = 0;
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                LLVM_Field_Info *it = &spec->fields_infos[i];
+
+                // if (!packed) {
+                offset += (it->align - (offset % it->align)) % it->align;
+                // }
+
+                it->offset = offset;
+                offset += it->size;
+            }
+
+            // if (!packed) {
+            offset += (spec->info.align - (offset % spec->info.align)) % spec->info.align;
+            // }
+
+            spec->info.size = offset;
+            spec->is_info_ready = true;
+        }
+
+        return type.structt.info;
+    }
 
     default:
         unreachable();
@@ -1176,6 +1323,17 @@ LLVM_Type llvm_type_fn(LLVM *l, LLVM_Type *args, size_t args_count, LLVM_Type re
         .fn.args_count = args_count,
         .fn.returnn = arena_clone(l->arena, &returnn, sizeof(returnn)),
     };
+}
+
+LLVM_Type llvm_type_struct(LLVM *l, LLVM_Field *fields, size_t fields_count, SV name) {
+    LLVM_Type type = {0};
+    type.kind = LLVM_TYPE_STRUCT;
+    type.structt.name = name;
+    type.structt.fields = fields;
+    type.structt.fields_infos = arena_alloc(l->arena, fields_count * sizeof(*type.structt.fields_infos));
+    type.structt.fields_count = fields_count;
+    da_push(&l->structs, type);
+    return type;
 }
 
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n) {
@@ -1326,6 +1484,23 @@ LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value) {
     LLVM_Node_Return *returnn = (LLVM_Node_Return *) llvm_node_build(l, LLVM_NODE_RETURN, type);
     returnn->value = value;
     return (LLVM_Node *) returnn;
+}
+
+LLVM_Node *llvm_build_gep_field(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, size_t index) {
+    LLVM_Node_GEP *gep = (LLVM_Node_GEP *) llvm_node_build(l, LLVM_NODE_GEP, final_type);
+    gep->base = base;
+    gep->base_type = base_type;
+    gep->is_field_index = true;
+    gep->field_index = index;
+    return (LLVM_Node *) gep;
+}
+
+LLVM_Node *llvm_build_gep_index(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, LLVM_Node *index) {
+    LLVM_Node_GEP *gep = (LLVM_Node_GEP *) llvm_node_build(l, LLVM_NODE_GEP, final_type);
+    gep->base = base;
+    gep->base_type = base_type;
+    gep->slice_index = index;
+    return (LLVM_Node *) gep;
 }
 
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type) {

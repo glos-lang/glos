@@ -35,14 +35,36 @@ typedef enum {
 
     LLVM_TYPE_PTR,
     LLVM_TYPE_FN,
+    LLVM_TYPE_STRUCT,
     COUNT_LLVM_TYPES,
 } LLVM_Type_Kind;
+
+typedef struct {
+    size_t size;
+    size_t align;
+} LLVM_Type_Info;
+
+typedef struct LLVM_Field      LLVM_Field;
+typedef struct LLVM_Field_Info LLVM_Field_Info;
+
+typedef struct {
+    SV     name;
+    size_t row;
+
+    LLVM_Field      *fields;
+    LLVM_Field_Info *fields_infos;
+    size_t           fields_count;
+
+    bool           is_info_ready;
+    LLVM_Type_Info info;
+} LLVM_Type_Struct;
 
 struct LLVM_Type {
     LLVM_Type_Kind kind;
     size_t         debug;
 
     union {
+        // TODO: Make these proper typedef-ed structures
         struct {
             LLVM_Type *type;
         } ptr;
@@ -52,13 +74,22 @@ struct LLVM_Type {
             size_t     args_count;
             LLVM_Type *returnn;
         } fn;
+
+        LLVM_Type_Struct structt;
     };
 };
 
-typedef struct {
-    size_t align;
+struct LLVM_Field {
+    SV        name;
+    LLVM_Type type;
+};
+
+struct LLVM_Field_Info {
     size_t size;
-} LLVM_Type_Info;
+    size_t align;
+    size_t offset;
+    size_t debug;
+};
 
 typedef enum {
     LLVM_UNARY_NOP,
@@ -98,6 +129,7 @@ typedef struct {
 
     LLVM_Nodes fns;
     LLVM_Nodes vars;
+    Dynamic_Array(LLVM_Type) structs;
 
     LLVM_Node_Fn *fn;
 
@@ -120,6 +152,8 @@ LLVM_Type      llvm_type_basic(LLVM_Type_Kind kind);
 LLVM_Type      llvm_type_ptr(LLVM *l, LLVM_Type type);
 LLVM_Type      llvm_type_fn(LLVM *l, LLVM_Type *args, size_t args_count, LLVM_Type returnn);
 
+LLVM_Type llvm_type_struct(LLVM *l, LLVM_Field *fields, size_t fields_count, SV name);
+
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n);
 LLVM_Node *llvm_atom_zero(LLVM *l, LLVM_Type type);
 
@@ -140,6 +174,9 @@ void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node);
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
 LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);
+
+LLVM_Node *llvm_build_gep_field(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, size_t index);
+LLVM_Node *llvm_build_gep_index(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, LLVM_Node *index);
 
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
 LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);

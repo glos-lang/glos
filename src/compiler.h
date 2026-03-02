@@ -14,6 +14,7 @@ typedef struct {
     LLVM_Node_Block *loop_continue;
 
     size_t iota_anonymous_fn;
+    size_t iota_anonymous_struct;
 
     // TODO: Temporary solutions to permanent problems
     const char *path;

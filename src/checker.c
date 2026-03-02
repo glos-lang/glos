@@ -2,10 +2,11 @@
 #include "ast.h"
 #include "basic.h"
 #include "context.h"
+#include "llvm.h"
 #include "token.h"
 
-static void error_undefined(const AST_Node *n) {
-    fprintf(stderr, Pos_Fmt "ERROR: Undefined identifier '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
+static void error_undefined(const Token *t, const char *label) {
+    fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
     exit(1);
 }
 
@@ -29,7 +30,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 14, "");
+    static_assert(COUNT_AST_TYPES == 15, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -55,7 +56,7 @@ static void check_int_limit(AST_Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static void cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
     switch (n->kind) {
     case AST_NODE_ATOM:
@@ -188,7 +189,7 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 14, "");
+    static_assert(COUNT_AST_TYPES == 15, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
 
@@ -231,7 +232,7 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static bool loop_breaks(AST_Node *n) {
     if (!n) {
         return false;
@@ -269,7 +270,7 @@ static bool is_atom_false(AST_Node *n) {
     return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static bool always_returns(AST_Node *n) {
     if (!n) {
         return false;
@@ -330,7 +331,7 @@ static bool always_returns(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -340,7 +341,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -371,7 +372,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -414,7 +415,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -497,6 +498,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     } break;
 
+    case AST_NODE_MEMBER: {
+        todo();
+    } break;
+
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
         if (fn->is_type) {
@@ -504,6 +509,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         } else {
             return const_value_fn(fn);
         }
+    }
+
+    case AST_NODE_STRUCT: {
+        return const_value_type(n->type);
     }
 
     case AST_NODE_CALL: {
@@ -539,7 +548,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_start) {
     switch (n->kind) {
     case AST_NODE_DEFINE: {
@@ -547,8 +556,6 @@ static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_
         assert(define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
 
         AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-        AST_Node      *it_expr = define->expr;
-
         if (!sv_match(it->node.token.sv, "_")) {
             if (it->is_local) {
                 if (it->is_const) {
@@ -583,10 +590,6 @@ static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_
                 }
 
                 da_push(&c->globals, it);
-            }
-
-            if (define->is_const && it_expr->kind == AST_NODE_FN) {
-                ((AST_Node_Fn *) it_expr)->defined_as = it;
             }
         }
     } break;
@@ -644,10 +647,6 @@ static void check_definition(Compiler *c, AST_Node_Atom *it, AST_Node *type, AST
     }
 
     if (it->is_const) {
-        if (it_expr->kind == AST_NODE_FN) {
-            ((AST_Node_Fn *) it_expr)->defined_as = it;
-        }
-
         it->const_value = eval_const_expr(c, it_expr);
     } else if (!it->is_local && it_expr) {
         it->const_value = eval_const_expr(c, it_expr);
@@ -711,10 +710,10 @@ static void check_ident(Compiler *c, AST_Node *n) {
         return;
     }
 
-    error_undefined(n);
+    error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 15, "");
 static void check_node(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -722,7 +721,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -745,7 +744,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_node(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value, false);
@@ -776,7 +775,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             n->type = unary->value->type;
 
             if (n->type.kind == AST_TYPE_TYPE) {
-                n->type.spec.type->ref++;
+                n->type.spec.type->ref++; // TODO: This causes problems
             } else {
                 ast_node_assert_can_be_referenced(unary->value);
                 n->type.ref++;
@@ -805,7 +804,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, binary->lhs);
         check_node(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -850,6 +849,42 @@ static void check_node(Compiler *c, AST_Node *n) {
         }
     } break;
 
+    case AST_NODE_MEMBER: {
+        AST_Node_Member *member = (AST_Node_Member *) n;
+        check_node(c, member->lhs);
+        ast_node_assert_can_be_referenced(member->lhs); // TODO: All structures exist in memory, but for now check this
+
+        if (member->lhs->type.kind != AST_TYPE_STRUCT) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot access field of %s\n",
+                Pos_Arg(n->token.pos),
+                ast_type_to_cstr(member->lhs->type));
+            exit(1);
+        }
+
+        if (member->lhs->type.ref) {
+            todo();
+        }
+
+        const AST_Type_Struct spec = member->lhs->type.spec.structt;
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            AST_Node_Atom *it = spec.fields[i];
+            if (sv_eq(it->node.token.sv, member->field.sv)) {
+                member->definition = it;
+                member->definition_index = i;
+                break;
+            }
+        }
+
+        if (!member->definition) {
+            error_undefined(&member->field, "field");
+        }
+
+        n->is_memory = true;
+        n->type = member->definition->node.type;
+    } break;
+
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
 
@@ -857,8 +892,8 @@ static void check_node(Compiler *c, AST_Node *n) {
         context_push_fn(&c->context, &context_fn);
 
         {
-            AST_Type_Fn fn_type = {
-                .args = arena_alloc(c->llvm.arena, fn->args_count * sizeof(*fn_type.args)),
+            AST_Type_Fn fn_type_spec = {
+                .args = arena_alloc(c->llvm.arena, fn->args_count * sizeof(*fn_type_spec.args)),
             };
 
             for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -868,14 +903,14 @@ static void check_node(Compiler *c, AST_Node *n) {
                 assert(define->name->kind == AST_NODE_ATOM);
                 AST_Node_Atom *it = (AST_Node_Atom *) define->name;
                 if (!sv_match(it->node.token.sv, "_")) {
-                    for (size_t i = 0; i < fn_type.args_count; i++) {
-                        AST_Node_Atom *previous = fn_type.args[i];
+                    for (size_t i = 0; i < fn_type_spec.args_count; i++) {
+                        AST_Node_Atom *previous = fn_type_spec.args[i];
                         if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
                             error_redefinition(it, previous);
                         }
                     }
                 }
-                fn_type.args[fn_type.args_count++] = it;
+                fn_type_spec.args[fn_type_spec.args_count++] = it;
 
                 check_node(c, arg);
             }
@@ -883,13 +918,13 @@ static void check_node(Compiler *c, AST_Node *n) {
             if (fn->returnn) {
                 check_node(c, fn->returnn);
                 ast_type_assert(c, fn->returnn, (AST_Type) {.kind = AST_TYPE_TYPE});
-                fn_type.returnn = fn->returnn->type.spec.type;
+                fn_type_spec.returnn = fn->returnn->type.spec.type;
             } else {
-                fn_type.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
-                fn_type.returnn->kind = AST_TYPE_UNIT;
+                fn_type_spec.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                fn_type_spec.returnn->kind = AST_TYPE_UNIT;
             }
 
-            n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type};
+            n->type = (AST_Type) {.kind = AST_TYPE_FN, .spec.fn = fn_type_spec};
 
             if (fn->defined_as) {
                 // The body of a function is irrelevant for outer expressions
@@ -915,6 +950,44 @@ static void check_node(Compiler *c, AST_Node *n) {
         }
 
         context_pop_fn(&c->context);
+    } break;
+
+    case AST_NODE_STRUCT: {
+        AST_Node_Struct *structt = (AST_Node_Struct *) n;
+
+        const AST_Type_Struct structt_type_spec = {
+            .fields = arena_alloc(c->llvm.arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
+            .fields_count = structt->fields_count,
+            .definition = structt,
+        };
+
+        const AST_Type type = {.kind = AST_TYPE_STRUCT, .spec.structt = structt_type_spec};
+        n->type = (AST_Type) {
+            .kind = AST_TYPE_TYPE,
+            .spec.type = arena_clone(c->llvm.arena, &type, sizeof(type)),
+        };
+
+        size_t iota = 0;
+        for (AST_Node *field = structt->fields.head; field; field = field->next) {
+            assert(field->kind == AST_NODE_DEFINE);
+            AST_Node_Define *define = (AST_Node_Define *) field;
+
+            assert(define->name->kind == AST_NODE_ATOM);
+            AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+            if (!sv_match(it->node.token.sv, "_")) {
+                for (size_t i = 0; i < iota; i++) {
+                    AST_Node_Atom *previous = structt_type_spec.fields[i];
+                    if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
+                        error_redefinition(it, previous);
+                    }
+                }
+            }
+            structt_type_spec.fields[iota++] = it;
+
+            check_node(c, define->type);
+            ast_type_assert(c, define->type, (AST_Type) {.kind = AST_TYPE_TYPE});
+            it->node.type = *define->type->type.spec.type;
+        }
     } break;
 
     case AST_NODE_CALL: {
