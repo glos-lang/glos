@@ -2,6 +2,7 @@
 #include "ast.h"
 #include "basic.h"
 #include "llvm.h"
+#include <stdbool.h>
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {
@@ -184,7 +185,7 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -367,6 +368,31 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_STRUCT:
         unreachable();
 
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+
+        LLVM_Node *memory = (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, n->type.llvm, true, true, false);
+
+        size_t ordered_iota = 0;
+        for (AST_Node *it = compound->children.head; it; it = it->next) {
+            if (n->type.kind == AST_TYPE_STRUCT) {
+                LLVM_Node *field = llvm_build_gep_field(&c->llvm, n->type.llvm, memory, n->type.llvm, ordered_iota);
+                LLVM_Node *value = compile_expr(c, it, false);
+                llvm_build_store(&c->llvm, field, value);
+            } else {
+                unreachable();
+            }
+
+            ordered_iota++;
+        }
+
+        debug = false;
+        if (ref) {
+            return_defer(memory);
+        }
+        return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+    }
+
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
         if (call->is_type_cast) {
@@ -461,7 +487,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;

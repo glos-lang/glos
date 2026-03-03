@@ -294,7 +294,7 @@ static void ast_nodes_debug_impl(FILE *f, AST_Nodes ns, int depth, const char *l
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -345,6 +345,14 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         AST_Node_Struct *structt = (AST_Node_Struct *) n;
         fprintf(f, "Structure {\n");
         ast_nodes_debug_impl(f, structt->fields, depth + 1, "Fields");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+        fprintf(f, "Compound {\n");
+        ast_node_debug_impl(f, compound->lhs, depth + 1, "Lhs");
+        ast_nodes_debug_impl(f, compound->children, depth + 1, "Children");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

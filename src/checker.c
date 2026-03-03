@@ -56,7 +56,7 @@ static void check_int_limit(AST_Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
     switch (n->kind) {
     case AST_NODE_ATOM:
@@ -241,7 +241,7 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static bool loop_breaks(AST_Node *n) {
     if (!n) {
         return false;
@@ -279,7 +279,7 @@ static bool is_atom_false(AST_Node *n) {
     return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static bool always_returns(AST_Node *n) {
     if (!n) {
         return false;
@@ -340,7 +340,7 @@ static bool always_returns(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -509,7 +509,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_MEMBER: {
         todo();
-    } break;
+    }
 
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
@@ -522,6 +522,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_STRUCT: {
         return const_value_type(n->type);
+    }
+
+    case AST_NODE_COMPOUND: {
+        todo();
     }
 
     case AST_NODE_CALL: {
@@ -557,7 +561,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_start) {
     switch (n->kind) {
     case AST_NODE_DEFINE: {
@@ -718,7 +722,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
     error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_AST_NODES == 15, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void check_node(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -979,6 +983,48 @@ static void check_node(Compiler *c, AST_Node *n) {
             it->node.type = ast_type_assert_type(define->type);
             it->node.type.is_type = false;
         }
+    } break;
+
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+        check_node(c, compound->lhs);
+        ast_type_assert_type(compound->lhs);
+
+        n->type = compound->lhs->type;
+        n->type.is_type = false;
+        if (n->type.ref || (n->type.kind != AST_TYPE_STRUCT)) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                Pos_Arg(compound->lhs->token.pos),
+                ast_type_to_cstr(n->type));
+            exit(1);
+        }
+
+        // For structure literal
+        AST_Type_Struct struct_spec = {0};
+        if (n->type.kind == AST_TYPE_STRUCT) {
+            struct_spec = n->type.spec.structt;
+        }
+
+        size_t ordered_iota = 0;
+        for (AST_Node *it = compound->children.head; it; it = it->next) {
+            if (n->type.kind == AST_TYPE_STRUCT) {
+                if (ordered_iota >= struct_spec.fields_count) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
+                    exit(1);
+                }
+
+                check_node(c, it);
+                ast_type_assert(c, it, struct_spec.fields[ordered_iota]->node.type);
+            } else {
+                unreachable();
+            }
+
+            ordered_iota++;
+        }
+
+        n->is_memory = true;
     } break;
 
     case AST_NODE_CALL: {

@@ -123,6 +123,7 @@ typedef enum {
 
     AST_NODE_FN,
     AST_NODE_STRUCT,
+    AST_NODE_COMPOUND,
 
     AST_NODE_CALL,
 
@@ -223,6 +224,13 @@ struct AST_Node_Struct {
 
     AST_Node_Atom *defined_as;
 };
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *lhs;
+
+    AST_Nodes children;
+} AST_Node_Compound;
 
 typedef enum {
     TYPE_CAST_NOP,

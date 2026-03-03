@@ -1077,13 +1077,15 @@ void llvm_compile(LLVM *l) {
                 sb_push(&l->sb, '\n');
             }
 
-            var->debug_local = ++l->iota_debug;
-            var->debug.iota = ++l->iota_debug;
-            sb_push_cstr(&l->sb, "  call void @llvm.dbg.declare(metadata ptr ");
-            llvm_node_emit(l, n);
-            sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())", var->debug_local);
-            llvm_debug_pos_emit(l, n->debug);
-            sb_push(&l->sb, '\n');
+            if (var->debug.scope) {
+                var->debug_local = ++l->iota_debug;
+                var->debug.iota = ++l->iota_debug;
+                sb_push_cstr(&l->sb, "  call void @llvm.dbg.declare(metadata ptr ");
+                llvm_node_emit(l, n);
+                sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())", var->debug_local);
+                llvm_debug_pos_emit(l, n->debug);
+                sb_push(&l->sb, '\n');
+            }
         }
 
         size_t first_row = 0;
