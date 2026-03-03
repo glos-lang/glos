@@ -865,10 +865,6 @@ static void check_node(Compiler *c, AST_Node *n) {
             exit(1);
         }
 
-        if (member->lhs->type.ref) {
-            todo();
-        }
-
         const AST_Type_Struct spec = member->lhs->type.spec.structt;
         for (size_t i = 0; i < spec.fields_count; i++) {
             AST_Node_Atom *it = spec.fields[i];

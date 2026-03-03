@@ -330,15 +330,34 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_MEMBER: {
         AST_Node_Member *member = (AST_Node_Member *) n;
 
-        LLVM_Node *lhs = compile_expr(c, member->lhs, true);
-        LLVM_Node *value =
-            llvm_build_gep_field(&c->llvm, n->type.llvm, lhs, member->lhs->type.llvm, member->definition_index);
+        LLVM_Node *lhs = NULL;
+        LLVM_Type  lhs_type = {0};
+        if (member->lhs->type.ref) {
+            lhs = compile_expr(c, member->lhs, false);
+            lhs_type = member->lhs->type.llvm;
 
+            assert(lhs_type.kind == LLVM_TYPE_PTR && lhs_type.ptr.type);
+            lhs_type = *lhs_type.ptr.type;
+
+            for (size_t i = 1; i < member->lhs->type.ref; i++) {
+                lhs = llvm_build_load(&c->llvm, lhs, lhs_type);
+                llvm_debug_set_pos(&c->llvm, lhs, n->token.pos.row, n->token.pos.col);
+
+                assert(lhs_type.kind == LLVM_TYPE_PTR && lhs_type.ptr.type);
+                lhs_type = *lhs_type.ptr.type;
+            }
+
+            assert(lhs_type.kind == LLVM_TYPE_STRUCT);
+        } else {
+            lhs = compile_expr(c, member->lhs, true);
+            lhs_type = member->lhs->type.llvm;
+        }
+
+        LLVM_Node *value = llvm_build_gep_field(&c->llvm, n->type.llvm, lhs, lhs_type, member->definition_index);
         if (ref) {
             debug = false;
             return_defer(value);
         }
-
         return_defer(llvm_build_load(&c->llvm, value, n->type.llvm));
     }
 

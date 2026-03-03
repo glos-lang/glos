@@ -3,9 +3,28 @@ Vec2 :: struct {
     y: i32
 }
 
-main :: () {
+foo :: (v: &Vec2) {
+    v.x = 42
+    v.y = 69
+}
+
+bar :: (v: Vec2) {
+    print v.x
+    print v.y
+}
+
+vec2 :: (x: i32, y: i32) -> Vec2 {
     v: Vec2
-    v.x = 34
-    v.y = 35
-    print v.x + v.y
+    v.x = x
+    v.y = y
+    return v
+}
+
+main :: () {
+    pos: Vec2
+    print sizeof(pos)
+
+    foo(&pos)
+    bar(pos)
+    bar(vec2(420, 1337))
 }

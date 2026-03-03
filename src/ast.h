@@ -54,6 +54,7 @@ typedef struct {
 } AST_Type_Fn;
 
 typedef struct {
+    // TODO: Instead of AST_Node_Atom, use struct { Pos pos; SV name; AST_Type type; }
     AST_Node_Atom **fields;
     size_t          fields_count;
 
