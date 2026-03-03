@@ -495,9 +495,33 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
 
             AST_Node_Compound *compound = (AST_Node_Compound *) ast_node_alloc(p, AST_NODE_COMPOUND, token);
             compound->lhs = node;
-
+            compound->is_designated = false;
             while (!read_token(p, TOKEN_RBRACE)) {
-                ast_nodes_push(&compound->children, parse_expr(p, POWER_SET, true));
+                AST_Node *child = parse_expr(p, POWER_SET, true);
+
+                bool child_is_designated = false;
+                if (read_token(p, TOKEN_SET)) {
+                    assert(p->ahead.kind == TOKEN_SET);
+                    AST_Node_Binary *binary = (AST_Node_Binary *) ast_node_alloc(p, AST_NODE_BINARY, p->ahead);
+                    binary->lhs = child;
+                    binary->rhs = parse_expr(p, POWER_SET, true);
+                    child = (AST_Node *) binary;
+                    child_is_designated = true;
+                }
+
+                if (compound->children.head) {
+                    if (compound->is_designated != child_is_designated) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Cannot mix ordered and designated initializers\n",
+                            Pos_Arg(child->token.pos));
+                        exit(1);
+                    }
+                } else {
+                    compound->is_designated = child_is_designated;
+                }
+
+                ast_nodes_push(&compound->children, child);
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
                     break;
                 }

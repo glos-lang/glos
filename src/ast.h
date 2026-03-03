@@ -201,8 +201,7 @@ typedef struct {
     AST_Node *lhs;
     Token     field;
 
-    AST_Node_Atom *definition;
-    size_t         definition_index;
+    size_t field_index;
 } AST_Node_Member;
 
 struct AST_Node_Fn {
@@ -237,6 +236,15 @@ typedef struct {
     AST_Node *lhs;
 
     AST_Nodes children;
+
+    // For designated initializers, each node of children is as follows:
+    //
+    // AST_Node_Binary('=') {
+    //     token.as.integer = <index>
+    //     lhs = <key>
+    //     lhs = <value>
+    // }
+    bool is_designated;
 } AST_Node_Compound;
 
 typedef enum {

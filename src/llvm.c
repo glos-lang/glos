@@ -1178,6 +1178,9 @@ void llvm_compile(LLVM *l) {
 
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
+            if (!var->debug.scope) {
+                continue;
+            }
 
             const size_t debug_type = llvm_type_debug_compile(l, &var->type);
             sb_sprintf(

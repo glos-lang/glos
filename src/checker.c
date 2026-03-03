@@ -511,7 +511,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Member  *member = (AST_Node_Member *) n;
         const Const_Value value = eval_const_expr(c, member->lhs);
         assert(value.kind == CONST_VALUE_STRUCT);
-        return value.as.structt.fields[member->definition_index];
+        return value.as.structt.fields[member->field_index];
     }
 
     case AST_NODE_FN: {
@@ -539,14 +539,25 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
 
         size_t ordered_iota = 0;
-        for (AST_Node *it = compound->children.head; it; it = it->next) {
+        for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
+            size_t it_iota = 0;
+            if (!compound->is_designated) {
+                it_iota = ordered_iota++;
+            }
+
+            AST_Node *it = iter;
             if (n->type.kind == AST_TYPE_STRUCT) {
-                struct_value.fields[ordered_iota] = eval_const_expr(c, it);
+                if (compound->is_designated) {
+                    assert(it->kind == AST_NODE_BINARY && it->token.kind == TOKEN_SET);
+                    AST_Node_Binary *it_binary = (AST_Node_Binary *) it;
+                    it_iota = it->token.as.integer;
+                    it = it_binary->rhs;
+                }
+
+                struct_value.fields[it_iota] = eval_const_expr(c, it);
             } else {
                 unreachable();
             }
-
-            ordered_iota++;
         }
 
         return const_value_struct(struct_value);
@@ -901,22 +912,23 @@ static void check_node(Compiler *c, AST_Node *n) {
             exit(1);
         }
 
-        const AST_Type_Struct spec = member->lhs->type.spec.structt;
+        AST_Node_Atom  *definition = NULL;
+        AST_Type_Struct spec = member->lhs->type.spec.structt;
         for (size_t i = 0; i < spec.fields_count; i++) {
             AST_Node_Atom *it = spec.fields[i];
             if (sv_eq(it->node.token.sv, member->field.sv)) {
-                member->definition = it;
-                member->definition_index = i;
+                definition = it;
+                member->field_index = i;
                 break;
             }
         }
 
-        if (!member->definition) {
+        if (!definition) {
             error_undefined(&member->field, "field");
         }
 
         n->is_memory = true;
-        n->type = member->definition->node.type;
+        n->type = definition->node.type;
     } break;
 
     case AST_NODE_FN: {
@@ -1040,23 +1052,54 @@ static void check_node(Compiler *c, AST_Node *n) {
         }
 
         size_t ordered_iota = 0;
-        for (AST_Node *it = compound->children.head; it; it = it->next) {
+        for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
+            size_t it_iota = 0;
+            if (!compound->is_designated) {
+                it_iota = ordered_iota++;
+            }
+
+            AST_Node *it = iter;
             if (n->type.kind == AST_TYPE_STRUCT) {
-                if (ordered_iota >= struct_spec.fields_count) {
+                if (compound->is_designated) {
+                    assert(it->kind == AST_NODE_BINARY && it->token.kind == TOKEN_SET);
+                    AST_Node_Binary *it_binary = (AST_Node_Binary *) it;
+
+                    if (it_binary->lhs->kind != AST_NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Expected designated initializer to be field name\n",
+                            Pos_Arg(it_binary->lhs->token.pos));
+                        exit(1);
+                    }
+                    AST_Node_Atom *it_field_name = (AST_Node_Atom *) it_binary->lhs;
+
+                    bool ok = false;
+                    for (size_t i = 0; i < struct_spec.fields_count; i++) {
+                        AST_Node_Atom *field = struct_spec.fields[i];
+                        if (sv_eq(field->node.token.sv, it_field_name->node.token.sv)) {
+                            it->token.as.integer = i;
+                            ok = true;
+                            break;
+                        }
+                    }
+
+                    if (!ok) {
+                        error_undefined(&it_field_name->node.token, "field");
+                    }
+
+                    it_iota = it->token.as.integer;
+                    it = it_binary->rhs;
+                } else if (it_iota >= struct_spec.fields_count) {
                     fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
                     exit(1);
                 }
 
                 check_node(c, it);
-                ast_type_assert(c, it, struct_spec.fields[ordered_iota]->node.type);
+                ast_type_assert(c, it, struct_spec.fields[it_iota]->node.type);
             } else {
                 unreachable();
             }
-
-            ordered_iota++;
         }
-
-        n->is_memory = true;
     } break;
 
     case AST_NODE_CALL: {

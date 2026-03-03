@@ -401,7 +401,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             lhs_type = member->lhs->type.llvm;
         }
 
-        LLVM_Node *value = llvm_build_gep_field(&c->llvm, n->type.llvm, lhs, lhs_type, member->definition_index);
+        LLVM_Node *value = llvm_build_gep_field(&c->llvm, n->type.llvm, lhs, lhs_type, member->field_index);
         if (ref) {
             debug = false;
             return_defer(value);
@@ -421,16 +421,27 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         LLVM_Node *memory = (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, n->type.llvm, true, true, false);
 
         size_t ordered_iota = 0;
-        for (AST_Node *it = compound->children.head; it; it = it->next) {
+        for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
+            size_t it_iota = 0;
+            if (!compound->is_designated) {
+                it_iota = ordered_iota++;
+            }
+
+            AST_Node *it = iter;
             if (n->type.kind == AST_TYPE_STRUCT) {
-                LLVM_Node *field = llvm_build_gep_field(&c->llvm, n->type.llvm, memory, n->type.llvm, ordered_iota);
+                if (compound->is_designated) {
+                    assert(it->kind == AST_NODE_BINARY && it->token.kind == TOKEN_SET);
+                    AST_Node_Binary *it_binary = (AST_Node_Binary *) it;
+                    it_iota = it->token.as.integer;
+                    it = it_binary->rhs;
+                }
+
+                LLVM_Node *field = llvm_build_gep_field(&c->llvm, n->type.llvm, memory, n->type.llvm, it_iota);
                 LLVM_Node *value = compile_expr(c, it, false);
                 llvm_build_store(&c->llvm, field, value);
             } else {
                 unreachable();
             }
-
-            ordered_iota++;
         }
 
         debug = false;
