@@ -88,26 +88,33 @@ bool ast_type_is_scalar(AST_Type type);
 
 typedef enum {
     CONST_VALUE_INT,
-
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
-
+    CONST_VALUE_STRUCT,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
+typedef struct Const_Value Const_Value;
+
 typedef struct {
+    AST_Type_Struct spec;
+    Const_Value    *fields;
+} Const_Value_Struct;
+
+struct Const_Value {
     Const_Value_Kind kind;
     union {
-        long         integer;
-        AST_Type     type;
-        AST_Node_Fn *fn;
+        long               integer;
+        AST_Type           type;
+        AST_Node_Fn       *fn;
+        Const_Value_Struct structt;
     } as;
-} Const_Value;
+};
 
-#define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
-
-#define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
-#define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+#define const_value_int(v)    ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_fn(v)     ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+#define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 
 typedef enum {
     UNCHECKED,

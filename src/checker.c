@@ -508,7 +508,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     } break;
 
     case AST_NODE_MEMBER: {
-        todo();
+        AST_Node_Member  *member = (AST_Node_Member *) n;
+        const Const_Value value = eval_const_expr(c, member->lhs);
+        assert(value.kind == CONST_VALUE_STRUCT);
+        return value.as.structt.fields[member->definition_index];
     }
 
     case AST_NODE_FN: {
@@ -525,7 +528,28 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     }
 
     case AST_NODE_COMPOUND: {
-        todo();
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+
+        AST_Type_Struct    struct_spec = {0};
+        Const_Value_Struct struct_value = {0};
+        if (n->type.kind == AST_TYPE_STRUCT) {
+            struct_spec = n->type.spec.structt;
+            struct_value.spec = struct_spec;
+            struct_value.fields = arena_alloc(c->llvm.arena, struct_spec.fields_count * sizeof(*struct_value.fields));
+        }
+
+        size_t ordered_iota = 0;
+        for (AST_Node *it = compound->children.head; it; it = it->next) {
+            if (n->type.kind == AST_TYPE_STRUCT) {
+                struct_value.fields[ordered_iota] = eval_const_expr(c, it);
+            } else {
+                unreachable();
+            }
+
+            ordered_iota++;
+        }
+
+        return const_value_struct(struct_value);
     }
 
     case AST_NODE_CALL: {
@@ -858,7 +882,15 @@ static void check_node(Compiler *c, AST_Node *n) {
     case AST_NODE_MEMBER: {
         AST_Node_Member *member = (AST_Node_Member *) n;
         check_node(c, member->lhs);
-        ast_node_assert_can_be_referenced(member->lhs); // TODO: All structures exist in memory, but for now check this
+
+        if (member->lhs->kind == AST_NODE_CALL) {
+            // TODO: This will be fixed after proper calling conventions are implemented
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot access field of structures returned from functions\n",
+                Pos_Arg(n->token.pos));
+            exit(1);
+        }
 
         if (!ast_type_kind_eq(member->lhs->type, AST_TYPE_STRUCT)) {
             fprintf(

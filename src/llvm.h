@@ -14,6 +14,8 @@ typedef struct LLVM_Debug_Pos   LLVM_Debug_Pos;
 typedef struct LLVM_Debug_File  LLVM_Debug_File;
 typedef struct LLVM_Debug_Scope LLVM_Debug_Scope;
 
+typedef struct LLVM_Node_Var_Init LLVM_Node_Var_Init;
+
 typedef struct {
     LLVM_Node *head;
     LLVM_Node *tail;
@@ -166,11 +168,14 @@ LLVM_Node_Var *llvm_fn_arg_get(LLVM_Node_Fn *fn, size_t index);
 
 LLVM_Node_Var *llvm_var_new(LLVM *l, SV name, LLVM_Type type, bool is_local, bool is_zeroed, bool is_extern);
 void           llvm_var_debug_set_pos(LLVM *l, LLVM_Node_Var *var, size_t row, size_t col);
+void           llvm_var_set_name(LLVM_Node_Var *var, SV name);
 
-void llvm_var_set_name(LLVM_Node_Var *var, SV name);
+LLVM_Node_Var_Init *llvm_var_init_new_int(LLVM *l, LLVM_Type type, long n);
+LLVM_Node_Var_Init *llvm_var_init_new_node(LLVM *l, LLVM_Node *node);
+LLVM_Node_Var_Init *llvm_var_init_new_struct(LLVM *l, LLVM_Type type, LLVM_Node_Var_Init **fields, size_t fields_count);
+void                llvm_var_set_init(LLVM_Node_Var *var, LLVM_Node_Var_Init *init);
 
-void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n);
-void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node);
+LLVM_Node *llvm_const_new(LLVM *l, SV name, LLVM_Type type, LLVM_Node_Var_Init *value);
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value);
 LLVM_Node *llvm_build_binary(LLVM *l, LLVM_Binary_Kind kind, LLVM_Type type, LLVM_Node *lhs, LLVM_Node *rhs);

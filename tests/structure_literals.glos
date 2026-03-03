@@ -8,6 +8,9 @@ print_vec2 :: (v: Vec2) {
     print v.y
 }
 
+vec := Vec2 {69, 420}
+
 main :: () {
-    print_vec2(Vec2 {69, 420})
+    print_vec2(vec)
+    print_vec2(Vec2 {1337, 80085})
 }

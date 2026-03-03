@@ -3,6 +3,7 @@
 #include "basic.h"
 #include "llvm.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {
@@ -88,6 +89,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
         assert(common->kind == AST_TYPE_STRUCT);
 
         if (common->llvm.kind != LLVM_TYPE_STRUCT) {
+            // TODO: Consider proper name
             const char           *name = temp_sprintf("anon.%zu", c->iota_anonymous_struct++);
             const AST_Type_Struct spec = common->spec.structt;
 
@@ -185,6 +187,37 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
+static_assert(COUNT_CONST_VALUES == 4, "");
+static LLVM_Node_Var_Init *compile_const_value_to_var_init(Compiler *c, LLVM_Type type, Const_Value value) {
+    switch (value.kind) {
+    case CONST_VALUE_INT:
+        return llvm_var_init_new_int(&c->llvm, type, value.as.integer);
+
+    case CONST_VALUE_FN:
+        return llvm_var_init_new_node(&c->llvm, compile_fn(c, value.as.fn));
+
+    case CONST_VALUE_TYPE:
+        unreachable();
+
+    case CONST_VALUE_STRUCT: {
+        const AST_Type_Struct spec = value.as.structt.spec;
+
+        LLVM_Node_Var_Init **fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            // TODO: Think of a better solution for common metadata for a struct
+            const LLVM_Type it_type = spec.definition->node.type.llvm.structt.fields[i].type;
+            fields[i] = compile_const_value_to_var_init(c, it_type, value.as.structt.fields[i]);
+        }
+
+        return llvm_var_init_new_struct(&c->llvm, type, fields, spec.fields_count);
+    }
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 static_assert(COUNT_AST_NODES == 16, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
@@ -212,7 +245,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             if (definition->is_const) {
                 debug = false;
 
-                static_assert(COUNT_CONST_VALUES == 3, "");
+                static_assert(COUNT_CONST_VALUES == 4, "");
                 switch (definition->const_value.kind) {
                 case CONST_VALUE_INT:
                     return_defer(llvm_atom_int(&c->llvm, n->type.llvm, definition->const_value.as.integer));
@@ -222,6 +255,20 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
                 case CONST_VALUE_TYPE:
                     unreachable();
+
+                case CONST_VALUE_STRUCT: {
+                    LLVM_Node_Var_Init *value =
+                        compile_const_value_to_var_init(c, n->type.llvm, definition->const_value);
+
+                    // TODO: Consider proper name
+                    const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+
+                    LLVM_Node *memory = llvm_const_new(&c->llvm, sv_from_cstr(name), n->type.llvm, value);
+                    if (ref) {
+                        return_defer(memory);
+                    }
+                    return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+                }
 
                 default:
                     unreachable();
@@ -443,29 +490,6 @@ defer:
     return result;
 }
 
-static void compile_var_init(Compiler *c, AST_Node_Atom *atom) {
-    LLVM_Node_Var *var = (LLVM_Node_Var *) atom->llvm;
-
-    static_assert(COUNT_CONST_VALUES == 3, "");
-    switch (atom->const_value.kind) {
-    case CONST_VALUE_INT:
-        llvm_var_init_add_int(&c->llvm, var, atom->node.type.llvm, atom->const_value.as.integer);
-        break;
-
-    case CONST_VALUE_FN:
-        llvm_var_init_add_node(&c->llvm, var, compile_fn(c, atom->const_value.as.fn));
-        break;
-
-    case CONST_VALUE_TYPE:
-        unreachable();
-        break;
-
-    default:
-        unreachable();
-        break;
-    }
-}
-
 static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     compile_type(c, &it->node.type);
 
@@ -483,7 +507,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     it->llvm = (LLVM_Node *) var;
 
     if (!it->is_local && it->is_assigned) {
-        compile_var_init(c, it);
+        llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
     }
 }
 

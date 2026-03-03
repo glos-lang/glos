@@ -1,5 +1,6 @@
 #include "llvm.h"
 #include "basic.h"
+#include <assert.h>
 
 typedef enum {
     LLVM_NODE_ATOM,
@@ -152,13 +153,25 @@ struct LLVM_Node_Fn {
     LLVM_Debug_Scope *debug_scope;
 };
 
-typedef struct LLVM_Node_Var_Init LLVM_Node_Var_Init;
+typedef enum {
+    LLVM_NODE_VAR_INIT_INT,
+    LLVM_NODE_VAR_INIT_NODE,
+    LLVM_NODE_VAR_INIT_STRUCT,
+    COUNT_LLVM_NODE_VAR_INITS,
+} LLVM_Node_Var_Init_Kind;
 
 struct LLVM_Node_Var_Init {
-    LLVM_Node *node;
+    LLVM_Node_Var_Init_Kind kind;
 
     LLVM_Type type;
-    long      n;
+    union {
+        LLVM_Node *node;
+        long       integer;
+        struct {
+            LLVM_Node_Var_Init **fields;
+            size_t               fields_count;
+        } structt;
+    } as;
 
     LLVM_Node_Var_Init *next;
 };
@@ -171,11 +184,11 @@ struct LLVM_Node_Var {
     bool   is_arg;
     size_t arg_index;
 
+    bool is_const;
     bool is_zeroed;
     bool is_extern;
 
-    LLVM_Node_Var_Init *init_head;
-    LLVM_Node_Var_Init *init_tail;
+    LLVM_Node_Var_Init *init;
 
     LLVM_Debug_Pos debug;
     size_t         debug_local;
@@ -947,19 +960,39 @@ static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
         pos->scope->iota);
 }
 
+static_assert(COUNT_LLVM_NODE_VAR_INITS == 3, "");
 static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
-    if (init->node) {
-        sb_push_cstr(&l->sb, "ptr ");
-        llvm_node_emit(l, init->node);
-    } else {
+    switch (init->kind) {
+    case LLVM_NODE_VAR_INIT_INT:
         llvm_type_emit(l, init->type, true);
         if (init->type.kind == LLVM_TYPE_PTR) {
-            sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->n);
-        } else if (init->type.kind == LLVM_TYPE_STRUCT) {
-            todo();
+            sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->as.integer);
         } else {
-            sb_sprintf(&l->sb, " %ld", init->n);
+            sb_sprintf(&l->sb, " %ld", init->as.integer);
         }
+        break;
+
+    case LLVM_NODE_VAR_INIT_NODE:
+        sb_push_cstr(&l->sb, "ptr ");
+        llvm_node_emit(l, init->as.node);
+        break;
+
+    case LLVM_NODE_VAR_INIT_STRUCT:
+        llvm_type_emit(l, init->type, true);
+
+        sb_push_cstr(&l->sb, " {");
+        for (size_t i = 0; i < init->as.structt.fields_count; i++) {
+            if (i) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+            llvm_var_init_emit(l, init->as.structt.fields[i]);
+        }
+        sb_push(&l->sb, '}');
+        break;
+
+    default:
+        unreachable();
+        break;
     }
 }
 
@@ -992,11 +1025,17 @@ void llvm_compile(LLVM *l) {
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) it;
 
-            sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = %s ", SV_Arg(it->sv), var->is_extern ? "external global" : "global");
-            if (var->init_head) {
-                for (LLVM_Node_Var_Init *it = var->init_head; it; it = it->next) {
-                    llvm_var_init_emit(l, it);
-                }
+            sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = ", SV_Arg(it->sv));
+            if (var->is_const) {
+                sb_push_cstr(&l->sb, "constant ");
+            } else if (var->is_extern) {
+                sb_push_cstr(&l->sb, "external global ");
+            } else {
+                sb_push_cstr(&l->sb, "global ");
+            }
+
+            if (var->init) {
+                llvm_var_init_emit(l, var->init);
             } else {
                 llvm_type_emit(l, var->type, true);
                 if (!var->is_extern) {
@@ -1193,6 +1232,9 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         LLVM_Node_Var *var = (LLVM_Node_Var *) it;
+        if (var->is_const) {
+            continue;
+        }
 
         const size_t debug_var = ++l->iota_debug;
         sb_sprintf(
@@ -1221,6 +1263,10 @@ void llvm_compile(LLVM *l) {
 
     sb_sprintf(&l->sb, "!%zu = !{", debug_globals_list);
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
+        if (((LLVM_Node_Var *) it)->is_const) {
+            continue;
+        }
+
         sb_sprintf(&l->sb, "!%zu", it->debug->iota);
         if (it->next) {
             sb_push_cstr(&l->sb, ", ");
@@ -1416,27 +1462,44 @@ void llvm_var_set_name(LLVM_Node_Var *var, SV name) {
     var->name = name;
 }
 
-static void llvm_var_init_push(LLVM_Node_Var *var, LLVM_Node_Var_Init *init) {
-    if (var->init_tail) {
-        var->init_tail->next = init;
-    } else {
-        var->init_head = init;
-    }
-
-    var->init_tail = init;
-}
-
-void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n) {
+LLVM_Node_Var_Init *llvm_var_init_new_int(LLVM *l, LLVM_Type type, long n) {
     LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->kind = LLVM_NODE_VAR_INIT_INT;
     init->type = type;
-    init->n = n;
-    llvm_var_init_push(var, init);
+    init->as.integer = n;
+    return init;
 }
 
-void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node) {
+LLVM_Node_Var_Init *llvm_var_init_new_node(LLVM *l, LLVM_Node *node) {
     LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
-    init->node = node;
-    llvm_var_init_push(var, init);
+    init->kind = LLVM_NODE_VAR_INIT_NODE;
+    init->as.node = node;
+    return init;
+}
+
+LLVM_Node_Var_Init *
+llvm_var_init_new_struct(LLVM *l, LLVM_Type type, LLVM_Node_Var_Init **fields, size_t fields_count) {
+    LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->kind = LLVM_NODE_VAR_INIT_STRUCT;
+    init->type = type;
+    init->as.structt.fields = fields;
+    init->as.structt.fields_count = fields_count;
+    return init;
+}
+
+void llvm_var_set_init(LLVM_Node_Var *var, LLVM_Node_Var_Init *init) {
+    var->init = init;
+}
+
+LLVM_Node *llvm_const_new(LLVM *l, SV name, LLVM_Type type, LLVM_Node_Var_Init *value) {
+    LLVM_Node_Var *var = (LLVM_Node_Var *) llvm_node_alloc(l, LLVM_NODE_VAR, llvm_type_basic(LLVM_TYPE_PTR));
+    var->type = type;
+    var->name = name;
+    var->node.sv = name;
+    var->is_const = true;
+    var->init = value;
+    llvm_nodes_push(&l->vars, (LLVM_Node *) var);
+    return (LLVM_Node *) var;
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
