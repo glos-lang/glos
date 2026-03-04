@@ -782,6 +782,7 @@ void compiler_build(Compiler *c, const char *output) {
     cmd_push(c->cmd, "-x");
     cmd_push(c->cmd, "ir");
     cmd_push(c->cmd, "-");
+    cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
     FILE *f = NULL;
     Proc  proc = cmd_run_async(c->cmd, (Cmd_Stdio) {.in = &f});

@@ -3,11 +3,15 @@
 
 #include "context.h"
 
+typedef Dynamic_Array(const char *) Link_Flags;
+
 typedef struct {
     Scope   globals;
     Context context;
 
-    Cmd *cmd;
+    Cmd        *cmd;
+    Link_Flags *link_flags;
+
     LLVM llvm;
 
     LLVM_Node_Block *loop_break;
