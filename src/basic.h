@@ -108,6 +108,8 @@ char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
 char *temp_sv_to_cstr(SV sv);
 void  temp_remove_null(void);
 
+void *temp_clone(const void *data, size_t size);
+
 // Arena Allocator
 typedef struct Arena_Region Arena_Region;
 

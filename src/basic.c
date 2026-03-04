@@ -181,6 +181,10 @@ void temp_remove_null(void) {
     }
 }
 
+void *temp_clone(const void *data, size_t size) {
+    return memcpy(temp_alloc(size), data, size);
+}
+
 // Arena Allocator
 #define ARENA_MINIMUM_CAPACITY 16000
 

@@ -1,6 +1,7 @@
 #include "llvm.h"
 #include "basic.h"
 #include <assert.h>
+#include <stdbool.h>
 
 typedef enum {
     LLVM_NODE_ATOM,
@@ -98,6 +99,9 @@ typedef struct {
 typedef struct {
     LLVM_Node  node;
     LLVM_Node *ptr;
+
+    // Basically don't emit a load instruction when passing structures to functions
+    bool is_dead;
 } LLVM_Node_Load;
 
 typedef struct {
@@ -116,6 +120,9 @@ typedef struct {
     LLVM_Node  *fn;
     LLVM_Node **args;
     size_t      args_count;
+
+    LLVM_Node      *struct_return_memory;
+    LLVM_Node_Load *struct_return_load;
 } LLVM_Node_Call;
 
 struct LLVM_Node_Block {
@@ -139,6 +146,27 @@ typedef struct {
     LLVM_Node *value;
 } LLVM_Node_Return;
 
+typedef enum {
+    LLVM_ABI_CLASS_VOID,
+    LLVM_ABI_CLASS_DIRECT,
+    LLVM_ABI_CLASS_INDIRECT,
+    LLVM_ABI_CLASS_CONVERTED,
+    COUNT_LLVM_ABI_CLASSES
+} LLVM_ABI_Class_Kind;
+
+typedef struct {
+    LLVM_ABI_Class_Kind kind;
+
+    LLVM_Type_Kind converted_parts[2];
+    size_t         converted_parts_count;
+
+    size_t indirect_iotas[2];
+} LLVM_ABI_Class;
+
+typedef struct {
+    size_t int_registers;
+} LLVM_ABI_Classifier;
+
 struct LLVM_Node_Fn {
     LLVM_Node  node;
     LLVM_Nodes vars;
@@ -147,7 +175,10 @@ struct LLVM_Node_Fn {
     bool       is_extern;
 
     LLVM_Node_Var **args;
+    LLVM_ABI_Class *args_classes;
     size_t          args_count;
+
+    size_t indirect_return_iota;
 
     LLVM_Debug_Pos    debug;
     LLVM_Debug_Scope *debug_scope;
@@ -262,7 +293,10 @@ static inline void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
     if (!pos) {
         return;
     }
-    pos->iota = ++l->iota_debug;
+
+    if (!pos->iota) {
+        pos->iota = ++l->iota_debug;
+    }
     sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
 }
 
@@ -437,6 +471,86 @@ static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) 
     return temp;
 }
 
+static LLVM_Type_Kind llvm_int_type_kind_from_size(size_t size) {
+    switch (size) {
+    case 1:
+        return LLVM_TYPE_I8;
+
+    case 2:
+        return LLVM_TYPE_I16;
+
+    case 4:
+        return LLVM_TYPE_I32;
+
+    case 8:
+        return LLVM_TYPE_I64;
+
+    default:
+        unreachable();
+    }
+}
+
+static LLVM_ABI_Class llvm_abi_classify_x86_64_linux(LLVM_ABI_Classifier *c, LLVM_Type type) {
+    LLVM_ABI_Class arg_class = {0};
+
+    const LLVM_Type_Info info = llvm_type_info(type);
+    if (info.size == 0) {
+        arg_class.kind = LLVM_ABI_CLASS_VOID;
+        return arg_class;
+    }
+
+    if (type.kind != LLVM_TYPE_STRUCT) {
+        c->int_registers++;
+        arg_class.kind = LLVM_ABI_CLASS_DIRECT;
+        return arg_class;
+    }
+
+    if (info.size <= 8) {
+        c->int_registers++;
+        arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(info.size);
+        return arg_class;
+    }
+
+    if (info.size > 8 && info.size <= 16) {
+        if (c->int_registers + 2 <= 6) {
+            c->int_registers += 2;
+            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+
+            // TODO: Perform actual field classification
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(8);
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(info.size - 8);
+
+            return arg_class;
+        }
+    }
+
+    arg_class.kind = LLVM_ABI_CLASS_INDIRECT;
+    return arg_class;
+}
+
+static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
+    return llvm_abi_classify_x86_64_linux(c, type);
+}
+
+static void llvm_abi_converted_type_emit(LLVM *l, LLVM_ABI_Class abi_class) {
+    if (abi_class.converted_parts_count > 1) {
+        sb_push(&l->sb, '{');
+    }
+
+    for (size_t j = 0; j < abi_class.converted_parts_count; j++) {
+        if (j) {
+            sb_push_cstr(&l->sb, ", ");
+        }
+
+        llvm_type_emit(l, (LLVM_Type) {.kind = abi_class.converted_parts[j]}, false);
+    }
+
+    if (abi_class.converted_parts_count > 1) {
+        sb_push(&l->sb, '}');
+    }
+}
+
 static_assert(COUNT_LLVM_NODES == 15, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
@@ -596,23 +710,25 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
     case LLVM_NODE_LOAD: {
         LLVM_Node_Load *load = (LLVM_Node_Load *) n;
-        n->iota = ++l->iota_local;
-        sb_push_cstr(&l->sb, "  ");
-        llvm_node_emit(l, n);
-        sb_push_cstr(&l->sb, " = load ");
-        llvm_type_emit(l, n->type, true);
-        sb_push_cstr(&l->sb, ", ptr ");
-        llvm_node_emit(l, load->ptr);
-        sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
+        if (!load->is_dead) {
+            n->iota = ++l->iota_local;
+            sb_push_cstr(&l->sb, "  ");
+            llvm_node_emit(l, n);
+            sb_push_cstr(&l->sb, " = load ");
+            llvm_type_emit(l, n->type, true);
+            sb_push_cstr(&l->sb, ", ptr ");
+            llvm_node_emit(l, load->ptr);
+            sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
 
-        llvm_debug_pos_emit(l, n->debug);
-        sb_push(&l->sb, '\n');
+            llvm_debug_pos_emit(l, n->debug);
+            sb_push(&l->sb, '\n');
 
-        if (n->type.kind == LLVM_TYPE_I1) {
-            // `n` is bool. It cannot be a variable. Therefore it is safe to modify
-            n->type.kind = LLVM_TYPE_I8;
-            n->iota = llvm_cast_compile(l, n, LLVM_TYPE_I1);
-            n->type.kind = LLVM_TYPE_I1;
+            if (n->type.kind == LLVM_TYPE_I1) {
+                // `n` is bool. It cannot be a variable. Therefore it is safe to modify
+                n->type.kind = LLVM_TYPE_I8;
+                n->iota = llvm_cast_compile(l, n, LLVM_TYPE_I1);
+                n->type.kind = LLVM_TYPE_I1;
+            }
         }
     } break;
 
@@ -646,35 +762,205 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     } break;
 
     case LLVM_NODE_CALL: {
-        LLVM_Node_Call *call = (LLVM_Node_Call *) n;
-        sb_push_cstr(&l->sb, "  ");
-
-        if (n->type.kind != LLVM_TYPE_I0) {
-            n->iota = ++l->iota_local;
-            llvm_node_emit(l, n);
-            sb_push_cstr(&l->sb, " = ");
-        }
-
-        sb_push_cstr(&l->sb, "call ");
-        llvm_type_emit(l, n->type, false);
-        sb_push(&l->sb, ' ');
-
-        llvm_node_emit(l, call->fn);
-        sb_push(&l->sb, '(');
-        for (size_t i = 0; i < call->args_count; i++) {
-            if (i) {
-                sb_push_cstr(&l->sb, ", ");
+        const LLVM_ABI_Class *checkpoint = temp_alloc(0);
+        {
+            LLVM_Node_Call *call = (LLVM_Node_Call *) n;
+            if (call->struct_return_memory) {
+                if (call->struct_return_load) {
+                    n->debug = call->struct_return_load->node.debug;
+                    call->struct_return_load->node.debug = NULL;
+                } else {
+                    n->debug = call->struct_return_memory->debug;
+                    call->struct_return_memory->debug = NULL;
+                }
             }
 
-            LLVM_Node *arg = call->args[i];
-            llvm_type_emit(l, arg->type, false);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, arg);
-        }
-        sb_push(&l->sb, ')');
+            LLVM_ABI_Classifier classifier = {0};
+            LLVM_ABI_Class      return_class = llvm_abi_classify(&classifier, n->type);
 
-        llvm_debug_pos_emit(l, n->debug);
-        sb_push(&l->sb, '\n');
+            classifier = (LLVM_ABI_Classifier) {0};
+            if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+                classifier.int_registers++;
+            }
+
+            for (size_t i = 0; i < call->args_count; i++) {
+                LLVM_Node     *arg = call->args[i];
+                LLVM_ABI_Class arg_class = llvm_abi_classify(&classifier, arg->type);
+
+                if (arg->type.kind == LLVM_TYPE_STRUCT) {
+                    if (arg_class.kind == LLVM_ABI_CLASS_CONVERTED) {
+                        assert(arg->kind == LLVM_NODE_LOAD);
+                        LLVM_Node *arg_ptr = ((LLVM_Node_Load *) arg)->ptr;
+
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            const size_t temp = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = getelementptr inbounds i8, ptr ", temp);
+                            llvm_node_emit(l, arg_ptr);
+                            sb_sprintf(&l->sb, ", i64 %zu\n", i * 8);
+
+                            arg_class.indirect_iotas[i] = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = load ", arg_class.indirect_iotas[i]);
+
+                            const LLVM_Type type = {.kind = arg_class.converted_parts[i]};
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(&l->sb, ", ptr %%.%zu, align %zu\n", temp, llvm_type_info(type).align);
+                        }
+                    }
+
+                    temp_clone(&arg_class, sizeof(arg_class));
+                }
+            }
+
+            sb_push_cstr(&l->sb, "  ");
+            if (return_class.kind != LLVM_ABI_CLASS_VOID && return_class.kind != LLVM_ABI_CLASS_INDIRECT) {
+                n->iota = ++l->iota_local;
+                llvm_node_emit(l, n);
+                sb_push_cstr(&l->sb, " = ");
+            }
+
+            sb_push_cstr(&l->sb, "call ");
+            if (call->struct_return_memory) {
+                switch (return_class.kind) {
+                case LLVM_ABI_CLASS_VOID:
+                    sb_push_cstr(&l->sb, "void");
+                    break;
+
+                case LLVM_ABI_CLASS_DIRECT:
+                    unreachable();
+
+                case LLVM_ABI_CLASS_INDIRECT:
+                    sb_push_cstr(&l->sb, "void");
+                    break;
+
+                case LLVM_ABI_CLASS_CONVERTED:
+                    llvm_abi_converted_type_emit(l, return_class);
+                    break;
+
+                default:
+                    unreachable();
+                }
+            } else {
+                llvm_type_emit(l, n->type, false);
+            }
+
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, call->fn);
+            sb_push(&l->sb, '(');
+
+            if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+                sb_push_cstr(&l->sb, "ptr sret(");
+                llvm_type_emit(l, n->type, false);
+                sb_sprintf(&l->sb, ") align %zu ", llvm_type_info(n->type).align);
+                llvm_node_emit(l, call->struct_return_memory);
+
+                if (call->args_count) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+            }
+
+            size_t arg_class_iota = 0;
+            for (size_t i = 0; i < call->args_count; i++) {
+                if (i) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+
+                LLVM_Node *arg = call->args[i];
+                if (arg->type.kind == LLVM_TYPE_STRUCT) {
+                    LLVM_ABI_Class arg_class = checkpoint[arg_class_iota++];
+
+                    static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+                    switch (arg_class.kind) {
+                    case LLVM_ABI_CLASS_VOID:
+                        unreachable();
+
+                    case LLVM_ABI_CLASS_DIRECT:
+                        unreachable();
+
+                    case LLVM_ABI_CLASS_INDIRECT:
+                        sb_push_cstr(&l->sb, "ptr noundef byval(");
+                        llvm_type_emit(l, arg->type, false);
+                        sb_sprintf(&l->sb, ") align %zu ", llvm_type_info(arg->type).align);
+                        assert(arg->kind == LLVM_NODE_LOAD);
+                        llvm_node_emit(l, ((LLVM_Node_Load *) arg)->ptr);
+                        break;
+
+                    case LLVM_ABI_CLASS_CONVERTED:
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            if (i) {
+                                sb_push_cstr(&l->sb, ", ");
+                            }
+                            llvm_type_emit(l, (LLVM_Type) {.kind = arg_class.converted_parts[i]}, false);
+                            sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[i]);
+                        }
+                        break;
+
+                    default:
+                        unreachable();
+                    }
+                } else {
+                    llvm_type_emit(l, arg->type, false);
+                    sb_push(&l->sb, ' ');
+                    llvm_node_emit(l, arg);
+                }
+            }
+            sb_push(&l->sb, ')');
+
+            llvm_debug_pos_emit(l, n->debug);
+            sb_push(&l->sb, '\n');
+
+            if (call->struct_return_memory) {
+                switch (return_class.kind) {
+                case LLVM_ABI_CLASS_VOID:
+                    // Pass
+                    break;
+
+                case LLVM_ABI_CLASS_DIRECT:
+                    unreachable();
+
+                case LLVM_ABI_CLASS_INDIRECT:
+                    // Pass
+                    break;
+
+                case LLVM_ABI_CLASS_CONVERTED:
+                    if (return_class.converted_parts_count == 1) {
+                        const LLVM_Type type = {.kind = return_class.converted_parts[0]};
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_type_emit(l, type, false);
+                        sb_push(&l->sb, ' ');
+                        llvm_node_emit(l, n);
+
+                        sb_push_cstr(&l->sb, ", ptr ");
+                        llvm_node_emit(l, call->struct_return_memory);
+                        sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+                    } else {
+                        for (size_t i = 0; i < return_class.converted_parts_count; i++) {
+                            const size_t dst = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = getelementptr inbounds i8, ptr ", dst);
+                            llvm_node_emit(l, call->struct_return_memory);
+                            sb_sprintf(&l->sb, ", i64 %zu\n", i * 8);
+
+                            const size_t src = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = extractvalue ", src);
+                            llvm_abi_converted_type_emit(l, return_class);
+                            sb_push(&l->sb, ' ');
+                            llvm_node_emit(l, n);
+                            sb_sprintf(&l->sb, ", %zu\n", i);
+
+                            const LLVM_Type type = {.kind = return_class.converted_parts[i]};
+                            sb_push_cstr(&l->sb, "  store ");
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(
+                                &l->sb, " %%.%zu, ptr %%.%zu, align %zu\n", src, dst, llvm_type_info(type).align);
+                        }
+                    }
+                    break;
+
+                default:
+                    unreachable();
+                }
+            }
+        }
+        temp_reset(checkpoint);
     } break;
 
     case LLVM_NODE_BLOCK:
@@ -708,13 +994,59 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_RETURN: {
         LLVM_Node_Return *returnn = (LLVM_Node_Return *) n;
 
-        if (returnn->value) {
-            sb_push_cstr(&l->sb, "  ret ");
-            llvm_type_emit(l, n->type, false);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, returnn->value);
+        if (n->type.kind == LLVM_TYPE_STRUCT) {
+            LLVM_ABI_Classifier classifier = {0};
+            LLVM_ABI_Class      return_class = llvm_abi_classify(&classifier, n->type);
+
+            assert(returnn->value);
+            assert(returnn->value->kind == LLVM_NODE_LOAD);
+            LLVM_Node *return_ptr = ((LLVM_Node_Load *) returnn->value)->ptr;
+
+            static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+            switch (return_class.kind) {
+            case LLVM_ABI_CLASS_VOID:
+                unreachable();
+
+            case LLVM_ABI_CLASS_DIRECT:
+                unreachable();
+
+            case LLVM_ABI_CLASS_INDIRECT:
+                sb_sprintf(&l->sb, "  call void @llvm.memcpy.p0.p0.i64(ptr %%.%zu, ptr ", l->fn->indirect_return_iota);
+                llvm_node_emit(l, return_ptr);
+                sb_sprintf(
+                    &l->sb,
+                    ", i64 %zu, i1 false)\n"
+                    "  ret void",
+                    llvm_type_info(n->type).size);
+                break;
+
+            case LLVM_ABI_CLASS_CONVERTED: {
+                const size_t temp = ++l->iota_local;
+                sb_sprintf(&l->sb, "  %%.%zu = load ", temp);
+                llvm_abi_converted_type_emit(l, return_class);
+                sb_push_cstr(&l->sb, ", ptr ");
+                llvm_node_emit(l, return_ptr);
+                sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
+                llvm_debug_pos_emit(l, n->debug);
+                sb_push(&l->sb, '\n');
+
+                sb_push_cstr(&l->sb, "  ret ");
+                llvm_abi_converted_type_emit(l, return_class);
+                sb_sprintf(&l->sb, " %%.%zu", temp);
+            } break;
+
+            default:
+                unreachable();
+            }
         } else {
-            sb_push_cstr(&l->sb, "  ret void");
+            if (returnn->value) {
+                sb_push_cstr(&l->sb, "  ret ");
+                llvm_type_emit(l, n->type, false);
+                sb_push(&l->sb, ' ');
+                llvm_node_emit(l, returnn->value);
+            } else {
+                sb_push_cstr(&l->sb, "  ret void");
+            }
         }
 
         llvm_debug_pos_emit(l, n->debug);
@@ -1008,16 +1340,19 @@ void llvm_compile(LLVM *l) {
         "@.uprint = private unnamed_addr constant [5 x i8] c\"%zu\\0A\\00\", align 1\n"
         "declare i32 @printf(ptr, ...)\n");
 
-    for (size_t i = 0; i < l->structs.count; i++) {
-        LLVM_Type_Struct it = l->structs.data[i].structt;
-        sb_sprintf(&l->sb, "%%struct." SV_Fmt " = type {", SV_Arg(it.name));
-        for (size_t j = 0; j < it.fields_count; j++) {
-            if (j) {
-                sb_push_cstr(&l->sb, ", ");
+    if (l->structs.count) {
+        sb_push(&l->sb, '\n');
+        for (size_t i = 0; i < l->structs.count; i++) {
+            LLVM_Type_Struct it = l->structs.data[i].structt;
+            sb_sprintf(&l->sb, "%%struct." SV_Fmt " = type {", SV_Arg(it.name));
+            for (size_t j = 0; j < it.fields_count; j++) {
+                if (j) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+                llvm_type_emit(l, it.fields[j].type, true);
             }
-            llvm_type_emit(l, it.fields[j].type, true);
+            sb_push_cstr(&l->sb, "}\n");
         }
-        sb_push_cstr(&l->sb, "}\n");
     }
 
     if (l->vars.head) {
@@ -1027,7 +1362,7 @@ void llvm_compile(LLVM *l) {
 
             sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = ", SV_Arg(it->sv));
             if (var->is_const) {
-                sb_push_cstr(&l->sb, "constant ");
+                sb_push_cstr(&l->sb, "private unnamed_addr constant ");
             } else if (var->is_extern) {
                 sb_push_cstr(&l->sb, "external global ");
             } else {
@@ -1051,7 +1386,10 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->fns.head; it; it = it->next) {
         LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
+        l->fn = fn;
+
         fn->debug.iota = ++l->iota_debug;
+        l->iota_local = 0;
 
         if (fn->is_extern) {
             sb_push_cstr(&l->sb, "\ndeclare ");
@@ -1059,17 +1397,101 @@ void llvm_compile(LLVM *l) {
             sb_push_cstr(&l->sb, "\ndefine ");
         }
 
-        llvm_type_emit(l, *fn->node.type.fn.returnn, false);
+        LLVM_ABI_Classifier classifier = {0};
+
+        LLVM_Type      return_type = *fn->node.type.fn.returnn;
+        LLVM_ABI_Class return_class = llvm_abi_classify(&classifier, return_type);
+
+        static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+        switch (return_class.kind) {
+        case LLVM_ABI_CLASS_VOID:
+            sb_push_cstr(&l->sb, "void");
+            break;
+
+        case LLVM_ABI_CLASS_DIRECT:
+            llvm_type_emit(l, return_type, false);
+            break;
+
+        case LLVM_ABI_CLASS_INDIRECT:
+            sb_push_cstr(&l->sb, "void");
+            break;
+
+        case LLVM_ABI_CLASS_CONVERTED:
+            llvm_abi_converted_type_emit(l, return_class);
+            break;
+
+        default:
+            unreachable();
+            break;
+        }
+
         sb_sprintf(&l->sb, " @\"" SV_Fmt "\"(", SV_Arg(it->sv));
+
+        classifier = (LLVM_ABI_Classifier) {0};
+        if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+            sb_push_cstr(&l->sb, "ptr sret(");
+            llvm_type_emit(l, return_type, false);
+            sb_sprintf(&l->sb, ") align %zu", llvm_type_info(return_type).align);
+            if (!fn->is_extern) {
+                fn->indirect_return_iota = ++l->iota_local;
+                sb_sprintf(&l->sb, " %%.%zu", fn->indirect_return_iota);
+            }
+
+            if (fn->args_count) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+
+            classifier.int_registers++;
+        }
+
         for (size_t i = 0; i < fn->args_count; i++) {
             if (i > 0) {
                 sb_push_cstr(&l->sb, ", ");
             }
 
-            llvm_type_emit(l, fn->node.type.fn.args[i], false);
-            if (!fn->is_extern) {
-                sb_sprintf(&l->sb, " %%a%zu", i);
+            LLVM_Type      arg_type = fn->node.type.fn.args[i];
+            LLVM_ABI_Class arg_class = llvm_abi_classify(&classifier, arg_type);
+
+            static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+            switch (arg_class.kind) {
+            case LLVM_ABI_CLASS_VOID:
+                unreachable();
+
+            case LLVM_ABI_CLASS_DIRECT:
+                llvm_type_emit(l, arg_type, false);
+                if (!fn->is_extern) {
+                    sb_sprintf(&l->sb, " %%a%zu", i);
+                }
+                break;
+
+            case LLVM_ABI_CLASS_INDIRECT:
+                sb_push_cstr(&l->sb, "ptr noundef byval(");
+                llvm_type_emit(l, arg_type, false);
+                sb_sprintf(&l->sb, ") align %zu", llvm_type_info(arg_type).align);
+                if (!fn->is_extern) {
+                    arg_class.indirect_iotas[0] = ++l->iota_local;
+                    sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[0]);
+                }
+                break;
+
+            case LLVM_ABI_CLASS_CONVERTED:
+                for (size_t j = 0; j < arg_class.converted_parts_count; j++) {
+                    if (j) {
+                        sb_push_cstr(&l->sb, ", ");
+                    }
+
+                    llvm_type_emit(l, (LLVM_Type) {.kind = arg_class.converted_parts[j]}, false);
+                    if (!fn->is_extern) {
+                        sb_sprintf(&l->sb, " %%a%zu_%zu", i, j);
+                    }
+                }
+                break;
+
+            default:
+                unreachable();
             }
+
+            fn->args_classes[i] = arg_class;
         }
 
         sb_push(&l->sb, ')');
@@ -1083,16 +1505,19 @@ void llvm_compile(LLVM *l) {
         }
         sb_push_cstr(&l->sb, " {\n");
 
-        l->iota_local = 0;
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
 
-            n->iota = ++l->iota_local;
-            sb_push_cstr(&l->sb, "  ");
-            llvm_node_emit(l, n);
-            sb_push_cstr(&l->sb, " = alloca ");
-            llvm_type_emit(l, var->type, true);
-            sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(var->type).align);
+            if (var->is_arg && fn->args_classes[var->arg_index].kind == LLVM_ABI_CLASS_INDIRECT) {
+                n->iota = fn->args_classes[var->arg_index].indirect_iotas[0];
+            } else {
+                n->iota = ++l->iota_local;
+                sb_push_cstr(&l->sb, "  ");
+                llvm_node_emit(l, n);
+                sb_push_cstr(&l->sb, " = alloca ");
+                llvm_type_emit(l, var->type, true);
+                sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(var->type).align);
+            }
 
             if (var->is_arg) {
                 if (var->type.kind == LLVM_TYPE_I1) {
@@ -1102,11 +1527,52 @@ void llvm_compile(LLVM *l) {
                     llvm_node_emit(l, n);
                     sb_push_cstr(&l->sb, ", align 1\n");
                 } else {
-                    sb_push_cstr(&l->sb, "  store ");
-                    llvm_type_emit(l, var->type, false);
-                    sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
-                    llvm_node_emit(l, n);
-                    sb_push(&l->sb, '\n');
+                    const LLVM_ABI_Class arg_class = fn->args_classes[var->arg_index];
+
+                    static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+                    switch (arg_class.kind) {
+                    case LLVM_ABI_CLASS_VOID:
+                        todo(); // TODO: What to do for void parameters
+                        break;
+
+                    case LLVM_ABI_CLASS_DIRECT:
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_type_emit(l, var->type, false);
+                        sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
+                        llvm_node_emit(l, n);
+                        sb_push(&l->sb, '\n');
+                        break;
+
+                    case LLVM_ABI_CLASS_INDIRECT:
+                        // Pass
+                        break;
+
+                    case LLVM_ABI_CLASS_CONVERTED:
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            const size_t temp = ++l->iota_local;
+                            sb_sprintf(
+                                &l->sb,
+                                "  %%.%zu = getelementptr inbounds i8, ptr %%.%zu, i64 %zu\n",
+                                temp,
+                                n->iota,
+                                i * 8);
+
+                            const LLVM_Type type = {.kind = arg_class.converted_parts[i]};
+                            sb_push_cstr(&l->sb, "  store ");
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(
+                                &l->sb,
+                                " %%a%zu_%zu, ptr %%.%zu, align %zu\n",
+                                var->arg_index,
+                                i,
+                                temp,
+                                llvm_type_info(type).align);
+                        }
+                        break;
+
+                    default:
+                        unreachable();
+                    }
                 }
             } else if (var->is_zeroed) {
                 sb_push_cstr(&l->sb, "  store ");
@@ -1410,6 +1876,7 @@ LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type, bool is_extern) {
     fn->is_extern = is_extern;
 
     fn->args = arena_alloc(l->arena, type.fn.args_count * sizeof(*fn->args));
+    fn->args_classes = arena_alloc(l->arena, type.fn.args_count * sizeof(*fn->args_classes));
     fn->args_count = type.fn.args_count;
 
     LLVM_Node_Fn *fn_save = l->fn;
@@ -1544,6 +2011,11 @@ llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, L
 LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value) {
     LLVM_Type type;
     if (value) {
+        if (value->type.kind == LLVM_TYPE_STRUCT) {
+            if (value->kind == LLVM_NODE_LOAD) {
+                ((LLVM_Node_Load *) value)->is_dead = true;
+            }
+        }
         type = value->type;
     } else {
         type = llvm_type_basic(LLVM_TYPE_I0);
@@ -1596,12 +2068,34 @@ LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type) {
     return (LLVM_Node *) cast;
 }
 
-LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count) {
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count, bool ref) {
     assert(fn->type.kind == LLVM_TYPE_FN);
     LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, *fn->type.fn.returnn);
     call->fn = fn;
+
+    for (size_t i = 0; i < args_count; i++) {
+        LLVM_Node *arg = args[i];
+        if (arg->type.kind == LLVM_TYPE_STRUCT) {
+            assert(arg->kind == LLVM_NODE_LOAD);
+            ((LLVM_Node_Load *) arg)->is_dead = true;
+        }
+    }
+
     call->args = args;
     call->args_count = args_count;
+
+    if (call->node.type.kind == LLVM_TYPE_STRUCT) {
+        call->struct_return_memory = (LLVM_Node *) llvm_var_new(l, (SV) {0}, call->node.type, true, false, false);
+        if (ref) {
+            return call->struct_return_memory;
+        }
+
+        call->struct_return_load = (LLVM_Node_Load *) llvm_build_load(l, call->struct_return_memory, call->node.type);
+        return (LLVM_Node *) call->struct_return_load;
+    } else {
+        assert(!ref);
+    }
+
     return (LLVM_Node *) call;
 }
 

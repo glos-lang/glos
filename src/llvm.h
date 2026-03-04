@@ -187,7 +187,8 @@ LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type);
 LLVM_Node *llvm_build_store(LLVM *l, LLVM_Node *ptr, LLVM_Node *value);
 LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type);
 
-LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count);
+// The parameter `ref` is only valid when the return type is a structure
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count, bool ref);
 
 LLVM_Node *llvm_build_block(LLVM *l, LLVM_Node_Block *block);
 LLVM_Node *llvm_build_jump(LLVM *l, LLVM_Node_Block *block);

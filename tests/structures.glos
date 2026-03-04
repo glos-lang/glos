@@ -27,4 +27,5 @@ main :: () {
     foo(&pos)
     bar(pos)
     bar(vec2(420, 1337))
+    print vec2(80085, 69).x
 }

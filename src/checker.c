@@ -894,15 +894,6 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Member *member = (AST_Node_Member *) n;
         check_node(c, member->lhs);
 
-        if (member->lhs->kind == AST_NODE_CALL) {
-            // TODO: This will be fixed after proper calling conventions are implemented
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot access field of structures returned from functions\n",
-                Pos_Arg(n->token.pos));
-            exit(1);
-        }
-
         if (!ast_type_kind_eq(member->lhs->type, AST_TYPE_STRUCT)) {
             fprintf(
                 stderr,

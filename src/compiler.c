@@ -178,6 +178,8 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
             if (fn->returnn) {
                 returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
             }
+            // TODO: Not needed for non-void functions
+            // Then the `if (value->kind == LLVM_NODE_LOAD)` in `llvm_build_return()` can be turned into an assertion
             llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
         }
         llvm_debug_scope_pop(&c->llvm);
@@ -486,7 +488,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
 
         assert(iota == call->args_count);
-        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota));
+        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota, ref));
     } break;
 
     default:
@@ -764,7 +766,7 @@ void compiler_build(Compiler *c, const char *output) {
         &c->llvm, sv_from_cstr("main"), llvm_type_fn(&c->llvm, NULL, 0, llvm_type_basic(LLVM_TYPE_I32)), false);
 
     c->llvm.fn = c->llvm.main_fn;
-    llvm_build_call(&c->llvm, fn->llvm, NULL, 0);
+    llvm_build_call(&c->llvm, fn->llvm, NULL, 0, false);
     llvm_build_return(&c->llvm, llvm_atom_int(&c->llvm, llvm_type_basic(LLVM_TYPE_I32), 0));
     llvm_compile(&c->llvm);
 
