@@ -479,9 +479,13 @@ static LLVM_Type_Kind llvm_int_type_kind_from_size(size_t size) {
     case 2:
         return LLVM_TYPE_I16;
 
+    case 3:
     case 4:
         return LLVM_TYPE_I32;
 
+    case 5:
+    case 6:
+    case 7:
     case 8:
         return LLVM_TYPE_I64;
 
@@ -490,7 +494,21 @@ static LLVM_Type_Kind llvm_int_type_kind_from_size(size_t size) {
     }
 }
 
-static LLVM_ABI_Class llvm_abi_classify_x86_64_linux(LLVM_ABI_Classifier *c, LLVM_Type type) {
+static void llvm_abi_x86_64_linux_decide_chunk_sizes(LLVM_Type_Struct spec, size_t chunk_sizes[2], size_t offset) {
+    for (size_t i = 0; i < spec.fields_count; i++) {
+        const LLVM_Field *it = &spec.fields[i];
+        const size_t      it_offset = offset + spec.fields_infos[i].offset;
+        if (it->type.kind == LLVM_TYPE_STRUCT) {
+            llvm_abi_x86_64_linux_decide_chunk_sizes(it->type.structt, chunk_sizes, it_offset);
+        } else {
+            const size_t chunk_index = it_offset / 8;
+            assert(chunk_index >= 0 && chunk_index < 2);
+            chunk_sizes[chunk_index] = chunk_sizes[chunk_index] ? 8 : llvm_type_info(it->type).size;
+        }
+    }
+}
+
+static LLVM_ABI_Class llvm_abi_x86_64_linux_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
     LLVM_ABI_Class arg_class = {0};
 
     const LLVM_Type_Info info = llvm_type_info(type);
@@ -517,9 +535,10 @@ static LLVM_ABI_Class llvm_abi_classify_x86_64_linux(LLVM_ABI_Classifier *c, LLV
             c->int_registers += 2;
             arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
 
-            // TODO: Perform actual field classification
-            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(8);
-            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(info.size - 8);
+            size_t chunk_sizes[2] = {0};
+            llvm_abi_x86_64_linux_decide_chunk_sizes(type.structt, chunk_sizes, 0);
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[0]);
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[1]);
 
             return arg_class;
         }
@@ -530,7 +549,7 @@ static LLVM_ABI_Class llvm_abi_classify_x86_64_linux(LLVM_ABI_Classifier *c, LLV
 }
 
 static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
-    return llvm_abi_classify_x86_64_linux(c, type);
+    return llvm_abi_x86_64_linux_classify(c, type);
 }
 
 static void llvm_abi_converted_type_emit(LLVM *l, LLVM_ABI_Class abi_class) {
