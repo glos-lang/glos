@@ -508,7 +508,7 @@ static void llvm_abi_x86_64_linux_decide_chunk_sizes(LLVM_Type_Struct spec, size
     }
 }
 
-static LLVM_ABI_Class llvm_abi_x86_64_linux_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
+static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
     LLVM_ABI_Class arg_class = {0};
 
     const LLVM_Type_Info info = llvm_type_info(type);
@@ -530,6 +530,7 @@ static LLVM_ABI_Class llvm_abi_x86_64_linux_classify(LLVM_ABI_Classifier *c, LLV
         return arg_class;
     }
 
+#ifdef PLATFORM_X86_64_LINUX
     if (info.size > 8 && info.size <= 16) {
         if (c->int_registers + 2 <= 6) {
             c->int_registers += 2;
@@ -543,13 +544,10 @@ static LLVM_ABI_Class llvm_abi_x86_64_linux_classify(LLVM_ABI_Classifier *c, LLV
             return arg_class;
         }
     }
+#endif // PLATFORM_X86_64_LINUX
 
     arg_class.kind = LLVM_ABI_CLASS_INDIRECT;
     return arg_class;
-}
-
-static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
-    return llvm_abi_x86_64_linux_classify(c, type);
 }
 
 static void llvm_abi_converted_type_emit(LLVM *l, LLVM_ABI_Class abi_class) {
