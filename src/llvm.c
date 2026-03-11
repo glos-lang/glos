@@ -494,6 +494,7 @@ static LLVM_Type_Kind llvm_int_type_kind_from_size(size_t size) {
     }
 }
 
+#ifdef PLATFORM_X86_64_LINUX
 static void llvm_abi_x86_64_linux_decide_chunk_sizes(LLVM_Type_Struct spec, size_t chunk_sizes[2], size_t offset) {
     for (size_t i = 0; i < spec.fields_count; i++) {
         const LLVM_Field *it = &spec.fields[i];
@@ -507,6 +508,7 @@ static void llvm_abi_x86_64_linux_decide_chunk_sizes(LLVM_Type_Struct spec, size
         }
     }
 }
+#endif // PLATFORM_X86_64_LINUX
 
 static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
     LLVM_ABI_Class arg_class = {0};
@@ -534,17 +536,29 @@ static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) 
     if (info.size > 8 && info.size <= 16) {
         if (c->int_registers + 2 <= 6) {
             c->int_registers += 2;
-            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
 
             size_t chunk_sizes[2] = {0};
             llvm_abi_x86_64_linux_decide_chunk_sizes(type.structt, chunk_sizes, 0);
+
+            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
             arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[0]);
             arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[1]);
-
             return arg_class;
         }
     }
 #endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    if (info.size > 8 && info.size <= 16) {
+        if (c->int_registers + 2 <= 8) {
+            c->int_registers += 2;
+            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+            arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+            arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+            return arg_class;
+        }
+    }
+#endif // PLATFORM_ARM64_MACOS
 
     arg_class.kind = LLVM_ABI_CLASS_INDIRECT;
     return arg_class;
@@ -552,7 +566,14 @@ static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) 
 
 static void llvm_abi_converted_type_emit(LLVM *l, LLVM_ABI_Class abi_class) {
     if (abi_class.converted_parts_count > 1) {
+#ifdef PLATFORM_ARM64_MACOS
+        sb_sprintf(&l->sb, "[%zu x ", abi_class.converted_parts_count);
+        llvm_type_emit(l, (LLVM_Type) {.kind = abi_class.converted_parts[0]}, false);
+        sb_push(&l->sb, ']');
+        return;
+#else
         sb_push(&l->sb, '{');
+#endif // PLATFORM_ARM64_MACOS
     }
 
     for (size_t j = 0; j < abi_class.converted_parts_count; j++) {
@@ -809,6 +830,16 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                         assert(arg->kind == LLVM_NODE_LOAD);
                         LLVM_Node *arg_ptr = ((LLVM_Node_Load *) arg)->ptr;
 
+#ifdef PLATFORM_ARM64_MACOS
+                        arg_class.indirect_iotas[0] = ++l->iota_local;
+                        sb_sprintf(&l->sb, "  %%.%zu = load ", arg_class.indirect_iotas[0]);
+                        llvm_abi_converted_type_emit(l, arg_class);
+
+                        const LLVM_Type type = {.kind = arg_class.converted_parts[0]};
+                        sb_push_cstr(&l->sb, ", ptr ");
+                        llvm_node_emit(l, arg_ptr);
+                        sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+#else
                         for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
                             const size_t temp = ++l->iota_local;
                             sb_sprintf(&l->sb, "  %%.%zu = getelementptr inbounds i8, ptr ", temp);
@@ -822,6 +853,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                             llvm_type_emit(l, type, false);
                             sb_sprintf(&l->sb, ", ptr %%.%zu, align %zu\n", temp, llvm_type_info(type).align);
                         }
+#endif // PLATFORM_ARM64_MACOS
                     }
 
                     temp_clone(&arg_class, sizeof(arg_class));
@@ -902,6 +934,10 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                         break;
 
                     case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                        llvm_abi_converted_type_emit(l, arg_class);
+                        sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[0]);
+#else
                         for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
                             if (i) {
                                 sb_push_cstr(&l->sb, ", ");
@@ -909,6 +945,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                             llvm_type_emit(l, (LLVM_Type) {.kind = arg_class.converted_parts[i]}, false);
                             sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[i]);
                         }
+#endif // PLATFORM_ARM64_MACOS
                         break;
 
                     default:
@@ -939,6 +976,18 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                     break;
 
                 case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                    sb_push_cstr(&l->sb, "  store ");
+                    llvm_abi_converted_type_emit(l, return_class);
+                    sb_push(&l->sb, ' ');
+                    llvm_node_emit(l, n);
+
+                    sb_push_cstr(&l->sb, ", ptr ");
+                    llvm_node_emit(l, call->struct_return_memory);
+
+                    const LLVM_Type type = {.kind = return_class.converted_parts[0]};
+                    sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+#else
                     if (return_class.converted_parts_count == 1) {
                         const LLVM_Type type = {.kind = return_class.converted_parts[0]};
                         sb_push_cstr(&l->sb, "  store ");
@@ -970,6 +1019,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                                 &l->sb, " %%.%zu, ptr %%.%zu, align %zu\n", src, dst, llvm_type_info(type).align);
                         }
                     }
+#endif // PLATFORM_ARM64_MACOS
                     break;
 
                 default:
@@ -1492,6 +1542,12 @@ void llvm_compile(LLVM *l) {
                 break;
 
             case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                llvm_abi_converted_type_emit(l, arg_class);
+                if (!fn->is_extern) {
+                    sb_sprintf(&l->sb, " %%a%zu", i);
+                }
+#else
                 for (size_t j = 0; j < arg_class.converted_parts_count; j++) {
                     if (j) {
                         sb_push_cstr(&l->sb, ", ");
@@ -1502,6 +1558,7 @@ void llvm_compile(LLVM *l) {
                         sb_sprintf(&l->sb, " %%a%zu_%zu", i, j);
                     }
                 }
+#endif // PLATFORM_ARM64_MACOS
                 break;
 
             default:
@@ -1565,6 +1622,13 @@ void llvm_compile(LLVM *l) {
                         break;
 
                     case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_abi_converted_type_emit(l, arg_class);
+                        sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
+                        llvm_node_emit(l, n);
+                        sb_push(&l->sb, '\n');
+#else
                         for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
                             const size_t temp = ++l->iota_local;
                             sb_sprintf(
@@ -1585,6 +1649,7 @@ void llvm_compile(LLVM *l) {
                                 temp,
                                 llvm_type_info(type).align);
                         }
+#endif // PLATFORM_ARM64_MACOS
                         break;
 
                     default:
