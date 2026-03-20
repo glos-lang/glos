@@ -433,16 +433,16 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
     return true;
 }
 
-static bool build_test_library(Cmd *cmd, const char *output_path, const char *input_path) {
-    if (get_modified_time(output_path) < get_modified_time(input_path)) {
-        const char *object_path = replace_suffix(input_path, ".c", OBJ_FILE_EXTENSION);
+static bool build_test_library(Cmd *cmd, const char *library_path, const char *source_path) {
+    if (get_modified_time(library_path) < get_modified_time(source_path)) {
+        const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
 
         cmd_push(cmd, "clang");
         cmd_push(cmd, "-ggdb");
         cmd_push(cmd, "-c");
         cmd_push(cmd, "-o");
         cmd_push(cmd, object_path);
-        cmd_push(cmd, input_path);
+        cmd_push(cmd, source_path);
 
         int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
         if (result) {
@@ -450,7 +450,7 @@ static bool build_test_library(Cmd *cmd, const char *output_path, const char *in
             return false;
         }
 
-        fprintf(stderr, "Building '%s'\n", output_path);
+        fprintf(stderr, "Building '%s'\n", library_path);
 
 #ifdef PLATFORM_X86_64_WINDOWS
         cmd_push(cmd, "llvm-ar");
@@ -459,12 +459,12 @@ static bool build_test_library(Cmd *cmd, const char *output_path, const char *in
 #endif // PLATFORM_X86_64_WINDOWS
 
         cmd_push(cmd, "rcs");
-        cmd_push(cmd, output_path);
+        cmd_push(cmd, library_path);
         cmd_push(cmd, object_path);
 
         result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
         if (result) {
-            fprintf(stderr, "ERROR: Process 'llvm-ar' exited abnormally\n");
+            fprintf(stderr, "ERROR: Process 'ar' exited abnormally\n");
             return false;
         }
 

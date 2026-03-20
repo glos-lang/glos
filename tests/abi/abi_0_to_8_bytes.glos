@@ -1,0 +1,15 @@
+S8 :: struct {
+    x: i32,
+    y: i32
+}
+
+extern {
+    s8_foo :: (s: S8)
+    s8_ret :: (x: i32, y: i32) -> S8
+}
+
+main :: () {
+    s8_foo(S8 {1, 2})
+    s8_foo(s8_ret(1, 2))
+    s8_foo(() -> S8 { return S8 {1, 2} }())
+}
