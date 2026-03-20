@@ -38,6 +38,7 @@ int main(int argc, char **argv) {
     bool        run = false;
     const char *input = NULL;
     const char *output = NULL;
+    Link_Flags  link_flags = {0};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {
@@ -50,6 +51,22 @@ int main(int argc, char **argv) {
                 output = shift(&argc, &argv, program, "Output path");
             } else if (!strcmp(arg, "--")) {
                 break;
+            } else if (arg[1] == 'L') {
+                const char *value = &arg[2];
+                if (*value == '\0') {
+                    value = shift(&argc, &argv, program, "Library path");
+                }
+
+                da_push(&link_flags, "-L");
+                da_push(&link_flags, value);
+            } else if (arg[1] == 'l') {
+                const char *value = &arg[2];
+                if (*value == '\0') {
+                    value = shift(&argc, &argv, program, "Library name");
+                }
+
+                da_push(&link_flags, "-l");
+                da_push(&link_flags, value);
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
                 usage(stderr, program);
@@ -92,6 +109,8 @@ int main(int argc, char **argv) {
 
     Compiler compiler = {
         .cmd = &cmd,
+        .link_flags = &link_flags,
+
         .llvm.arena = &arena,
         .path = input,
     };
@@ -117,5 +136,6 @@ int main(int argc, char **argv) {
 
     arena_free(&arena);
     cmd_free(&cmd);
+    da_free(&link_flags);
     return result;
 }

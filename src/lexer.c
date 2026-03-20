@@ -104,7 +104,7 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 39, "");
+static_assert(COUNT_TOKENS == 41, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -156,6 +156,8 @@ Token lexer_iter(Lexer *l) {
         } else if (sv_match(token.sv, "false")) {
             token.kind = TOKEN_BOOL;
             token.as.integer = false;
+        } else if (sv_match(token.sv, "struct")) {
+            token.kind = TOKEN_STRUCT;
         } else if (sv_match(token.sv, "sizeof")) {
             token.kind = TOKEN_SIZEOF;
         } else if (sv_match(token.sv, "if")) {
@@ -184,6 +186,10 @@ Token lexer_iter(Lexer *l) {
     switch (read_char(l)) {
     case ';':
         token.kind = TOKEN_EOL;
+        break;
+
+    case '.':
+        token.kind = TOKEN_DOT;
         break;
 
     case ':':

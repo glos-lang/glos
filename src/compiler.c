@@ -1,6 +1,9 @@
 #include "compiler.h"
 #include "ast.h"
+#include "basic.h"
 #include "llvm.h"
+#include <stdbool.h>
+#include <stddef.h>
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static void compile_type(Compiler *c, AST_Type *type) {
@@ -64,23 +67,44 @@ static void compile_type(Compiler *c, AST_Type *type) {
 
     case AST_TYPE_FN:
         if (type->llvm.kind != LLVM_TYPE_FN) {
-            const size_t args_count = type->spec.fn.args_count;
-            LLVM_Type   *args = arena_alloc(c->llvm.arena, args_count * sizeof(*args));
+            const AST_Type_Fn type_spec = type->spec.fn;
+            compile_type(c, type_spec.returnn);
 
-            compile_type(c, type->spec.fn.returnn);
-            type->llvm = llvm_type_fn(&c->llvm, args, args_count, type->spec.fn.returnn->llvm);
+            LLVM_Type *args = arena_alloc(c->llvm.arena, type_spec.args_count * sizeof(*args));
+            type->llvm = llvm_type_fn(&c->llvm, args, type_spec.args_count, type_spec.returnn->llvm);
 
-            for (size_t i = 0; i < args_count; i++) {
-                AST_Type *it = &type->spec.fn.args[i]->node.type;
+            for (size_t i = 0; i < type_spec.args_count; i++) {
+                AST_Type *it = &type_spec.args[i]->node.type;
                 compile_type(c, it);
                 args[i] = it->llvm;
             }
         }
         break;
 
-    case AST_TYPE_TYPE:
-        unreachable();
-        break;
+    case AST_TYPE_STRUCT: {
+        assert(type->spec.structt.definition);
+
+        // TODO: Think of a better solution
+        AST_Type *common = &type->spec.structt.definition->node.type;
+        assert(common->kind == AST_TYPE_STRUCT);
+
+        if (common->llvm.kind != LLVM_TYPE_STRUCT) {
+            // TODO: Consider proper name
+            const char           *name = temp_sprintf("anon.%zu", c->iota_anonymous_struct++);
+            const AST_Type_Struct spec = common->spec.structt;
+
+            LLVM_Field *fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
+            common->llvm = llvm_type_struct(&c->llvm, fields, spec.fields_count, sv_from_cstr(name));
+
+            for (size_t i = 0; i < spec.fields_count; i++) {
+                AST_Node *it = (AST_Node *) spec.fields[i];
+                compile_type(c, &it->type);
+                fields[i].name = it->token.sv;
+                fields[i].type = it->type.llvm;
+            }
+        }
+        type->llvm = common->llvm;
+    } break;
 
     default:
         unreachable();
@@ -103,7 +127,7 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
     if (fn->defined_as) {
         temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
     } else {
-        temp_sprintf(".anonymous.%zu", c->iota_anonymous_fn++);
+        temp_sprintf(".anon.%zu", c->iota_anonymous_fn++);
     }
     return name;
 }
@@ -154,6 +178,8 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
             if (fn->returnn) {
                 returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
             }
+            // TODO: Not needed for non-void functions
+            // Then the `if (value->kind == LLVM_NODE_LOAD)` in `llvm_build_return()` can be turned into an assertion
             llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
         }
         llvm_debug_scope_pop(&c->llvm);
@@ -163,7 +189,38 @@ static LLVM_Node *compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_CONST_VALUES == 4, "");
+static LLVM_Node_Var_Init *compile_const_value_to_var_init(Compiler *c, LLVM_Type type, Const_Value value) {
+    switch (value.kind) {
+    case CONST_VALUE_INT:
+        return llvm_var_init_new_int(&c->llvm, type, value.as.integer);
+
+    case CONST_VALUE_FN:
+        return llvm_var_init_new_node(&c->llvm, compile_fn(c, value.as.fn));
+
+    case CONST_VALUE_TYPE:
+        unreachable();
+
+    case CONST_VALUE_STRUCT: {
+        const AST_Type_Struct spec = value.as.structt.spec;
+
+        LLVM_Node_Var_Init **fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            // TODO: Think of a better solution for common metadata for a struct
+            const LLVM_Type it_type = spec.definition->node.type.llvm.structt.fields[i].type;
+            fields[i] = compile_const_value_to_var_init(c, it_type, value.as.structt.fields[i]);
+        }
+
+        return llvm_var_init_new_struct(&c->llvm, type, fields, spec.fields_count);
+    }
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
+static_assert(COUNT_AST_NODES == 16, "");
 static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -176,7 +233,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     switch (n->kind) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -190,7 +247,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             if (definition->is_const) {
                 debug = false;
 
-                static_assert(COUNT_CONST_VALUES == 3, "");
+                static_assert(COUNT_CONST_VALUES == 4, "");
                 switch (definition->const_value.kind) {
                 case CONST_VALUE_INT:
                     return_defer(llvm_atom_int(&c->llvm, n->type.llvm, definition->const_value.as.integer));
@@ -200,6 +257,20 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
                 case CONST_VALUE_TYPE:
                     unreachable();
+
+                case CONST_VALUE_STRUCT: {
+                    // TODO: Don't generate this over and over
+                    LLVM_Node_Var_Init *value =
+                        compile_const_value_to_var_init(c, n->type.llvm, definition->const_value);
+
+                    const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+
+                    LLVM_Node *memory = llvm_const_new(&c->llvm, sv_from_cstr(name), n->type.llvm, value);
+                    if (ref) {
+                        return_defer(memory);
+                    }
+                    return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+                }
 
                 default:
                     unreachable();
@@ -227,7 +298,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVM_Node      *value = NULL;
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -265,7 +336,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         static const LLVM_Binary_Kind ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = LLVM_BINARY_ADD,
             [TOKEN_SUB] = LLVM_BINARY_SUB,
@@ -293,7 +364,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return_defer(llvm_build_binary(&c->llvm, op, n->type.llvm, lhs, rhs));
         }
 
-        static_assert(COUNT_TOKENS == 39, "");
+        static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
@@ -306,8 +377,81 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
     } break;
 
+    case AST_NODE_MEMBER: {
+        AST_Node_Member *member = (AST_Node_Member *) n;
+
+        LLVM_Node *lhs = NULL;
+        LLVM_Type  lhs_type = {0};
+        if (member->lhs->type.ref) {
+            lhs = compile_expr(c, member->lhs, false);
+            lhs_type = member->lhs->type.llvm;
+
+            assert(lhs_type.kind == LLVM_TYPE_PTR && lhs_type.ptr.type);
+            lhs_type = *lhs_type.ptr.type;
+
+            for (size_t i = 1; i < member->lhs->type.ref; i++) {
+                lhs = llvm_build_load(&c->llvm, lhs, lhs_type);
+                llvm_debug_set_pos(&c->llvm, lhs, n->token.pos.row, n->token.pos.col);
+
+                assert(lhs_type.kind == LLVM_TYPE_PTR && lhs_type.ptr.type);
+                lhs_type = *lhs_type.ptr.type;
+            }
+
+            assert(lhs_type.kind == LLVM_TYPE_STRUCT);
+        } else {
+            lhs = compile_expr(c, member->lhs, true);
+            lhs_type = member->lhs->type.llvm;
+        }
+
+        LLVM_Node *value = llvm_build_gep_field(&c->llvm, n->type.llvm, lhs, lhs_type, member->field_index);
+        if (ref) {
+            debug = false;
+            return_defer(value);
+        }
+        return_defer(llvm_build_load(&c->llvm, value, n->type.llvm));
+    }
+
     case AST_NODE_FN:
         return compile_fn(c, (AST_Node_Fn *) n);
+
+    case AST_NODE_STRUCT:
+        unreachable();
+
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+
+        LLVM_Node *memory = (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, n->type.llvm, true, true, false);
+
+        size_t ordered_iota = 0;
+        for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
+            size_t it_iota = 0;
+            if (!compound->is_designated) {
+                it_iota = ordered_iota++;
+            }
+
+            AST_Node *it = iter;
+            if (n->type.kind == AST_TYPE_STRUCT) {
+                if (compound->is_designated) {
+                    assert(it->kind == AST_NODE_BINARY && it->token.kind == TOKEN_SET);
+                    AST_Node_Binary *it_binary = (AST_Node_Binary *) it;
+                    it_iota = it->token.as.integer;
+                    it = it_binary->rhs;
+                }
+
+                LLVM_Node *field = llvm_build_gep_field(&c->llvm, n->type.llvm, memory, n->type.llvm, it_iota);
+                LLVM_Node *value = compile_expr(c, it, false);
+                llvm_build_store(&c->llvm, field, value);
+            } else {
+                unreachable();
+            }
+        }
+
+        debug = false;
+        if (ref) {
+            return_defer(memory);
+        }
+        return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+    }
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
@@ -344,7 +488,7 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
 
         assert(iota == call->args_count);
-        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota));
+        return_defer(llvm_build_call(&c->llvm, compile_expr(c, call->fn, false), args, iota, ref));
     } break;
 
     default:
@@ -357,29 +501,6 @@ defer:
         llvm_debug_set_pos(&c->llvm, result, n->token.pos.row, n->token.pos.col);
     }
     return result;
-}
-
-static void compile_var_init(Compiler *c, AST_Node_Atom *atom) {
-    LLVM_Node_Var *var = (LLVM_Node_Var *) atom->llvm;
-
-    static_assert(COUNT_CONST_VALUES == 3, "");
-    switch (atom->const_value.kind) {
-    case CONST_VALUE_INT:
-        llvm_var_init_add_int(&c->llvm, var, atom->node.type.llvm, atom->const_value.as.integer);
-        break;
-
-    case CONST_VALUE_FN:
-        llvm_var_init_add_node(&c->llvm, var, compile_fn(c, atom->const_value.as.fn));
-        break;
-
-    case CONST_VALUE_TYPE:
-        unreachable();
-        break;
-
-    default:
-        unreachable();
-        break;
-    }
 }
 
 static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
@@ -399,11 +520,11 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     it->llvm = (LLVM_Node *) var;
 
     if (!it->is_local && it->is_assigned) {
-        compile_var_init(c, it);
+        llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -555,7 +676,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         AST_Node_Return *returnn = (AST_Node_Return *) n;
 
         LLVM_Node *value = compile_expr(c, returnn->value, false);
-        if (n->type.kind == AST_TYPE_UNIT) {
+        if (ast_type_kind_eq(n->type, AST_TYPE_UNIT)) {
             value = NULL;
         }
 
@@ -607,7 +728,7 @@ static AST_Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (signature.returnn->kind != AST_TYPE_UNIT) {
+    if (!ast_type_kind_eq(*signature.returnn, AST_TYPE_UNIT)) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
@@ -615,9 +736,6 @@ static AST_Node_Fn *get_main(Compiler *c) {
 }
 
 size_t compile_sizeof(Compiler *c, AST_Type *type) {
-    if (type->kind == AST_TYPE_TYPE) {
-        type = type->spec.type;
-    }
     compile_type(c, type);
     return llvm_type_info(type->llvm).size;
 }
@@ -648,7 +766,7 @@ void compiler_build(Compiler *c, const char *output) {
         &c->llvm, sv_from_cstr("main"), llvm_type_fn(&c->llvm, NULL, 0, llvm_type_basic(LLVM_TYPE_I32)), false);
 
     c->llvm.fn = c->llvm.main_fn;
-    llvm_build_call(&c->llvm, fn->llvm, NULL, 0);
+    llvm_build_call(&c->llvm, fn->llvm, NULL, 0, false);
     llvm_build_return(&c->llvm, llvm_atom_int(&c->llvm, llvm_type_basic(LLVM_TYPE_I32), 0));
     llvm_compile(&c->llvm);
 
@@ -666,6 +784,7 @@ void compiler_build(Compiler *c, const char *output) {
     cmd_push(c->cmd, "-x");
     cmd_push(c->cmd, "ir");
     cmd_push(c->cmd, "-");
+    cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
     FILE *f = NULL;
     Proc  proc = cmd_run_async(c->cmd, (Cmd_Stdio) {.in = &f});

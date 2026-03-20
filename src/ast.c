@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "basic.h"
 
 void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     if (!n) {
@@ -16,6 +17,8 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
+    assert(!type.is_type);
+
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
         temp_sprintf("&");
@@ -100,8 +103,32 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
         }
         break;
 
-    case AST_TYPE_TYPE:
-        unreachable();
+    case AST_TYPE_STRUCT: {
+        assert(type.spec.structt.definition);
+        const AST_Node_Atom *defined_as = type.spec.structt.definition->defined_as;
+        if (defined_as) {
+            temp_sv_to_cstr(defined_as->node.token.sv);
+        } else {
+            temp_sprintf("struct {");
+
+            for (size_t i = 0; i < type.spec.structt.fields_count; i++) {
+                AST_Node_Atom *it = type.spec.structt.fields[i];
+                if (i) {
+                    temp_remove_null();
+                    temp_sprintf(", ");
+                }
+
+                temp_remove_null();
+                temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
+
+                temp_remove_null();
+                ast_type_to_cstr_impl(it->node.type);
+            }
+
+            temp_remove_null();
+            temp_sprintf("}");
+        }
+    } break;
 
     default:
         unreachable();
@@ -111,7 +138,7 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
 }
 
 const char *ast_type_to_cstr(AST_Type type) {
-    if (type.kind == AST_TYPE_TYPE) {
+    if (type.is_type) {
         return temp_sprintf("a type");
     }
 
@@ -129,10 +156,22 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
         return false;
     }
 
+    if (a.is_type) {
+        return b.is_type;
+    }
+
+    if (b.is_type) {
+        return a.is_type;
+    }
+
     switch (a.kind) {
     case AST_TYPE_FN: {
         if (a.spec.fn.args_count != b.spec.fn.args_count) {
             return false;
+        }
+
+        if (a.spec.fn.args == b.spec.fn.args && a.spec.fn.returnn == b.spec.fn.returnn) {
+            return true;
         }
 
         for (size_t i = 0; i < a.spec.fn.args_count; i++) {
@@ -144,9 +183,36 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
         return ast_type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
     }
 
+    case AST_TYPE_STRUCT: {
+        if (a.spec.structt.fields_count != b.spec.structt.fields_count) {
+            return false;
+        }
+
+        if (a.spec.structt.fields == b.spec.structt.fields) {
+            return true;
+        }
+
+        for (size_t i = 0; i < a.spec.structt.fields_count; i++) {
+            if (!ast_type_eq(a.spec.structt.fields[i]->node.type, b.spec.structt.fields[i]->node.type)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     default:
         return true;
     }
+}
+
+static_assert(COUNT_AST_TYPES == 14, "");
+bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind) {
+    if (type.is_type) {
+        return false;
+    }
+
+    return type.kind == kind;
 }
 
 bool ast_type_is_numeric(AST_Type type) {
@@ -155,7 +221,7 @@ bool ast_type_is_numeric(AST_Type type) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_is_integer(AST_Type type) {
-    if (type.ref) {
+    if (type.ref || type.is_type) {
         return false;
     }
 
@@ -179,10 +245,17 @@ bool ast_type_is_integer(AST_Type type) {
 }
 
 bool ast_type_is_pointer(AST_Type type) {
+    if (type.is_type) {
+        return false;
+    }
     return type.ref != 0 || type.kind == AST_TYPE_RAWPTR;
 }
 
 bool ast_type_is_scalar(AST_Type type) {
+    if (type.is_type) {
+        return false;
+    }
+
     if (ast_type_is_numeric(type) || ast_type_is_pointer(type)) {
         return true;
     }
@@ -221,7 +294,7 @@ static void ast_nodes_debug_impl(FILE *f, AST_Nodes ns, int depth, const char *l
     }
 }
 
-static_assert(COUNT_AST_NODES == 13, "");
+static_assert(COUNT_AST_NODES == 16, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -252,11 +325,34 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
+    case AST_NODE_MEMBER: {
+        AST_Node_Member *member = (AST_Node_Member *) n;
+        fprintf(f, "Member '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
+        ast_node_debug_impl(f, member->lhs, depth + 1, "Lhs");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
     case AST_NODE_FN: {
         AST_Node_Fn *fn = (AST_Node_Fn *) n;
-        fprintf(f, "Fn {\n");
+        fprintf(f, "Function {\n");
         ast_nodes_debug_impl(f, fn->args, depth + 1, "Args");
+        ast_node_debug_impl(f, fn->returnn, depth + 1, "Return");
         ast_node_debug_impl(f, fn->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_STRUCT: {
+        AST_Node_Struct *structt = (AST_Node_Struct *) n;
+        fprintf(f, "Structure {\n");
+        ast_nodes_debug_impl(f, structt->fields, depth + 1, "Fields");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+        fprintf(f, "Compound {\n");
+        ast_node_debug_impl(f, compound->lhs, depth + 1, "Lhs");
+        ast_nodes_debug_impl(f, compound->children, depth + 1, "Children");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

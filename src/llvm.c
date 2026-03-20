@@ -1,10 +1,14 @@
 #include "llvm.h"
+#include "basic.h"
+#include <assert.h>
+#include <stdbool.h>
 
 typedef enum {
     LLVM_NODE_ATOM,
     LLVM_NODE_UNARY,
     LLVM_NODE_BINARY,
 
+    LLVM_NODE_GEP,
     LLVM_NODE_LOAD,
     LLVM_NODE_STORE,
     LLVM_NODE_CAST,
@@ -82,7 +86,22 @@ typedef struct {
 
 typedef struct {
     LLVM_Node  node;
+    LLVM_Node *base;
+    LLVM_Type  base_type;
+
+    bool is_field_index;
+    union {
+        size_t     field_index;
+        LLVM_Node *slice_index;
+    };
+} LLVM_Node_GEP;
+
+typedef struct {
+    LLVM_Node  node;
     LLVM_Node *ptr;
+
+    // Basically don't emit a load instruction when passing structures to functions
+    bool is_dead;
 } LLVM_Node_Load;
 
 typedef struct {
@@ -101,6 +120,9 @@ typedef struct {
     LLVM_Node  *fn;
     LLVM_Node **args;
     size_t      args_count;
+
+    LLVM_Node      *struct_return_memory;
+    LLVM_Node_Load *struct_return_load;
 } LLVM_Node_Call;
 
 struct LLVM_Node_Block {
@@ -124,6 +146,27 @@ typedef struct {
     LLVM_Node *value;
 } LLVM_Node_Return;
 
+typedef enum {
+    LLVM_ABI_CLASS_VOID,
+    LLVM_ABI_CLASS_DIRECT,
+    LLVM_ABI_CLASS_INDIRECT,
+    LLVM_ABI_CLASS_CONVERTED,
+    COUNT_LLVM_ABI_CLASSES
+} LLVM_ABI_Class_Kind;
+
+typedef struct {
+    LLVM_ABI_Class_Kind kind;
+
+    LLVM_Type_Kind converted_parts[2];
+    size_t         converted_parts_count;
+
+    size_t indirect_iotas[2];
+} LLVM_ABI_Class;
+
+typedef struct {
+    size_t int_registers;
+} LLVM_ABI_Classifier;
+
 struct LLVM_Node_Fn {
     LLVM_Node  node;
     LLVM_Nodes vars;
@@ -132,19 +175,34 @@ struct LLVM_Node_Fn {
     bool       is_extern;
 
     LLVM_Node_Var **args;
+    LLVM_ABI_Class *args_classes;
     size_t          args_count;
+
+    size_t indirect_return_iota;
 
     LLVM_Debug_Pos    debug;
     LLVM_Debug_Scope *debug_scope;
 };
 
-typedef struct LLVM_Node_Var_Init LLVM_Node_Var_Init;
+typedef enum {
+    LLVM_NODE_VAR_INIT_INT,
+    LLVM_NODE_VAR_INIT_NODE,
+    LLVM_NODE_VAR_INIT_STRUCT,
+    COUNT_LLVM_NODE_VAR_INITS,
+} LLVM_Node_Var_Init_Kind;
 
 struct LLVM_Node_Var_Init {
-    LLVM_Node *node;
+    LLVM_Node_Var_Init_Kind kind;
 
     LLVM_Type type;
-    long      n;
+    union {
+        LLVM_Node *node;
+        long       integer;
+        struct {
+            LLVM_Node_Var_Init **fields;
+            size_t               fields_count;
+        } structt;
+    } as;
 
     LLVM_Node_Var_Init *next;
 };
@@ -157,11 +215,11 @@ struct LLVM_Node_Var {
     bool   is_arg;
     size_t arg_index;
 
+    bool is_const;
     bool is_zeroed;
     bool is_extern;
 
-    LLVM_Node_Var_Init *init_head;
-    LLVM_Node_Var_Init *init_tail;
+    LLVM_Node_Var_Init *init;
 
     LLVM_Debug_Pos debug;
     size_t         debug_local;
@@ -186,13 +244,14 @@ static void llvm_nodes_push(LLVM_Nodes *ns, LLVM_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static_assert(COUNT_LLVM_NODES == 15, "");
 static LLVM_Node *llvm_node_alloc(LLVM *l, LLVM_Node_Kind kind, LLVM_Type type) {
     static const size_t sizes[COUNT_LLVM_NODES] = {
         [LLVM_NODE_ATOM] = sizeof(LLVM_Node_Atom), // Prevent clang-format from messing this up
         [LLVM_NODE_UNARY] = sizeof(LLVM_Node_Unary),
         [LLVM_NODE_BINARY] = sizeof(LLVM_Node_Binary),
 
+        [LLVM_NODE_GEP] = sizeof(LLVM_Node_GEP),
         [LLVM_NODE_LOAD] = sizeof(LLVM_Node_Load),
         [LLVM_NODE_STORE] = sizeof(LLVM_Node_Store),
         [LLVM_NODE_CAST] = sizeof(LLVM_Node_Cast),
@@ -234,7 +293,10 @@ static inline void llvm_debug_pos_emit(LLVM *l, LLVM_Debug_Pos *pos) {
     if (!pos) {
         return;
     }
-    pos->iota = ++l->iota_debug;
+
+    if (!pos->iota) {
+        pos->iota = ++l->iota_debug;
+    }
     sb_sprintf(&l->sb, ", !dbg !%zu", pos->iota);
 }
 
@@ -243,7 +305,7 @@ static inline void llvm_debug_file_emit(LLVM *l, LLVM_Debug_File *file) {
     sb_sprintf(&l->sb, "!%zu = !DIFile(filename: \"%s\", directory: \"\")\n", file->iota, file->path);
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static_assert(COUNT_LLVM_NODES == 15, "");
 static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     if (!n) {
         return;
@@ -278,7 +340,7 @@ static void llvm_node_emit(LLVM *l, const LLVM_Node *n) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
@@ -314,12 +376,16 @@ static void llvm_type_emit(LLVM *l, LLVM_Type type, bool i1_to_i8) {
         sb_push_cstr(&l->sb, "ptr");
         break;
 
+    case LLVM_TYPE_STRUCT:
+        sb_sprintf(&l->sb, "%%struct." SV_Fmt, SV_Arg(type.structt.name));
+        break;
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static bool llvm_type_kind_is_signed(LLVM_Type_Kind kind) {
     switch (kind) {
     case LLVM_TYPE_I8:
@@ -333,7 +399,7 @@ static bool llvm_type_kind_is_signed(LLVM_Type_Kind kind) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static LLVM_Type_Kind llvm_type_kind_to_signed(LLVM_Type_Kind kind) {
     switch (kind) {
     case LLVM_TYPE_U8:
@@ -405,7 +471,123 @@ static size_t llvm_cast_compile(LLVM *l, const LLVM_Node *n, LLVM_Type_Kind to) 
     return temp;
 }
 
-static_assert(COUNT_LLVM_NODES == 14, "");
+static LLVM_Type_Kind llvm_int_type_kind_from_size(size_t size) {
+    switch (size) {
+    case 1:
+        return LLVM_TYPE_I8;
+
+    case 2:
+        return LLVM_TYPE_I16;
+
+    case 3:
+    case 4:
+        return LLVM_TYPE_I32;
+
+    case 5:
+    case 6:
+    case 7:
+    case 8:
+        return LLVM_TYPE_I64;
+
+    default:
+        unreachable();
+    }
+}
+
+#ifdef PLATFORM_X86_64_LINUX
+static void llvm_abi_x86_64_linux_decide_chunk_sizes(LLVM_Type_Struct spec, size_t chunk_sizes[2], size_t offset) {
+    for (size_t i = 0; i < spec.fields_count; i++) {
+        const LLVM_Field *it = &spec.fields[i];
+        const size_t      it_offset = offset + spec.fields_infos[i].offset;
+        if (it->type.kind == LLVM_TYPE_STRUCT) {
+            llvm_abi_x86_64_linux_decide_chunk_sizes(it->type.structt, chunk_sizes, it_offset);
+        } else {
+            const size_t chunk_index = it_offset / 8;
+            assert(chunk_index >= 0 && chunk_index < 2);
+            chunk_sizes[chunk_index] = chunk_sizes[chunk_index] ? 8 : llvm_type_info(it->type).size;
+        }
+    }
+}
+#endif // PLATFORM_X86_64_LINUX
+
+static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) {
+    LLVM_ABI_Class arg_class = {0};
+
+    const LLVM_Type_Info info = llvm_type_info(type);
+    if (info.size == 0) {
+        arg_class.kind = LLVM_ABI_CLASS_VOID;
+        return arg_class;
+    }
+
+    if (type.kind != LLVM_TYPE_STRUCT) {
+        c->int_registers++;
+        arg_class.kind = LLVM_ABI_CLASS_DIRECT;
+        return arg_class;
+    }
+
+    if (info.size <= 8) {
+        c->int_registers++;
+        arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(info.size);
+        return arg_class;
+    }
+
+#ifdef PLATFORM_X86_64_LINUX
+    if (info.size > 8 && info.size <= 16) {
+        if (c->int_registers + 2 <= 6) {
+            c->int_registers += 2;
+
+            size_t chunk_sizes[2] = {0};
+            llvm_abi_x86_64_linux_decide_chunk_sizes(type.structt, chunk_sizes, 0);
+
+            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[0]);
+            arg_class.converted_parts[arg_class.converted_parts_count++] = llvm_int_type_kind_from_size(chunk_sizes[1]);
+            return arg_class;
+        }
+    }
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    if (info.size > 8 && info.size <= 16) {
+        c->int_registers += 2;
+        arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+        return arg_class;
+    }
+#endif // PLATFORM_ARM64_MACOS
+
+    arg_class.kind = LLVM_ABI_CLASS_INDIRECT;
+    return arg_class;
+}
+
+static void llvm_abi_converted_type_emit(LLVM *l, LLVM_ABI_Class abi_class) {
+    if (abi_class.converted_parts_count > 1) {
+#ifdef PLATFORM_ARM64_MACOS
+        sb_sprintf(&l->sb, "[%zu x ", abi_class.converted_parts_count);
+        llvm_type_emit(l, (LLVM_Type) {.kind = abi_class.converted_parts[0]}, false);
+        sb_push(&l->sb, ']');
+        return;
+#else
+        sb_push(&l->sb, '{');
+#endif // PLATFORM_ARM64_MACOS
+    }
+
+    for (size_t j = 0; j < abi_class.converted_parts_count; j++) {
+        if (j) {
+            sb_push_cstr(&l->sb, ", ");
+        }
+
+        llvm_type_emit(l, (LLVM_Type) {.kind = abi_class.converted_parts[j]}, false);
+    }
+
+    if (abi_class.converted_parts_count > 1) {
+        sb_push(&l->sb, '}');
+    }
+}
+
+static_assert(COUNT_LLVM_NODES == 15, "");
 static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     if (!n) {
         return;
@@ -539,25 +721,50 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
         }
     } break;
 
-    case LLVM_NODE_LOAD: {
-        LLVM_Node_Load *load = (LLVM_Node_Load *) n;
+    case LLVM_NODE_GEP: {
+        LLVM_Node_GEP *gep = (LLVM_Node_GEP *) n;
         n->iota = ++l->iota_local;
+
         sb_push_cstr(&l->sb, "  ");
         llvm_node_emit(l, n);
-        sb_push_cstr(&l->sb, " = load ");
-        llvm_type_emit(l, n->type, true);
+        sb_push_cstr(&l->sb, " = getelementptr inbounds ");
+        llvm_type_emit(l, gep->base_type, false);
         sb_push_cstr(&l->sb, ", ptr ");
-        llvm_node_emit(l, load->ptr);
-        sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
+        llvm_node_emit(l, gep->base);
+        if (gep->is_field_index) {
+            sb_sprintf(&l->sb, ", i32 0, i32 %zu", gep->field_index);
+        } else {
+            sb_push_cstr(&l->sb, ", ");
+            llvm_type_emit(l, gep->slice_index->type, false);
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, gep->slice_index);
+        }
 
         llvm_debug_pos_emit(l, n->debug);
         sb_push(&l->sb, '\n');
+    } break;
 
-        if (n->type.kind == LLVM_TYPE_I1) {
-            // `n` is bool. It cannot be a variable. Therefore it is safe to modify
-            n->type.kind = LLVM_TYPE_I8;
-            n->iota = llvm_cast_compile(l, n, LLVM_TYPE_I1);
-            n->type.kind = LLVM_TYPE_I1;
+    case LLVM_NODE_LOAD: {
+        LLVM_Node_Load *load = (LLVM_Node_Load *) n;
+        if (!load->is_dead) {
+            n->iota = ++l->iota_local;
+            sb_push_cstr(&l->sb, "  ");
+            llvm_node_emit(l, n);
+            sb_push_cstr(&l->sb, " = load ");
+            llvm_type_emit(l, n->type, true);
+            sb_push_cstr(&l->sb, ", ptr ");
+            llvm_node_emit(l, load->ptr);
+            sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
+
+            llvm_debug_pos_emit(l, n->debug);
+            sb_push(&l->sb, '\n');
+
+            if (n->type.kind == LLVM_TYPE_I1) {
+                // `n` is bool. It cannot be a variable. Therefore it is safe to modify
+                n->type.kind = LLVM_TYPE_I8;
+                n->iota = llvm_cast_compile(l, n, LLVM_TYPE_I1);
+                n->type.kind = LLVM_TYPE_I1;
+            }
         }
     } break;
 
@@ -591,35 +798,239 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     } break;
 
     case LLVM_NODE_CALL: {
-        LLVM_Node_Call *call = (LLVM_Node_Call *) n;
-        sb_push_cstr(&l->sb, "  ");
-
-        if (n->type.kind != LLVM_TYPE_I0) {
-            n->iota = ++l->iota_local;
-            llvm_node_emit(l, n);
-            sb_push_cstr(&l->sb, " = ");
-        }
-
-        sb_push_cstr(&l->sb, "call ");
-        llvm_type_emit(l, n->type, false);
-        sb_push(&l->sb, ' ');
-
-        llvm_node_emit(l, call->fn);
-        sb_push(&l->sb, '(');
-        for (size_t i = 0; i < call->args_count; i++) {
-            if (i) {
-                sb_push_cstr(&l->sb, ", ");
+        const LLVM_ABI_Class *checkpoint = temp_alloc(0);
+        {
+            LLVM_Node_Call *call = (LLVM_Node_Call *) n;
+            if (call->struct_return_memory) {
+                if (call->struct_return_load) {
+                    n->debug = call->struct_return_load->node.debug;
+                    call->struct_return_load->node.debug = NULL;
+                } else {
+                    n->debug = call->struct_return_memory->debug;
+                    call->struct_return_memory->debug = NULL;
+                }
             }
 
-            LLVM_Node *arg = call->args[i];
-            llvm_type_emit(l, arg->type, false);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, arg);
-        }
-        sb_push(&l->sb, ')');
+            LLVM_ABI_Classifier classifier = {0};
+            LLVM_ABI_Class      return_class = llvm_abi_classify(&classifier, n->type);
 
-        llvm_debug_pos_emit(l, n->debug);
-        sb_push(&l->sb, '\n');
+            classifier = (LLVM_ABI_Classifier) {0};
+            if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+                classifier.int_registers++;
+            }
+
+            for (size_t i = 0; i < call->args_count; i++) {
+                LLVM_Node     *arg = call->args[i];
+                LLVM_ABI_Class arg_class = llvm_abi_classify(&classifier, arg->type);
+
+                if (arg->type.kind == LLVM_TYPE_STRUCT) {
+                    if (arg_class.kind == LLVM_ABI_CLASS_CONVERTED) {
+                        assert(arg->kind == LLVM_NODE_LOAD);
+                        LLVM_Node *arg_ptr = ((LLVM_Node_Load *) arg)->ptr;
+
+#ifdef PLATFORM_ARM64_MACOS
+                        arg_class.indirect_iotas[0] = ++l->iota_local;
+                        sb_sprintf(&l->sb, "  %%.%zu = load ", arg_class.indirect_iotas[0]);
+                        llvm_abi_converted_type_emit(l, arg_class);
+
+                        const LLVM_Type type = {.kind = arg_class.converted_parts[0]};
+                        sb_push_cstr(&l->sb, ", ptr ");
+                        llvm_node_emit(l, arg_ptr);
+                        sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+#else
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            const size_t temp = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = getelementptr inbounds i8, ptr ", temp);
+                            llvm_node_emit(l, arg_ptr);
+                            sb_sprintf(&l->sb, ", i64 %zu\n", i * 8);
+
+                            arg_class.indirect_iotas[i] = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = load ", arg_class.indirect_iotas[i]);
+
+                            const LLVM_Type type = {.kind = arg_class.converted_parts[i]};
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(&l->sb, ", ptr %%.%zu, align %zu\n", temp, llvm_type_info(type).align);
+                        }
+#endif // PLATFORM_ARM64_MACOS
+                    }
+
+                    temp_clone(&arg_class, sizeof(arg_class));
+                }
+            }
+
+            sb_push_cstr(&l->sb, "  ");
+            if (return_class.kind != LLVM_ABI_CLASS_VOID && return_class.kind != LLVM_ABI_CLASS_INDIRECT) {
+                n->iota = ++l->iota_local;
+                llvm_node_emit(l, n);
+                sb_push_cstr(&l->sb, " = ");
+            }
+
+            sb_push_cstr(&l->sb, "call ");
+            if (call->struct_return_memory) {
+                switch (return_class.kind) {
+                case LLVM_ABI_CLASS_VOID:
+                    sb_push_cstr(&l->sb, "void");
+                    break;
+
+                case LLVM_ABI_CLASS_DIRECT:
+                    unreachable();
+
+                case LLVM_ABI_CLASS_INDIRECT:
+                    sb_push_cstr(&l->sb, "void");
+                    break;
+
+                case LLVM_ABI_CLASS_CONVERTED:
+                    llvm_abi_converted_type_emit(l, return_class);
+                    break;
+
+                default:
+                    unreachable();
+                }
+            } else {
+                llvm_type_emit(l, n->type, false);
+            }
+
+            sb_push(&l->sb, ' ');
+            llvm_node_emit(l, call->fn);
+            sb_push(&l->sb, '(');
+
+            if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+                sb_push_cstr(&l->sb, "ptr sret(");
+                llvm_type_emit(l, n->type, false);
+                sb_sprintf(&l->sb, ") align %zu ", llvm_type_info(n->type).align);
+                llvm_node_emit(l, call->struct_return_memory);
+
+                if (call->args_count) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+            }
+
+            size_t arg_class_iota = 0;
+            for (size_t i = 0; i < call->args_count; i++) {
+                if (i) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+
+                LLVM_Node *arg = call->args[i];
+                if (arg->type.kind == LLVM_TYPE_STRUCT) {
+                    LLVM_ABI_Class arg_class = checkpoint[arg_class_iota++];
+
+                    static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+                    switch (arg_class.kind) {
+                    case LLVM_ABI_CLASS_VOID:
+                        unreachable();
+
+                    case LLVM_ABI_CLASS_DIRECT:
+                        unreachable();
+
+                    case LLVM_ABI_CLASS_INDIRECT:
+                        sb_push_cstr(&l->sb, "ptr noundef ");
+
+#ifndef PLATFORM_ARM64_MACOS
+                        sb_push_cstr(&l->sb, "byval(");
+                        llvm_type_emit(l, arg->type, false);
+                        sb_sprintf(&l->sb, ") align %zu ", llvm_type_info(arg->type).align);
+#endif // PLATFORM_ARM64_MACOS
+
+                        assert(arg->kind == LLVM_NODE_LOAD);
+                        llvm_node_emit(l, ((LLVM_Node_Load *) arg)->ptr);
+                        break;
+
+                    case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                        llvm_abi_converted_type_emit(l, arg_class);
+                        sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[0]);
+#else
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            if (i) {
+                                sb_push_cstr(&l->sb, ", ");
+                            }
+                            llvm_type_emit(l, (LLVM_Type) {.kind = arg_class.converted_parts[i]}, false);
+                            sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[i]);
+                        }
+#endif // PLATFORM_ARM64_MACOS
+                        break;
+
+                    default:
+                        unreachable();
+                    }
+                } else {
+                    llvm_type_emit(l, arg->type, false);
+                    sb_push(&l->sb, ' ');
+                    llvm_node_emit(l, arg);
+                }
+            }
+            sb_push(&l->sb, ')');
+
+            llvm_debug_pos_emit(l, n->debug);
+            sb_push(&l->sb, '\n');
+
+            if (call->struct_return_memory) {
+                switch (return_class.kind) {
+                case LLVM_ABI_CLASS_VOID:
+                    // Pass
+                    break;
+
+                case LLVM_ABI_CLASS_DIRECT:
+                    unreachable();
+
+                case LLVM_ABI_CLASS_INDIRECT:
+                    // Pass
+                    break;
+
+                case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                    sb_push_cstr(&l->sb, "  store ");
+                    llvm_abi_converted_type_emit(l, return_class);
+                    sb_push(&l->sb, ' ');
+                    llvm_node_emit(l, n);
+
+                    sb_push_cstr(&l->sb, ", ptr ");
+                    llvm_node_emit(l, call->struct_return_memory);
+
+                    const LLVM_Type type = {.kind = return_class.converted_parts[0]};
+                    sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+#else
+                    if (return_class.converted_parts_count == 1) {
+                        const LLVM_Type type = {.kind = return_class.converted_parts[0]};
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_type_emit(l, type, false);
+                        sb_push(&l->sb, ' ');
+                        llvm_node_emit(l, n);
+
+                        sb_push_cstr(&l->sb, ", ptr ");
+                        llvm_node_emit(l, call->struct_return_memory);
+                        sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(type).align);
+                    } else {
+                        for (size_t i = 0; i < return_class.converted_parts_count; i++) {
+                            const size_t dst = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = getelementptr inbounds i8, ptr ", dst);
+                            llvm_node_emit(l, call->struct_return_memory);
+                            sb_sprintf(&l->sb, ", i64 %zu\n", i * 8);
+
+                            const size_t src = ++l->iota_local;
+                            sb_sprintf(&l->sb, "  %%.%zu = extractvalue ", src);
+                            llvm_abi_converted_type_emit(l, return_class);
+                            sb_push(&l->sb, ' ');
+                            llvm_node_emit(l, n);
+                            sb_sprintf(&l->sb, ", %zu\n", i);
+
+                            const LLVM_Type type = {.kind = return_class.converted_parts[i]};
+                            sb_push_cstr(&l->sb, "  store ");
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(
+                                &l->sb, " %%.%zu, ptr %%.%zu, align %zu\n", src, dst, llvm_type_info(type).align);
+                        }
+                    }
+#endif // PLATFORM_ARM64_MACOS
+                    break;
+
+                default:
+                    unreachable();
+                }
+            }
+        }
+        temp_reset(checkpoint);
     } break;
 
     case LLVM_NODE_BLOCK:
@@ -653,13 +1064,59 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
     case LLVM_NODE_RETURN: {
         LLVM_Node_Return *returnn = (LLVM_Node_Return *) n;
 
-        if (returnn->value) {
-            sb_push_cstr(&l->sb, "  ret ");
-            llvm_type_emit(l, n->type, false);
-            sb_push(&l->sb, ' ');
-            llvm_node_emit(l, returnn->value);
+        if (n->type.kind == LLVM_TYPE_STRUCT) {
+            LLVM_ABI_Classifier classifier = {0};
+            LLVM_ABI_Class      return_class = llvm_abi_classify(&classifier, n->type);
+
+            assert(returnn->value);
+            assert(returnn->value->kind == LLVM_NODE_LOAD);
+            LLVM_Node *return_ptr = ((LLVM_Node_Load *) returnn->value)->ptr;
+
+            static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+            switch (return_class.kind) {
+            case LLVM_ABI_CLASS_VOID:
+                unreachable();
+
+            case LLVM_ABI_CLASS_DIRECT:
+                unreachable();
+
+            case LLVM_ABI_CLASS_INDIRECT:
+                sb_sprintf(&l->sb, "  call void @llvm.memcpy.p0.p0.i64(ptr %%.%zu, ptr ", l->fn->indirect_return_iota);
+                llvm_node_emit(l, return_ptr);
+                sb_sprintf(
+                    &l->sb,
+                    ", i64 %zu, i1 false)\n"
+                    "  ret void",
+                    llvm_type_info(n->type).size);
+                break;
+
+            case LLVM_ABI_CLASS_CONVERTED: {
+                const size_t temp = ++l->iota_local;
+                sb_sprintf(&l->sb, "  %%.%zu = load ", temp);
+                llvm_abi_converted_type_emit(l, return_class);
+                sb_push_cstr(&l->sb, ", ptr ");
+                llvm_node_emit(l, return_ptr);
+                sb_sprintf(&l->sb, ", align %zu", llvm_type_info(n->type).align);
+                llvm_debug_pos_emit(l, n->debug);
+                sb_push(&l->sb, '\n');
+
+                sb_push_cstr(&l->sb, "  ret ");
+                llvm_abi_converted_type_emit(l, return_class);
+                sb_sprintf(&l->sb, " %%.%zu", temp);
+            } break;
+
+            default:
+                unreachable();
+            }
         } else {
-            sb_push_cstr(&l->sb, "  ret void");
+            if (returnn->value) {
+                sb_push_cstr(&l->sb, "  ret ");
+                llvm_type_emit(l, n->type, false);
+                sb_push(&l->sb, ' ');
+                llvm_node_emit(l, returnn->value);
+            } else {
+                sb_push_cstr(&l->sb, "  ret void");
+            }
         }
 
         llvm_debug_pos_emit(l, n->debug);
@@ -696,6 +1153,7 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
 
 void llvm_free(LLVM *l) {
     sb_free(&l->sb);
+    da_free(&l->structs);
 }
 
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type);
@@ -732,9 +1190,8 @@ static size_t llvm_type_fn_debug_compile(LLVM *l, LLVM_Type *type) {
     return type->debug;
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
-    static_assert(COUNT_LLVM_TYPES == 12, "");
     switch (type->kind) {
     case LLVM_TYPE_I0:
         unreachable();
@@ -808,6 +1265,56 @@ static size_t llvm_type_debug_compile(LLVM *l, LLVM_Type *type) {
         type->debug = debug;
     } break;
 
+    case LLVM_TYPE_STRUCT: {
+        type->debug = ++l->iota_debug;
+
+        const LLVM_Type_Info   info = llvm_type_info(*type); // Pre-calculate offsets
+        const LLVM_Type_Struct spec = type->structt;
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            LLVM_Field      *field = &spec.fields[i];
+            LLVM_Field_Info *field_info = &spec.fields_infos[i];
+            llvm_type_debug_compile(l, &field->type);
+
+            field_info->debug = ++l->iota_debug;
+            sb_sprintf(
+                &l->sb,
+                "!%zu = !DIDerivedType("
+                "tag: DW_TAG_member, "
+                "name: \"" SV_Fmt "\", "
+                "scope: !%zu, "
+                "file: !%zu, "
+                "baseType: !%zu, "
+                "size: %zu, "
+                "offset: %zu)\n",
+                field_info->debug,
+                SV_Arg(field->name),
+                type->debug,
+                l->debug_file->iota,
+                field->type.debug,
+                field_info->size * 8,
+                field_info->offset * 8);
+        }
+
+        sb_sprintf(
+            &l->sb,
+            "!%zu = !DICompositeType("
+            "tag: DW_TAG_structure_type, "
+            "file: !%zu, "
+            "size: %zu, "
+            "elements: !{",
+            type->debug,
+            l->debug_file->iota,
+            info.size * 8);
+
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            if (i) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+            sb_sprintf(&l->sb, "!%zu", spec.fields_infos[i].debug);
+        }
+        sb_sprintf(&l->sb, "})\n");
+    } break;
+
     default:
         unreachable();
         break;
@@ -855,17 +1362,39 @@ static void llvm_debug_pos_compile(LLVM *l, LLVM_Debug_Pos *pos) {
         pos->scope->iota);
 }
 
+static_assert(COUNT_LLVM_NODE_VAR_INITS == 3, "");
 static void llvm_var_init_emit(LLVM *l, LLVM_Node_Var_Init *init) {
-    if (init->node) {
-        sb_push_cstr(&l->sb, "ptr ");
-        llvm_node_emit(l, init->node);
-    } else {
+    switch (init->kind) {
+    case LLVM_NODE_VAR_INIT_INT:
         llvm_type_emit(l, init->type, true);
         if (init->type.kind == LLVM_TYPE_PTR) {
-            sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->n);
+            sb_sprintf(&l->sb, " inttoptr (i64 %ld to ptr)", init->as.integer);
         } else {
-            sb_sprintf(&l->sb, " %ld", init->n);
+            sb_sprintf(&l->sb, " %ld", init->as.integer);
         }
+        break;
+
+    case LLVM_NODE_VAR_INIT_NODE:
+        sb_push_cstr(&l->sb, "ptr ");
+        llvm_node_emit(l, init->as.node);
+        break;
+
+    case LLVM_NODE_VAR_INIT_STRUCT:
+        llvm_type_emit(l, init->type, true);
+
+        sb_push_cstr(&l->sb, " {");
+        for (size_t i = 0; i < init->as.structt.fields_count; i++) {
+            if (i) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+            llvm_var_init_emit(l, init->as.structt.fields[i]);
+        }
+        sb_push(&l->sb, '}');
+        break;
+
+    default:
+        unreachable();
+        break;
     }
 }
 
@@ -881,16 +1410,37 @@ void llvm_compile(LLVM *l) {
         "@.uprint = private unnamed_addr constant [5 x i8] c\"%zu\\0A\\00\", align 1\n"
         "declare i32 @printf(ptr, ...)\n");
 
+    if (l->structs.count) {
+        sb_push(&l->sb, '\n');
+        for (size_t i = 0; i < l->structs.count; i++) {
+            LLVM_Type_Struct it = l->structs.data[i].structt;
+            sb_sprintf(&l->sb, "%%struct." SV_Fmt " = type {", SV_Arg(it.name));
+            for (size_t j = 0; j < it.fields_count; j++) {
+                if (j) {
+                    sb_push_cstr(&l->sb, ", ");
+                }
+                llvm_type_emit(l, it.fields[j].type, true);
+            }
+            sb_push_cstr(&l->sb, "}\n");
+        }
+    }
+
     if (l->vars.head) {
         sb_push(&l->sb, '\n');
         for (LLVM_Node *it = l->vars.head; it; it = it->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) it;
 
-            sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = %s ", SV_Arg(it->sv), var->is_extern ? "external global" : "global");
-            if (var->init_head) {
-                for (LLVM_Node_Var_Init *it = var->init_head; it; it = it->next) {
-                    llvm_var_init_emit(l, it);
-                }
+            sb_sprintf(&l->sb, "@\"" SV_Fmt "\" = ", SV_Arg(it->sv));
+            if (var->is_const) {
+                sb_push_cstr(&l->sb, "private unnamed_addr constant ");
+            } else if (var->is_extern) {
+                sb_push_cstr(&l->sb, "external global ");
+            } else {
+                sb_push_cstr(&l->sb, "global ");
+            }
+
+            if (var->init) {
+                llvm_var_init_emit(l, var->init);
             } else {
                 llvm_type_emit(l, var->type, true);
                 if (!var->is_extern) {
@@ -906,25 +1456,124 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->fns.head; it; it = it->next) {
         LLVM_Node_Fn *fn = (LLVM_Node_Fn *) it;
+        l->fn = fn;
+
         fn->debug.iota = ++l->iota_debug;
+        l->iota_local = 0;
 
         if (fn->is_extern) {
-            sb_push_cstr(&l->sb, "\ndeclare ");
+            sb_push_cstr(&l->sb, "declare ");
         } else {
             sb_push_cstr(&l->sb, "\ndefine ");
         }
 
-        llvm_type_emit(l, *fn->node.type.fn.returnn, false);
+        LLVM_ABI_Classifier classifier = {0};
+
+        LLVM_Type      return_type = *fn->node.type.fn.returnn;
+        LLVM_ABI_Class return_class = llvm_abi_classify(&classifier, return_type);
+
+        static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+        switch (return_class.kind) {
+        case LLVM_ABI_CLASS_VOID:
+            sb_push_cstr(&l->sb, "void");
+            break;
+
+        case LLVM_ABI_CLASS_DIRECT:
+            llvm_type_emit(l, return_type, false);
+            break;
+
+        case LLVM_ABI_CLASS_INDIRECT:
+            sb_push_cstr(&l->sb, "void");
+            break;
+
+        case LLVM_ABI_CLASS_CONVERTED:
+            llvm_abi_converted_type_emit(l, return_class);
+            break;
+
+        default:
+            unreachable();
+            break;
+        }
+
         sb_sprintf(&l->sb, " @\"" SV_Fmt "\"(", SV_Arg(it->sv));
+
+        classifier = (LLVM_ABI_Classifier) {0};
+        if (return_class.kind == LLVM_ABI_CLASS_INDIRECT) {
+            sb_push_cstr(&l->sb, "ptr sret(");
+            llvm_type_emit(l, return_type, false);
+            sb_sprintf(&l->sb, ") align %zu", llvm_type_info(return_type).align);
+            if (!fn->is_extern) {
+                fn->indirect_return_iota = ++l->iota_local;
+                sb_sprintf(&l->sb, " %%.%zu", fn->indirect_return_iota);
+            }
+
+            if (fn->args_count) {
+                sb_push_cstr(&l->sb, ", ");
+            }
+
+            classifier.int_registers++;
+        }
+
         for (size_t i = 0; i < fn->args_count; i++) {
             if (i > 0) {
                 sb_push_cstr(&l->sb, ", ");
             }
 
-            llvm_type_emit(l, fn->node.type.fn.args[i], false);
-            if (!fn->is_extern) {
-                sb_sprintf(&l->sb, " %%a%zu", i);
+            LLVM_Type      arg_type = fn->node.type.fn.args[i];
+            LLVM_ABI_Class arg_class = llvm_abi_classify(&classifier, arg_type);
+
+            static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+            switch (arg_class.kind) {
+            case LLVM_ABI_CLASS_VOID:
+                unreachable();
+
+            case LLVM_ABI_CLASS_DIRECT:
+                llvm_type_emit(l, arg_type, false);
+                if (!fn->is_extern) {
+                    sb_sprintf(&l->sb, " %%a%zu", i);
+                }
+                break;
+
+            case LLVM_ABI_CLASS_INDIRECT:
+                sb_push_cstr(&l->sb, "ptr noundef");
+
+#ifndef PLATFORM_ARM64_MACOS
+                sb_push_cstr(&l->sb, " byval(");
+                llvm_type_emit(l, arg_type, false);
+                sb_sprintf(&l->sb, ") align %zu", llvm_type_info(arg_type).align);
+#endif // PLATFORM_ARM64_MACOS
+
+                if (!fn->is_extern) {
+                    arg_class.indirect_iotas[0] = ++l->iota_local;
+                    sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[0]);
+                }
+                break;
+
+            case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                llvm_abi_converted_type_emit(l, arg_class);
+                if (!fn->is_extern) {
+                    sb_sprintf(&l->sb, " %%a%zu", i);
+                }
+#else
+                for (size_t j = 0; j < arg_class.converted_parts_count; j++) {
+                    if (j) {
+                        sb_push_cstr(&l->sb, ", ");
+                    }
+
+                    llvm_type_emit(l, (LLVM_Type) {.kind = arg_class.converted_parts[j]}, false);
+                    if (!fn->is_extern) {
+                        sb_sprintf(&l->sb, " %%a%zu_%zu", i, j);
+                    }
+                }
+#endif // PLATFORM_ARM64_MACOS
+                break;
+
+            default:
+                unreachable();
             }
+
+            fn->args_classes[i] = arg_class;
         }
 
         sb_push(&l->sb, ')');
@@ -938,16 +1587,19 @@ void llvm_compile(LLVM *l) {
         }
         sb_push_cstr(&l->sb, " {\n");
 
-        l->iota_local = 0;
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
 
-            n->iota = ++l->iota_local;
-            sb_push_cstr(&l->sb, "  ");
-            llvm_node_emit(l, n);
-            sb_push_cstr(&l->sb, " = alloca ");
-            llvm_type_emit(l, var->type, true);
-            sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(var->type).align);
+            if (var->is_arg && fn->args_classes[var->arg_index].kind == LLVM_ABI_CLASS_INDIRECT) {
+                n->iota = fn->args_classes[var->arg_index].indirect_iotas[0];
+            } else {
+                n->iota = ++l->iota_local;
+                sb_push_cstr(&l->sb, "  ");
+                llvm_node_emit(l, n);
+                sb_push_cstr(&l->sb, " = alloca ");
+                llvm_type_emit(l, var->type, true);
+                sb_sprintf(&l->sb, ", align %zu\n", llvm_type_info(var->type).align);
+            }
 
             if (var->is_arg) {
                 if (var->type.kind == LLVM_TYPE_I1) {
@@ -957,11 +1609,60 @@ void llvm_compile(LLVM *l) {
                     llvm_node_emit(l, n);
                     sb_push_cstr(&l->sb, ", align 1\n");
                 } else {
-                    sb_push_cstr(&l->sb, "  store ");
-                    llvm_type_emit(l, var->type, false);
-                    sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
-                    llvm_node_emit(l, n);
-                    sb_push(&l->sb, '\n');
+                    const LLVM_ABI_Class arg_class = fn->args_classes[var->arg_index];
+
+                    static_assert(COUNT_LLVM_ABI_CLASSES == 4, "");
+                    switch (arg_class.kind) {
+                    case LLVM_ABI_CLASS_VOID:
+                        todo(); // TODO: What to do for void parameters
+                        break;
+
+                    case LLVM_ABI_CLASS_DIRECT:
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_type_emit(l, var->type, false);
+                        sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
+                        llvm_node_emit(l, n);
+                        sb_push(&l->sb, '\n');
+                        break;
+
+                    case LLVM_ABI_CLASS_INDIRECT:
+                        // Pass
+                        break;
+
+                    case LLVM_ABI_CLASS_CONVERTED:
+#ifdef PLATFORM_ARM64_MACOS
+                        sb_push_cstr(&l->sb, "  store ");
+                        llvm_abi_converted_type_emit(l, arg_class);
+                        sb_sprintf(&l->sb, " %%a%zu, ptr ", var->arg_index);
+                        llvm_node_emit(l, n);
+                        sb_push(&l->sb, '\n');
+#else
+                        for (size_t i = 0; i < arg_class.converted_parts_count; i++) {
+                            const size_t temp = ++l->iota_local;
+                            sb_sprintf(
+                                &l->sb,
+                                "  %%.%zu = getelementptr inbounds i8, ptr %%.%zu, i64 %zu\n",
+                                temp,
+                                n->iota,
+                                i * 8);
+
+                            const LLVM_Type type = {.kind = arg_class.converted_parts[i]};
+                            sb_push_cstr(&l->sb, "  store ");
+                            llvm_type_emit(l, type, false);
+                            sb_sprintf(
+                                &l->sb,
+                                " %%a%zu_%zu, ptr %%.%zu, align %zu\n",
+                                var->arg_index,
+                                i,
+                                temp,
+                                llvm_type_info(type).align);
+                        }
+#endif // PLATFORM_ARM64_MACOS
+                        break;
+
+                    default:
+                        unreachable();
+                    }
                 }
             } else if (var->is_zeroed) {
                 sb_push_cstr(&l->sb, "  store ");
@@ -971,13 +1672,15 @@ void llvm_compile(LLVM *l) {
                 sb_push(&l->sb, '\n');
             }
 
-            var->debug_local = ++l->iota_debug;
-            var->debug.iota = ++l->iota_debug;
-            sb_push_cstr(&l->sb, "  call void @llvm.dbg.declare(metadata ptr ");
-            llvm_node_emit(l, n);
-            sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())", var->debug_local);
-            llvm_debug_pos_emit(l, n->debug);
-            sb_push(&l->sb, '\n');
+            if (var->debug.scope) {
+                var->debug_local = ++l->iota_debug;
+                var->debug.iota = ++l->iota_debug;
+                sb_push_cstr(&l->sb, "  call void @llvm.dbg.declare(metadata ptr ");
+                llvm_node_emit(l, n);
+                sb_sprintf(&l->sb, ", metadata !%zu, metadata !DIExpression())", var->debug_local);
+                llvm_debug_pos_emit(l, n->debug);
+                sb_push(&l->sb, '\n');
+            }
         }
 
         size_t first_row = 0;
@@ -1031,6 +1734,9 @@ void llvm_compile(LLVM *l) {
 
         for (LLVM_Node *n = fn->vars.head; n; n = n->next) {
             LLVM_Node_Var *var = (LLVM_Node_Var *) n;
+            if (!var->debug.scope) {
+                continue;
+            }
 
             const size_t debug_type = llvm_type_debug_compile(l, &var->type);
             sb_sprintf(
@@ -1085,6 +1791,9 @@ void llvm_compile(LLVM *l) {
 
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
         LLVM_Node_Var *var = (LLVM_Node_Var *) it;
+        if (var->is_const) {
+            continue;
+        }
 
         const size_t debug_var = ++l->iota_debug;
         sb_sprintf(
@@ -1113,6 +1822,10 @@ void llvm_compile(LLVM *l) {
 
     sb_sprintf(&l->sb, "!%zu = !{", debug_globals_list);
     for (LLVM_Node *it = l->vars.head; it; it = it->next) {
+        if (((LLVM_Node_Var *) it)->is_const) {
+            continue;
+        }
+
         sb_sprintf(&l->sb, "!%zu", it->debug->iota);
         if (it->next) {
             sb_push_cstr(&l->sb, ", ");
@@ -1125,32 +1838,73 @@ void llvm_compile(LLVM *l) {
     }
 }
 
-static_assert(COUNT_LLVM_TYPES == 12, "");
+static_assert(COUNT_LLVM_TYPES == 13, "");
 LLVM_Type_Info llvm_type_info(LLVM_Type type) {
     switch (type.kind) {
     case LLVM_TYPE_I0:
-        return (LLVM_Type_Info) {.align = 0, .size = 0};
+        return (LLVM_Type_Info) {.size = 0, .align = 0};
 
     case LLVM_TYPE_I1:
     case LLVM_TYPE_I8:
     case LLVM_TYPE_U8:
-        return (LLVM_Type_Info) {.align = 1, .size = 1};
+        return (LLVM_Type_Info) {.size = 1, .align = 1};
 
     case LLVM_TYPE_I16:
     case LLVM_TYPE_U16:
-        return (LLVM_Type_Info) {.align = 2, .size = 2};
+        return (LLVM_Type_Info) {.size = 2, .align = 2};
 
     case LLVM_TYPE_I32:
     case LLVM_TYPE_U32:
-        return (LLVM_Type_Info) {.align = 4, .size = 4};
+        return (LLVM_Type_Info) {.size = 4, .align = 4};
 
     case LLVM_TYPE_I64:
     case LLVM_TYPE_U64:
-        return (LLVM_Type_Info) {.align = 8, .size = 8};
+        return (LLVM_Type_Info) {.size = 8, .align = 8};
 
     case LLVM_TYPE_PTR:
     case LLVM_TYPE_FN:
-        return (LLVM_Type_Info) {.align = 8, .size = 8};
+        return (LLVM_Type_Info) {.size = 8, .align = 8};
+
+    case LLVM_TYPE_STRUCT: {
+        LLVM_Type_Struct *spec = &type.structt;
+        if (!spec->is_info_ready) {
+            spec->info.size = 0;
+            spec->info.align = 1;
+
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                LLVM_Field       field = spec->fields[i];
+                LLVM_Field_Info *field_info = &spec->fields_infos[i];
+
+                const LLVM_Type_Info type_info = llvm_type_info(field.type);
+                field_info->size = type_info.size;
+                field_info->align = type_info.align;
+                // if (!packed) {
+                spec->info.align = max(spec->info.align, field_info->align);
+                // }
+            }
+
+            size_t offset = 0;
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                LLVM_Field_Info *it = &spec->fields_infos[i];
+
+                // if (!packed) {
+                offset += (it->align - (offset % it->align)) % it->align;
+                // }
+
+                it->offset = offset;
+                offset += it->size;
+            }
+
+            // if (!packed) {
+            offset += (spec->info.align - (offset % spec->info.align)) % spec->info.align;
+            // }
+
+            spec->info.size = offset;
+            spec->is_info_ready = true;
+        }
+
+        return type.structt.info;
+    }
 
     default:
         unreachable();
@@ -1178,6 +1932,17 @@ LLVM_Type llvm_type_fn(LLVM *l, LLVM_Type *args, size_t args_count, LLVM_Type re
     };
 }
 
+LLVM_Type llvm_type_struct(LLVM *l, LLVM_Field *fields, size_t fields_count, SV name) {
+    LLVM_Type type = {0};
+    type.kind = LLVM_TYPE_STRUCT;
+    type.structt.name = name;
+    type.structt.fields = fields;
+    type.structt.fields_infos = arena_alloc(l->arena, fields_count * sizeof(*type.structt.fields_infos));
+    type.structt.fields_count = fields_count;
+    da_push(&l->structs, type);
+    return type;
+}
+
 LLVM_Node *llvm_atom_int(LLVM *l, LLVM_Type type, long n) {
     LLVM_Node_Atom *atom = (LLVM_Node_Atom *) llvm_node_alloc(l, LLVM_NODE_ATOM, type);
     atom->as.integer = n;
@@ -1201,6 +1966,7 @@ LLVM_Node_Fn *llvm_fn_new(LLVM *l, SV name, LLVM_Type type, bool is_extern) {
     fn->is_extern = is_extern;
 
     fn->args = arena_alloc(l->arena, type.fn.args_count * sizeof(*fn->args));
+    fn->args_classes = arena_alloc(l->arena, type.fn.args_count * sizeof(*fn->args_classes));
     fn->args_count = type.fn.args_count;
 
     LLVM_Node_Fn *fn_save = l->fn;
@@ -1256,27 +2022,44 @@ void llvm_var_set_name(LLVM_Node_Var *var, SV name) {
     var->name = name;
 }
 
-static void llvm_var_init_push(LLVM_Node_Var *var, LLVM_Node_Var_Init *init) {
-    if (var->init_tail) {
-        var->init_tail->next = init;
-    } else {
-        var->init_head = init;
-    }
-
-    var->init_tail = init;
-}
-
-void llvm_var_init_add_int(LLVM *l, LLVM_Node_Var *var, LLVM_Type type, long n) {
+LLVM_Node_Var_Init *llvm_var_init_new_int(LLVM *l, LLVM_Type type, long n) {
     LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->kind = LLVM_NODE_VAR_INIT_INT;
     init->type = type;
-    init->n = n;
-    llvm_var_init_push(var, init);
+    init->as.integer = n;
+    return init;
 }
 
-void llvm_var_init_add_node(LLVM *l, LLVM_Node_Var *var, LLVM_Node *node) {
+LLVM_Node_Var_Init *llvm_var_init_new_node(LLVM *l, LLVM_Node *node) {
     LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
-    init->node = node;
-    llvm_var_init_push(var, init);
+    init->kind = LLVM_NODE_VAR_INIT_NODE;
+    init->as.node = node;
+    return init;
+}
+
+LLVM_Node_Var_Init *
+llvm_var_init_new_struct(LLVM *l, LLVM_Type type, LLVM_Node_Var_Init **fields, size_t fields_count) {
+    LLVM_Node_Var_Init *init = arena_alloc(l->arena, sizeof(LLVM_Node_Var_Init));
+    init->kind = LLVM_NODE_VAR_INIT_STRUCT;
+    init->type = type;
+    init->as.structt.fields = fields;
+    init->as.structt.fields_count = fields_count;
+    return init;
+}
+
+void llvm_var_set_init(LLVM_Node_Var *var, LLVM_Node_Var_Init *init) {
+    var->init = init;
+}
+
+LLVM_Node *llvm_const_new(LLVM *l, SV name, LLVM_Type type, LLVM_Node_Var_Init *value) {
+    LLVM_Node_Var *var = (LLVM_Node_Var *) llvm_node_alloc(l, LLVM_NODE_VAR, llvm_type_basic(LLVM_TYPE_PTR));
+    var->type = type;
+    var->name = name;
+    var->node.sv = name;
+    var->is_const = true;
+    var->init = value;
+    llvm_nodes_push(&l->vars, (LLVM_Node *) var);
+    return (LLVM_Node *) var;
 }
 
 LLVM_Node *llvm_build_unary(LLVM *l, LLVM_Unary_Kind kind, LLVM_Type type, LLVM_Node *value) {
@@ -1318,6 +2101,11 @@ llvm_build_branch(LLVM *l, LLVM_Node *condition, LLVM_Node_Block *consequence, L
 LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value) {
     LLVM_Type type;
     if (value) {
+        if (value->type.kind == LLVM_TYPE_STRUCT) {
+            if (value->kind == LLVM_NODE_LOAD) {
+                ((LLVM_Node_Load *) value)->is_dead = true;
+            }
+        }
         type = value->type;
     } else {
         type = llvm_type_basic(LLVM_TYPE_I0);
@@ -1326,6 +2114,23 @@ LLVM_Node *llvm_build_return(LLVM *l, LLVM_Node *value) {
     LLVM_Node_Return *returnn = (LLVM_Node_Return *) llvm_node_build(l, LLVM_NODE_RETURN, type);
     returnn->value = value;
     return (LLVM_Node *) returnn;
+}
+
+LLVM_Node *llvm_build_gep_field(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, size_t index) {
+    LLVM_Node_GEP *gep = (LLVM_Node_GEP *) llvm_node_build(l, LLVM_NODE_GEP, final_type);
+    gep->base = base;
+    gep->base_type = base_type;
+    gep->is_field_index = true;
+    gep->field_index = index;
+    return (LLVM_Node *) gep;
+}
+
+LLVM_Node *llvm_build_gep_index(LLVM *l, LLVM_Type final_type, LLVM_Node *base, LLVM_Type base_type, LLVM_Node *index) {
+    LLVM_Node_GEP *gep = (LLVM_Node_GEP *) llvm_node_build(l, LLVM_NODE_GEP, final_type);
+    gep->base = base;
+    gep->base_type = base_type;
+    gep->slice_index = index;
+    return (LLVM_Node *) gep;
 }
 
 LLVM_Node *llvm_build_load(LLVM *l, LLVM_Node *ptr, LLVM_Type type) {
@@ -1353,12 +2158,34 @@ LLVM_Node *llvm_build_cast(LLVM *l, LLVM_Node *value, LLVM_Type type) {
     return (LLVM_Node *) cast;
 }
 
-LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count) {
+LLVM_Node *llvm_build_call(LLVM *l, LLVM_Node *fn, LLVM_Node **args, size_t args_count, bool ref) {
     assert(fn->type.kind == LLVM_TYPE_FN);
     LLVM_Node_Call *call = (LLVM_Node_Call *) llvm_node_build(l, LLVM_NODE_CALL, *fn->type.fn.returnn);
     call->fn = fn;
+
+    for (size_t i = 0; i < args_count; i++) {
+        LLVM_Node *arg = args[i];
+        if (arg->type.kind == LLVM_TYPE_STRUCT) {
+            assert(arg->kind == LLVM_NODE_LOAD);
+            ((LLVM_Node_Load *) arg)->is_dead = true;
+        }
+    }
+
     call->args = args;
     call->args_count = args_count;
+
+    if (call->node.type.kind == LLVM_TYPE_STRUCT) {
+        call->struct_return_memory = (LLVM_Node *) llvm_var_new(l, (SV) {0}, call->node.type, true, false, false);
+        if (ref) {
+            return call->struct_return_memory;
+        }
+
+        call->struct_return_load = (LLVM_Node_Load *) llvm_build_load(l, call->struct_return_memory, call->node.type);
+        return (LLVM_Node *) call->struct_return_load;
+    } else {
+        assert(!ref);
+    }
+
     return (LLVM_Node *) call;
 }
 

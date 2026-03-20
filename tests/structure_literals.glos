@@ -1,0 +1,16 @@
+Vec2 :: struct {
+    x: i32,
+    y: i32
+}
+
+print_vec2 :: (v: Vec2) {
+    print v.x
+    print v.y
+}
+
+vec := Vec2 {y = 420, x = 69}
+
+main :: () {
+    print_vec2(vec)
+    print_vec2(Vec2 {1337, 80085})
+}

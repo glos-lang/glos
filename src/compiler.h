@@ -3,17 +3,23 @@
 
 #include "context.h"
 
+typedef Dynamic_Array(const char *) Link_Flags;
+
 typedef struct {
     Scope   globals;
     Context context;
 
-    Cmd *cmd;
+    Cmd        *cmd;
+    Link_Flags *link_flags;
+
     LLVM llvm;
 
     LLVM_Node_Block *loop_break;
     LLVM_Node_Block *loop_continue;
 
     size_t iota_anonymous_fn;
+    size_t iota_anonymous_const;
+    size_t iota_anonymous_struct;
 
     // TODO: Temporary solutions to permanent problems
     const char *path;

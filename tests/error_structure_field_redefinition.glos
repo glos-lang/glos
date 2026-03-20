@@ -1,0 +1,4 @@
+Foo :: struct {
+    x: i64,
+    x: i64
+}

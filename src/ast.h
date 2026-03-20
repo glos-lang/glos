@@ -6,10 +6,13 @@
 
 typedef struct Context_Fn Context_Fn;
 
-typedef struct AST_Node        AST_Node;
-typedef struct AST_Node_Fn     AST_Node_Fn;
+typedef struct AST_Node AST_Node;
+
 typedef struct AST_Node_Atom   AST_Node_Atom;
 typedef struct AST_Node_Define AST_Node_Define;
+
+typedef struct AST_Node_Fn     AST_Node_Fn;
+typedef struct AST_Node_Struct AST_Node_Struct;
 
 typedef struct {
     AST_Node *head;
@@ -36,26 +39,39 @@ typedef enum {
     AST_TYPE_RAWPTR,
 
     AST_TYPE_FN,
+    AST_TYPE_STRUCT,
 
-    AST_TYPE_TYPE,
     COUNT_AST_TYPES,
 } AST_Type_Kind;
 
 typedef struct AST_Type AST_Type;
 
 typedef struct {
+    // TODO: Instead of AST_Node_Atom, use struct { Pos pos; SV name; AST_Type type; }
     AST_Node_Atom **args;
     size_t          args_count;
     AST_Type       *returnn;
 } AST_Type_Fn;
 
+typedef struct {
+    // TODO: Instead of AST_Node_Atom, use struct { Pos pos; SV name; AST_Type type; }
+    AST_Node_Atom **fields;
+    size_t          fields_count;
+
+    AST_Node_Struct *definition;
+} AST_Type_Struct;
+
 struct AST_Type {
     AST_Type_Kind kind;
     size_t        ref;
 
+    // A :: 69  // typeof(A) => AST_Type { kind = AST_TYPE_I64, is_type = false }
+    // B :: i64 // typeof(B) => AST_Type { kind = AST_TYPE_I64, is_type = true  }
+    bool is_type;
+
     union {
-        AST_Type   *type;
-        AST_Type_Fn fn;
+        AST_Type_Fn     fn;
+        AST_Type_Struct structt;
     } spec;
 
     LLVM_Type llvm;
@@ -64,6 +80,7 @@ struct AST_Type {
 const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
+bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind);
 bool ast_type_is_numeric(AST_Type type);
 bool ast_type_is_integer(AST_Type type);
 bool ast_type_is_pointer(AST_Type type);
@@ -71,26 +88,33 @@ bool ast_type_is_scalar(AST_Type type);
 
 typedef enum {
     CONST_VALUE_INT,
-
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
-
+    CONST_VALUE_STRUCT,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
+typedef struct Const_Value Const_Value;
+
 typedef struct {
+    AST_Type_Struct spec;
+    Const_Value    *fields;
+} Const_Value_Struct;
+
+struct Const_Value {
     Const_Value_Kind kind;
     union {
-        long         integer;
-        AST_Type     type;
-        AST_Node_Fn *fn;
+        long               integer;
+        AST_Type           type;
+        AST_Node_Fn       *fn;
+        Const_Value_Struct structt;
     } as;
-} Const_Value;
+};
 
-#define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
-
-#define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
-#define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+#define const_value_int(v)    ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_fn(v)     ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+#define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 
 typedef enum {
     UNCHECKED,
@@ -102,8 +126,12 @@ typedef enum {
     AST_NODE_ATOM,
     AST_NODE_UNARY,
     AST_NODE_BINARY,
+    AST_NODE_MEMBER,
 
     AST_NODE_FN,
+    AST_NODE_STRUCT,
+    AST_NODE_COMPOUND,
+
     AST_NODE_CALL,
 
     AST_NODE_DEFINE,
@@ -168,6 +196,14 @@ typedef struct {
     AST_Node *rhs;
 } AST_Node_Binary;
 
+typedef struct {
+    AST_Node  node;
+    AST_Node *lhs;
+    Token     field;
+
+    size_t field_index;
+} AST_Node_Member;
+
 struct AST_Node_Fn {
     AST_Node node;
 
@@ -185,6 +221,31 @@ struct AST_Node_Fn {
 
     LLVM_Node *llvm;
 };
+
+struct AST_Node_Struct {
+    AST_Node node;
+
+    AST_Nodes fields;
+    size_t    fields_count;
+
+    AST_Node_Atom *defined_as;
+};
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *lhs;
+
+    AST_Nodes children;
+
+    // For designated initializers, each node of children is as follows:
+    //
+    // AST_Node_Binary('=') {
+    //     token.as.integer = <index>
+    //     lhs = <key>
+    //     lhs = <value>
+    // }
+    bool is_designated;
+} AST_Node_Compound;
 
 typedef enum {
     TYPE_CAST_NOP,
