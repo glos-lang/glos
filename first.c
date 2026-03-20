@@ -433,26 +433,37 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
     return true;
 }
 
-static bool build_test_object_file(Cmd *cmd, Procs *procs, const char *output, const char *input) {
-    if (get_modified_time(output) < get_modified_time(input)) {
-        fprintf(stderr, "Building '%s'\n", output);
+static bool build_test_library(Cmd *cmd, const char *output_path, const char *input_path) {
+    if (get_modified_time(output_path) < get_modified_time(input_path)) {
+        const char *object_path = replace_suffix(input_path, ".c", OBJ_FILE_EXTENSION);
+
         cmd_push(cmd, "clang");
         cmd_push(cmd, "-ggdb");
         cmd_push(cmd, "-c");
         cmd_push(cmd, "-o");
-        cmd_push(cmd, output);
-        cmd_push(cmd, input);
+        cmd_push(cmd, object_path);
+        cmd_push(cmd, input_path);
 
-        const Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
-        if (proc == PROC_INVALID) {
-            fprintf(stderr, "ERROR: Could not start process 'clang'\n");
-            return false;
-        }
-
-        if (!procs_push(procs, proc)) {
+        int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+        if (result) {
             fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
             return false;
         }
+
+        fprintf(stderr, "Building '%s'\n", output_path);
+        cmd_push(cmd, "llvm-ar");
+        cmd_push(cmd, "rcs");
+        cmd_push(cmd, output_path);
+        cmd_push(cmd, object_path);
+
+        result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+        if (result) {
+            fprintf(stderr, "ERROR: Process 'llvm-ar' exited abnormally\n");
+            return false;
+        }
+
+        delete_file(object_path);
+        temp_reset(object_path);
     }
 
     return true;
@@ -464,24 +475,17 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Arena       arena = {0};
     const char *temp_save = temp_alloc(0);
 
-    // TODO: Generating .o files for all platforms for now. Later once strings are implemented, this can be set directly
-    // in the source code, and need not be hardcoded in `tests.conf`
-    //
-    // Consider implementing a "subset" of strings. Basically just get strings working for extern blocks.
     {
-        Procs procs = {.nprocs = nprocs};
+#ifdef PLATFORM_X86_64_WINDOWS
+        const char *libabi_path = "tests/abi/abi.lib";
+#else
+        const char *libabi_path = "tests/abi/libabi.a";
+#endif // PLATFORM_X86_64_WINDOWS
 
         // ABI
-        if (!build_test_object_file(cmd, &procs, "tests/abi/abi.o", "tests/abi/abi.c")) {
+        if (!build_test_library(cmd, libabi_path, "tests/abi/abi.c")) {
             return false;
         }
-
-        if (!procs_flush(&procs)) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
-            return false;
-        }
-
-        da_free(&procs);
     }
 
     SV contents = {0};

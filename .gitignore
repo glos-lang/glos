@@ -3,4 +3,6 @@
 /first
 /first.exe
 *.o
+*.a
 *.obj
+*.lib
