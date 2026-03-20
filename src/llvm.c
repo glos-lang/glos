@@ -924,9 +924,14 @@ static void llvm_node_compile(LLVM *l, LLVM_Node *n) {
                         unreachable();
 
                     case LLVM_ABI_CLASS_INDIRECT:
-                        sb_push_cstr(&l->sb, "ptr noundef byval(");
+                        sb_push_cstr(&l->sb, "ptr noundef ");
+
+#ifndef PLATFORM_ARM64_MACOS
+                        sb_push_cstr(&l->sb, "byval(");
                         llvm_type_emit(l, arg->type, false);
                         sb_sprintf(&l->sb, ") align %zu ", llvm_type_info(arg->type).align);
+#endif // PLATFORM_ARM64_MACOS
+
                         assert(arg->kind == LLVM_NODE_LOAD);
                         llvm_node_emit(l, ((LLVM_Node_Load *) arg)->ptr);
                         break;
@@ -1530,9 +1535,14 @@ void llvm_compile(LLVM *l) {
                 break;
 
             case LLVM_ABI_CLASS_INDIRECT:
-                sb_push_cstr(&l->sb, "ptr noundef byval(");
+                sb_push_cstr(&l->sb, "ptr noundef");
+
+#ifndef PLATFORM_ARM64_MACOS
+                sb_push_cstr(&l->sb, " byval(");
                 llvm_type_emit(l, arg_type, false);
                 sb_sprintf(&l->sb, ") align %zu", llvm_type_info(arg_type).align);
+#endif // PLATFORM_ARM64_MACOS
+
                 if (!fn->is_extern) {
                     arg_class.indirect_iotas[0] = ++l->iota_local;
                     sb_sprintf(&l->sb, " %%.%zu", arg_class.indirect_iotas[0]);
