@@ -451,7 +451,13 @@ static bool build_test_library(Cmd *cmd, const char *output_path, const char *in
         }
 
         fprintf(stderr, "Building '%s'\n", output_path);
+
+#ifdef PLATFORM_X86_64_WINDOWS
         cmd_push(cmd, "llvm-ar");
+#else
+        cmd_push(cmd, "ar");
+#endif // PLATFORM_X86_64_WINDOWS
+
         cmd_push(cmd, "rcs");
         cmd_push(cmd, output_path);
         cmd_push(cmd, object_path);
