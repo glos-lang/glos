@@ -550,13 +550,11 @@ static LLVM_ABI_Class llvm_abi_classify(LLVM_ABI_Classifier *c, LLVM_Type type) 
 
 #ifdef PLATFORM_ARM64_MACOS
     if (info.size > 8 && info.size <= 16) {
-        if (c->int_registers + 2 <= 8) {
-            c->int_registers += 2;
-            arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
-            arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
-            arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
-            return arg_class;
-        }
+        c->int_registers += 2;
+        arg_class.kind = LLVM_ABI_CLASS_CONVERTED;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+        arg_class.converted_parts[arg_class.converted_parts_count++] = LLVM_TYPE_I64;
+        return arg_class;
     }
 #endif // PLATFORM_ARM64_MACOS
 
@@ -1459,7 +1457,7 @@ void llvm_compile(LLVM *l) {
         l->iota_local = 0;
 
         if (fn->is_extern) {
-            sb_push_cstr(&l->sb, "\ndeclare ");
+            sb_push_cstr(&l->sb, "declare ");
         } else {
             sb_push_cstr(&l->sb, "\ndefine ");
         }
