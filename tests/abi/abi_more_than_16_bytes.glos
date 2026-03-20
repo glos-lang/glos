@@ -1,0 +1,16 @@
+S24 :: struct {
+    x: i64,
+    y: i64,
+    z: i64
+}
+
+extern {
+    s24_foo :: (s: S24)
+    s24_ret :: (x: i64, y: i64, z: i64) -> S24
+}
+
+main :: () {
+    s24_foo(S24 {1, 2, 3})
+    s24_foo(s24_ret(1, 2, 3))
+    s24_foo(() -> S24 { return S24 {1, 2, 3} }())
+}
