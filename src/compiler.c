@@ -259,10 +259,10 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
                     unreachable();
 
                 case CONST_VALUE_STRUCT: {
+                    // TODO: Don't generate this over and over
                     LLVM_Node_Var_Init *value =
                         compile_const_value_to_var_init(c, n->type.llvm, definition->const_value);
 
-                    // TODO: Consider proper name
                     const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
 
                     LLVM_Node *memory = llvm_const_new(&c->llvm, sv_from_cstr(name), n->type.llvm, value);

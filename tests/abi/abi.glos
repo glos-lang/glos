@@ -1,0 +1,44 @@
+S8 :: struct {
+    x: i32,
+    y: i32
+};
+
+S16 :: struct {
+    x: i64,
+    y: i64
+}
+
+S24 :: struct {
+    x: i64,
+    y: i64,
+    z: i64
+}
+
+extern {
+    s8_foo :: (s: S8)
+    s8_ret :: (x: i32, y: i32) -> S8
+
+    s16_foo :: (s: S16)
+    s16_bar :: (s0: S16, s1: S16, s2: S16, s3: S16)
+    s16_baz :: (s0: S16, s1: S16, s2: S16, s3: S16, s4: S16)
+    s16_ret :: (x: i64, y: i64) -> S16
+
+    s24_foo :: (s: S24)
+    s24_ret :: (x: i64, y: i64, z: i64) -> S24
+}
+
+main :: () {
+    s8_foo(S8 {1, 2})
+    s8_foo(s8_ret(1, 2))
+    s8_foo(() -> S8 { return S8 {1, 2} }())
+
+    s16_foo(S16 {1, 2})
+    s16_bar(S16 {1, 2}, S16 {3, 4}, S16 {5, 6}, S16 {7, 8})
+    s16_baz(S16 {1, 2}, S16 {3, 4}, S16 {5, 6}, S16 {7, 8}, S16 {9, 10})
+    s16_foo(s16_ret(1, 2))
+    s16_foo(() -> S16 { return S16 {1, 2} }())
+
+    s24_foo(S24 {1, 2, 3})
+    s24_foo(s24_ret(1, 2, 3))
+    s24_foo(() -> S24 { return S24 {1, 2, 3} }())
+}

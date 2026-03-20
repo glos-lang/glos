@@ -1,4 +1,4 @@
-#include "src/basic.c"
+#include "src/basic.h"
 #include <ctype.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
@@ -71,10 +71,10 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
     const void *save = temp_alloc(0);
     Procs       procs = {.nprocs = nprocs};
 
-    size_t headers_time = 0;
+    size_t headers_time_latest = 0;
     for (size_t i = 0; i < len(headers); i++) {
         const size_t time = get_modified_time(headers[i]);
-        headers_time = max(headers_time, time);
+        headers_time_latest = max(headers_time_latest, time);
     }
 
     bool need_linking = get_modified_time("glos" EXE_FILE_EXTENSION) == 0;
@@ -83,19 +83,19 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         const char  *obj = replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
         const size_t src_time = get_modified_time(src);
         const size_t obj_time = get_modified_time(obj);
-        if (obj_time >= src_time && obj_time >= headers_time) {
+        if (obj_time >= src_time && obj_time >= headers_time_latest) {
             continue;
         }
 
         fprintf(stderr, "Building '%s'\n", obj);
         need_linking = true;
 
-        da_push(cmd, "clang");
-        da_push(cmd, "-ggdb");
-        da_push(cmd, "-o");
-        da_push(cmd, obj);
-        da_push(cmd, src);
-        da_push(cmd, "-c");
+        cmd_push(cmd, "clang");
+        cmd_push(cmd, "-ggdb");
+        cmd_push(cmd, "-c");
+        cmd_push(cmd, "-o");
+        cmd_push(cmd, obj);
+        cmd_push(cmd, src);
 
         const Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
         if (proc == PROC_INVALID) {
@@ -119,11 +119,11 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
     }
 
     fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
-    da_push(cmd, "clang");
-    da_push(cmd, "-o");
-    da_push(cmd, "glos" EXE_FILE_EXTENSION);
+    cmd_push(cmd, "clang");
+    cmd_push(cmd, "-o");
+    cmd_push(cmd, "glos" EXE_FILE_EXTENSION);
     for (size_t i = 0; i < len(sources); i++) {
-        da_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
+        cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
     }
 
     if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
@@ -320,6 +320,9 @@ static bool test_info_diff(Test_Info expected, Test_Info actual, const char *nam
 typedef struct {
     const char *name;
 
+    const char **args;
+    size_t       args_count;
+
     bool        record_exists;
     const char *record_path;
 
@@ -333,9 +336,9 @@ typedef struct {
 typedef Dynamic_Array(Test) Tests;
 
 static void test_prepare_cmd(Test test, Cmd *cmd) {
-    da_push(cmd, "./glos" EXE_FILE_EXTENSION);
-    da_push(cmd, "-r");
-    da_push(cmd, test.name);
+    cmd_push(cmd, "./glos" EXE_FILE_EXTENSION);
+    cmd_push(cmd, "-r");
+    cmd_push(cmd, test.name);
 }
 
 static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, const void *arena_save) {
@@ -344,8 +347,6 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
         Test *it = &tests->data[i];
 
         Test_Info actual = {0};
-        actual.exit = cmd_wait(it->proc);
-
         if (it->pout) {
             if (!read_fp_into_arena(it->pout, &actual.out, arena)) {
                 fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it->name);
@@ -365,6 +366,7 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
         } else {
             actual.err = (SV) {0};
         }
+        actual.exit = cmd_wait(it->proc);
 
         bool need_to_record = false;
         if (it->record_exists) {
@@ -431,11 +433,56 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
     return true;
 }
 
+static bool build_test_object_file(Cmd *cmd, Procs *procs, const char *output, const char *input) {
+    if (get_modified_time(output) < get_modified_time(input)) {
+        fprintf(stderr, "Building '%s'\n", output);
+        cmd_push(cmd, "clang");
+        cmd_push(cmd, "-ggdb");
+        cmd_push(cmd, "-c");
+        cmd_push(cmd, "-o");
+        cmd_push(cmd, output);
+        cmd_push(cmd, input);
+
+        const Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+        if (proc == PROC_INVALID) {
+            fprintf(stderr, "ERROR: Could not start process 'clang'\n");
+            return false;
+        }
+
+        if (!procs_push(procs, proc)) {
+            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     bool        result = true;
     Tests       tests = {0};
     Arena       arena = {0};
     const char *temp_save = temp_alloc(0);
+
+    // TODO: Generating .o files for all platforms for now. Later once strings are implemented, this can be set directly
+    // in the source code, and need not be hardcoded in `tests.conf`
+    //
+    // Consider implementing a "subset" of strings. Basically just get strings working for extern blocks.
+    {
+        Procs procs = {.nprocs = nprocs};
+
+        // ABI
+        if (!build_test_object_file(cmd, &procs, "tests/abi/abi.o", "tests/abi/abi.c")) {
+            return false;
+        }
+
+        if (!procs_flush(&procs)) {
+            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            return false;
+        }
+
+        da_free(&procs);
+    }
 
     SV contents = {0};
     if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
@@ -445,59 +492,65 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
 
     const void *arena_save = arena_alloc(&arena, 0);
     while (contents.count) {
-        const SV line = sv_trim(sv_split(sv_split_mut(&contents, '\n'), '#'), ' ');
+        SV line = sv_trim(sv_split(sv_split_mut(&contents, '\n'), '#'), ' ');
         if (line.count == 0) {
             continue;
         }
 
-        const char *it = temp_sv_to_cstr(line);
-        const char *record_path = replace_suffix(it, ".glos", ".bin");
+        Test test = {0};
+        test.name = temp_sv_to_cstr(sv_split_mut(&line, ' '));
+        test_prepare_cmd(test, cmd);
+
+        // TODO: Proper shell parsing
+        while (line.count) {
+            line = sv_trim(line, ' ');
+            da_push(cmd, temp_sv_to_cstr(sv_split_mut(&line, ' ')));
+        }
+
+        const char *record_path = replace_suffix(test.name, ".glos", ".bin");
 
         SV         contents = {0};
         const bool record_exists = read_file_into_arena(record_path, &contents, &arena);
 
-        {
-            Test_Info expected = {0};
-            if (record_exists) {
-                for (size_t row = 1; contents.count; row++) {
-                    SV line = sv_trim(sv_split_mut(&contents, '\n'), ' ');
-                    SV key = sv_split_mut(&line, ' ');
-                    SV value = sv_trim(line, ' ');
-                    if (sv_match(key, "EXIT")) {
-                        expected.exit = parse_uint_value(value, "exit code", record_path, row, line);
-                    } else if (sv_match(key, "STDOUT")) {
-                        expected.out = parse_bytes_value(value, &contents, "standard output", record_path, &row, line);
-                    } else if (sv_match(key, "STDERR")) {
-                        expected.err = parse_bytes_value(value, &contents, "standard error", record_path, &row, line);
-                    } else {
-                        fprintf(stderr, "%s:%zu: ERROR: Invalid key '" SV_Fmt "'\n", record_path, row, SV_Arg(key));
-                        exit(1);
-                    }
+        Test_Info expected = {0};
+        if (record_exists) {
+            for (size_t row = 1; contents.count; row++) {
+                SV line = sv_trim(sv_split_mut(&contents, '\n'), ' ');
+                SV key = sv_split_mut(&line, ' ');
+                SV value = sv_trim(line, ' ');
+                if (sv_match(key, "EXIT")) {
+                    expected.exit = parse_uint_value(value, "exit code", record_path, row, line);
+                } else if (sv_match(key, "STDOUT")) {
+                    expected.out = parse_bytes_value(value, &contents, "standard output", record_path, &row, line);
+                } else if (sv_match(key, "STDERR")) {
+                    expected.err = parse_bytes_value(value, &contents, "standard error", record_path, &row, line);
+                } else {
+                    fprintf(stderr, "%s:%zu: ERROR: Invalid key '" SV_Fmt "'\n", record_path, row, SV_Arg(key));
+                    exit(1);
                 }
-
-                fprintf(stderr, "Replaying '%s'\n", it);
-            } else {
-                fprintf(stderr, "Recording '%s'\n", it);
             }
 
-            Test unit = {0};
-            unit.name = it;
-            test_prepare_cmd(unit, cmd);
-
-            unit.record_exists = record_exists;
-            unit.record_path = record_path;
-
-            unit.proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &unit.pout, .err = &unit.perr});
-            unit.expected = expected;
-            da_push(&tests, unit);
-
-            if (tests.count < nprocs) {
-                continue;
-            }
+            fprintf(stderr, "Replaying");
+        } else {
+            fprintf(stderr, "Recording");
         }
 
-        if (!tests_flush(&tests, cmd, interactive, &arena, arena_save)) {
-            return_defer(true);
+        for (size_t i = 2; i < cmd->count; i++) {
+            fprintf(stderr, " %s", cmd->data[i]);
+        }
+        fprintf(stderr, "\n");
+
+        test.record_exists = record_exists;
+        test.record_path = record_path;
+
+        test.proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &test.pout, .err = &test.perr});
+        test.expected = expected;
+        da_push(&tests, test);
+
+        if (tests.count >= nprocs) {
+            if (!tests_flush(&tests, cmd, interactive, &arena, arena_save)) {
+                return_defer(true);
+            }
         }
     }
 
@@ -568,3 +621,7 @@ int main(int argc, char **argv) {
     da_free(&cmd);
     return 0;
 }
+
+#include "src/basic.c"
+
+// TODO: Do we need to return `false` in these functions? Just exit...
