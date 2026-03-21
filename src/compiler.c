@@ -484,7 +484,19 @@ static LLVM_Node *compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         size_t iota = 0;
         for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-            args[iota++] = compile_expr(c, arg, false);
+            LLVM_Node *expr = compile_expr(c, arg, false);
+#ifdef PLATFORM_ARM64_MACOS
+            if (arg->type.kind == AST_TYPE_STRUCT) {
+                LLVM_Type_Info info = llvm_type_info(arg->type.llvm);
+                if (info.size > 16) {
+                    LLVM_Node *temp =
+                        (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, arg->type.llvm, true, false, false);
+                    llvm_build_store(&c->llvm, temp, expr);
+                    expr = temp;
+                }
+            }
+#endif // PLATFORM_ARM64_MACOS
+            args[iota++] = expr;
         }
 
         assert(iota == call->args_count);

@@ -9,8 +9,18 @@ extern {
     s24_ret :: (x: i64, y: i64, z: i64) -> S24
 }
 
+s24_bar :: (s: S24) {
+    s.z = 4
+    s24_foo(s)
+}
+
 main :: () {
     s24_foo(S24 {1, 2, 3})
     s24_foo(s24_ret(1, 2, 3))
     s24_foo(() -> S24 { return S24 {1, 2, 3} }())
+
+    // Ensure that memory is truly copied
+    s := S24 {1, 2, 3}
+    s24_bar(s)
+    s24_foo(s)
 }
