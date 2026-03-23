@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 99
+tests/error_cannot_divide_by_zero_in_a_constant_expression.glos:1:11: ERROR: Cannot divide by zero
+

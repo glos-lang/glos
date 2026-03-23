@@ -444,6 +444,10 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         case TOKEN_DIV:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
+            if (rhs.as.integer == 0) {
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot divide by zero\n", Pos_Arg(binary->rhs->token.pos));
+                exit(1);
+            }
             return const_value_int(lhs.as.integer / rhs.as.integer);
 
         case TOKEN_MOD:
