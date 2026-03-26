@@ -41,7 +41,7 @@ static const char *replace_suffix(const char *path, const char *old, const char 
     return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
 }
 
-static bool build_glos(Cmd *cmd, size_t nprocs) {
+static void build_glos(Cmd *cmd, size_t nprocs) {
     static const char *headers[] = {
         "src/ast.h",
         "src/basic.h",
@@ -67,7 +67,6 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
         "src/token.c",
     };
 
-    bool        result = true;
     const void *save = temp_alloc(0);
     Procs       procs = {.nprocs = nprocs};
 
@@ -105,36 +104,32 @@ static bool build_glos(Cmd *cmd, size_t nprocs) {
 
         if (!procs_push(&procs, proc)) {
             fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
-            return_defer(false);
+            exit(1);
         }
     }
 
     if (!procs_flush(&procs)) {
         fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
-        return_defer(false);
+        exit(1);
     }
 
-    if (!need_linking) {
-        return_defer(true);
+    if (need_linking) {
+        fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
+        cmd_push(cmd, "clang");
+        cmd_push(cmd, "-o");
+        cmd_push(cmd, "glos" EXE_FILE_EXTENSION);
+        for (size_t i = 0; i < len(sources); i++) {
+            cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
+        }
+
+        if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
+            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            exit(1);
+        }
     }
 
-    fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
-    cmd_push(cmd, "clang");
-    cmd_push(cmd, "-o");
-    cmd_push(cmd, "glos" EXE_FILE_EXTENSION);
-    for (size_t i = 0; i < len(sources); i++) {
-        cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
-    }
-
-    if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
-        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
-        return_defer(false);
-    }
-
-defer:
     da_free(&procs);
     temp_reset(save);
-    return result;
 }
 
 static char single_char_prompt(FILE *in, FILE *out, const char *choices, const char **descriptions) {
@@ -153,7 +148,7 @@ static char single_char_prompt(FILE *in, FILE *out, const char *choices, const c
 
     char buffer[16];
     if (fgets(buffer, sizeof(buffer), in) == NULL) {
-        return false;
+        return 0;
     }
 
     const size_t n = strlen(buffer);
@@ -171,7 +166,7 @@ static char single_char_prompt(FILE *in, FILE *out, const char *choices, const c
     }
 
     fprintf(stderr, "ERROR: Invalid choice '%c'\n", choice);
-    return -1;
+    return 0;
 }
 
 static void print_lines_with_indent(FILE *f, SV sv, const char *indent) {
@@ -341,7 +336,7 @@ static void test_prepare_cmd(Test test, Cmd *cmd) {
     cmd_push(cmd, test.name);
 }
 
-static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, const void *arena_save) {
+static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, const void *arena_save) {
     size_t i = 0;
     while (i < tests->count) {
         Test *it = &tests->data[i];
@@ -398,7 +393,7 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
                     it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, .err = &it->perr});
                     continue;
                 } else if (choice == 'q') {
-                    return false;
+                    exit(0);
                 }
             }
         } else {
@@ -430,49 +425,48 @@ static bool tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
 
     tests->count = 0;
     arena_reset(arena, arena_save);
-    return true;
 }
 
-static bool build_test_library(Cmd *cmd, const char *library_path, const char *source_path) {
-    if (get_modified_time(library_path) < get_modified_time(source_path)) {
-        const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
-
-        cmd_push(cmd, "clang");
-        cmd_push(cmd, "-ggdb");
-        cmd_push(cmd, "-c");
-        cmd_push(cmd, "-o");
-        cmd_push(cmd, object_path);
-        cmd_push(cmd, source_path);
-
-        int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-        if (result) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
-            return false;
-        }
-
-        fprintf(stderr, "Building '%s'\n", library_path);
-
-#ifdef PLATFORM_X86_64_WINDOWS
-        cmd_push(cmd, "llvm-ar");
-#else
-        cmd_push(cmd, "ar");
-#endif // PLATFORM_X86_64_WINDOWS
-
-        cmd_push(cmd, "rcs");
-        cmd_push(cmd, library_path);
-        cmd_push(cmd, object_path);
-
-        result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-        if (result) {
-            fprintf(stderr, "ERROR: Process 'ar' exited abnormally\n");
-            return false;
-        }
-
-        delete_file(object_path);
-        temp_reset(object_path);
+static void build_test_library(Cmd *cmd, const char *library_path, const char *source_path) {
+    if (get_modified_time(library_path) > get_modified_time(source_path)) {
+        return;
     }
 
-    return true;
+    const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
+
+    cmd_push(cmd, "clang");
+    cmd_push(cmd, "-ggdb");
+    cmd_push(cmd, "-c");
+    cmd_push(cmd, "-o");
+    cmd_push(cmd, object_path);
+    cmd_push(cmd, source_path);
+
+    int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+    if (result) {
+        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "Building '%s'\n", library_path);
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    cmd_push(cmd, "llvm-ar");
+#else
+    cmd_push(cmd, "ar");
+#endif // PLATFORM_X86_64_WINDOWS
+
+    cmd_push(cmd, "rcs");
+    cmd_push(cmd, library_path);
+    cmd_push(cmd, object_path);
+
+    result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+    if (result) {
+        fprintf(stderr, "ERROR: Process 'ar' exited abnormally\n");
+        exit(1);
+    }
+
+    delete_file(object_path);
+    temp_reset(object_path);
 }
 
 static const char *temp_parse_shell_argument(SV *sv) {
@@ -578,29 +572,23 @@ static const char *temp_parse_shell_argument(SV *sv) {
     return result;
 }
 
-static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
-    bool        result = true;
+static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Tests       tests = {0};
     Arena       arena = {0};
     const char *temp_save = temp_alloc(0);
 
     {
 #ifdef PLATFORM_X86_64_WINDOWS
-        const char *libabi_path = "tests/abi/abi.lib";
+        build_test_library(cmd, "tests/abi/abi.lib", "tests/abi/abi.c");
 #else
-        const char *libabi_path = "tests/abi/libabi.a";
+        build_test_library(cmd, "tests/abi/libabi.a", "tests/abi/abi.c");
 #endif // PLATFORM_X86_64_WINDOWS
-
-        // ABI
-        if (!build_test_library(cmd, libabi_path, "tests/abi/abi.c")) {
-            return false;
-        }
     }
 
     SV contents = {0};
     if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", TESTS_LIST_PATH);
-        return_defer(false);
+        exit(1);
     }
 
     const void *arena_save = arena_alloc(&arena, 0);
@@ -663,19 +651,15 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         da_push(&tests, test);
 
         if (tests.count >= nprocs) {
-            if (!tests_flush(&tests, cmd, interactive, &arena, arena_save)) {
-                return_defer(true);
-            }
+            tests_flush(&tests, cmd, interactive, &arena, arena_save);
         }
     }
 
     tests_flush(&tests, cmd, interactive, &arena, arena_save);
 
-defer:
     da_free(&tests);
     arena_free(&arena);
     temp_reset(temp_save);
-    return result;
 }
 
 int main(int argc, char **argv) {
@@ -723,14 +707,10 @@ int main(int argc, char **argv) {
     }
 
     Cmd cmd = {0};
-    if (!build_glos(&cmd, nprocs)) {
-        exit(1);
-    }
+    build_glos(&cmd, nprocs);
 
     if (tests) {
-        if (!run_tests(&cmd, nprocs, interactive)) {
-            exit(1);
-        }
+        run_tests(&cmd, nprocs, interactive);
     }
 
     da_free(&cmd);
@@ -738,5 +718,3 @@ int main(int argc, char **argv) {
 }
 
 #include "src/basic.c"
-
-// TODO: Do we need to return `false` in these functions? Just exit...
