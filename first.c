@@ -475,6 +475,109 @@ static bool build_test_library(Cmd *cmd, const char *library_path, const char *s
     return true;
 }
 
+static const char *temp_parse_shell_argument(SV *sv) {
+    while (sv->count && isspace(*sv->data)) {
+        sv_drop_mut(sv, 1);
+    }
+
+    if (!sv->count) {
+        return NULL;
+    }
+
+    const char *result = temp_alloc(0);
+    char        strlit = 0;
+
+#define temp_push(c) (*(char *) temp_alloc(1) = (c))
+
+    while (sv->count) {
+        switch (strlit) {
+        case '\'':
+            if (*sv->data == '\'') {
+                strlit = 0;
+            } else {
+                temp_push(*sv->data);
+            }
+            sv_drop_mut(sv, 1);
+            break;
+
+        case '"':
+            switch (*sv->data) {
+            case '"':
+                strlit = 0;
+                sv_drop_mut(sv, 1);
+                break;
+
+            case '\\':
+                sv_drop_mut(sv, 1);
+                if (!sv->count) {
+                    temp_push('\\');
+                    temp_push('\0');
+                    return result;
+                }
+
+                switch (*sv->data) {
+                case '$':
+                case '`':
+                case '\\':
+                case '\n':
+                case '"':
+                    temp_push(*sv->data);
+                    break;
+
+                default:
+                    temp_push('\\');
+                    temp_push(*sv->data);
+                    break;
+                }
+
+                sv_drop_mut(sv, 1);
+                break;
+
+            default:
+                temp_push(*sv->data);
+                sv_drop_mut(sv, 1);
+                break;
+            }
+            break;
+
+        case '\0':
+            switch (*sv->data) {
+            case '"':
+            case '\'':
+                strlit = *sv->data;
+                sv_drop_mut(sv, 1);
+                break;
+
+            case '\\':
+                sv_drop_mut(sv, 1);
+                if (sv->count) {
+                    temp_push(*sv->data);
+                    sv_drop_mut(sv, 1);
+                }
+                break;
+
+            default:
+                if (isspace(*sv->data)) {
+                    temp_push('\0');
+                    return result;
+                }
+
+                temp_push(*sv->data);
+                sv_drop_mut(sv, 1);
+                break;
+            }
+            break;
+
+        default:
+            unreachable();
+        }
+    }
+    temp_push('\0');
+
+#undef temp_push
+    return result;
+}
+
 static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     bool        result = true;
     Tests       tests = {0};
@@ -511,10 +614,12 @@ static bool run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         test.name = temp_sv_to_cstr(sv_split_mut(&line, ' '));
         test_prepare_cmd(test, cmd);
 
-        // TODO: Proper shell parsing
-        while (line.count) {
-            line = sv_trim(line, ' ');
-            da_push(cmd, temp_sv_to_cstr(sv_split_mut(&line, ' ')));
+        while (true) {
+            const char *arg = temp_parse_shell_argument(&line);
+            if (!arg) {
+                break;
+            }
+            da_push(cmd, arg);
         }
 
         const char *record_path = replace_suffix(test.name, ".glos", ".bin");
