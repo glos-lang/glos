@@ -2,6 +2,7 @@
 /glos.exe
 /first
 /first.exe
+/llvm
 *.o
 *.a
 *.obj

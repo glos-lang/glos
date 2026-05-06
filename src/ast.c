@@ -267,6 +267,25 @@ bool ast_type_is_scalar(AST_Type type) {
     return false;
 }
 
+static_assert(COUNT_AST_TYPES == 14, "");
+bool ast_type_is_signed(AST_Type type) {
+    if (type.ref || type.is_type) {
+        return false;
+    }
+
+    switch (type.kind) {
+    case AST_TYPE_I8:
+    case AST_TYPE_I16:
+    case AST_TYPE_I32:
+    case AST_TYPE_I64:
+    case AST_TYPE_INT:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 

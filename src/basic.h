@@ -4,7 +4,7 @@
 // Platforms
 #if defined(__x86_64__) && defined(__linux__)
 #define PLATFORM_X86_64_LINUX
-#elif defined(__x86_64__) && defined(_WIN64)
+#elif (defined(__x86_64__) || defined(_M_X64)) && (defined(_WIN32) || defined(_WIN64))
 #define PLATFORM_X86_64_WINDOWS
 #elif defined(__aarch64__) && defined(__APPLE__)
 #define PLATFORM_ARM64_MACOS
@@ -33,8 +33,13 @@
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
 
-#define panic(...)     (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+#define panic(...) (fprintf(stderr, __VA_ARGS__), fflush(stdout), fflush(stderr), abort())
+
+#ifdef _MSC_VER
+#define Printf_Like(n)
+#else
 #define Printf_Like(n) __attribute__((format(printf, (n), (n) + 1)))
+#endif // _MSC_VER
 
 #ifdef unreachable
 #undef unreachable
@@ -89,6 +94,8 @@ SV sv_drop(SV s, size_t count);
 SV sv_drop_mut(SV *s, size_t count);
 SV sv_split(SV s, char ch);
 SV sv_split_mut(SV *s, char ch);
+SV sv_split_by(SV s, bool (*f)(char ch));
+SV sv_split_by_mut(SV *s, bool (*f)(char ch));
 
 // String Builder
 typedef Dynamic_Array(char) SB;
@@ -139,10 +146,13 @@ size_t get_modified_time(const char *path);
 // Processes
 typedef Dynamic_Array(const char *) Cmd;
 
-#define cmd_free      da_free
-#define cmd_grow      da_grow
-#define cmd_push      da_push
-#define cmd_push_many da_push_many
+#define cmd_free da_free
+#define cmd_grow da_grow
+
+#define cmd_push(cmd, ...) da_push_many(cmd, ((const char *[]) {__VA_ARGS__}), len(((const char *[]) {__VA_ARGS__})))
+#define cmd_push_many      da_push_many
+
+void cmd_show(Cmd cmd, FILE *f);
 
 typedef struct {
     FILE **in;

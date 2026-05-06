@@ -116,6 +116,26 @@ SV sv_split_mut(SV *s, char ch) {
     return result;
 }
 
+SV sv_split_by(SV s, bool (*f)(char ch)) {
+    return sv_split_by_mut(&s, f);
+}
+
+SV sv_split_by_mut(SV *s, bool (*f)(char ch)) {
+    for (size_t i = 0; i < s->count; i++) {
+        if (f(s->data[i])) {
+            const SV result = (SV) {.data = s->data, .count = i};
+            s->data += i + 1;
+            s->count -= i + 1;
+            return result;
+        }
+    }
+
+    const SV result = *s;
+    s->data += s->count;
+    s->count = 0;
+    return result;
+}
+
 // String Builder
 void sb_sprintf(SB *sb, const char *fmt, ...) {
     va_list args;
@@ -401,20 +421,29 @@ size_t get_modified_time(const char *path) {
 }
 
 // Processes
+void cmd_show(Cmd cmd, FILE *f) {
+    // TODO: Escaping
+    fprintf(f, "$");
+    for (size_t i = 0; i < cmd.count; i++) {
+        fprintf(f, " %s", cmd.data[i]);
+    }
+    fprintf(f, "\n");
+}
+
 Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    STARTUPINFOA siStartInfo;
-    ZeroMemory(&siStartInfo, sizeof(siStartInfo));
-    siStartInfo.cb = sizeof(STARTUPINFO);
+    STARTUPINFOA si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(STARTUPINFO);
 
-    SECURITY_ATTRIBUTES saAttr;
-    saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-    saAttr.bInheritHandle = TRUE;
-    saAttr.lpSecurityDescriptor = NULL;
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
 
     HANDLE stdout_pipe_read = NULL, stdout_pipe_write = NULL;
     if (stdio.out) {
-        if (!CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &saAttr, 0)) {
+        if (!CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0)) {
             return PROC_INVALID;
         }
         SetHandleInformation(stdout_pipe_read, HANDLE_FLAG_INHERIT, 0);
@@ -424,7 +453,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 
     HANDLE stderr_pipe_read = NULL, stderr_pipe_write = NULL;
     if (stdio.err) {
-        if (!CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &saAttr, 0)) {
+        if (!CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0)) {
             return PROC_INVALID;
         }
         SetHandleInformation(stderr_pipe_read, HANDLE_FLAG_INHERIT, 0);
@@ -434,7 +463,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 
     HANDLE stdin_pipe_read = NULL, stdin_pipe_write = NULL;
     if (stdio.in) {
-        if (!CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &saAttr, 0)) {
+        if (!CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0)) {
             return PROC_INVALID;
         }
         SetHandleInformation(stdin_pipe_write, HANDLE_FLAG_INHERIT, 0);
@@ -442,10 +471,10 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
         stdin_pipe_read = GetStdHandle(STD_INPUT_HANDLE);
     }
 
-    siStartInfo.hStdOutput = stdout_pipe_write;
-    siStartInfo.hStdError = stderr_pipe_write;
-    siStartInfo.hStdInput = stdin_pipe_read;
-    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+    si.hStdOutput = stdout_pipe_write;
+    si.hStdError = stderr_pipe_write;
+    si.hStdInput = stdin_pipe_read;
+    si.dwFlags |= STARTF_USESTDHANDLES;
 
     PROCESS_INFORMATION piProcInfo;
     ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
@@ -495,7 +524,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     c->count = 0;
     da_push(&sb, '\0');
 
-    if (!CreateProcessA(NULL, sb.data, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo)) {
+    if (!CreateProcessA(NULL, sb.data, NULL, NULL, TRUE, 0, NULL, NULL, &si, &piProcInfo)) {
         return PROC_INVALID;
     }
 

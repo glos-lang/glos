@@ -1,8 +1,8 @@
 #ifndef AST_H
 #define AST_H
 
-#include "llvm.h"
 #include "token.h"
+#include "llvm-c/Types.h"
 
 typedef struct Context_Fn Context_Fn;
 
@@ -74,7 +74,7 @@ struct AST_Type {
         AST_Type_Struct structt;
     } spec;
 
-    LLVM_Type llvm;
+    LLVMTypeRef llvm;
 };
 
 const char *ast_type_to_cstr(AST_Type type);
@@ -85,6 +85,7 @@ bool ast_type_is_numeric(AST_Type type);
 bool ast_type_is_integer(AST_Type type);
 bool ast_type_is_pointer(AST_Type type);
 bool ast_type_is_scalar(AST_Type type);
+bool ast_type_is_signed(AST_Type type);
 
 typedef enum {
     CONST_VALUE_INT,
@@ -159,6 +160,7 @@ struct AST_Node {
     AST_Node *next;
 };
 
+// TODO: Consider a better way to store definition information, rather than using so much memory for every single atom
 struct AST_Node_Atom {
     AST_Node node;
 
@@ -177,7 +179,7 @@ struct AST_Node_Atom {
     bool        is_const;
     Const_Value const_value;
 
-    LLVM_Node *llvm;
+    LLVMValueRef llvm;
     // }
 
     // When this atom is a reference to another defining atom {
@@ -219,7 +221,7 @@ struct AST_Node_Fn {
     AST_Node_Fn   *outer_fn;
     AST_Node_Atom *defined_as;
 
-    LLVM_Node *llvm;
+    LLVMValueRef llvm;
 };
 
 struct AST_Node_Struct {

@@ -41,6 +41,40 @@ static const char *replace_suffix(const char *path, const char *old, const char 
     return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
 }
 
+static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
+    const char *name = cmd->data[0];
+
+    FILE *out = NULL;
+    Proc  proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &out});
+    if (proc == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute command `%s`\n", name);
+        exit(1);
+    }
+
+    if (!out) {
+        fprintf(stderr, "ERROR: Could not open standard output of command `%s`\n", name);
+        exit(1);
+    }
+
+    SV sv = {0};
+    if (!read_fp(out, &sv, sb)) {
+        fprintf(stderr, "ERROR: Could not read standard output of command `%s`\n", name);
+        exit(1);
+    }
+
+    int result = cmd_wait(proc);
+    if (result) {
+        fprintf(stderr, "ERROR: Command `%s` exited abnormally with code %d\n", name, result);
+        exit(1);
+    }
+
+    fclose(out);
+}
+
+static bool is_space(char ch) {
+    return isspace(ch);
+}
+
 static void build_glos(Cmd *cmd, size_t nprocs) {
     static const char *headers[] = {
         "src/ast.h",
@@ -49,7 +83,6 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/compiler.h",
         "src/context.h",
         "src/lexer.h",
-        "src/llvm.h",
         "src/parser.h",
         "src/token.h",
     };
@@ -61,7 +94,6 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/compiler.c",
         "src/context.c",
         "src/lexer.c",
-        "src/llvm.c",
         "src/main.c",
         "src/parser.c",
         "src/token.c",
@@ -89,41 +121,74 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         fprintf(stderr, "Building '%s'\n", obj);
         need_linking = true;
 
-        cmd_push(cmd, "clang");
+#ifdef PLATFORM_X86_64_WINDOWS
+        cmd_push(cmd, "cl", "/nologo", "/c");
+        cmd_push(cmd, "/I", "./llvm/include");
+        cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
+#else
+        cmd_push(cmd, "cc", "-c");
         cmd_push(cmd, "-ggdb");
-        cmd_push(cmd, "-c");
-        cmd_push(cmd, "-o");
-        cmd_push(cmd, obj);
+        cmd_push(cmd, "-I./llvm/include");
+        cmd_push(cmd, "-o", obj);
+#endif // PLATFORM_X86_64_WINDOWS
+
         cmd_push(cmd, src);
 
-        const Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+        const char *proc_name = cmd->data[0];
+        const Proc  proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
         if (proc == PROC_INVALID) {
-            fprintf(stderr, "ERROR: Could not start process 'clang'\n");
+            fprintf(stderr, "ERROR: Could not start process '%s'\n", proc_name);
             exit(1);
         }
 
         if (!procs_push(&procs, proc)) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", proc_name);
             exit(1);
         }
     }
 
     if (!procs_flush(&procs)) {
-        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+        fprintf(stderr, "ERROR: C Compiler exited abnormally\n");
         exit(1);
     }
 
     if (need_linking) {
         fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
-        cmd_push(cmd, "clang");
-        cmd_push(cmd, "-o");
-        cmd_push(cmd, "glos" EXE_FILE_EXTENSION);
+
+        SB sb = {0};
+        cmd_push(cmd, "./llvm/bin/llvm-config", "--ldflags", "--libs", "--system-libs", "--link-static");
+        run_cmd_and_read_stdout(cmd, &sb);
+
+#ifdef PLATFORM_ARM64_MACOS
+        cmd_push(&cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
+        run_cmd_and_read_stdout(&cmd, &sb);
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        cmd_push(cmd, "lld-link"); // TODO: Using lld should not be default
+        cmd_push(cmd, "/out:glos.exe");
+#else
+        cmd_push(cmd, "g++", "-fuse-ld=lld"); // TODO: Using lld should not be default
+        cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
+#endif // PLATFORM_X86_64_WINDOWS
+
         for (size_t i = 0; i < len(sources); i++) {
             cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
         }
 
+        SV sv = {.data = sb.data, .count = sb.count};
+        while (sv.count) {
+            const SV arg = sv_split_by_mut(&sv, is_space);
+            if (arg.count == 0) {
+                continue;
+            }
+            cmd_push(cmd, temp_sv_to_cstr(arg));
+        }
+        sb_free(&sb);
+
+        const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", name);
             exit(1);
         }
     }
@@ -434,11 +499,9 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
 
     const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
 
-    cmd_push(cmd, "clang");
+    cmd_push(cmd, "clang", "-c");
     cmd_push(cmd, "-ggdb");
-    cmd_push(cmd, "-c");
-    cmd_push(cmd, "-o");
-    cmd_push(cmd, object_path);
+    cmd_push(cmd, "-o", object_path);
     cmd_push(cmd, source_path);
 
     int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
@@ -450,7 +513,7 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
     fprintf(stderr, "Building '%s'\n", library_path);
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    cmd_push(cmd, "llvm-ar");
+    cmd_push(cmd, "llvm-ar"); // TODO: Build `.lib` on windows
 #else
     cmd_push(cmd, "ar");
 #endif // PLATFORM_X86_64_WINDOWS
@@ -710,7 +773,8 @@ int main(int argc, char **argv) {
     build_glos(&cmd, nprocs);
 
     if (tests) {
-        run_tests(&cmd, nprocs, interactive);
+        fprintf(stderr, "ERROR: Cannot use tests yet (Major refactoring occuring)\n");
+        // run_tests(&cmd, nprocs, interactive);
     }
 
     da_free(&cmd);

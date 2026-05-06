@@ -2,7 +2,6 @@
 #include "ast.h"
 #include "basic.h"
 #include "context.h"
-#include "llvm.h"
 #include "token.h"
 
 static void error_undefined(const Token *t, const char *label) {
@@ -539,7 +538,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         if (n->type.kind == AST_TYPE_STRUCT) {
             struct_spec = n->type.spec.structt;
             struct_value.spec = struct_spec;
-            struct_value.fields = arena_alloc(c->llvm.arena, struct_spec.fields_count * sizeof(*struct_value.fields));
+            struct_value.fields = arena_alloc(c->arena, struct_spec.fields_count * sizeof(*struct_value.fields));
         }
 
         size_t ordered_iota = 0;
@@ -934,7 +933,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
         {
             AST_Type_Fn fn_type_spec = {
-                .args = arena_alloc(c->llvm.arena, fn->args_count * sizeof(*fn_type_spec.args)),
+                .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
             };
 
             for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -959,10 +958,10 @@ static void check_node(Compiler *c, AST_Node *n) {
             if (fn->returnn) {
                 check_node(c, fn->returnn);
                 ast_type_assert_type(fn->returnn);
-                fn_type_spec.returnn = arena_clone(c->llvm.arena, &fn->returnn->type, sizeof(AST_Type));
+                fn_type_spec.returnn = arena_clone(c->arena, &fn->returnn->type, sizeof(AST_Type));
                 fn_type_spec.returnn->is_type = false;
             } else {
-                fn_type_spec.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                fn_type_spec.returnn = arena_alloc(c->arena, sizeof(AST_Type));
                 fn_type_spec.returnn->kind = AST_TYPE_UNIT;
             }
 
@@ -994,7 +993,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Struct *structt = (AST_Node_Struct *) n;
 
         const AST_Type_Struct structt_type_spec = {
-            .fields = arena_alloc(c->llvm.arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
+            .fields = arena_alloc(c->arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
             .fields_count = structt->fields_count,
             .definition = structt,
         };

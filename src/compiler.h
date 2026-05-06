@@ -12,10 +12,21 @@ typedef struct {
     Cmd        *cmd;
     Link_Flags *link_flags;
 
-    LLVM llvm;
+    LLVMContextRef llvm_context;
+    LLVMModuleRef  llvm_module;
+    LLVMBuilderRef llvm_builder;
 
-    LLVM_Node_Block *loop_break;
-    LLVM_Node_Block *loop_continue;
+    // TODO: Temporary solution to permanent problems
+    LLVMValueRef llvm_iprint_str;
+    LLVMValueRef llvm_uprint_str;
+
+    LLVMTypeRef  llvm_printf_type;
+    LLVMValueRef llvm_printf_func;
+
+    // TODO: Replace
+    // LLVM_Node_Block *loop_break;
+    // LLVM_Node_Block *loop_continue;
+    Arena *arena;
 
     size_t iota_anonymous_fn;
     size_t iota_anonymous_const;

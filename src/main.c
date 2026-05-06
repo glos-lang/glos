@@ -57,6 +57,10 @@ int main(int argc, char **argv) {
                     value = shift(&argc, &argv, program, "Library path");
                 }
 
+#ifdef PLATFORM_X86_64_WINDOWS
+                todo();
+#endif
+
                 da_push(&link_flags, "-L");
                 da_push(&link_flags, value);
             } else if (arg[1] == 'l') {
@@ -64,6 +68,10 @@ int main(int argc, char **argv) {
                 if (*value == '\0') {
                     value = shift(&argc, &argv, program, "Library name");
                 }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+                todo();
+#endif
 
                 da_push(&link_flags, "-l");
                 da_push(&link_flags, value);
@@ -111,7 +119,7 @@ int main(int argc, char **argv) {
         .cmd = &cmd,
         .link_flags = &link_flags,
 
-        .llvm.arena = &arena,
+        .arena = &arena,
         .path = input,
     };
     check_nodes(&compiler, parser.nodes);
