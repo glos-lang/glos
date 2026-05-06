@@ -922,7 +922,13 @@ void compiler_build(Compiler *c, const char *output) {
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count); // TODO: Windows
 
         const char *proc_name = c->cmd->data[0];
-        const int   proc_code = cmd_run_sync(c->cmd, (Cmd_Stdio) {0});
+        Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
+        if (proc == PROC_INVALID) {
+            fprintf(stderr, "ERROR: Could not execute '%s'. Make sure a C SDK is setup properly\n", proc_name);
+            exit(1);
+        }
+
+        const int proc_code = cmd_wait(proc);
         if (proc_code != 0) {
             fprintf(stderr, "ERROR: Process '%s' exited abnormally with code %d\n", proc_name, proc_code);
             exit(1);
