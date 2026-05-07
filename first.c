@@ -829,3 +829,4 @@ int main(int argc, char **argv) {
 }
 
 #include "src/basic.c"
+// TODO: On windows and linux, check whether lld is present, and if so, use it

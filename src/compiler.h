@@ -20,6 +20,9 @@ typedef struct {
     LLVMBuilderRef llvm_builder;
     LLVMValueRef   llvm_fn;
 
+    LLVMBasicBlockRef llvm_loop_break;
+    LLVMBasicBlockRef llvm_loop_continue;
+
     LLVMDIBuilderRef llvm_debug_builder;
     LLVMMetadataRef  llvm_debug_compile_unit;
     LLVMMetadataRef  llvm_debug_file;
@@ -32,9 +35,6 @@ typedef struct {
     LLVMTypeRef  llvm_printf_type;
     LLVMValueRef llvm_printf_func;
 
-    // TODO: Replace
-    // LLVM_Node_Block *loop_break;
-    // LLVM_Node_Block *loop_continue;
     Arena *arena;
 
     size_t iota_anonymous_fn;

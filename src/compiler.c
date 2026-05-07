@@ -935,6 +935,88 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         LLVMPositionBuilderAtEnd(c->llvm_builder, end);
     } break;
 
+    case AST_NODE_FOR: {
+        LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
+
+        AST_Node_For *forr = (AST_Node_For *) n;
+        if (forr->init) {
+            c->llvm_debug_scope = LLVMDIBuilderCreateLexicalBlock(
+                c->llvm_debug_builder,
+                c->llvm_debug_scope,
+                c->llvm_debug_file,
+                n->token.pos.row + 1,
+                n->token.pos.col + 1);
+
+            compile_stmt(c, forr->init);
+        }
+
+        LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBasicBlockRef end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+        LLVMBasicBlockRef start = body;
+        LLVMBasicBlockRef update = start;
+        if (forr->update) {
+            update = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        }
+
+        LLVMBasicBlockRef llvm_loop_break_save = c->llvm_loop_break;
+        LLVMBasicBlockRef llvm_loop_condition_save = c->llvm_loop_continue;
+        c->llvm_loop_break = end;
+        c->llvm_loop_continue = update;
+        {
+            // Condition
+            if (forr->condition) {
+                start = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, start);
+                LLVMPositionBuilderAtEnd(c->llvm_builder, start);
+
+                set_debug_location(c, forr->condition->token.pos);
+                LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
+            } else {
+                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, body);
+            }
+
+            // Body
+            LLVMPositionBuilderAtEnd(c->llvm_builder, body);
+            compile_stmt(c, forr->body);
+
+            // Update
+            if (forr->update) {
+                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, update);
+
+                LLVMPositionBuilderAtEnd(c->llvm_builder, update);
+                compile_expr(c, forr->update, false);
+            }
+
+            // Loop
+            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMBuildBr(c->llvm_builder, start);
+
+            // End
+            LLVMPositionBuilderAtEnd(c->llvm_builder, end);
+        }
+        c->llvm_loop_break = llvm_loop_break_save;
+        c->llvm_loop_continue = llvm_loop_condition_save;
+
+        c->llvm_debug_scope = llvm_debug_scope_save;
+    } break;
+
+    case AST_NODE_JUMP:
+        set_debug_location(c, n->token.pos);
+        if (n->token.kind == TOKEN_BREAK) {
+            LLVMBuildBr(c->llvm_builder, c->llvm_loop_break);
+            LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
+        } else if (n->token.kind == TOKEN_CONTINUE) {
+            LLVMBuildBr(c->llvm_builder, c->llvm_loop_continue);
+            LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
+        } else {
+            unreachable();
+        }
+        break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         LLVMValueRef    args[] = {
@@ -1279,6 +1361,8 @@ void compiler_build(Compiler *c, const char *output) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
+
+        // TODO: On windows and linux, check whether lld is present, and if so, use it
 
 #ifdef PLATFORM_X86_64_WINDOWS
         cmd_push(c->cmd, "link", "/nologo");
