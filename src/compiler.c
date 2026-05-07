@@ -778,12 +778,16 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         // Consequence
         LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
         compile_stmt(c, iff->consequence);
+
+        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
         LLVMBuildBr(c->llvm_builder, end);
 
         // Antecedence
         if (iff->antecedence) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, antecedence);
             compile_stmt(c, iff->antecedence);
+
+            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
             LLVMBuildBr(c->llvm_builder, end);
         }
 
