@@ -2,6 +2,7 @@
 #define COMPILER_H
 
 #include "context.h"
+#include <llvm-c/Target.h>
 
 typedef Dynamic_Array(const char *) Link_Flags;
 
@@ -12,9 +13,10 @@ typedef struct {
     Cmd        *cmd;
     Link_Flags *link_flags;
 
-    LLVMContextRef llvm_context;
-    LLVMModuleRef  llvm_module;
-    LLVMBuilderRef llvm_builder;
+    LLVMContextRef    llvm_context;
+    LLVMModuleRef     llvm_module;
+    LLVMTargetDataRef llvm_target_data;
+    LLVMBuilderRef    llvm_builder;
 
     LLVMDIBuilderRef llvm_debug_builder;
     LLVMMetadataRef  llvm_debug_file;
