@@ -16,7 +16,9 @@ typedef struct {
     LLVMContextRef    llvm_context;
     LLVMModuleRef     llvm_module;
     LLVMTargetDataRef llvm_target_data;
-    LLVMBuilderRef    llvm_builder;
+
+    LLVMBuilderRef llvm_builder;
+    LLVMValueRef   llvm_fn;
 
     LLVMDIBuilderRef llvm_debug_builder;
     LLVMMetadataRef  llvm_debug_file;

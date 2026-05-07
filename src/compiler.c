@@ -140,15 +140,18 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             fn->llvm =
                 LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
         } else {
+            LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
+            LLVMValueRef    llvm_fn_save = c->llvm_fn;
+
             SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
             fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+            c->llvm_fn = fn->llvm;
 
             // TODO(@libllvm): Function return
             // TODO(@libllvm): Function arguments
             LLVMMetadataRef fn_debug_type =
                 LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, c->llvm_debug_file, NULL, 0, LLVMDIFlagZero);
 
-            LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
             c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
                 c->llvm_debug_builder,
                 c->llvm_debug_file,
@@ -181,6 +184,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             set_current_debug_location(c, block->end);
             LLVMBuildRetVoid(c->llvm_builder);
 
+            c->llvm_fn = llvm_fn_save;
             c->llvm_debug_scope = llvm_debug_scope_save;
         }
 
@@ -742,6 +746,51 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     }
 
     switch (n->kind) {
+    case AST_NODE_BLOCK: {
+        LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
+        c->llvm_debug_scope = LLVMDIBuilderCreateLexicalBlock(
+            c->llvm_debug_builder, c->llvm_debug_scope, c->llvm_debug_file, n->token.pos.row + 1, n->token.pos.col + 1);
+
+        AST_Node_Block *block = (AST_Node_Block *) n;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            compile_stmt(c, it);
+        }
+
+        c->llvm_debug_scope = llvm_debug_scope_save;
+    } break;
+
+    case AST_NODE_IF: {
+        AST_Node_If *iff = (AST_Node_If *) n;
+
+        LLVMBasicBlockRef consequence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBasicBlockRef antecedence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+        LLVMBasicBlockRef end = antecedence;
+        if (iff->antecedence) {
+            end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        }
+
+        // Condition
+        LLVMValueRef condition = compile_expr(c, iff->condition, false);
+        set_current_debug_location(c, n->token.pos);
+        LLVMBuildCondBr(c->llvm_builder, condition, consequence, antecedence);
+
+        // Consequence
+        LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
+        compile_stmt(c, iff->consequence);
+        LLVMBuildBr(c->llvm_builder, end);
+
+        // Antecedence
+        if (iff->antecedence) {
+            LLVMPositionBuilderAtEnd(c->llvm_builder, antecedence);
+            compile_stmt(c, iff->antecedence);
+            LLVMBuildBr(c->llvm_builder, end);
+        }
+
+        // End
+        LLVMPositionBuilderAtEnd(c->llvm_builder, end);
+    } break;
+
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
         LLVMValueRef    args[] = {
