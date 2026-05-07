@@ -457,7 +457,6 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
     case AST_NODE_BINARY: {
         AST_Node_Binary *binary = (AST_Node_Binary *) n;
-        // TODO: Pointer arithmetic
 
         {
             typedef struct {
@@ -483,13 +482,26 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             if (op.i) {
                 LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
                 LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+                LLVMValueRef result = NULL;
+
+                const bool is_pointer_arithmetic = ast_type_is_pointer(n->type);
+                if (is_pointer_arithmetic) {
+                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
+                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                    rhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                }
 
                 set_debug_location(c, n->token.pos);
                 if (op.u && !ast_type_is_signed(binary->lhs->type)) {
-                    return op.u(c->llvm_builder, lhs, rhs, "");
+                    result = op.u(c->llvm_builder, lhs, rhs, "");
                 } else {
-                    return op.i(c->llvm_builder, lhs, rhs, "");
+                    result = op.i(c->llvm_builder, lhs, rhs, "");
                 }
+
+                if (is_pointer_arithmetic) {
+                    result = LLVMBuildIntToPtr(c->llvm_builder, lhs, n->type.llvm, "");
+                }
+                return result;
             }
         }
 
@@ -537,8 +549,121 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
     } break;
 
-    default:
+    case AST_NODE_MEMBER:
         todo();
+
+    case AST_NODE_FN:
+        return compile_fn(c, (AST_Node_Fn *) n);
+
+    case AST_NODE_STRUCT:
+        unreachable();
+
+    case AST_NODE_COMPOUND:
+        todo();
+
+    case AST_NODE_CALL: {
+        AST_Node_Call *call = (AST_Node_Call *) n;
+        if (call->is_type_cast) {
+            LLVMValueRef from = compile_expr(c, call->args.head, false);
+            LLVMTypeRef  from_type = call->args.head->type.llvm;
+
+            static_assert(COUNT_TYPE_CASTS == 3, "");
+            switch (call->type_cast) {
+            case TYPE_CAST_NOP:
+                return from;
+
+            case TYPE_CAST_NORMAL: {
+                LLVMTypeRef to_type = n->type.llvm;
+                if (from_type == to_type) {
+                    return from;
+                }
+                set_debug_location(c, n->token.pos);
+
+                LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
+                LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
+
+                // Pointer -> Integer
+                if (from_kind == LLVMPointerTypeKind && to_kind == LLVMIntegerTypeKind) {
+                    return LLVMBuildPtrToInt(c->llvm_builder, from, to_type, "");
+                }
+
+                // Integer -> Pointer
+                if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMPointerTypeKind) {
+                    return LLVMBuildIntToPtr(c->llvm_builder, from, to_type, "");
+                }
+
+                // Integer -> Integer
+                if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMIntegerTypeKind) {
+                    const size_t from_width = LLVMGetIntTypeWidth(from_type);
+                    const size_t to_width = LLVMGetIntTypeWidth(to_type);
+                    if (from_width > to_width) {
+                        return LLVMBuildTrunc(c->llvm_builder, from, to_type, "");
+                    } else if (from_width < to_width) {
+                        // Smaller -> Bigger
+                        if (ast_type_is_signed(call->args.head->type)) {
+                            return LLVMBuildSExt(c->llvm_builder, from, to_type, "");
+                        }
+                        return LLVMBuildZExt(c->llvm_builder, from, to_type, "");
+                    } else {
+                        // Bigger -> Smaller
+                        return LLVMBuildBitCast(c->llvm_builder, from, to_type, "");
+                    }
+                }
+
+                unreachable();
+            }
+
+            case TYPE_CAST_TO_BOOL:
+                set_debug_location(c, n->token.pos);
+                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(n->type.llvm), "");
+
+            default:
+                unreachable();
+            }
+        }
+
+        LLVMValueRef fn = compile_expr(c, call->fn, false);
+
+        LLVMTypeRef  *arg_types = temp_alloc(call->args_count * sizeof(*arg_types));
+        LLVMValueRef *arg_values = temp_alloc(call->args_count * sizeof(*arg_values));
+
+        size_t iota = 0;
+        for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
+            LLVMValueRef expr = compile_expr(c, arg, false);
+
+#ifdef PLATFORM_ARM64_MACOS
+#error "TODO: Not Implemented"
+            // if (arg->type.kind == AST_TYPE_STRUCT) {
+            //     LLVM_Type_Info info = llvm_type_info(arg->type.llvm);
+            //     if (info.size > 16) {
+            //         LLVM_Node *temp =
+            //             (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, arg->type.llvm, true, false, false);
+            //         llvm_build_store(&c->llvm, temp, expr);
+            //         expr = temp;
+            //     }
+            // }
+#endif // PLATFORM_ARM64_MACOS
+
+            arg_types[iota++] = arg->type.llvm;
+            arg_values[iota++] = expr;
+        }
+        assert(iota == call->args_count);
+
+        set_debug_location(c, n->token.pos);
+        LLVMValueRef result = LLVMBuildCall2(
+            c->llvm_builder,
+            LLVMFunctionType(n->type.llvm, arg_types, call->args_count, false),
+            fn,
+            arg_values,
+            call->args_count,
+            "");
+
+        temp_reset(arg_types);
+        return result;
+    } break;
+
+    default:
+        unreachable();
         break;
     }
 }
@@ -1338,6 +1463,9 @@ void compiler_build(Compiler *c, const char *output) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
+
+        // TODO: Remove
+        // LLVMPrintModuleToFile(c->llvm_module, "/dev/stdout", NULL);
 
         if (LLVMInitializeNativeTarget() != 0) {
             fprintf(stderr, "ERROR: Failed to initialize native target\n");
