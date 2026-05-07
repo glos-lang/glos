@@ -129,57 +129,62 @@ static_assert(COUNT_AST_TYPES == 14, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     assert(!type.is_type);
     if (type.ref) {
-        todo(); // TODO(@libllvm): Pointer types
+        type.ref--;
+        return LLVMDIBuilderCreatePointerType(
+            c->llvm_debug_builder, get_debug_for_type(c, type), sizeof(void *), sizeof(void *), 0, "", 0);
     }
 
     switch (type.kind) {
     case AST_TYPE_UNIT:
-        unreachable();
+        return NULL;
 
     case AST_TYPE_BOOL:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "bool", strlen("bool"), 8, DW_ATE_boolean, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "bool", strlen("bool"), 8, DW_ATE_boolean, 0);
 
     case AST_TYPE_I8:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "i8", strlen("i8"), 8, DW_ATE_signed, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i8", strlen("i8"), 8, DW_ATE_signed, 0);
 
     case AST_TYPE_I16:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "i16", strlen("i16"), 16, DW_ATE_signed, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i16", strlen("i16"), 16, DW_ATE_signed, 0);
 
     case AST_TYPE_I32:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "i32", strlen("i32"), 32, DW_ATE_signed, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i32", strlen("i32"), 32, DW_ATE_signed, 0);
 
     case AST_TYPE_I64:
     case AST_TYPE_INT:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "i64", strlen("i64"), 64, DW_ATE_signed, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i64", strlen("i64"), 64, DW_ATE_signed, 0);
 
     case AST_TYPE_U8:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "u8", strlen("u8"), 8, DW_ATE_unsigned, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "u8", strlen("u8"), 8, DW_ATE_unsigned, 0);
 
     case AST_TYPE_U16:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "u16", strlen("u16"), 16, DW_ATE_unsigned, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "u16", strlen("u16"), 16, DW_ATE_unsigned, 0);
 
     case AST_TYPE_U32:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "u32", strlen("u32"), 32, DW_ATE_unsigned, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "u32", strlen("u32"), 32, DW_ATE_unsigned, 0);
 
     case AST_TYPE_U64:
-        return LLVMDIBuilderCreateBasicType(
-            c->llvm_debug_builder, "u64", strlen("u64"), 64, DW_ATE_unsigned, LLVMDIFlagZero);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "u64", strlen("u64"), 64, DW_ATE_unsigned, 0);
 
     case AST_TYPE_RAWPTR:
-        todo();
-        break;
+        return LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, NULL, sizeof(void *), sizeof(void *), 0, "", 0);
 
-    case AST_TYPE_FN:
-        todo();
-        break;
+    case AST_TYPE_FN: {
+        const AST_Type_Fn type_spec = type.spec.fn;
+
+        LLVMMetadataRef *args = temp_alloc((type_spec.args_count + 1) * sizeof(*args));
+        args[0] = get_debug_for_type(c, *type_spec.returnn);
+        for (size_t i = 0; i < type_spec.args_count; i++) {
+            args[i + 1] = get_debug_for_type(c, type_spec.args[i]->node.type);
+        }
+
+        LLVMMetadataRef fn_debug_type =
+            LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, NULL, args, type_spec.args_count + 1, 0);
+
+        temp_reset(args);
+        return LLVMDIBuilderCreatePointerType(
+            c->llvm_debug_builder, fn_debug_type, sizeof(void *), sizeof(void *), 0, "", 0);
+    }
 
     case AST_TYPE_STRUCT:
         todo();
@@ -217,7 +222,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             // TODO(@libllvm): Function return
             // TODO(@libllvm): Function arguments
             LLVMMetadataRef fn_debug_type =
-                LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, c->llvm_debug_file, NULL, 0, LLVMDIFlagZero);
+                LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, c->llvm_debug_file, NULL, 0, 0);
 
             c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
                 c->llvm_debug_builder,
@@ -232,7 +237,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
                 true,
                 true,
                 fn->node.token.pos.row + 1, // TODO(@libllvm): scope line
-                LLVMDIFlagZero,
+                0,
                 false);
 
             LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
@@ -432,10 +437,16 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return LLVMBuildNeg(c->llvm_builder, value, "");
 
         case TOKEN_MUL:
-            todo();
+            value = compile_expr(c, unary->value, false);
+            if (ref) {
+                return value;
+            }
+
+            set_debug_location(c, n->token.pos);
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, value, "");
 
         case TOKEN_BAND:
-            todo();
+            return compile_expr(c, unary->value, true);
 
         case TOKEN_BNOT:
             value = compile_expr(c, unary->value, false);
