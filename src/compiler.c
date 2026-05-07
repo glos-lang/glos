@@ -8,6 +8,7 @@
 
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
+#include <llvm-c/DebugInfo.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
@@ -135,7 +136,32 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             fn->llvm =
                 LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
         } else {
-            fn->llvm = LLVMAddFunction(c->llvm_module, temp_emit_fn_name(c, fn), fn->node.type.llvm);
+            SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
+            fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+
+            // TODO(@libllvm): Function return
+            // TODO(@libllvm): Function arguments
+            LLVMMetadataRef fn_debug_type =
+                LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, c->llvm_debug_file, NULL, 0, LLVMDIFlagZero);
+
+            LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
+            c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
+                c->llvm_debug_builder,
+                c->llvm_debug_file,
+                fn_name.data,
+                fn_name.count,
+                fn_name.data,
+                fn_name.count,
+                c->llvm_debug_file,
+                fn->node.token.pos.row + 1,
+                fn_debug_type,
+                true,
+                true,
+                fn->node.token.pos.row + 1, // TODO(@libllvm): scope line
+                LLVMDIFlagZero,
+                false);
+
+            LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
 
             LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
             assert(!fn->args_count); // TODO(@libllvm): Function arguments
@@ -147,7 +173,15 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             }
 
             assert(!fn->returnn); // TODO(@libllvm): Function return
+
+            LLVMSetCurrentDebugLocation2(
+                c->llvm_builder,
+                LLVMDIBuilderCreateDebugLocation(
+                    c->llvm_context, block->end.row + 1, block->end.col + 1, c->llvm_debug_scope, NULL));
+
             LLVMBuildRetVoid(c->llvm_builder);
+
+            c->llvm_debug_scope = llvm_debug_scope_save;
         }
 
         temp_reset(checkpoint);
@@ -594,6 +628,12 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             ast_type_is_signed(print->value->type) ? c->llvm_iprint_str : c->llvm_uprint_str,
             compile_expr(c, print->value, false),
         };
+
+        LLVMSetCurrentDebugLocation2(
+            c->llvm_builder,
+            LLVMDIBuilderCreateDebugLocation(
+                c->llvm_context, n->token.pos.row + 1, n->token.pos.col + 1, c->llvm_debug_scope, NULL));
+
         LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
     } break;
 
@@ -823,11 +863,33 @@ void compiler_build(Compiler *c, const char *output) {
     assert(c->cmd);
     assert(c->arena);
 
-    // llvm_debug_set_file(&c->llvm, c->path);
-
     c->llvm_context = LLVMContextCreate();
-    c->llvm_module = LLVMModuleCreateWithNameInContext("hello", c->llvm_context);
+    c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
     c->llvm_builder = LLVMCreateBuilderInContext(c->llvm_context);
+
+    c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
+    c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
+
+    LLVMDIBuilderCreateCompileUnit(
+        c->llvm_debug_builder,
+        LLVMDWARFSourceLanguageC,
+        c->llvm_debug_file,
+        "glos",
+        4,
+        false,
+        "",
+        0,
+        0,
+        "",
+        0,
+        LLVMDWARFEmissionFull,
+        0,
+        0,
+        0,
+        "",
+        0,
+        "",
+        0);
 
     // The 'print' keyword
     {
@@ -869,6 +931,8 @@ void compiler_build(Compiler *c, const char *output) {
             // compile_var_def(c, it);
         }
     }
+
+    LLVMDIBuilderFinalize(c->llvm_debug_builder);
 
     LLVMTypeRef  main_type = LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), NULL, 0, 0);
     LLVMValueRef main_func = LLVMAddFunction(c->llvm_module, "main", main_type);

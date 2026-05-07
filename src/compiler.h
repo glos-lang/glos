@@ -16,6 +16,10 @@ typedef struct {
     LLVMModuleRef  llvm_module;
     LLVMBuilderRef llvm_builder;
 
+    LLVMDIBuilderRef llvm_debug_builder;
+    LLVMMetadataRef  llvm_debug_file;
+    LLVMMetadataRef  llvm_debug_scope;
+
     // TODO: Temporary solution to permanent problems
     LLVMValueRef llvm_iprint_str;
     LLVMValueRef llvm_uprint_str;

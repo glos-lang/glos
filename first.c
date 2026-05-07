@@ -142,7 +142,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         }
 
         if (!procs_push(&procs, proc)) {
-            fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", proc_name);
+            fprintf(stderr, "ERROR: C Compiler exited abnormally\n");
             exit(1);
         }
     }
