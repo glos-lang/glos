@@ -202,119 +202,197 @@ static void set_debug_location(Compiler *c, Pos pos) {
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
 }
 
-static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
-    if (!fn->llvm) {
-        const void *checkpoint = temp_alloc(0);
+static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
+    const void *checkpoint = temp_alloc(0);
 
-        compile_fn_type(c, &fn->node.type);
-        if (fn->is_extern) {
-            assert(fn->defined_as);
-            fn->llvm =
-                LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
-        } else {
-            LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
-            LLVMValueRef    llvm_fn_save = c->llvm_fn;
+    compile_type(c, &it->node.type);
 
-            SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
-            fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
-            c->llvm_fn = fn->llvm;
-
-            // TODO(@libllvm): Function return
-            // TODO(@libllvm): Function arguments
-            LLVMMetadataRef fn_debug_type =
-                LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, c->llvm_debug_file, NULL, 0, 0);
-
-            c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
-                c->llvm_debug_builder,
-                c->llvm_debug_file,
-                fn_name.data,
-                fn_name.count,
-                fn_name.data,
-                fn_name.count,
-                c->llvm_debug_file,
-                fn->node.token.pos.row + 1,
-                fn_debug_type,
-                true,
-                true,
-                fn->node.token.pos.row + 1, // TODO(@libllvm): scope line
-                0,
-                false);
-
-            LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
-
-            LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
-            assert(!fn->args_count); // TODO(@libllvm): Function arguments
-
-            assert(fn->body->kind == AST_NODE_BLOCK);
-            AST_Node_Block *block = (AST_Node_Block *) fn->body;
-            for (AST_Node *it = block->body.head; it; it = it->next) {
-                compile_stmt(c, it);
-            }
-
-            assert(!fn->returnn); // TODO(@libllvm): Function return
-
-            set_debug_location(c, block->end);
-            LLVMBuildRetVoid(c->llvm_builder);
-
-            c->llvm_fn = llvm_fn_save;
-            c->llvm_debug_scope = llvm_debug_scope_save;
-        }
-
-        temp_reset(checkpoint);
+    SV name = {0};
+    if (!it->is_local && !it->is_extern) {
+        name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(it->node.token.sv)));
+    } else {
+        // Guarantee a terminating '\0'
+        name = sv_from_cstr(temp_sv_to_cstr(it->node.token.sv));
     }
 
-    return fn->llvm;
+    if (it->is_local && !it->is_extern) {
+        LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
+        LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
+        it->llvm = LLVMBuildAlloca(c->llvm_builder, it->node.type.llvm, "");
+        LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
+    } else {
+        it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
+    }
 
-    // LLVM_Node_Fn *llvm_fn_save = c->llvm.fn;
-    // {
-    //     compile_type(c, &fn->node.type);
-    //     if (fn->is_extern) {
-    //         assert(fn->defined_as);
-    //         fn->llvm = (LLVM_Node *) llvm_fn_new(&c->llvm, fn->defined_as->node.token.sv, fn->node.type.llvm, true);
-    //         return fn->llvm;
-    //     }
+    if (!it->is_extern) {
+        LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
+        if (it->is_local) {
+            LLVMMetadataRef var_debug_metadata = NULL;
+            if (it->arg_index) {
+                var_debug_metadata = LLVMDIBuilderCreateParameterVariable(
+                    c->llvm_debug_builder,
+                    c->llvm_debug_scope,
+                    name.data,
+                    name.count,
+                    it->arg_index,
+                    c->llvm_debug_file,
+                    it->node.token.pos.row + 1,
+                    var_debug_type,
+                    false,
+                    0);
+            } else {
+                if (!it->is_assigned) {
+                    LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
+                }
 
-    //     const char *name = arena_clone_from_temp(c->llvm.arena, temp_emit_fn_name(c, fn));
-    //     c->llvm.fn = llvm_fn_new(&c->llvm, sv_from_cstr(name), fn->node.type.llvm, false);
-    //     fn->llvm = (LLVM_Node *) c->llvm.fn;
-    //     llvm_fn_debug_set_pos(&c->llvm, c->llvm.fn, fn->node.token.pos.row, fn->node.token.pos.col);
+                var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
+                    c->llvm_debug_builder,
+                    c->llvm_debug_scope,
+                    name.data,
+                    name.count,
+                    c->llvm_debug_file,
+                    it->node.token.pos.row + 1,
+                    var_debug_type,
+                    false,
+                    0,
+                    LLVMABIAlignmentOfType(c->llvm_target_data, it->node.type.llvm));
+            }
 
-    //     llvm_debug_scope_push(&c->llvm, fn->node.token.pos.row, fn->node.token.pos.col);
-    //     {
-    //         size_t arg_iota = 0;
-    //         for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
-    //             assert(arg->kind == AST_NODE_DEFINE);
-    //             AST_Node_Define *define = (AST_Node_Define *) arg;
+            LLVMMetadataRef var_pos_metadata = LLVMDIBuilderCreateDebugLocation(
+                c->llvm_context, it->node.token.pos.row + 1, it->node.token.pos.col + 1, c->llvm_debug_scope, NULL);
 
-    //             assert(define->name->kind == AST_NODE_ATOM);
-    //             AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+            LLVMDIBuilderInsertDeclareRecordAtEnd(
+                c->llvm_debug_builder,
+                it->llvm,
+                var_debug_metadata,
+                LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
+                var_pos_metadata,
+                LLVMGetInsertBlock(c->llvm_builder));
+        } else {
+            if (it->is_assigned) {
+                todo();
+            } else {
+                LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
+            }
 
-    //             LLVM_Node_Var *var = llvm_fn_arg_get(c->llvm.fn, arg_iota++);
-    //             llvm_var_set_name(var, it->node.token.sv);
-    //             llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
-    //             it->llvm = (LLVM_Node *) var;
-    //         }
+            LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
+                c->llvm_debug_builder,
+                c->llvm_debug_compile_unit,
+                name.data,
+                name.count,
+                name.data,
+                name.count,
+                c->llvm_debug_file,
+                it->node.token.pos.row + 1,
+                var_debug_type,
+                false, // TODO(@libllvm): Local variables
+                NULL,
+                NULL,
+                0);
 
-    //         assert(fn->body->kind == AST_NODE_BLOCK);
-    //         AST_Node_Block *block = (AST_Node_Block *) fn->body;
+            LLVMGlobalSetMetadata(it->llvm, 0, var_debug_metadata);
+        }
+    }
 
-    //         for (AST_Node *it = block->body.head; it; it = it->next) {
-    //             compile_stmt(c, it);
-    //         }
-
-    //         LLVM_Node *returnn = NULL;
-    //         if (fn->returnn) {
-    //             returnn = llvm_atom_zero(&c->llvm, fn->node.type.spec.fn.returnn->llvm);
-    //         }
-    //         // TODO: Not needed for non-void functions
-    //         // Then the `if (value->kind == LLVM_NODE_LOAD)` in `llvm_build_return()` can be turned into an assertion
-    //         llvm_debug_set_pos(&c->llvm, llvm_build_return(&c->llvm, returnn), block->end.row, block->end.col);
-    //     }
-    //     llvm_debug_scope_pop(&c->llvm);
+    // if (!it->is_local && it->is_assigned) {
+    //     llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
     // }
-    // c->llvm.fn = llvm_fn_save;
 
-    // return fn->llvm;
+    temp_reset(checkpoint);
+}
+
+static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
+    if (fn->llvm) {
+        return fn->llvm;
+    }
+
+    const void *checkpoint = temp_alloc(0);
+
+    compile_fn_type(c, &fn->node.type);
+    if (fn->is_extern) {
+        assert(fn->defined_as);
+        fn->llvm = LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
+    } else {
+        LLVMValueRef      llvm_fn_save = c->llvm_fn;
+        LLVMMetadataRef   llvm_debug_scope_save = c->llvm_debug_scope;
+        LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
+
+        SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
+        fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+        c->llvm_fn = fn->llvm;
+
+        LLVMMetadataRef   fn_debug_type = NULL;
+        const AST_Type_Fn fn_type_spec = fn->node.type.spec.fn;
+
+        {
+
+            LLVMMetadataRef *arg_debug_types = temp_alloc((fn_type_spec.args_count + 1) * sizeof(*arg_debug_types));
+            arg_debug_types[0] = get_debug_for_type(c, *fn_type_spec.returnn);
+
+            for (size_t i = 0; i < fn_type_spec.args_count; i++) {
+                arg_debug_types[i + 1] = get_debug_for_type(c, fn_type_spec.args[i]->node.type);
+            }
+
+            fn_debug_type = LLVMDIBuilderCreateSubroutineType(
+                c->llvm_debug_builder, c->llvm_debug_file, arg_debug_types, fn_type_spec.args_count + 1, 0);
+
+            temp_reset(arg_debug_types);
+        }
+
+        c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
+            c->llvm_debug_builder,
+            c->llvm_debug_file,
+            fn_name.data,
+            fn_name.count,
+            fn_name.data,
+            fn_name.count,
+            c->llvm_debug_file,
+            fn->node.token.pos.row + 1,
+            fn_debug_type,
+            true,
+            true,
+            fn->node.token.pos.row + 1, // TODO(@libllvm): scope line
+            0,
+            false);
+        LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
+
+        LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
+        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+
+        size_t arg_iota = 0;
+        for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
+            assert(arg->kind == AST_NODE_DEFINE);
+            AST_Node_Define *define = (AST_Node_Define *) arg;
+
+            assert(define->name->kind == AST_NODE_ATOM);
+            AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+
+            assert(!it->llvm);
+            compile_var_def(c, it);
+            LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+        }
+
+        assert(fn->body->kind == AST_NODE_BLOCK);
+        AST_Node_Block *block = (AST_Node_Block *) fn->body;
+        for (AST_Node *it = block->body.head; it; it = it->next) {
+            compile_stmt(c, it);
+        }
+
+        set_debug_location(c, block->end);
+        if (ast_type_kind_eq(*fn_type_spec.returnn, AST_TYPE_UNIT)) {
+            LLVMBuildRetVoid(c->llvm_builder);
+        } else {
+            LLVMBuildRet(c->llvm_builder, LLVMConstNull(fn_type_spec.returnn->llvm));
+        }
+
+        c->llvm_fn = llvm_fn_save;
+        c->llvm_debug_scope = llvm_debug_scope_save;
+        LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
+        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+    }
+
+    temp_reset(checkpoint);
+    return fn->llvm;
 }
 
 // TODO:
@@ -969,91 +1047,6 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 //     return result;
 // }
 
-// TODO: Replace
-static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
-    const void *checkpoint = temp_alloc(0);
-
-    compile_type(c, &it->node.type);
-
-    SV name = {0};
-    if (!it->is_local && !it->is_extern) {
-        name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(it->node.token.sv)));
-    } else {
-        // Guarantee a terminating '\0'
-        name = sv_from_cstr(temp_sv_to_cstr(it->node.token.sv));
-    }
-
-    if (it->is_local && !it->is_extern) {
-        LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
-        LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
-        it->llvm = LLVMBuildAlloca(c->llvm_builder, it->node.type.llvm, "");
-        LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
-    } else {
-        it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
-    }
-
-    if (!it->is_extern) {
-        LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
-        if (it->is_local) {
-            if (!it->is_assigned) {
-                LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
-            }
-
-            LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
-                c->llvm_debug_builder,
-                c->llvm_debug_scope,
-                name.data,
-                name.count,
-                c->llvm_debug_file,
-                it->node.token.pos.row + 1,
-                var_debug_type,
-                false,
-                0,
-                LLVMABIAlignmentOfType(c->llvm_target_data, it->node.type.llvm));
-
-            LLVMMetadataRef var_pos_metadata = LLVMDIBuilderCreateDebugLocation(
-                c->llvm_context, it->node.token.pos.row + 1, it->node.token.pos.col + 1, c->llvm_debug_scope, NULL);
-
-            LLVMDIBuilderInsertDeclareRecordAtEnd(
-                c->llvm_debug_builder,
-                it->llvm,
-                var_debug_metadata,
-                LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
-                var_pos_metadata,
-                LLVMGetInsertBlock(c->llvm_builder));
-        } else {
-            if (it->is_assigned) {
-                todo();
-            } else {
-                LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
-            }
-
-            LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
-                c->llvm_debug_builder,
-                c->llvm_debug_compile_unit,
-                name.data,
-                name.count,
-                name.data,
-                name.count,
-                c->llvm_debug_file,
-                it->node.token.pos.row + 1,
-                var_debug_type,
-                false, // TODO(@libllvm): Local variables
-                NULL,
-                NULL,
-                0);
-
-            LLVMGlobalSetMetadata(it->llvm, 0, var_debug_metadata);
-        }
-    }
-
-    // if (!it->is_local && it->is_assigned) {
-    //     llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
-    // }
-
-    temp_reset(checkpoint);
-}
-
 static_assert(COUNT_AST_NODES == 16, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
@@ -1210,6 +1203,19 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             unreachable();
         }
         break;
+
+    case AST_NODE_RETURN: {
+        AST_Node_Return *returnn = (AST_Node_Return *) n;
+
+        LLVMValueRef value = compile_expr(c, returnn->value, false);
+        set_debug_location(c, n->token.pos);
+        if (ast_type_kind_eq(n->type, AST_TYPE_UNIT)) {
+            LLVMBuildRetVoid(c->llvm_builder);
+        } else {
+            LLVMBuildRet(c->llvm_builder, value);
+        }
+        LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
+    } break;
 
     case AST_NODE_EXTERN: {
         AST_Node_Extern *externn = (AST_Node_Extern *) n;

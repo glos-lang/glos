@@ -165,9 +165,10 @@ struct AST_Node_Atom {
     AST_Node node;
 
     // When this atom is a definition {
-    bool is_local;
-    bool is_extern;
-    bool is_assigned;
+    bool   is_local;
+    bool   is_extern;
+    bool   is_assigned;
+    size_t arg_index;
 
     AST_Node_Define *definition_node;
     AST_Node        *assignment_node;

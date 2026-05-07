@@ -316,6 +316,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 definition_atom_setup(p, (AST_Node_Define *) arg);
             }
 
+            size_t args_iota = 1;
             while (arg) {
                 AST_Node_Define *define = (AST_Node_Define *) arg;
                 if (define->is_const) {
@@ -328,6 +329,13 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Argument definition cannot have assignment\n", Pos_Arg(arg->token.pos));
                     exit(1);
+                }
+
+                if (define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
+                    AST_Node_Atom *it = (AST_Node_Atom *) define->name;
+                    it->arg_index = args_iota++;
+                } else {
+                    unreachable();
                 }
 
                 ast_nodes_push(&fn->args, arg);
