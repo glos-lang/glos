@@ -77,26 +77,27 @@ static bool is_space(char ch) {
 
 static void build_glos(Cmd *cmd, size_t nprocs) {
     static const char *headers[] = {
-        "src/ast.h",
         "src/basic.h",
-        "src/checker.h",
-        "src/compiler.h",
-        "src/context.h",
-        "src/lexer.h",
-        "src/parser.h",
         "src/token.h",
+        "src/lexer.h",
+        "src/ast.h",
+        "src/parser.h",
+        "src/context.h",
+        "src/checker.h",
+        "src/dwarf.h",
+        "src/compiler.h",
     };
 
     static const char *sources[] = {
-        "src/ast.c",
         "src/basic.c",
+        "src/token.c",
+        "src/lexer.c",
+        "src/ast.c",
+        "src/parser.c",
+        "src/context.c",
         "src/checker.c",
         "src/compiler.c",
-        "src/context.c",
-        "src/lexer.c",
         "src/main.c",
-        "src/parser.c",
-        "src/token.c",
     };
 
     const void *save = temp_alloc(0);
@@ -782,3 +783,4 @@ int main(int argc, char **argv) {
 }
 
 #include "src/basic.c"
+// TODO: In windows, read and filter the stdout of 'cl.exe'

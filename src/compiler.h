@@ -21,6 +21,7 @@ typedef struct {
     LLVMValueRef   llvm_fn;
 
     LLVMDIBuilderRef llvm_debug_builder;
+    LLVMMetadataRef  llvm_debug_compile_unit;
     LLVMMetadataRef  llvm_debug_file;
     LLVMMetadataRef  llvm_debug_scope;
 

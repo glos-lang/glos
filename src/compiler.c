@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "ast.h"
 #include "basic.h"
+#include "dwarf.h"
 #include "token.h"
 
 #include <stdbool.h>
@@ -124,7 +125,73 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
     return name;
 }
 
-static void set_current_debug_location(Compiler *c, Pos pos) {
+static_assert(COUNT_AST_TYPES == 14, "");
+static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
+    assert(!type.is_type);
+    if (type.ref) {
+        todo(); // TODO(@libllvm): Pointer types
+    }
+
+    switch (type.kind) {
+    case AST_TYPE_UNIT:
+        unreachable();
+
+    case AST_TYPE_BOOL:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "bool", strlen("bool"), 8, DW_ATE_boolean, LLVMDIFlagZero);
+
+    case AST_TYPE_I8:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "i8", strlen("i8"), 8, DW_ATE_signed, LLVMDIFlagZero);
+
+    case AST_TYPE_I16:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "i16", strlen("i16"), 16, DW_ATE_signed, LLVMDIFlagZero);
+
+    case AST_TYPE_I32:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "i32", strlen("i32"), 32, DW_ATE_signed, LLVMDIFlagZero);
+
+    case AST_TYPE_I64:
+    case AST_TYPE_INT:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "i64", strlen("i64"), 64, DW_ATE_signed, LLVMDIFlagZero);
+
+    case AST_TYPE_U8:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "u8", strlen("u8"), 8, DW_ATE_unsigned, LLVMDIFlagZero);
+
+    case AST_TYPE_U16:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "u16", strlen("u16"), 16, DW_ATE_unsigned, LLVMDIFlagZero);
+
+    case AST_TYPE_U32:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "u32", strlen("u32"), 32, DW_ATE_unsigned, LLVMDIFlagZero);
+
+    case AST_TYPE_U64:
+        return LLVMDIBuilderCreateBasicType(
+            c->llvm_debug_builder, "u64", strlen("u64"), 64, DW_ATE_unsigned, LLVMDIFlagZero);
+
+    case AST_TYPE_RAWPTR:
+        todo();
+        break;
+
+    case AST_TYPE_FN:
+        todo();
+        break;
+
+    case AST_TYPE_STRUCT:
+        todo();
+        break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
+static void set_debug_location(Compiler *c, Pos pos) {
     LLVMSetCurrentDebugLocation2(
         c->llvm_builder,
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
@@ -181,7 +248,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
             assert(!fn->returnn); // TODO(@libllvm): Function return
 
-            set_current_debug_location(c, block->end);
+            set_debug_location(c, block->end);
             LLVMBuildRetVoid(c->llvm_builder);
 
             c->llvm_fn = llvm_fn_save;
@@ -291,14 +358,62 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     compile_type(c, &n->type);
     switch (n->kind) {
     case AST_NODE_ATOM: {
+        AST_Node_Atom *atom = (AST_Node_Atom *) n;
+
         static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
             return LLVMConstInt(n->type.llvm, n->token.as.integer, ast_type_is_signed(n->type));
 
-        case TOKEN_IDENT:
-            todo();
+        case TOKEN_IDENT: {
+            AST_Node_Atom *definition = (AST_Node_Atom *) atom->definition;
+            assert(definition);
+
+            if (definition->is_const) {
+                static_assert(COUNT_CONST_VALUES == 4, "");
+                switch (definition->const_value.kind) {
+                case CONST_VALUE_INT:
+                    return LLVMConstInt(n->type.llvm, definition->const_value.as.integer, ast_type_is_signed(n->type));
+
+                case CONST_VALUE_FN:
+                    return compile_fn(c, definition->const_value.as.fn);
+
+                case CONST_VALUE_TYPE:
+                    unreachable();
+
+                case CONST_VALUE_STRUCT: {
+                    todo(); // TODO(@libllvm)
+
+                    // // TODO: Don't generate this over and over
+                    // LLVM_Node_Var_Init *value =
+                    //     compile_const_value_to_var_init(c, n->type.llvm, definition->const_value);
+
+                    // const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+
+                    // LLVM_Node *memory = llvm_const_new(&c->llvm, sv_from_cstr(name), n->type.llvm, value);
+                    // if (ref) {
+                    //     return_defer(memory);
+                    // }
+                    // return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+                }
+
+                default:
+                    unreachable();
+                }
+            }
+
+            if (!definition->llvm) {
+                compile_stmt(c, (AST_Node *) definition->definition_node);
+            }
+
+            if (ref) {
+                return definition->llvm;
+            }
+
+            set_debug_location(c, n->token.pos);
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
+        }
 
         default:
             unreachable();
@@ -313,7 +428,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
-            set_current_debug_location(c, n->token.pos);
+            set_debug_location(c, n->token.pos);
             return LLVMBuildNeg(c->llvm_builder, value, "");
 
         case TOKEN_MUL:
@@ -324,12 +439,12 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         case TOKEN_BNOT:
             value = compile_expr(c, unary->value, false);
-            set_current_debug_location(c, n->token.pos);
+            set_debug_location(c, n->token.pos);
             return LLVMBuildNot(c->llvm_builder, value, "");
 
         case TOKEN_LNOT:
             value = compile_expr(c, unary->value, false);
-            set_current_debug_location(c, n->token.pos);
+            set_debug_location(c, n->token.pos);
             return LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, value, LLVMConstNull(n->type.llvm), "");
 
         case TOKEN_SIZEOF:
@@ -369,7 +484,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
                 LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
 
-                set_current_debug_location(c, n->token.pos);
+                set_debug_location(c, n->token.pos);
                 if (op.u && !ast_type_is_signed(binary->lhs->type)) {
                     return op.u(c->llvm_builder, lhs, rhs, "");
                 } else {
@@ -399,7 +514,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
                 LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
 
-                set_current_debug_location(c, n->token.pos);
+                set_debug_location(c, n->token.pos);
                 if (op.u && !ast_type_is_signed(binary->lhs->type)) {
                     return LLVMBuildICmp(c->llvm_builder, op.u, lhs, rhs, "");
                 } else {
@@ -411,10 +526,10 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         static_assert(COUNT_TOKENS == 41, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
-            todo();
-            // LLVM_Node *lhs = compile_expr(c, binary->lhs, true);
-            // LLVM_Node *rhs = compile_expr(c, binary->rhs, false);
-            // return_defer(llvm_build_store(&c->llvm, lhs, rhs));
+            LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
+            LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+            set_debug_location(c, n->token.pos);
+            return LLVMBuildStore(c->llvm_builder, rhs, lhs);
         }
 
         default:
@@ -718,26 +833,51 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 // }
 
 // TODO: Replace
-// static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
-//     compile_type(c, &it->node.type);
+static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
+    const void *checkpoint = temp_alloc(0);
 
-//     SV name = it->node.token.sv;
-//     if (!it->is_local && !it->is_extern) {
-//         name = sv_from_cstr(arena_sprintf(c->llvm.arena, "main." SV_Fmt, SV_Arg(name)));
-//     }
+    compile_type(c, &it->node.type);
 
-//     LLVM_Node_Var *var =
-//         llvm_var_new(&c->llvm, name, it->node.type.llvm, it->is_local, !it->is_assigned, it->is_extern);
+    SV name = {0};
+    if (!it->is_local && !it->is_extern) {
+        name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(it->node.token.sv)));
+    } else {
+        // Guarantee a terminating '\0'
+        name = sv_from_cstr(temp_sv_to_cstr(it->node.token.sv));
+    }
 
-//     if (!it->is_extern) {
-//         llvm_var_debug_set_pos(&c->llvm, var, it->node.token.pos.row, it->node.token.pos.col);
-//     }
-//     it->llvm = (LLVM_Node *) var;
+    assert(!it->is_local); // TODO(@libllvm): Local variables
+    it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
 
-//     if (!it->is_local && it->is_assigned) {
-//         llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
-//     }
-// }
+    if (!it->is_extern) {
+        assert(!it->is_assigned); // TODO(@libllvm): Variable assignment
+        LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
+
+        LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
+        LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
+            c->llvm_debug_builder,
+            c->llvm_debug_compile_unit,
+            name.data,
+            name.count,
+            name.data,
+            name.count,
+            c->llvm_debug_file,
+            it->node.token.pos.row + 1,
+            var_debug_type,
+            false, // TODO(@libllvm): Local variables
+            NULL,
+            NULL,
+            0);
+
+        LLVMGlobalSetMetadata(it->llvm, 0, var_debug_metadata);
+    }
+
+    // if (!it->is_local && it->is_assigned) {
+    //     llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
+    // }
+
+    temp_reset(checkpoint);
+}
 
 static_assert(COUNT_AST_NODES == 16, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
@@ -772,7 +912,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
         // Condition
         LLVMValueRef condition = compile_expr(c, iff->condition, false);
-        set_current_debug_location(c, n->token.pos);
+        set_debug_location(c, n->token.pos);
         LLVMBuildCondBr(c->llvm_builder, condition, consequence, antecedence);
 
         // Consequence
@@ -802,12 +942,13 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             compile_expr(c, print->value, false),
         };
 
-        set_current_debug_location(c, n->token.pos);
+        set_debug_location(c, n->token.pos);
         LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
     } break;
 
     default:
-        todo();
+        compile_expr(c, n, false);
+        break;
     }
     // switch (n->kind) {
     // case AST_NODE_DEFINE: {
@@ -1037,7 +1178,7 @@ void compiler_build(Compiler *c, const char *output) {
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
     c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
 
-    LLVMDIBuilderCreateCompileUnit(
+    c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
         LLVMDWARFSourceLanguageC,
         c->llvm_debug_file,
@@ -1094,8 +1235,7 @@ void compiler_build(Compiler *c, const char *output) {
                 compile_fn(c, it->const_value.as.fn);
             }
         } else {
-            todo(); // TODO: Replace
-            // compile_var_def(c, it);
+            compile_var_def(c, it);
         }
     }
 
