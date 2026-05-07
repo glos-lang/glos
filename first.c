@@ -212,10 +212,18 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-        cmd_push(cmd, "lld-link"); // TODO: Using lld should not be default
+        if (is_lld_available_in_path()) {
+            cmd_push(cmd, "lld-link");
+        } else {
+            cmd_push(cmd, "link", "/nologo");
+        }
+
         cmd_push(cmd, "/out:glos.exe");
 #else
-        cmd_push(cmd, "g++", "-fuse-ld=lld"); // TODO: Using lld should not be default
+        cmd_push(cmd, "g++");
+        if (is_lld_available_in_path()) {
+            cmd_push(cmd, "-fuse-ld=lld");
+        }
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
 #endif // PLATFORM_X86_64_WINDOWS
 
@@ -829,4 +837,3 @@ int main(int argc, char **argv) {
 }
 
 #include "src/basic.c"
-// TODO: On windows and linux, check whether lld is present, and if so, use it

@@ -143,6 +143,9 @@ bool read_file_into_arena(const char *path, SV *out, Arena *arena);
 bool   delete_file(const char *path);
 size_t get_modified_time(const char *path);
 
+bool is_cmd_available_in_path(const char *cmd);
+bool is_lld_available_in_path(void);
+
 // Processes
 typedef Dynamic_Array(const char *) Cmd;
 

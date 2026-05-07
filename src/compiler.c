@@ -1551,14 +1551,20 @@ void compiler_build(Compiler *c, const char *output) {
             exit(1);
         }
 
-        // TODO: On windows and linux, check whether lld is present, and if so, use it
-
 #ifdef PLATFORM_X86_64_WINDOWS
-        cmd_push(c->cmd, "link", "/nologo");
+        if (is_lld_available_in_path()) {
+            cmd_push(c->cmd, "lld-link");
+        } else {
+            cmd_push(c->cmd, "link", "/nologo");
+        }
+
         cmd_push(c->cmd, temp_sprintf("/out:%s", output));
         cmd_push(c->cmd, "/defaultlib:libcmt");
 #else
         cmd_push(c->cmd, "cc");
+        if (is_lld_available_in_path()) {
+            cmd_push(c->cmd, "-fuse-ld=lld");
+        }
         cmd_push(c->cmd, "-o", output);
 #endif // PLATFORM_X86_64_WINDOWS
 

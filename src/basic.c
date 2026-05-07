@@ -420,6 +420,49 @@ size_t get_modified_time(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
+bool is_cmd_available_in_path(const char *cmd) {
+#ifdef PLATFORM_X86_64_WINDOWS
+#define X_OK        0
+#define PATH_DELIM  ';'
+#define PATH_FORMAT SV_Fmt "\\%s.exe"
+#else
+#define PATH_DELIM  ':'
+#define PATH_FORMAT SV_Fmt "/%s"
+#endif // PLATFORM_X86_64_WINDOWS
+
+    SV sv = sv_from_cstr(getenv("PATH"));
+    while (sv.count) {
+        SV dir = sv_split_mut(&sv, PATH_DELIM);
+        if (!dir.count) {
+            continue;
+        }
+
+        const char *path = temp_sprintf(PATH_FORMAT, SV_Arg(dir), cmd);
+        if (!access(path, X_OK)) {
+            temp_reset(path);
+            return true;
+        }
+        temp_reset(path);
+    }
+
+    return false;
+}
+
+bool is_lld_available_in_path(void) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    return is_cmd_available_in_path("lld-link");
+#endif // PLATFORM_X86_64_WINDOWS
+
+#ifdef PLATFORM_X86_64_LINUX
+    return is_cmd_available_in_path("ld.lld");
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    // The C compiler in macOS is a custom version of clang which does not fare well with lld.
+    return false;
+#endif // PLATFORM_ARM64_MACOS
+}
+
 // Processes
 void cmd_show(Cmd cmd, FILE *f) {
     // TODO: Escaping
