@@ -444,7 +444,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     HANDLE stdout_pipe_read = NULL, stdout_pipe_write = NULL;
     if (stdio.out) {
         if (!CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0)) {
-            return PROC_INVALID;
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stdout_pipe_read, HANDLE_FLAG_INHERIT, 0);
     } else {
@@ -454,7 +454,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     HANDLE stderr_pipe_read = NULL, stderr_pipe_write = NULL;
     if (stdio.err) {
         if (!CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0)) {
-            return PROC_INVALID;
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stderr_pipe_read, HANDLE_FLAG_INHERIT, 0);
     } else {
@@ -464,7 +464,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     HANDLE stdin_pipe_read = NULL, stdin_pipe_write = NULL;
     if (stdio.in) {
         if (!CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0)) {
-            return PROC_INVALID;
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stdin_pipe_write, HANDLE_FLAG_INHERIT, 0);
     } else {
@@ -525,7 +525,7 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     da_push(&sb, '\0');
 
     if (!CreateProcessA(NULL, sb.data, NULL, NULL, TRUE, 0, NULL, NULL, &si, &piProcInfo)) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     sb_free(&sb);
@@ -546,34 +546,39 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
         *stdio.in = _fdopen(_open_osfhandle((intptr_t) stdin_pipe_write, _O_WRONLY), "w");
     }
 
-    return piProcInfo.hProcess;
+    return (Proc) {
+        .id = piProcInfo.hProcess,
+        .in = (stdio.in) ? *stdio.in : NULL,
+        .out = (stdio.out) ? *stdio.out : NULL,
+        .err = (stdio.err) ? *stdio.err : NULL,
+    };
 #else
     int in[2] = {0};
     int out[2] = {0};
     int err[2] = {0};
     int fail[2] = {0};
     if (pipe(fail) < 0 || fcntl(fail[1], F_SETFD, FD_CLOEXEC) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.in && pipe(in) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.out && pipe(out) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.err && pipe(err) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
-    Proc proc = fork();
-    if (proc < 0) {
-        return PROC_INVALID;
+    int id = fork();
+    if (id < 0) {
+        return (Proc) {.id = PROC_INVALID};
     }
 
-    if (!proc) {
+    if (!id) {
         if (stdio.in) {
             close(in[1]);
             dup2(in[0], STDIN_FILENO);
@@ -609,8 +614,8 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     close(fail[0]);
 
     if (count > 0) {
-        waitpid(proc, NULL, 0); // Wait for the child to kill itself so it doesn't become a zombie
-        return PROC_INVALID;
+        waitpid(id, NULL, 0); // Wait for the child to kill itself so it doesn't become a zombie
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.in) {
@@ -637,34 +642,40 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
         }
     }
 
-    return proc;
+    return (Proc) {
+        .id = id,
+        .in = (stdio.in) ? *stdio.in : NULL,
+        .out = (stdio.out) ? *stdio.out : NULL,
+        .err = (stdio.err) ? *stdio.err : NULL,
+    };
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
 int cmd_wait(Proc proc) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    if (proc == PROC_INVALID) {
+    if (proc.id == PROC_INVALID) {
         return 1;
     }
 
-    if (WaitForSingleObject(proc, INFINITE) == WAIT_FAILED) {
+    // TODO: Flush the files if any, otherwise it deadlocks on windows
+    if (WaitForSingleObject(proc.id, INFINITE) == WAIT_FAILED) {
         return 1;
     }
 
     DWORD exit_code;
-    if (!GetExitCodeProcess(proc, &exit_code)) {
+    if (!GetExitCodeProcess(proc.id, &exit_code)) {
         return 1;
     }
 
-    CloseHandle(proc);
+    CloseHandle(proc.id);
     return exit_code;
 #else
-    if (proc == PROC_INVALID) {
+    if (proc.id == PROC_INVALID) {
         return 1;
     }
 
     int status = 0;
-    if (waitpid(proc, &status, 0) < 0) {
+    if (waitpid(proc.id, &status, 0) < 0) {
         return 1;
     }
 
@@ -681,7 +692,7 @@ int cmd_run_sync(Cmd *c, Cmd_Stdio stdio) {
 }
 
 bool procs_push(Procs *ps, Proc p) {
-    if (p == PROC_INVALID) {
+    if (p.id == PROC_INVALID) {
         return false;
     }
 
@@ -696,7 +707,12 @@ bool procs_push(Procs *ps, Proc p) {
 bool procs_flush(Procs *ps) {
     bool ok = true;
     for (size_t i = 0; i < ps->count; i++) {
-        const int code = cmd_wait(ps->data[i]);
+        const Proc it = ps->data[i];
+        if (ps->callback_before_wait) {
+            ps->callback_before_wait(it);
+        }
+
+        const int code = cmd_wait(it);
         if (code != 0) {
             ok = false;
         }

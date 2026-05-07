@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
         cmd_push_many(&cmd, argv, argc);
 
         const Proc child_proc = cmd_run_async(&cmd, (Cmd_Stdio) {0});
-        if (child_proc == PROC_INVALID) {
+        if (child_proc.id == PROC_INVALID) {
             fprintf(stderr, "ERROR: Could not start process '%s'\n", child_name);
             exit(1);
         }

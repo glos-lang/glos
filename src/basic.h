@@ -161,10 +161,22 @@ typedef struct {
 } Cmd_Stdio;
 
 #ifdef PLATFORM_X86_64_WINDOWS
-typedef HANDLE Proc;
+typedef struct {
+    HANDLE id;
+    FILE  *in;
+    FILE  *out;
+    FILE  *err;
+} Proc;
+
 #define PROC_INVALID INVALID_HANDLE_VALUE
 #else
-typedef int Proc;
+typedef struct {
+    int   id;
+    FILE *in;
+    FILE *out;
+    FILE *err;
+} Proc;
+
 #define PROC_INVALID -1
 #endif // PLATFORM_X86_64_WINDOWS
 
@@ -176,7 +188,9 @@ typedef struct {
     Proc  *data;
     size_t count;
     size_t capacity;
+
     size_t nprocs;
+    void (*callback_before_wait)(Proc proc);
 } Procs;
 
 bool procs_push(Procs *ps, Proc p);

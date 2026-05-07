@@ -1294,7 +1294,7 @@ void compiler_build(Compiler *c, const char *output) {
 
         const char *proc_name = c->cmd->data[0];
         Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
-        if (proc == PROC_INVALID) {
+        if (proc.id == PROC_INVALID) {
             fprintf(stderr, "ERROR: Could not execute '%s'. Make sure a C SDK is setup properly\n", proc_name);
             exit(1);
         }
