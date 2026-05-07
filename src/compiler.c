@@ -982,14 +982,12 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     }
 
     if (!it->is_extern) {
-        if (it->is_assigned) {
-            assert(it->is_local); // TODO(@libllvm): Global variable with initialized value
-        } else {
-            LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
-        }
-
         LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
         if (it->is_local) {
+            if (!it->is_assigned) {
+                LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
+            }
+
             LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
                 c->llvm_debug_builder,
                 c->llvm_debug_scope,
@@ -1013,6 +1011,12 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                 var_pos_metadata,
                 LLVMGetInsertBlock(c->llvm_builder));
         } else {
+            if (it->is_assigned) {
+                todo();
+            } else {
+                LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
+            }
+
             LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
                 c->llvm_debug_builder,
                 c->llvm_debug_compile_unit,
