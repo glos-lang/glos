@@ -65,9 +65,9 @@ struct AST_Type {
     AST_Type_Kind kind;
     size_t        ref;
 
-    // A :: 69  // typeof(A) => AST_Type { kind = AST_TYPE_I64, is_type = false }
-    // B :: i64 // typeof(B) => AST_Type { kind = AST_TYPE_I64, is_type = true  }
-    bool is_type;
+    // A :: 69  // typeof(A) => AST_Type { kind = AST_TYPE_I64, is_meta = false }
+    // B :: i64 // typeof(B) => AST_Type { kind = AST_TYPE_I64, is_meta = true  }
+    bool is_meta;
 
     union {
         AST_Type_Fn     fn;

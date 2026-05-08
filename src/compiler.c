@@ -18,7 +18,8 @@ static void compile_type(Compiler *c, AST_Type *type) {
         return;
     }
 
-    if (ast_type_is_pointer(*type) || type->kind == AST_TYPE_FN) {
+    // NOTE: Do not use `ast_type*` functions because this function should not care whether a type is a metatype or not.
+    if (type->ref || type->kind == AST_TYPE_RAWPTR || type->kind == AST_TYPE_FN) {
         type->llvm = LLVMPointerTypeInContext(c->llvm_context, 0);
         return;
     }
@@ -105,6 +106,7 @@ static void compile_fn_type(Compiler *c, AST_Type *type) {
     temp_reset(args);
 }
 
+static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn);
 static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref);
 static void         compile_stmt(Compiler *c, AST_Node *n);
 
@@ -127,7 +129,7 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
-    assert(!type.is_type);
+    assert(!type.is_meta);
     if (type.ref) {
         type.ref--;
         return LLVMDIBuilderCreatePointerType(
@@ -202,6 +204,60 @@ static void set_debug_location(Compiler *c, Pos pos) {
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
 }
 
+static_assert(COUNT_CONST_VALUES == 4, "");
+static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, AST_Type type) {
+    switch (value.kind) {
+    case CONST_VALUE_INT:
+        return LLVMConstInt(type.llvm, value.as.integer, ast_type_is_signed(type));
+
+    case CONST_VALUE_FN:
+        return compile_fn(c, value.as.fn);
+
+    case CONST_VALUE_TYPE:
+        unreachable();
+
+    case CONST_VALUE_STRUCT:
+        todo();
+
+    default:
+        unreachable();
+    }
+}
+
+// static LLVM_Node_Var_Init *compile_const_value_to_var_init(Compiler *c, LLVM_Type type, Const_Value value) {
+//     todo();
+//     unused(c);
+//     unused(type);
+//     unused(value);
+//     // switch (value.kind) {
+//     // case CONST_VALUE_INT:
+//     //     return llvm_var_init_new_int(&c->llvm, type, value.as.integer);
+
+//     // case CONST_VALUE_FN:
+//     //     return llvm_var_init_new_node(&c->llvm, compile_fn(c, value.as.fn));
+
+//     // case CONST_VALUE_TYPE:
+//     //     unreachable();
+
+//     // case CONST_VALUE_STRUCT: {
+//     //     const AST_Type_Struct spec = value.as.structt.spec;
+
+//     //     LLVM_Node_Var_Init **fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
+//     //     for (size_t i = 0; i < spec.fields_count; i++) {
+//     //         // TODO: Think of a better solution for common metadata for a struct
+//     //         const LLVM_Type it_type = spec.definition->node.type.llvm.structt.fields[i].type;
+//     //         fields[i] = compile_const_value_to_var_init(c, it_type, value.as.structt.fields[i]);
+//     //     }
+
+//     //     return llvm_var_init_new_struct(&c->llvm, type, fields, spec.fields_count);
+//     // }
+
+//     // default:
+//     //     unreachable();
+//     //     break;
+//     // }
+// }
+
 static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     const void *checkpoint = temp_alloc(0);
 
@@ -217,8 +273,25 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
 
     if (it->is_local && !it->is_extern) {
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
-        LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
+        if (c->llvm_fn_last_alloca) {
+            LLVMValueRef next_inst = LLVMGetNextInstruction(c->llvm_fn_last_alloca);
+            if (next_inst) {
+                LLVMPositionBuilderBefore(c->llvm_builder, next_inst);
+            } else {
+                LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
+            }
+        } else {
+            LLVMBasicBlockRef first_block = LLVMGetFirstBasicBlock(c->llvm_fn);
+            LLVMValueRef      first_inst = LLVMGetFirstInstruction(first_block);
+            if (first_inst) {
+                LLVMPositionBuilderBefore(c->llvm_builder, first_inst);
+            } else {
+                LLVMPositionBuilderAtEnd(c->llvm_builder, first_block);
+            }
+        }
+
         it->llvm = LLVMBuildAlloca(c->llvm_builder, it->node.type.llvm, "");
+        c->llvm_fn_last_alloca = it->llvm;
         LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
     } else {
         it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
@@ -241,10 +314,6 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                     false,
                     0);
             } else {
-                if (!it->is_assigned) {
-                    LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
-                }
-
                 var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
                     c->llvm_debug_builder,
                     c->llvm_debug_scope,
@@ -256,21 +325,38 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                     false,
                     0,
                     LLVMABIAlignmentOfType(c->llvm_target_data, it->node.type.llvm));
+
+                if (!it->is_assigned) {
+                    LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
+                }
             }
 
             LLVMMetadataRef var_pos_metadata = LLVMDIBuilderCreateDebugLocation(
                 c->llvm_context, it->node.token.pos.row + 1, it->node.token.pos.col + 1, c->llvm_debug_scope, NULL);
 
-            LLVMDIBuilderInsertDeclareRecordAtEnd(
-                c->llvm_debug_builder,
-                it->llvm,
-                var_debug_metadata,
-                LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
-                var_pos_metadata,
-                LLVMGetInsertBlock(c->llvm_builder));
+            {
+                LLVMValueRef next_inst = LLVMGetNextInstruction(c->llvm_fn_last_alloca);
+                if (next_inst) {
+                    LLVMDIBuilderInsertDeclareRecordBefore(
+                        c->llvm_debug_builder,
+                        it->llvm,
+                        var_debug_metadata,
+                        LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
+                        var_pos_metadata,
+                        next_inst);
+                } else {
+                    LLVMDIBuilderInsertDeclareRecordAtEnd(
+                        c->llvm_debug_builder,
+                        it->llvm,
+                        var_debug_metadata,
+                        LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
+                        var_pos_metadata,
+                        LLVMGetInsertBlock(c->llvm_builder));
+                }
+            }
         } else {
             if (it->is_assigned) {
-                todo();
+                LLVMSetInitializer(it->llvm, compile_const_value(c, it->const_value, it->node.type));
             } else {
                 LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
             }
@@ -294,10 +380,6 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
         }
     }
 
-    // if (!it->is_local && it->is_assigned) {
-    //     llvm_var_set_init(var, compile_const_value_to_var_init(c, it->node.type.llvm, it->const_value));
-    // }
-
     temp_reset(checkpoint);
 }
 
@@ -313,13 +395,17 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
         assert(fn->defined_as);
         fn->llvm = LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
     } else {
-        LLVMValueRef      llvm_fn_save = c->llvm_fn;
+        LLVMValueRef llvm_fn_save = c->llvm_fn;
+        LLVMValueRef llvm_fn_last_alloca_save = c->llvm_fn_last_alloca;
+
         LLVMMetadataRef   llvm_debug_scope_save = c->llvm_debug_scope;
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
 
         SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
         fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+
         c->llvm_fn = fn->llvm;
+        c->llvm_fn_last_alloca = NULL;
 
         LLVMMetadataRef   fn_debug_type = NULL;
         const AST_Type_Fn fn_type_spec = fn->node.type.spec.fn;
@@ -341,7 +427,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
         c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
             c->llvm_debug_builder,
-            c->llvm_debug_file,
+            c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
             fn_name.data,
             fn_name.count,
             fn_name.data,
@@ -386,6 +472,8 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
         }
 
         c->llvm_fn = llvm_fn_save;
+        c->llvm_fn_last_alloca = llvm_fn_last_alloca_save;
+
         c->llvm_debug_scope = llvm_debug_scope_save;
         LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
         LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
@@ -394,42 +482,6 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     temp_reset(checkpoint);
     return fn->llvm;
 }
-
-// TODO:
-static_assert(COUNT_CONST_VALUES == 4, "");
-// static LLVM_Node_Var_Init *compile_const_value_to_var_init(Compiler *c, LLVM_Type type, Const_Value value) {
-//     todo();
-//     unused(c);
-//     unused(type);
-//     unused(value);
-//     // switch (value.kind) {
-//     // case CONST_VALUE_INT:
-//     //     return llvm_var_init_new_int(&c->llvm, type, value.as.integer);
-
-//     // case CONST_VALUE_FN:
-//     //     return llvm_var_init_new_node(&c->llvm, compile_fn(c, value.as.fn));
-
-//     // case CONST_VALUE_TYPE:
-//     //     unreachable();
-
-//     // case CONST_VALUE_STRUCT: {
-//     //     const AST_Type_Struct spec = value.as.structt.spec;
-
-//     //     LLVM_Node_Var_Init **fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
-//     //     for (size_t i = 0; i < spec.fields_count; i++) {
-//     //         // TODO: Think of a better solution for common metadata for a struct
-//     //         const LLVM_Type it_type = spec.definition->node.type.llvm.structt.fields[i].type;
-//     //         fields[i] = compile_const_value_to_var_init(c, it_type, value.as.structt.fields[i]);
-//     //     }
-
-//     //     return llvm_var_init_new_struct(&c->llvm, type, fields, spec.fields_count);
-//     // }
-
-//     // default:
-//     //     unreachable();
-//     //     break;
-//     // }
-// }
 
 // TODO: Replace
 static_assert(COUNT_AST_NODES == 16, "");
@@ -577,7 +629,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 if (is_pointer_arithmetic) {
                     LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
                     lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
-                    rhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
                 }
 
                 set_debug_location(c, n->token.pos);
@@ -588,7 +640,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 }
 
                 if (is_pointer_arithmetic) {
-                    result = LLVMBuildIntToPtr(c->llvm_builder, lhs, n->type.llvm, "");
+                    result = LLVMBuildIntToPtr(c->llvm_builder, result, n->type.llvm, "");
                 }
                 return result;
             }
@@ -733,7 +785,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             // }
 #endif // PLATFORM_ARM64_MACOS
 
-            arg_types[iota] = arg->type.llvm;
+            arg_types[iota] = LLVMTypeOf(expr);
             arg_values[iota] = expr;
             iota++;
         }
@@ -1444,8 +1496,21 @@ static AST_Node_Fn *get_main(Compiler *c) {
     return main->const_value.as.fn;
 }
 
+static void compiler_init_llvm_target_data(Compiler *c) {
+    c->llvm_context = LLVMContextCreate();
+    c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
+    c->llvm_target_data = LLVMGetModuleDataLayout(c->llvm_module);
+}
+
 size_t compile_sizeof(Compiler *c, AST_Type *type) {
+    if (!c->llvm_target_data) {
+        compiler_init_llvm_target_data(c);
+    }
+
     compile_type(c, type);
+    if (!LLVMTypeIsSized(type->llvm)) {
+        return 0;
+    }
     return LLVMABISizeOfType(c->llvm_target_data, type->llvm);
 }
 
@@ -1459,9 +1524,12 @@ void compiler_build(Compiler *c, const char *output) {
     assert(c->cmd);
     assert(c->arena);
 
-    c->llvm_context = LLVMContextCreate();
-    c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
-    c->llvm_target_data = LLVMGetModuleDataLayout(c->llvm_module);
+    if (!c->llvm_context) {
+        c->llvm_context = LLVMContextCreate();
+        c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
+        c->llvm_target_data = LLVMGetModuleDataLayout(c->llvm_module);
+    }
+
     c->llvm_builder = LLVMCreateBuilderInContext(c->llvm_context);
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
@@ -1540,14 +1608,14 @@ void compiler_build(Compiler *c, const char *output) {
 
     const char *object = temp_sprintf("%s" OBJ_FILE_EXTENSION, output);
     {
+        // TODO: Remove
+        // LLVMPrintModuleToFile(c->llvm_module, "/dev/stdout", NULL);
+
         char *error = NULL;
         if (LLVMVerifyModule(c->llvm_module, LLVMReturnStatusAction, &error)) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
-
-        // TODO: Remove
-        // LLVMPrintModuleToFile(c->llvm_module, "/dev/stdout", NULL);
 
         if (LLVMInitializeNativeTarget() != 0) {
             fprintf(stderr, "ERROR: Failed to initialize native target\n");

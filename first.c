@@ -695,13 +695,13 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Arena       arena = {0};
     const char *temp_save = temp_alloc(0);
 
-    {
-#ifdef PLATFORM_X86_64_WINDOWS
-        build_test_library(cmd, "tests/abi/abi.lib", "tests/abi/abi.c");
-#else
-        build_test_library(cmd, "tests/abi/libabi.a", "tests/abi/abi.c");
-#endif // PLATFORM_X86_64_WINDOWS
-    }
+    // {
+    // #ifdef PLATFORM_X86_64_WINDOWS
+    //     build_test_library(cmd, "tests/abi/abi.lib", "tests/abi/abi.c");
+    // #else
+    //     build_test_library(cmd, "tests/abi/libabi.a", "tests/abi/abi.c");
+    // #endif // PLATFORM_X86_64_WINDOWS
+    // }
 
     SV contents = {0};
     if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
@@ -828,8 +828,7 @@ int main(int argc, char **argv) {
     build_glos(&cmd, nprocs);
 
     if (tests) {
-        fprintf(stderr, "ERROR: Cannot use tests yet (Major refactoring occuring)\n");
-        // run_tests(&cmd, nprocs, interactive);
+        run_tests(&cmd, nprocs, interactive);
     }
 
     da_free(&cmd);

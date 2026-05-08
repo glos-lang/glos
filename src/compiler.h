@@ -19,6 +19,7 @@ typedef struct {
 
     LLVMBuilderRef llvm_builder;
     LLVMValueRef   llvm_fn;
+    LLVMValueRef   llvm_fn_last_alloca;
 
     LLVMBasicBlockRef llvm_loop_break;
     LLVMBasicBlockRef llvm_loop_continue;
