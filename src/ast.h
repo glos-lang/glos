@@ -59,6 +59,8 @@ typedef struct {
     size_t          fields_count;
 
     AST_Node_Struct *definition;
+
+    LLVMMetadataRef debug;
 } AST_Type_Struct;
 
 struct AST_Type {

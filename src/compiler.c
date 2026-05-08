@@ -3,6 +3,8 @@
 #include "basic.h"
 #include "dwarf.h"
 #include "token.h"
+#include "llvm-c/Core.h"
+#include "llvm-c/DebugInfo.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -60,29 +62,25 @@ static void compile_type(Compiler *c, AST_Type *type) {
         break;
 
     case AST_TYPE_STRUCT: {
-        todo();
-        // assert(type->spec.structt.definition);
+        assert(type->spec.structt.definition);
 
-        // // TODO: Think of a better solution
-        // AST_Type *common = &type->spec.structt.definition->node.type;
-        // assert(common->kind == AST_TYPE_STRUCT);
+        // TODO(@common)
+        AST_Type *common = &type->spec.structt.definition->node.type;
+        assert(common->kind == AST_TYPE_STRUCT);
 
-        // if (common->llvm.kind != LLVM_TYPE_STRUCT) {
-        //     // TODO: Consider proper name
-        //     const char           *name = temp_sprintf("anon.%zu", c->iota_anonymous_struct++);
-        //     const AST_Type_Struct spec = common->spec.structt;
+        if (!common->llvm) {
+            const AST_Type_Struct spec = common->spec.structt;
 
-        //     LLVM_Field *fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
-        //     common->llvm = llvm_type_struct(&c->llvm, fields, spec.fields_count, sv_from_cstr(name));
+            LLVMTypeRef *fields = arena_alloc(c->arena, spec.fields_count * sizeof(*fields));
+            for (size_t i = 0; i < spec.fields_count; i++) {
+                AST_Node *it = (AST_Node *) spec.fields[i];
+                compile_type(c, &it->type);
+                fields[i] = it->type.llvm;
+            }
 
-        //     for (size_t i = 0; i < spec.fields_count; i++) {
-        //         AST_Node *it = (AST_Node *) spec.fields[i];
-        //         compile_type(c, &it->type);
-        //         fields[i].name = it->token.sv;
-        //         fields[i].type = it->type.llvm;
-        //     }
-        // }
-        // type->llvm = common->llvm;
+            common->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec.fields_count, false);
+        }
+        type->llvm = common->llvm;
     } break;
 
     default:
@@ -172,25 +170,96 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
         return LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, NULL, sizeof(void *), sizeof(void *), 0, "", 0);
 
     case AST_TYPE_FN: {
-        const AST_Type_Fn type_spec = type.spec.fn;
+        const AST_Type_Fn spec = type.spec.fn;
 
-        LLVMMetadataRef *args = temp_alloc((type_spec.args_count + 1) * sizeof(*args));
-        args[0] = get_debug_for_type(c, *type_spec.returnn);
-        for (size_t i = 0; i < type_spec.args_count; i++) {
-            args[i + 1] = get_debug_for_type(c, type_spec.args[i]->node.type);
+        LLVMMetadataRef *args = temp_alloc((spec.args_count + 1) * sizeof(*args));
+        args[0] = get_debug_for_type(c, *spec.returnn);
+        for (size_t i = 0; i < spec.args_count; i++) {
+            args[i + 1] = get_debug_for_type(c, spec.args[i]->node.type);
         }
 
         LLVMMetadataRef fn_debug_type =
-            LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, NULL, args, type_spec.args_count + 1, 0);
+            LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, NULL, args, spec.args_count + 1, 0);
 
         temp_reset(args);
         return LLVMDIBuilderCreatePointerType(
             c->llvm_debug_builder, fn_debug_type, sizeof(void *), sizeof(void *), 0, "", 0);
     }
 
-    case AST_TYPE_STRUCT:
-        todo();
-        break;
+    case AST_TYPE_STRUCT: {
+        assert(type.spec.structt.definition);
+
+        // TODO(@common)
+        AST_Type *common = &type.spec.structt.definition->node.type;
+        assert(common->kind == AST_TYPE_STRUCT);
+        if (!common->llvm) {
+            compile_type(c, common);
+        }
+
+        AST_Type_Struct *spec = &common->spec.structt;
+        if (!spec->debug) {
+            LLVMMetadataRef *fields = arena_alloc(c->arena, spec->fields_count * sizeof(*fields));
+
+            size_t offset_bits = 0;
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                AST_Node *it = (AST_Node *) spec->fields[i];
+
+                const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
+                const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
+
+                if (offset_bits % align_bits != 0) {
+                    offset_bits += align_bits - (offset_bits % align_bits);
+                }
+
+                fields[i] = LLVMDIBuilderCreateMemberType(
+                    c->llvm_debug_builder,
+                    c->llvm_debug_scope, // TODO: Scope
+                    it->token.sv.data,
+                    it->token.sv.count,
+                    c->llvm_debug_file, // TODO: May not be the current file
+                    it->token.pos.row + 1,
+                    size_bits,
+                    align_bits,
+                    offset_bits,
+                    0,
+                    get_debug_for_type(c, it->type));
+
+                offset_bits += size_bits;
+            }
+
+            const void *checkpoint = temp_alloc(0);
+
+            SV             name = {0};
+            AST_Node_Atom *definition = spec->definition->defined_as;
+            if (definition) {
+                name = definition->node.token.sv;
+            } else {
+                name = sv_from_cstr(temp_sprintf("anon.%zu", c->iota_anonymous_struct++));
+            }
+
+            spec->debug = LLVMDIBuilderCreateStructType(
+                c->llvm_debug_builder,
+                c->llvm_debug_file, // TODO: Scope
+                name.data,
+                name.count,
+                c->llvm_debug_file, // TODO: May not be the current file
+                definition->node.token.pos.row + 1,
+                LLVMABISizeOfType(c->llvm_target_data, common->llvm) * 8,
+                LLVMABIAlignmentOfType(c->llvm_target_data, common->llvm) * 8,
+                0,
+                NULL, // TODO: Derived from
+                fields,
+                spec->fields_count,
+                0,
+                NULL,
+                "", // TODO: UID
+                0);
+
+            temp_reset(checkpoint);
+        }
+
+        return spec->debug;
+    }
 
     default:
         unreachable();
@@ -216,47 +285,48 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, AST_Type
     case CONST_VALUE_TYPE:
         unreachable();
 
-    case CONST_VALUE_STRUCT:
-        todo();
+    case CONST_VALUE_STRUCT: {
+        const AST_Type_Struct spec = value.as.structt.spec;
+
+        LLVMValueRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec.fields[i]->node.type);
+        }
+
+        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec.fields_count, false);
+        temp_reset(fields);
+        return result;
+    }
 
     default:
         unreachable();
     }
 }
 
-// static LLVM_Node_Var_Init *compile_const_value_to_var_init(Compiler *c, LLVM_Type type, Const_Value value) {
-//     todo();
-//     unused(c);
-//     unused(type);
-//     unused(value);
-//     // switch (value.kind) {
-//     // case CONST_VALUE_INT:
-//     //     return llvm_var_init_new_int(&c->llvm, type, value.as.integer);
+static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
+    LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
+    if (c->llvm_fn_last_alloca) {
+        LLVMValueRef next_inst = LLVMGetNextInstruction(c->llvm_fn_last_alloca);
+        if (next_inst) {
+            LLVMPositionBuilderBefore(c->llvm_builder, next_inst);
+        } else {
+            LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
+        }
+    } else {
+        LLVMBasicBlockRef first_block = LLVMGetFirstBasicBlock(c->llvm_fn);
+        LLVMValueRef      first_inst = LLVMGetFirstInstruction(first_block);
+        if (first_inst) {
+            LLVMPositionBuilderBefore(c->llvm_builder, first_inst);
+        } else {
+            LLVMPositionBuilderAtEnd(c->llvm_builder, first_block);
+        }
+    }
 
-//     // case CONST_VALUE_FN:
-//     //     return llvm_var_init_new_node(&c->llvm, compile_fn(c, value.as.fn));
-
-//     // case CONST_VALUE_TYPE:
-//     //     unreachable();
-
-//     // case CONST_VALUE_STRUCT: {
-//     //     const AST_Type_Struct spec = value.as.structt.spec;
-
-//     //     LLVM_Node_Var_Init **fields = arena_alloc(c->llvm.arena, spec.fields_count * sizeof(*fields));
-//     //     for (size_t i = 0; i < spec.fields_count; i++) {
-//     //         // TODO: Think of a better solution for common metadata for a struct
-//     //         const LLVM_Type it_type = spec.definition->node.type.llvm.structt.fields[i].type;
-//     //         fields[i] = compile_const_value_to_var_init(c, it_type, value.as.structt.fields[i]);
-//     //     }
-
-//     //     return llvm_var_init_new_struct(&c->llvm, type, fields, spec.fields_count);
-//     // }
-
-//     // default:
-//     //     unreachable();
-//     //     break;
-//     // }
-// }
+    LLVMValueRef alloca = LLVMBuildAlloca(c->llvm_builder, type, "");
+    c->llvm_fn_last_alloca = alloca;
+    LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
+    return alloca;
+}
 
 static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     const void *checkpoint = temp_alloc(0);
@@ -272,27 +342,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     }
 
     if (it->is_local && !it->is_extern) {
-        LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
-        if (c->llvm_fn_last_alloca) {
-            LLVMValueRef next_inst = LLVMGetNextInstruction(c->llvm_fn_last_alloca);
-            if (next_inst) {
-                LLVMPositionBuilderBefore(c->llvm_builder, next_inst);
-            } else {
-                LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMGetFirstBasicBlock(c->llvm_fn));
-            }
-        } else {
-            LLVMBasicBlockRef first_block = LLVMGetFirstBasicBlock(c->llvm_fn);
-            LLVMValueRef      first_inst = LLVMGetFirstInstruction(first_block);
-            if (first_inst) {
-                LLVMPositionBuilderBefore(c->llvm_builder, first_inst);
-            } else {
-                LLVMPositionBuilderAtEnd(c->llvm_builder, first_block);
-            }
-        }
-
-        it->llvm = LLVMBuildAlloca(c->llvm_builder, it->node.type.llvm, "");
-        c->llvm_fn_last_alloca = it->llvm;
-        LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
+        it->llvm = compile_alloca(c, it->node.type.llvm);
     } else {
         it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
     }
@@ -483,7 +533,6 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
-// TODO: Replace
 static_assert(COUNT_AST_NODES == 16, "");
 static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
@@ -518,19 +567,17 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                     unreachable();
 
                 case CONST_VALUE_STRUCT: {
-                    todo(); // TODO(@libllvm)
+                    if (!definition->llvm) {
+                        const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+                        definition->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
+                        temp_reset(name);
+                        LLVMSetInitializer(definition->llvm, compile_const_value(c, definition->const_value, n->type));
+                    }
 
-                    // // TODO: Don't generate this over and over
-                    // LLVM_Node_Var_Init *value =
-                    //     compile_const_value_to_var_init(c, n->type.llvm, definition->const_value);
-
-                    // const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
-
-                    // LLVM_Node *memory = llvm_const_new(&c->llvm, sv_from_cstr(name), n->type.llvm, value);
-                    // if (ref) {
-                    //     return_defer(memory);
-                    // }
-                    // return_defer(llvm_build_load(&c->llvm, memory, n->type.llvm));
+                    if (ref) {
+                        return definition->llvm;
+                    }
+                    return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
                 }
 
                 default:
@@ -688,10 +735,41 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         default:
             unreachable();
         }
-    } break;
+    }
 
-    case AST_NODE_MEMBER:
-        todo();
+    case AST_NODE_MEMBER: {
+        AST_Node_Member *member = (AST_Node_Member *) n;
+
+        LLVMValueRef lhs = NULL;
+        LLVMTypeRef  lhs_type = NULL;
+
+        if (member->lhs->type.ref) {
+            lhs = compile_expr(c, member->lhs, false);
+            set_debug_location(c, n->token.pos);
+
+            LLVMTypeRef llvm_type_ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
+            for (size_t i = 1; i < member->lhs->type.ref; i++) {
+                lhs = LLVMBuildLoad2(c->llvm_builder, llvm_type_ptr, lhs, "");
+            }
+
+            AST_Type type = member->lhs->type;
+            type.ref = 0;
+            type.llvm = NULL;
+
+            compile_type(c, &type);
+            lhs_type = type.llvm;
+        } else {
+            lhs = compile_expr(c, member->lhs, true);
+            lhs_type = member->lhs->type.llvm;
+            set_debug_location(c, n->token.pos);
+        }
+
+        LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, member->field_index, "");
+        if (ref) {
+            return ptr;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
+    }
 
     case AST_NODE_FN:
         return compile_fn(c, (AST_Node_Fn *) n);
@@ -699,8 +777,39 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_STRUCT:
         unreachable();
 
-    case AST_NODE_COMPOUND:
-        todo();
+    case AST_NODE_COMPOUND: {
+        AST_Node_Compound *compound = (AST_Node_Compound *) n;
+
+        LLVMValueRef memory = compile_alloca(c, n->type.llvm);
+        size_t       ordered_iota = 0;
+        for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
+            size_t it_iota = 0;
+            if (!compound->is_designated) {
+                it_iota = ordered_iota++;
+            }
+
+            AST_Node *it = iter;
+            if (n->type.kind == AST_TYPE_STRUCT) {
+                if (compound->is_designated) {
+                    assert(it->kind == AST_NODE_BINARY && it->token.kind == TOKEN_SET);
+                    AST_Node_Binary *it_binary = (AST_Node_Binary *) it;
+                    it_iota = it->token.as.integer;
+                    it = it_binary->rhs;
+                }
+
+                LLVMValueRef field = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
+                LLVMValueRef value = compile_expr(c, it, false);
+                LLVMBuildStore(c->llvm_builder, value, field);
+            } else {
+                unreachable();
+            }
+        }
+
+        if (ref) {
+            return memory;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+    }
 
     case AST_NODE_CALL: {
         AST_Node_Call *call = (AST_Node_Call *) n;
@@ -773,7 +882,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             LLVMValueRef expr = compile_expr(c, arg, false);
 
 #ifdef PLATFORM_ARM64_MACOS
-            // TODO:
+            // TODO: ABI
             // if (arg->type.kind == AST_TYPE_STRUCT) {
             //     LLVM_Type_Info info = llvm_type_info(arg->type.llvm);
             //     if (info.size > 16) {
@@ -801,6 +910,16 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             "");
 
         temp_reset(arg_types);
+
+        if (ast_type_kind_eq(n->type, AST_TYPE_STRUCT)) {
+            LLVMValueRef alloca = compile_alloca(c, n->type.llvm);
+            LLVMBuildStore(c->llvm_builder, result, alloca);
+            if (ref) {
+                return alloca;
+            }
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, alloca, "");
+        }
+
         return result;
     } break;
 
