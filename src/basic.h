@@ -140,7 +140,10 @@ bool read_fp_into_arena(FILE *f, SV *out, Arena *arena);
 bool read_file(const char *path, SV *out, SB *sb);
 bool read_file_into_arena(const char *path, SV *out, Arena *arena);
 
-bool   delete_file(const char *path);
+bool delete_file(const char *path);
+bool create_directory(const char *path);
+bool directory_exists(const char *path);
+
 size_t get_modified_time(const char *path);
 
 bool is_cmd_available_in_path(const char *cmd);

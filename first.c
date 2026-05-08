@@ -1,5 +1,6 @@
 #include "src/basic.h"
 #include <ctype.h>
+#include <stdio.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
 #define OBJ_FILE_EXTENSION ".obj"
@@ -8,6 +9,10 @@
 #define OBJ_FILE_EXTENSION ".o"
 #define EXE_FILE_EXTENSION ""
 #endif // PLATFORM_X86_64_WINDOWS
+
+#if defined(PLATFORM_X86_64_LINUX) && !(defined(__GLIBC__) || defined(__UCLIBC__))
+#define MUSL
+#endif
 
 #define TESTS_LIST_PATH "tests/tests.conf"
 
@@ -116,7 +121,74 @@ static void filter_cl_exe_output(Proc proc) {
 }
 #endif // PLATFORM_X86_64_WINDOWS
 
+static void ensure_llvm(Cmd *cmd) {
+#ifdef PLATFORM_X86_64_LINUX
+#ifdef MUSL
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-musl-x86_64.tar.xz";
+#else
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-glibc-x86_64.tar.xz";
+#endif // MUSL
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-macos-arm64.tar.xz";
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-windows-x86_64.tar.xz";
+#endif // PLATFORM_X86_64_WINDOWS
+
+    if (directory_exists("llvm")) {
+        return;
+    }
+
+    const char *llvm_dir_path = "llvm";
+    const char *llvm_tar_path = "llvm.tar.xz";
+
+    printf("Downloading '%s'...\n", url);
+    cmd_push(cmd, "curl", "-o", llvm_tar_path, "-L", url);
+    Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute 'curl'\n");
+        goto note;
+    }
+
+    int code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: Command 'curl' exited abnormally with code %d\n", code);
+        goto note;
+    }
+
+    if (!create_directory(llvm_dir_path)) {
+        fprintf(stderr, "ERROR: Could not create directory '%s'\n", llvm_dir_path);
+        goto note;
+    }
+
+    printf("Extracting into '%s'...\n", llvm_dir_path);
+    cmd_push(cmd, "tar", "fx", llvm_tar_path, "-C", llvm_dir_path, "--strip-components=1");
+    proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute 'tar'\n");
+        goto note;
+    }
+
+    code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: Command 'tar' exited abnormally with code %d\n", code);
+        goto note;
+    }
+
+    delete_file(llvm_tar_path);
+    return;
+
+note:
+    fprintf(stderr, "NOTE:  Manually download '%s' and extract it into a directory named '%s'\n", url, llvm_dir_path);
+    exit(1);
+}
+
 static void build_glos(Cmd *cmd, size_t nprocs) {
+    ensure_llvm(cmd);
+
     static const char *headers[] = {
         "src/basic.h",
         "src/token.h",
@@ -224,6 +296,11 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         if (is_lld_available_in_path()) {
             cmd_push(cmd, "-fuse-ld=lld");
         }
+
+#ifdef MUSL
+        cmd_push(cmd, "-static");
+#endif // MUSL
+
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
 #endif // PLATFORM_X86_64_WINDOWS
 

@@ -1,11 +1,12 @@
 #include "basic.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
 #include <io.h>
 #else
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
@@ -396,6 +397,23 @@ bool delete_file(const char *path) {
 #else
     return unlink(path) == 0;
 #endif // PLATFORM_X86_64_WINDOWS
+}
+
+bool create_directory(const char *path) {
+#ifdef _WIN32
+    const int result = _mkdir(path);
+#else
+    const int result = mkdir(path, 0755);
+#endif
+    return result >= 0 || errno == EEXIST;
+}
+
+bool directory_exists(const char *path) {
+    struct stat info;
+    if (stat(path, &info) != 0) {
+        return false;
+    }
+    return (info.st_mode & S_IFDIR) != 0;
 }
 
 size_t get_modified_time(const char *path) {
