@@ -146,6 +146,8 @@ static void ensure_llvm(Cmd *cmd) {
     const char *llvm_tar_path = "llvm.tar.xz";
 
     printf("Downloading '%s'...\n", url);
+    fflush(stdout);
+
     cmd_push(cmd, "curl", "-o", llvm_tar_path, "-L", url);
     Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
     if (proc.id == PROC_INVALID) {
@@ -165,6 +167,8 @@ static void ensure_llvm(Cmd *cmd) {
     }
 
     printf("Extracting into '%s'...\n", llvm_dir_path);
+    fflush(stdout);
+
     cmd_push(cmd, "tar", "fx", llvm_tar_path, "-C", llvm_dir_path, "--strip-components=1");
     proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
     if (proc.id == PROC_INVALID) {
@@ -279,8 +283,8 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         run_cmd_and_read_stdout(cmd, &sb);
 
 #ifdef PLATFORM_ARM64_MACOS
-        cmd_push(&cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
-        run_cmd_and_read_stdout(&cmd, &sb);
+        cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
+        run_cmd_and_read_stdout(cmd, &sb);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
