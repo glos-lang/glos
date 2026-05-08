@@ -773,7 +773,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             LLVMValueRef expr = compile_expr(c, arg, false);
 
 #ifdef PLATFORM_ARM64_MACOS
-#error "TODO: Not Implemented"
+            // TODO:
             // if (arg->type.kind == AST_TYPE_STRUCT) {
             //     LLVM_Type_Info info = llvm_type_info(arg->type.llvm);
             //     if (info.size > 16) {
@@ -1278,10 +1278,22 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
     case AST_NODE_PRINT: {
         AST_Node_Print *print = (AST_Node_Print *) n;
-        LLVMValueRef    args[] = {
-            ast_type_is_signed(print->value->type) ? c->llvm_iprint_str : c->llvm_uprint_str,
+
+        const bool   is_signed = ast_type_is_signed(print->value->type);
+        LLVMValueRef args[] = {
+            is_signed ? c->llvm_iprint_str : c->llvm_uprint_str,
             compile_expr(c, print->value, false),
         };
+
+        const size_t value_size = compile_sizeof(c, &print->value->type);
+        if (value_size != sizeof(int64_t)) {
+            LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
+            if (is_signed) {
+                args[1] = LLVMBuildSExt(c->llvm_builder, args[1], llvm_type_i64, "");
+            } else {
+                args[1] = LLVMBuildZExt(c->llvm_builder, args[1], llvm_type_i64, "");
+            }
+        }
 
         set_debug_location(c, n->token.pos);
         LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
