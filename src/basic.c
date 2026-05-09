@@ -1,11 +1,12 @@
 #include "basic.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
 #include <io.h>
 #else
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
@@ -113,6 +114,26 @@ SV sv_split_mut(SV *s, char ch) {
     const SV result = (SV) {.data = s->data, .count = p - s->data};
     s->data = p + 1;
     s->count -= result.count + 1;
+    return result;
+}
+
+SV sv_split_by(SV s, bool (*f)(char ch)) {
+    return sv_split_by_mut(&s, f);
+}
+
+SV sv_split_by_mut(SV *s, bool (*f)(char ch)) {
+    for (size_t i = 0; i < s->count; i++) {
+        if (f(s->data[i])) {
+            const SV result = (SV) {.data = s->data, .count = i};
+            s->data += i + 1;
+            s->count -= i + 1;
+            return result;
+        }
+    }
+
+    const SV result = *s;
+    s->data += s->count;
+    s->count = 0;
     return result;
 }
 
@@ -378,6 +399,23 @@ bool delete_file(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
+bool create_directory(const char *path) {
+#ifdef _WIN32
+    const int result = _mkdir(path);
+#else
+    const int result = mkdir(path, 0755);
+#endif
+    return result >= 0 || errno == EEXIST;
+}
+
+bool directory_exists(const char *path) {
+    struct stat info;
+    if (stat(path, &info) != 0) {
+        return false;
+    }
+    return (info.st_mode & S_IFDIR) != 0;
+}
+
 size_t get_modified_time(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     WIN32_FILE_ATTRIBUTE_DATA data;
@@ -400,22 +438,74 @@ size_t get_modified_time(const char *path) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
+bool is_cmd_available_in_path(const char *cmd) {
+#ifdef PLATFORM_X86_64_WINDOWS
+#define X_OK        0
+#define PATH_DELIM  ';'
+#define PATH_FORMAT SV_Fmt "\\%s.exe"
+#else
+#define PATH_DELIM  ':'
+#define PATH_FORMAT SV_Fmt "/%s"
+#endif // PLATFORM_X86_64_WINDOWS
+
+    SV sv = sv_from_cstr(getenv("PATH"));
+    while (sv.count) {
+        SV dir = sv_split_mut(&sv, PATH_DELIM);
+        if (!dir.count) {
+            continue;
+        }
+
+        const char *path = temp_sprintf(PATH_FORMAT, SV_Arg(dir), cmd);
+        if (!access(path, X_OK)) {
+            temp_reset(path);
+            return true;
+        }
+        temp_reset(path);
+    }
+
+    return false;
+}
+
+bool is_lld_available_in_path(void) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    return is_cmd_available_in_path("lld-link");
+#endif // PLATFORM_X86_64_WINDOWS
+
+#ifdef PLATFORM_X86_64_LINUX
+    return is_cmd_available_in_path("ld.lld");
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    // The C compiler in macOS is a custom version of clang which does not fare well with lld.
+    return false;
+#endif // PLATFORM_ARM64_MACOS
+}
+
 // Processes
+void cmd_show(Cmd cmd, FILE *f) {
+    // TODO: Escaping
+    fprintf(f, "$");
+    for (size_t i = 0; i < cmd.count; i++) {
+        fprintf(f, " %s", cmd.data[i]);
+    }
+    fprintf(f, "\n");
+}
+
 Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    STARTUPINFOA siStartInfo;
-    ZeroMemory(&siStartInfo, sizeof(siStartInfo));
-    siStartInfo.cb = sizeof(STARTUPINFO);
+    STARTUPINFOA si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(STARTUPINFO);
 
-    SECURITY_ATTRIBUTES saAttr;
-    saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-    saAttr.bInheritHandle = TRUE;
-    saAttr.lpSecurityDescriptor = NULL;
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
 
     HANDLE stdout_pipe_read = NULL, stdout_pipe_write = NULL;
     if (stdio.out) {
-        if (!CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &saAttr, 0)) {
-            return PROC_INVALID;
+        if (!CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0)) {
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stdout_pipe_read, HANDLE_FLAG_INHERIT, 0);
     } else {
@@ -424,8 +514,8 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 
     HANDLE stderr_pipe_read = NULL, stderr_pipe_write = NULL;
     if (stdio.err) {
-        if (!CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &saAttr, 0)) {
-            return PROC_INVALID;
+        if (!CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0)) {
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stderr_pipe_read, HANDLE_FLAG_INHERIT, 0);
     } else {
@@ -434,18 +524,18 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
 
     HANDLE stdin_pipe_read = NULL, stdin_pipe_write = NULL;
     if (stdio.in) {
-        if (!CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &saAttr, 0)) {
-            return PROC_INVALID;
+        if (!CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0)) {
+            return (Proc) {.id = PROC_INVALID};
         }
         SetHandleInformation(stdin_pipe_write, HANDLE_FLAG_INHERIT, 0);
     } else {
         stdin_pipe_read = GetStdHandle(STD_INPUT_HANDLE);
     }
 
-    siStartInfo.hStdOutput = stdout_pipe_write;
-    siStartInfo.hStdError = stderr_pipe_write;
-    siStartInfo.hStdInput = stdin_pipe_read;
-    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+    si.hStdOutput = stdout_pipe_write;
+    si.hStdError = stderr_pipe_write;
+    si.hStdInput = stdin_pipe_read;
+    si.dwFlags |= STARTF_USESTDHANDLES;
 
     PROCESS_INFORMATION piProcInfo;
     ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
@@ -495,8 +585,8 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     c->count = 0;
     da_push(&sb, '\0');
 
-    if (!CreateProcessA(NULL, sb.data, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo)) {
-        return PROC_INVALID;
+    if (!CreateProcessA(NULL, sb.data, NULL, NULL, TRUE, 0, NULL, NULL, &si, &piProcInfo)) {
+        return (Proc) {.id = PROC_INVALID};
     }
 
     sb_free(&sb);
@@ -517,34 +607,39 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
         *stdio.in = _fdopen(_open_osfhandle((intptr_t) stdin_pipe_write, _O_WRONLY), "w");
     }
 
-    return piProcInfo.hProcess;
+    return (Proc) {
+        .id = piProcInfo.hProcess,
+        .in = (stdio.in) ? *stdio.in : NULL,
+        .out = (stdio.out) ? *stdio.out : NULL,
+        .err = (stdio.err) ? *stdio.err : NULL,
+    };
 #else
     int in[2] = {0};
     int out[2] = {0};
     int err[2] = {0};
     int fail[2] = {0};
     if (pipe(fail) < 0 || fcntl(fail[1], F_SETFD, FD_CLOEXEC) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.in && pipe(in) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.out && pipe(out) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.err && pipe(err) < 0) {
-        return PROC_INVALID;
+        return (Proc) {.id = PROC_INVALID};
     }
 
-    Proc proc = fork();
-    if (proc < 0) {
-        return PROC_INVALID;
+    int id = fork();
+    if (id < 0) {
+        return (Proc) {.id = PROC_INVALID};
     }
 
-    if (!proc) {
+    if (!id) {
         if (stdio.in) {
             close(in[1]);
             dup2(in[0], STDIN_FILENO);
@@ -580,8 +675,8 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
     close(fail[0]);
 
     if (count > 0) {
-        waitpid(proc, NULL, 0); // Wait for the child to kill itself so it doesn't become a zombie
-        return PROC_INVALID;
+        waitpid(id, NULL, 0); // Wait for the child to kill itself so it doesn't become a zombie
+        return (Proc) {.id = PROC_INVALID};
     }
 
     if (stdio.in) {
@@ -608,34 +703,40 @@ Proc cmd_run_async(Cmd *c, Cmd_Stdio stdio) {
         }
     }
 
-    return proc;
+    return (Proc) {
+        .id = id,
+        .in = (stdio.in) ? *stdio.in : NULL,
+        .out = (stdio.out) ? *stdio.out : NULL,
+        .err = (stdio.err) ? *stdio.err : NULL,
+    };
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
 int cmd_wait(Proc proc) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    if (proc == PROC_INVALID) {
+    if (proc.id == PROC_INVALID) {
         return 1;
     }
 
-    if (WaitForSingleObject(proc, INFINITE) == WAIT_FAILED) {
+    // TODO: Flush the files if any, otherwise it deadlocks on windows
+    if (WaitForSingleObject(proc.id, INFINITE) == WAIT_FAILED) {
         return 1;
     }
 
     DWORD exit_code;
-    if (!GetExitCodeProcess(proc, &exit_code)) {
+    if (!GetExitCodeProcess(proc.id, &exit_code)) {
         return 1;
     }
 
-    CloseHandle(proc);
+    CloseHandle(proc.id);
     return exit_code;
 #else
-    if (proc == PROC_INVALID) {
+    if (proc.id == PROC_INVALID) {
         return 1;
     }
 
     int status = 0;
-    if (waitpid(proc, &status, 0) < 0) {
+    if (waitpid(proc.id, &status, 0) < 0) {
         return 1;
     }
 
@@ -652,7 +753,7 @@ int cmd_run_sync(Cmd *c, Cmd_Stdio stdio) {
 }
 
 bool procs_push(Procs *ps, Proc p) {
-    if (p == PROC_INVALID) {
+    if (p.id == PROC_INVALID) {
         return false;
     }
 
@@ -667,7 +768,12 @@ bool procs_push(Procs *ps, Proc p) {
 bool procs_flush(Procs *ps) {
     bool ok = true;
     for (size_t i = 0; i < ps->count; i++) {
-        const int code = cmd_wait(ps->data[i]);
+        const Proc it = ps->data[i];
+        if (ps->callback_before_wait) {
+            ps->callback_before_wait(it);
+        }
+
+        const int code = cmd_wait(it);
         if (code != 0) {
             ok = false;
         }

@@ -2,6 +2,8 @@
 #define COMPILER_H
 
 #include "context.h"
+#include <llvm-c/Target.h>
+#include <llvm-c/TargetMachine.h>
 
 typedef Dynamic_Array(const char *) Link_Flags;
 
@@ -12,10 +14,34 @@ typedef struct {
     Cmd        *cmd;
     Link_Flags *link_flags;
 
-    LLVM llvm;
+    LLVMContextRef       llvm_context;
+    LLVMModuleRef        llvm_module;
+    LLVMTargetDataRef    llvm_target_data;
+    LLVMTargetMachineRef llvm_target_machine;
 
-    LLVM_Node_Block *loop_break;
-    LLVM_Node_Block *loop_continue;
+    LLVMBuilderRef llvm_builder;
+    LLVMValueRef   llvm_fn;
+    LLVMValueRef   llvm_fn_last_alloca;
+
+    unsigned int llvm_attribute_sret;
+    unsigned int llvm_attribute_byval;
+
+    LLVMBasicBlockRef llvm_loop_break;
+    LLVMBasicBlockRef llvm_loop_continue;
+
+    LLVMDIBuilderRef llvm_debug_builder;
+    LLVMMetadataRef  llvm_debug_compile_unit;
+    LLVMMetadataRef  llvm_debug_file;
+    LLVMMetadataRef  llvm_debug_scope;
+
+    // TODO: Temporary solution to permanent problems
+    LLVMValueRef llvm_iprint_str;
+    LLVMValueRef llvm_uprint_str;
+
+    LLVMTypeRef  llvm_printf_type;
+    LLVMValueRef llvm_printf_func;
+
+    Arena *arena;
 
     size_t iota_anonymous_fn;
     size_t iota_anonymous_const;

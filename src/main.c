@@ -52,21 +52,29 @@ int main(int argc, char **argv) {
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'L') {
-                const char *value = &arg[2];
-                if (*value == '\0') {
-                    value = shift(&argc, &argv, program, "Library path");
+                const char *libpath = &arg[2];
+                if (*libpath == '\0') {
+                    libpath = shift(&argc, &argv, program, "Library path");
                 }
 
+#ifdef PLATFORM_X86_64_WINDOWS
+                da_push(&link_flags, arena_sprintf(&arena, "/libpath:%s", libpath));
+#else
                 da_push(&link_flags, "-L");
-                da_push(&link_flags, value);
+                da_push(&link_flags, libpath);
+#endif // PLATFORM_X86_64_WINDOWS
             } else if (arg[1] == 'l') {
-                const char *value = &arg[2];
-                if (*value == '\0') {
-                    value = shift(&argc, &argv, program, "Library name");
+                const char *libname = &arg[2];
+                if (*libname == '\0') {
+                    libname = shift(&argc, &argv, program, "Library name");
                 }
 
+#ifdef PLATFORM_X86_64_WINDOWS
+                da_push(&link_flags, arena_sprintf(&arena, "%s.lib", libname));
+#else
                 da_push(&link_flags, "-l");
-                da_push(&link_flags, value);
+                da_push(&link_flags, libname);
+#endif // PLATFORM_X86_64_WINDOWS
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
                 usage(stderr, program);
@@ -111,7 +119,7 @@ int main(int argc, char **argv) {
         .cmd = &cmd,
         .link_flags = &link_flags,
 
-        .llvm.arena = &arena,
+        .arena = &arena,
         .path = input,
     };
     check_nodes(&compiler, parser.nodes);
@@ -125,7 +133,7 @@ int main(int argc, char **argv) {
         cmd_push_many(&cmd, argv, argc);
 
         const Proc child_proc = cmd_run_async(&cmd, (Cmd_Stdio) {0});
-        if (child_proc == PROC_INVALID) {
+        if (child_proc.id == PROC_INVALID) {
             fprintf(stderr, "ERROR: Could not start process '%s'\n", child_name);
             exit(1);
         }

@@ -1,5 +1,6 @@
 #include "src/basic.h"
 #include <ctype.h>
+#include <stdio.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
 #define OBJ_FILE_EXTENSION ".obj"
@@ -8,6 +9,10 @@
 #define OBJ_FILE_EXTENSION ".o"
 #define EXE_FILE_EXTENSION ""
 #endif // PLATFORM_X86_64_WINDOWS
+
+#if defined(PLATFORM_X86_64_LINUX) && !(defined(__GLIBC__) || defined(__UCLIBC__))
+#define MUSL
+#endif
 
 #define TESTS_LIST_PATH "tests/tests.conf"
 
@@ -41,30 +46,154 @@ static const char *replace_suffix(const char *path, const char *old, const char 
     return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
 }
 
+static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
+    const char *name = cmd->data[0];
+
+    FILE *out = NULL;
+    Proc  proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &out});
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute command '%s'\n", name);
+        exit(1);
+    }
+
+    if (!out) {
+        fprintf(stderr, "ERROR: Could not open standard output of command '%s'\n", name);
+        exit(1);
+    }
+
+    SV sv = {0};
+    if (!read_fp(out, &sv, sb)) {
+        fprintf(stderr, "ERROR: Could not read standard output of command '%s'\n", name);
+        exit(1);
+    }
+
+    int result = cmd_wait(proc);
+    if (result) {
+        fprintf(stderr, "ERROR: Command '%s' exited abnormally with code %d\n", name, result);
+        exit(1);
+    }
+
+    fclose(out);
+}
+
+static bool is_space(char ch) {
+    return isspace(ch);
+}
+
+#ifdef PLATFORM_X86_64_WINDOWS
+static void filter_cl_exe_output(Proc proc) {
+    SB sb = {0};
+    SV sv = {0};
+    if (read_fp(proc.out, &sv, &sb)) {
+        while (sv.count) {
+            const SV line = sv_split_mut(&sv, '\n');
+            if (sv_find(line, ' ', NULL)) {
+                printf(SV_Fmt "\n", SV_Arg(line));
+            }
+        }
+    } else {
+        fprintf(stderr, "ERROR: Could not read standard output of 'cl.exe'\n");
+    }
+
+    sb_free(&sb);
+    fclose(proc.out);
+}
+#endif // PLATFORM_X86_64_WINDOWS
+
+static void ensure_llvm(Cmd *cmd) {
+#ifdef PLATFORM_X86_64_LINUX
+#ifdef MUSL
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-musl-x86_64.tar.xz";
+#else
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-glibc-x86_64.tar.xz";
+#endif // MUSL
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-macos-arm64.tar.xz";
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-windows-x86_64.tar.xz";
+#endif // PLATFORM_X86_64_WINDOWS
+
+    if (directory_exists("llvm")) {
+        return;
+    }
+
+    const char *llvm_dir_path = "llvm";
+    const char *llvm_tar_path = "llvm.tar.xz";
+
+    printf("Downloading '%s'...\n", url);
+    fflush(stdout);
+
+    cmd_push(cmd, "curl", "-o", llvm_tar_path, "-L", url);
+    Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute 'curl'\n");
+        goto note;
+    }
+
+    int code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: Command 'curl' exited abnormally with code %d\n", code);
+        goto note;
+    }
+
+    if (!create_directory(llvm_dir_path)) {
+        fprintf(stderr, "ERROR: Could not create directory '%s'\n", llvm_dir_path);
+        goto note;
+    }
+
+    printf("Extracting into '%s'...\n", llvm_dir_path);
+    fflush(stdout);
+
+    cmd_push(cmd, "tar", "fx", llvm_tar_path, "-C", llvm_dir_path, "--strip-components=1");
+    proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not execute 'tar'\n");
+        goto note;
+    }
+
+    code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: Command 'tar' exited abnormally with code %d\n", code);
+        goto note;
+    }
+
+    delete_file(llvm_tar_path);
+    return;
+
+note:
+    fprintf(stderr, "NOTE:  Manually download '%s' and extract it into a directory named '%s'\n", url, llvm_dir_path);
+    exit(1);
+}
+
 static void build_glos(Cmd *cmd, size_t nprocs) {
+    ensure_llvm(cmd);
+
     static const char *headers[] = {
-        "src/ast.h",
         "src/basic.h",
-        "src/checker.h",
-        "src/compiler.h",
-        "src/context.h",
-        "src/lexer.h",
-        "src/llvm.h",
-        "src/parser.h",
         "src/token.h",
+        "src/lexer.h",
+        "src/ast.h",
+        "src/parser.h",
+        "src/context.h",
+        "src/checker.h",
+        "src/dwarf.h",
+        "src/compiler.h",
     };
 
     static const char *sources[] = {
-        "src/ast.c",
         "src/basic.c",
+        "src/token.c",
+        "src/lexer.c",
+        "src/ast.c",
+        "src/parser.c",
+        "src/context.c",
         "src/checker.c",
         "src/compiler.c",
-        "src/context.c",
-        "src/lexer.c",
-        "src/llvm.c",
         "src/main.c",
-        "src/parser.c",
-        "src/token.c",
     };
 
     const void *save = temp_alloc(0);
@@ -89,41 +218,92 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         fprintf(stderr, "Building '%s'\n", obj);
         need_linking = true;
 
-        cmd_push(cmd, "clang");
+        Cmd_Stdio proc_stdio = {0};
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        proc_stdio.out = (FILE **) temp_alloc(sizeof(FILE *));
+        procs.callback_before_wait = filter_cl_exe_output;
+
+        cmd_push(cmd, "cl", "/nologo", "/c");
+        cmd_push(cmd, "/I", "./llvm/include");
+        cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
+#else
+        cmd_push(cmd, "cc", "-c");
         cmd_push(cmd, "-ggdb");
-        cmd_push(cmd, "-c");
-        cmd_push(cmd, "-o");
-        cmd_push(cmd, obj);
+        cmd_push(cmd, "-I./llvm/include");
+        cmd_push(cmd, "-o", obj);
+#endif // PLATFORM_X86_64_WINDOWS
+
         cmd_push(cmd, src);
 
-        const Proc proc = cmd_run_async(cmd, (Cmd_Stdio) {0});
-        if (proc == PROC_INVALID) {
-            fprintf(stderr, "ERROR: Could not start process 'clang'\n");
+        const char *proc_name = cmd->data[0];
+        const Proc  proc = cmd_run_async(cmd, proc_stdio);
+        if (proc.id == PROC_INVALID) {
+            fprintf(stderr, "ERROR: Could not start process '%s'\n", proc_name);
             exit(1);
         }
 
         if (!procs_push(&procs, proc)) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            fprintf(stderr, "ERROR: C Compiler exited abnormally\n");
             exit(1);
         }
     }
 
     if (!procs_flush(&procs)) {
-        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+        fprintf(stderr, "ERROR: C Compiler exited abnormally\n");
         exit(1);
     }
 
     if (need_linking) {
         fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
-        cmd_push(cmd, "clang");
-        cmd_push(cmd, "-o");
-        cmd_push(cmd, "glos" EXE_FILE_EXTENSION);
+
+        SB sb = {0};
+        cmd_push(cmd, "./llvm/bin/llvm-config", "--ldflags", "--libs", "--system-libs", "--link-static");
+        run_cmd_and_read_stdout(cmd, &sb);
+
+#ifdef PLATFORM_ARM64_MACOS
+        cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
+        run_cmd_and_read_stdout(cmd, &sb);
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        if (is_lld_available_in_path()) {
+            cmd_push(cmd, "lld-link");
+        } else {
+            cmd_push(cmd, "link", "/nologo");
+        }
+
+        cmd_push(cmd, "/out:glos.exe");
+#else
+        cmd_push(cmd, "g++");
+        if (is_lld_available_in_path()) {
+            cmd_push(cmd, "-fuse-ld=lld");
+        }
+
+#ifdef MUSL
+        cmd_push(cmd, "-static");
+#endif // MUSL
+
+        cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
+#endif // PLATFORM_X86_64_WINDOWS
+
         for (size_t i = 0; i < len(sources); i++) {
             cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
         }
 
+        SV sv = {.data = sb.data, .count = sb.count};
+        while (sv.count) {
+            const SV arg = sv_split_by_mut(&sv, is_space);
+            if (arg.count == 0) {
+                continue;
+            }
+            cmd_push(cmd, temp_sv_to_cstr(arg));
+        }
+        sb_free(&sb);
+
+        const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
-            fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+            fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", name);
             exit(1);
         }
     }
@@ -434,34 +614,55 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
 
     const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
 
-    cmd_push(cmd, "clang");
+    Cmd_Stdio proc_stdio = {0};
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    FILE *proc_stdout = NULL;
+    proc_stdio.out = &proc_stdout;
+    cmd_push(cmd, "cl", "/nologo", "/c");
+    cmd_push(cmd, temp_sprintf("/Fo:%s", object_path));
+#else
+    cmd_push(cmd, "cc", "-c");
     cmd_push(cmd, "-ggdb");
-    cmd_push(cmd, "-c");
-    cmd_push(cmd, "-o");
-    cmd_push(cmd, object_path);
+    cmd_push(cmd, "-o", object_path);
+#endif // PLATFORM_X86_64_WINDOWS
+
     cmd_push(cmd, source_path);
 
-    int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-    if (result) {
-        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+    const char *proc_name = cmd->data[0];
+    const Proc  proc = cmd_run_async(cmd, proc_stdio);
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not start process '%s'\n", proc_name);
+        exit(1);
+    }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    filter_cl_exe_output(proc);
+#endif // PLATFORM_X86_64_WINDOWS
+
+    int code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: C compiler exited abnormally\n");
         exit(1);
     }
 
     fprintf(stderr, "Building '%s'\n", library_path);
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    cmd_push(cmd, "llvm-ar");
+    cmd_push(cmd, "lib", "/nologo");
+    cmd_push(cmd, temp_sprintf("/out:%s", library_path));
 #else
     cmd_push(cmd, "ar");
-#endif // PLATFORM_X86_64_WINDOWS
-
     cmd_push(cmd, "rcs");
     cmd_push(cmd, library_path);
+#endif // PLATFORM_X86_64_WINDOWS
+
     cmd_push(cmd, object_path);
 
-    result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-    if (result) {
-        fprintf(stderr, "ERROR: Process 'ar' exited abnormally\n");
+    proc_name = cmd->data[0];
+    code = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+    if (code) {
+        fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", proc_name);
         exit(1);
     }
 

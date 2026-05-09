@@ -2,7 +2,6 @@
 #include "ast.h"
 #include "basic.h"
 #include "context.h"
-#include "llvm.h"
 #include "token.h"
 
 static void error_undefined(const Token *t, const char *label) {
@@ -189,7 +188,7 @@ static AST_Type ast_type_assert_scalar(const AST_Node *n) {
 }
 
 static AST_Type ast_type_assert_type(const AST_Node *n) {
-    if (n->type.is_type) {
+    if (n->type.is_meta) {
         return n->type;
     }
 
@@ -357,7 +356,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return const_value_int(n->token.as.integer);
 
         case TOKEN_IDENT: {
-            if (n->type.is_type) {
+            if (n->type.is_meta) {
                 return const_value_type(n->type);
             }
 
@@ -539,7 +538,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         if (n->type.kind == AST_TYPE_STRUCT) {
             struct_spec = n->type.spec.structt;
             struct_value.spec = struct_spec;
-            struct_value.fields = arena_alloc(c->llvm.arena, struct_spec.fields_count * sizeof(*struct_value.fields));
+            struct_value.fields = arena_alloc(c->arena, struct_spec.fields_count * sizeof(*struct_value.fields));
         }
 
         size_t ordered_iota = 0;
@@ -671,13 +670,13 @@ static void check_definition(Compiler *c, AST_Node_Atom *it, AST_Node *type, AST
     if (type) {
         check_node(c, type);
         it->node.type = ast_type_assert_type(type);
-        it->node.type.is_type = false;
+        it->node.type.is_meta = false;
     }
 
     if (it_expr) {
         check_node(c, it_expr);
 
-        if (ast_type_kind_eq(it_expr->type, AST_TYPE_UNIT) || (it_expr->type.is_type && !it->is_const)) {
+        if (ast_type_kind_eq(it_expr->type, AST_TYPE_UNIT) || (it_expr->type.is_meta && !it->is_const)) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot store %s in a %s\n",
@@ -754,7 +753,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
 
     AST_Type_Kind kind;
     if (get_builtin_type_kind(n->token.sv, &kind)) {
-        n->type = (AST_Type) {.kind = kind, .is_type = true};
+        n->type = (AST_Type) {.kind = kind, .is_meta = true};
         return;
     }
 
@@ -821,7 +820,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
         case TOKEN_BAND:
             n->type = unary->value->type;
-            if (!n->type.is_type) {
+            if (!n->type.is_meta) {
                 ast_node_assert_can_be_referenced(unary->value);
             }
             n->type.ref++;
@@ -884,6 +883,21 @@ static void check_node(Compiler *c, AST_Node *n) {
             break;
 
         case TOKEN_SET:
+            // TODO: Check whether lhs can be mutated as well
+            //
+            // Example:
+            // ```
+            // Vec2 :: struct {
+            //     x: i32,
+            //     y: i32
+            // }
+
+            // v :: Vec2 {69, 420}
+
+            // main :: () {
+            //     v.x = 1337 // This should be illegal, but it is currently not
+            // }
+            // ```
             ast_node_assert_can_be_referenced(binary->lhs);
             ast_type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};
@@ -934,7 +948,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
         {
             AST_Type_Fn fn_type_spec = {
-                .args = arena_alloc(c->llvm.arena, fn->args_count * sizeof(*fn_type_spec.args)),
+                .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
             };
 
             for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -959,10 +973,10 @@ static void check_node(Compiler *c, AST_Node *n) {
             if (fn->returnn) {
                 check_node(c, fn->returnn);
                 ast_type_assert_type(fn->returnn);
-                fn_type_spec.returnn = arena_clone(c->llvm.arena, &fn->returnn->type, sizeof(AST_Type));
-                fn_type_spec.returnn->is_type = false;
+                fn_type_spec.returnn = arena_clone(c->arena, &fn->returnn->type, sizeof(AST_Type));
+                fn_type_spec.returnn->is_meta = false;
             } else {
-                fn_type_spec.returnn = arena_alloc(c->llvm.arena, sizeof(AST_Type));
+                fn_type_spec.returnn = arena_alloc(c->arena, sizeof(AST_Type));
                 fn_type_spec.returnn->kind = AST_TYPE_UNIT;
             }
 
@@ -975,7 +989,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             }
 
             if (fn->is_type) {
-                n->type.is_type = true;
+                n->type.is_meta = true;
             } else if (fn->body) {
                 check_node(c, fn->body);
                 if (fn->returnn && !always_returns(fn->body)) {
@@ -994,12 +1008,12 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Struct *structt = (AST_Node_Struct *) n;
 
         const AST_Type_Struct structt_type_spec = {
-            .fields = arena_alloc(c->llvm.arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
+            .fields = arena_alloc(c->arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
             .fields_count = structt->fields_count,
             .definition = structt,
         };
 
-        n->type = (AST_Type) {.kind = AST_TYPE_STRUCT, .is_type = true, .spec.structt = structt_type_spec};
+        n->type = (AST_Type) {.kind = AST_TYPE_STRUCT, .is_meta = true, .spec.structt = structt_type_spec};
 
         size_t iota = 0;
         for (AST_Node *field = structt->fields.head; field; field = field->next) {
@@ -1020,7 +1034,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
             check_node(c, define->type);
             it->node.type = ast_type_assert_type(define->type);
-            it->node.type.is_type = false;
+            it->node.type.is_meta = false;
         }
     } break;
 
@@ -1030,7 +1044,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         ast_type_assert_type(compound->lhs);
 
         n->type = compound->lhs->type;
-        n->type.is_type = false;
+        n->type.is_meta = false;
         if (n->type.ref || (n->type.kind != AST_TYPE_STRUCT)) {
             fprintf(
                 stderr,
@@ -1102,10 +1116,10 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, call->fn);
 
         const AST_Type fn_type = call->fn->type;
-        if (fn_type.is_type) {
+        if (fn_type.is_meta) {
             call->is_type_cast = true;
             n->type = fn_type;
-            n->type.is_type = false;
+            n->type.is_meta = false;
 
             if (!ast_type_is_scalar(n->type)) {
                 fprintf(

@@ -17,7 +17,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 static const char *ast_type_to_cstr_impl(AST_Type type) {
-    assert(!type.is_type);
+    assert(!type.is_meta);
 
     const char *s = temp_alloc(0);
     for (size_t i = 0; i < type.ref; i++) {
@@ -138,7 +138,7 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
 }
 
 const char *ast_type_to_cstr(AST_Type type) {
-    if (type.is_type) {
+    if (type.is_meta) {
         return temp_sprintf("a type");
     }
 
@@ -156,12 +156,12 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
         return false;
     }
 
-    if (a.is_type) {
-        return b.is_type;
+    if (a.is_meta) {
+        return b.is_meta;
     }
 
-    if (b.is_type) {
-        return a.is_type;
+    if (b.is_meta) {
+        return a.is_meta;
     }
 
     switch (a.kind) {
@@ -208,7 +208,7 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind) {
-    if (type.is_type) {
+    if (type.is_meta) {
         return false;
     }
 
@@ -221,7 +221,7 @@ bool ast_type_is_numeric(AST_Type type) {
 
 static_assert(COUNT_AST_TYPES == 14, "");
 bool ast_type_is_integer(AST_Type type) {
-    if (type.ref || type.is_type) {
+    if (type.ref || type.is_meta) {
         return false;
     }
 
@@ -245,14 +245,14 @@ bool ast_type_is_integer(AST_Type type) {
 }
 
 bool ast_type_is_pointer(AST_Type type) {
-    if (type.is_type) {
+    if (type.is_meta) {
         return false;
     }
     return type.ref != 0 || type.kind == AST_TYPE_RAWPTR;
 }
 
 bool ast_type_is_scalar(AST_Type type) {
-    if (type.is_type) {
+    if (type.is_meta) {
         return false;
     }
 
@@ -265,6 +265,25 @@ bool ast_type_is_scalar(AST_Type type) {
     }
 
     return false;
+}
+
+static_assert(COUNT_AST_TYPES == 14, "");
+bool ast_type_is_signed(AST_Type type) {
+    if (type.ref || type.is_meta) {
+        return false;
+    }
+
+    switch (type.kind) {
+    case AST_TYPE_I8:
+    case AST_TYPE_I16:
+    case AST_TYPE_I32:
+    case AST_TYPE_I64:
+    case AST_TYPE_INT:
+        return true;
+
+    default:
+        return false;
+    }
 }
 
 #define Indent_Fmt    "%*s"
