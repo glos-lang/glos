@@ -90,17 +90,34 @@ static void compile_type(Compiler *c, AST_Type *type) {
 }
 
 static void compile_fn_type(Compiler *c, AST_Type *type) {
-    const AST_Type_Fn type_spec = type->spec.fn;
-    compile_type(c, type_spec.returnn);
+    const AST_Type_Fn spec = type->spec.fn;
+    compile_type(c, spec.returnn);
 
-    LLVMTypeRef *args = temp_alloc(type_spec.args_count * sizeof(*args));
-    for (size_t i = 0; i < type_spec.args_count; i++) {
-        AST_Type *it = &type_spec.args[i]->node.type;
+    LLVMTypeRef *args = temp_alloc(spec.args_count * sizeof(*args));
+    for (size_t i = 0; i < spec.args_count; i++) {
+        AST_Type *it = &spec.args[i]->node.type;
         compile_type(c, it);
-        args[i] = it->llvm;
+
+        LLVMTypeRef type = it->llvm;
+        if (!it->ref && it->kind == AST_TYPE_STRUCT) {
+            const size_t size = compile_sizeof(c, it);
+            if (size <= 8) {
+                type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+            }
+        }
+
+        args[i] = type;
     }
 
-    type->llvm = LLVMFunctionType(type_spec.returnn->llvm, args, type_spec.args_count, false);
+    LLVMTypeRef return_type = spec.returnn->llvm;
+    if (!spec.returnn->ref && spec.returnn->kind == AST_TYPE_STRUCT) {
+        const size_t size = compile_sizeof(c, spec.returnn);
+        if (size <= 8) {
+            return_type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+        }
+    }
+
+    type->llvm = LLVMFunctionType(return_type, args, spec.args_count, false);
     temp_reset(args);
 }
 
@@ -323,6 +340,7 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     }
 
     LLVMValueRef alloca = LLVMBuildAlloca(c->llvm_builder, type, "");
+    LLVMSetAlignment(alloca, LLVMABIAlignmentOfType(c->llvm_target_data, type));
     c->llvm_fn_last_alloca = alloca;
     LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
     return alloca;
@@ -441,6 +459,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     const void *checkpoint = temp_alloc(0);
 
     compile_fn_type(c, &fn->node.type);
+
     if (fn->is_extern) {
         assert(fn->defined_as);
         fn->llvm = LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
@@ -515,10 +534,11 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
         }
 
         set_debug_location(c, block->end);
-        if (ast_type_kind_eq(*fn_type_spec.returnn, AST_TYPE_UNIT)) {
+        if (fn_type_spec.returnn->kind == AST_TYPE_UNIT) {
             LLVMBuildRetVoid(c->llvm_builder);
         } else {
-            LLVMBuildRet(c->llvm_builder, LLVMConstNull(fn_type_spec.returnn->llvm));
+            // The semantic analyzer has already determined that the function returns in all execution paths
+            LLVMBuildUnreachable(c->llvm_builder);
         }
 
         c->llvm_fn = llvm_fn_save;
@@ -879,7 +899,21 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         size_t iota = 0;
         for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-            LLVMValueRef expr = compile_expr(c, arg, false);
+            LLVMValueRef expr = NULL;
+            LLVMTypeRef  type = NULL;
+            if (!arg->type.ref && arg->type.kind == AST_TYPE_STRUCT) {
+                const size_t size = compile_sizeof(c, &arg->type);
+                if (size <= 8) {
+                    expr = compile_expr(c, arg, true);
+                    type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+                    expr = LLVMBuildLoad2(c->llvm_builder, type, expr, "");
+                }
+            }
+
+            if (!expr) {
+                expr = compile_expr(c, arg, false);
+                type = LLVMTypeOf(expr);
+            }
 
 #ifdef PLATFORM_ARM64_MACOS
             // TODO: ABI
@@ -894,16 +928,24 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             // }
 #endif // PLATFORM_ARM64_MACOS
 
-            arg_types[iota] = LLVMTypeOf(expr);
+            arg_types[iota] = type;
             arg_values[iota] = expr;
             iota++;
         }
         assert(iota == call->args_count);
 
+        LLVMTypeRef return_type = n->type.llvm;
+        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
+            const size_t size = compile_sizeof(c, &n->type);
+            if (size <= 8) {
+                return_type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+            }
+        }
+
         set_debug_location(c, n->token.pos);
         LLVMValueRef result = LLVMBuildCall2(
             c->llvm_builder,
-            LLVMFunctionType(n->type.llvm, arg_types, call->args_count, false),
+            LLVMFunctionType(return_type, arg_types, call->args_count, false),
             fn,
             arg_values,
             call->args_count,
@@ -911,7 +953,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         temp_reset(arg_types);
 
-        if (ast_type_kind_eq(n->type, AST_TYPE_STRUCT)) {
+        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
             LLVMValueRef alloca = compile_alloca(c, n->type.llvm);
             LLVMBuildStore(c->llvm_builder, result, alloca);
             if (ref) {
@@ -921,7 +963,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
 
         return result;
-    } break;
+    }
 
     default:
         unreachable();
@@ -1378,9 +1420,22 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     case AST_NODE_RETURN: {
         AST_Node_Return *returnn = (AST_Node_Return *) n;
 
-        LLVMValueRef value = compile_expr(c, returnn->value, false);
+        LLVMValueRef value = NULL;
+        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
+            const size_t size = compile_sizeof(c, &n->type);
+            if (size <= 8) {
+                LLVMTypeRef type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+                value = compile_expr(c, returnn->value, true);
+                value = LLVMBuildLoad2(c->llvm_builder, type, value, "");
+            }
+        }
+
+        if (!value) {
+            value = compile_expr(c, returnn->value, false);
+        }
+
         set_debug_location(c, n->token.pos);
-        if (ast_type_kind_eq(n->type, AST_TYPE_UNIT)) {
+        if (n->type.kind == AST_TYPE_UNIT) {
             LLVMBuildRetVoid(c->llvm_builder);
         } else {
             LLVMBuildRet(c->llvm_builder, value);
@@ -1620,7 +1675,7 @@ static AST_Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (!ast_type_kind_eq(*signature.returnn, AST_TYPE_UNIT)) {
+    if (signature.returnn->kind != AST_TYPE_UNIT) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }

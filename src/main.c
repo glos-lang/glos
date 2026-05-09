@@ -52,29 +52,29 @@ int main(int argc, char **argv) {
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'L') {
-                const char *value = &arg[2];
-                if (*value == '\0') {
-                    value = shift(&argc, &argv, program, "Library path");
+                const char *libpath = &arg[2];
+                if (*libpath == '\0') {
+                    libpath = shift(&argc, &argv, program, "Library path");
                 }
 
 #ifdef PLATFORM_X86_64_WINDOWS
-                todo();
-#endif
-
+                da_push(&link_flags, arena_sprintf(&arena, "/libpath:%s", libpath));
+#else
                 da_push(&link_flags, "-L");
-                da_push(&link_flags, value);
+                da_push(&link_flags, libpath);
+#endif // PLATFORM_X86_64_WINDOWS
             } else if (arg[1] == 'l') {
-                const char *value = &arg[2];
-                if (*value == '\0') {
-                    value = shift(&argc, &argv, program, "Library name");
+                const char *libname = &arg[2];
+                if (*libname == '\0') {
+                    libname = shift(&argc, &argv, program, "Library name");
                 }
 
 #ifdef PLATFORM_X86_64_WINDOWS
-                todo();
-#endif
-
+                da_push(&link_flags, arena_sprintf(&arena, "%s.lib", libname));
+#else
                 da_push(&link_flags, "-l");
-                da_push(&link_flags, value);
+                da_push(&link_flags, libname);
+#endif // PLATFORM_X86_64_WINDOWS
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
                 usage(stderr, program);

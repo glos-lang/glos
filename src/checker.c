@@ -883,6 +883,21 @@ static void check_node(Compiler *c, AST_Node *n) {
             break;
 
         case TOKEN_SET:
+            // TODO: Check whether lhs can be mutated as well
+            //
+            // Example:
+            // ```
+            // Vec2 :: struct {
+            //     x: i32,
+            //     y: i32
+            // }
+
+            // v :: Vec2 {69, 420}
+
+            // main :: () {
+            //     v.x = 1337 // This should be illegal, but it is currently not
+            // }
+            // ```
             ast_node_assert_can_be_referenced(binary->lhs);
             ast_type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (AST_Type) {.kind = AST_TYPE_UNIT};

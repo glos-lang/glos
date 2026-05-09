@@ -52,24 +52,24 @@ static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
     FILE *out = NULL;
     Proc  proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &out});
     if (proc.id == PROC_INVALID) {
-        fprintf(stderr, "ERROR: Could not execute command `%s`\n", name);
+        fprintf(stderr, "ERROR: Could not execute command '%s'\n", name);
         exit(1);
     }
 
     if (!out) {
-        fprintf(stderr, "ERROR: Could not open standard output of command `%s`\n", name);
+        fprintf(stderr, "ERROR: Could not open standard output of command '%s'\n", name);
         exit(1);
     }
 
     SV sv = {0};
     if (!read_fp(out, &sv, sb)) {
-        fprintf(stderr, "ERROR: Could not read standard output of command `%s`\n", name);
+        fprintf(stderr, "ERROR: Could not read standard output of command '%s'\n", name);
         exit(1);
     }
 
     int result = cmd_wait(proc);
     if (result) {
-        fprintf(stderr, "ERROR: Command `%s` exited abnormally with code %d\n", name, result);
+        fprintf(stderr, "ERROR: Command '%s' exited abnormally with code %d\n", name, result);
         exit(1);
     }
 
@@ -82,33 +82,12 @@ static bool is_space(char ch) {
 
 #ifdef PLATFORM_X86_64_WINDOWS
 static void filter_cl_exe_output(Proc proc) {
-    static const char *sources[] = {
-        "basic.c",
-        "token.c",
-        "lexer.c",
-        "ast.c",
-        "parser.c",
-        "context.c",
-        "checker.c",
-        "compiler.c",
-        "main.c",
-    };
-
     SB sb = {0};
     SV sv = {0};
     if (read_fp(proc.out, &sv, &sb)) {
         while (sv.count) {
-            SV   line = sv_split_mut(&sv, '\n');
-            bool silence = false;
-            for (size_t i = 0; i < len(sources); i++) {
-                if (sv_match(line, sources[i])) {
-                    // Just 'cl.exe' being a nuisance
-                    silence = true;
-                    break;
-                }
-            }
-
-            if (!silence) {
+            const SV line = sv_split_mut(&sv, '\n');
+            if (sv_find(line, ' ', NULL)) {
                 printf(SV_Fmt "\n", SV_Arg(line));
             }
         }
@@ -635,32 +614,55 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
 
     const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
 
-    cmd_push(cmd, "clang", "-c");
+    Cmd_Stdio proc_stdio = {0};
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    FILE *proc_stdout = NULL;
+    proc_stdio.out = &proc_stdout;
+    cmd_push(cmd, "cl", "/nologo", "/c");
+    cmd_push(cmd, temp_sprintf("/Fo:%s", object_path));
+#else
+    cmd_push(cmd, "cc", "-c");
     cmd_push(cmd, "-ggdb");
     cmd_push(cmd, "-o", object_path);
+#endif // PLATFORM_X86_64_WINDOWS
+
     cmd_push(cmd, source_path);
 
-    int result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-    if (result) {
-        fprintf(stderr, "ERROR: Process 'clang' exited abnormally\n");
+    const char *proc_name = cmd->data[0];
+    const Proc  proc = cmd_run_async(cmd, proc_stdio);
+    if (proc.id == PROC_INVALID) {
+        fprintf(stderr, "ERROR: Could not start process '%s'\n", proc_name);
+        exit(1);
+    }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    filter_cl_exe_output(proc);
+#endif // PLATFORM_X86_64_WINDOWS
+
+    int code = cmd_wait(proc);
+    if (code) {
+        fprintf(stderr, "ERROR: C compiler exited abnormally\n");
         exit(1);
     }
 
     fprintf(stderr, "Building '%s'\n", library_path);
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    cmd_push(cmd, "llvm-ar"); // TODO: Build `.lib` on windows
+    cmd_push(cmd, "lib", "/nologo");
+    cmd_push(cmd, temp_sprintf("/out:%s", library_path));
 #else
     cmd_push(cmd, "ar");
-#endif // PLATFORM_X86_64_WINDOWS
-
     cmd_push(cmd, "rcs");
     cmd_push(cmd, library_path);
+#endif // PLATFORM_X86_64_WINDOWS
+
     cmd_push(cmd, object_path);
 
-    result = cmd_run_sync(cmd, (Cmd_Stdio) {0});
-    if (result) {
-        fprintf(stderr, "ERROR: Process 'ar' exited abnormally\n");
+    proc_name = cmd->data[0];
+    code = cmd_run_sync(cmd, (Cmd_Stdio) {0});
+    if (code) {
+        fprintf(stderr, "ERROR: Process '%s' exited abnormally\n", proc_name);
         exit(1);
     }
 
@@ -776,13 +778,13 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Arena       arena = {0};
     const char *temp_save = temp_alloc(0);
 
-    // {
-    // #ifdef PLATFORM_X86_64_WINDOWS
-    //     build_test_library(cmd, "tests/abi/abi.lib", "tests/abi/abi.c");
-    // #else
-    //     build_test_library(cmd, "tests/abi/libabi.a", "tests/abi/abi.c");
-    // #endif // PLATFORM_X86_64_WINDOWS
-    // }
+    {
+#ifdef PLATFORM_X86_64_WINDOWS
+        build_test_library(cmd, "tests/abi/abi.lib", "tests/abi/abi.c");
+#else
+        build_test_library(cmd, "tests/abi/libabi.a", "tests/abi/abi.c");
+#endif // PLATFORM_X86_64_WINDOWS
+    }
 
     SV contents = {0};
     if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
