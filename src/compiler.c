@@ -72,7 +72,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
         if (!common->llvm) {
             const AST_Type_Struct spec = common->spec.structt;
 
-            LLVMTypeRef *fields = arena_alloc(c->arena, spec.fields_count * sizeof(*fields));
+            LLVMTypeRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec.fields_count; i++) {
                 AST_Node *it = (AST_Node *) spec.fields[i];
                 compile_type(c, &it->type);
@@ -80,6 +80,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
             }
 
             common->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec.fields_count, false);
+            temp_reset(fields);
         }
         type->llvm = common->llvm;
     } break;
@@ -96,6 +97,10 @@ typedef struct {
     LLVMTypeRef direct_types[ABI_DIRECT_TYPES_MAX];
     size_t      direct_types_count;
 } ABI_Info;
+
+static bool type_is_compound(AST_Type type) {
+    return !type.ref && type.kind == AST_TYPE_STRUCT;
+}
 
 static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
     ABI_Info     info = {0};
@@ -308,6 +313,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     }
 
     case AST_TYPE_STRUCT: {
+        // TODO: `c->llvm_debug_file` may not be the file this structure was defined in
         assert(type.spec.structt.definition);
 
         // TODO(@common)
@@ -319,35 +325,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
 
         AST_Type_Struct *spec = &common->spec.structt;
         if (!spec->debug) {
-            LLVMMetadataRef *fields = arena_alloc(c->arena, spec->fields_count * sizeof(*fields));
-
-            size_t offset_bits = 0;
-            for (size_t i = 0; i < spec->fields_count; i++) {
-                AST_Node *it = (AST_Node *) spec->fields[i];
-
-                const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
-                const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
-
-                if (offset_bits % align_bits != 0) {
-                    offset_bits += align_bits - (offset_bits % align_bits);
-                }
-
-                fields[i] = LLVMDIBuilderCreateMemberType(
-                    c->llvm_debug_builder,
-                    c->llvm_debug_scope, // TODO: Scope
-                    it->token.sv.data,
-                    it->token.sv.count,
-                    c->llvm_debug_file, // TODO: May not be the current file
-                    it->token.pos.row + 1,
-                    size_bits,
-                    align_bits,
-                    offset_bits,
-                    0,
-                    get_debug_for_type(c, it->type));
-
-                offset_bits += size_bits;
-            }
-
             const void *checkpoint = temp_alloc(0);
 
             SV             name = {0};
@@ -358,24 +335,62 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 name = sv_from_cstr(temp_sprintf("anon.%zu", c->iota_anonymous_struct++));
             }
 
-            spec->debug = LLVMDIBuilderCreateStructType(
+            LLVMMetadataRef struct_debug_temp = LLVMDIBuilderCreateReplaceableCompositeType(
                 c->llvm_debug_builder,
-                c->llvm_debug_file, // TODO: Scope
+                DW_TAG_structure_type,
                 name.data,
                 name.count,
-                c->llvm_debug_file, // TODO: May not be the current file
+                c->llvm_debug_scope,
+                c->llvm_debug_file,
+                definition->node.token.pos.row + 1,
+                0,
+                0,
+                0,
+                0,
+                NULL,
+                0);
+
+            LLVMMetadataRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                AST_Node *it = (AST_Node *) spec->fields[i];
+
+                const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
+                const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
+                const size_t offset_bits = LLVMOffsetOfElement(c->llvm_target_data, common->llvm, i) * 8;
+
+                fields[i] = LLVMDIBuilderCreateMemberType(
+                    c->llvm_debug_builder,
+                    struct_debug_temp,
+                    it->token.sv.data,
+                    it->token.sv.count,
+                    c->llvm_debug_file,
+                    it->token.pos.row + 1,
+                    size_bits,
+                    align_bits,
+                    offset_bits,
+                    0,
+                    get_debug_for_type(c, it->type));
+            }
+
+            spec->debug = LLVMDIBuilderCreateStructType(
+                c->llvm_debug_builder,
+                c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
+                name.data,
+                name.count,
+                c->llvm_debug_file,
                 definition->node.token.pos.row + 1,
                 LLVMABISizeOfType(c->llvm_target_data, common->llvm) * 8,
                 LLVMABIAlignmentOfType(c->llvm_target_data, common->llvm) * 8,
                 0,
-                NULL, // TODO: Derived from
+                NULL,
                 fields,
                 spec->fields_count,
                 0,
                 NULL,
-                "", // TODO: UID
+                "",
                 0);
 
+            LLVMMetadataReplaceAllUsesWith(struct_debug_temp, spec->debug);
             temp_reset(checkpoint);
         }
 
@@ -548,7 +563,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                 c->llvm_debug_file,
                 it->node.token.pos.row + 1,
                 var_debug_type,
-                false, // TODO(@libllvm): Local variables
+                false, // TODO: Gather more information on what even is this...
                 NULL,
                 NULL,
                 0);
@@ -618,7 +633,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             fn_debug_type,
             true,
             true,
-            fn->node.token.pos.row + 1, // TODO(@libllvm): scope line
+            fn->node.token.pos.row + 1,
             0,
             false);
         LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
@@ -1088,7 +1103,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
             case 1: {
                 LLVMValueRef expr = NULL;
-                if (!arg->type.ref && arg->type.kind == AST_TYPE_STRUCT) {
+                if (type_is_compound(arg->type)) {
                     expr = compile_expr(c, arg, true);
                     expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
                 } else {
@@ -1120,7 +1135,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         LLVMValueRef memory = NULL;
 
         arg_iota = 0;
-        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
+        if (type_is_compound(n->type)) {
             static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
             switch (abi.returnn.direct_types_count) {
             case 0: {
@@ -1352,7 +1367,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         AST_Node_Return *returnn = (AST_Node_Return *) n;
 
         LLVMValueRef value = NULL;
-        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
+        if (type_is_compound(n->type)) {
             ABI_Info abi = get_abi_info_for_type(c, &n->type);
 
             static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
@@ -1511,8 +1526,6 @@ size_t compile_sizeof(Compiler *c, AST_Type *type) {
 
 void compiler_build(Compiler *c, const char *output) {
     assert(c->cmd);
-    assert(c->arena);
-
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
     }
@@ -1629,7 +1642,7 @@ void compiler_build(Compiler *c, const char *output) {
 #endif // PLATFORM_X86_64_WINDOWS
 
         cmd_push(c->cmd, object);
-        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count); // TODO: Windows
+        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
         const char *proc_name = c->cmd->data[0];
         Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
@@ -1648,5 +1661,3 @@ void compiler_build(Compiler *c, const char *output) {
     }
     temp_reset(object);
 }
-
-// TODO: Implement type_is_compound()

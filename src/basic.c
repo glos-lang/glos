@@ -8,7 +8,6 @@
 #include <io.h>
 #else
 #include <sys/wait.h>
-#include <unistd.h>
 #endif // PLATFORM_X86_64_WINDOWS
 
 // Dynamic Array

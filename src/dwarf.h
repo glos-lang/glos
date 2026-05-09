@@ -10,4 +10,6 @@
 #define DW_ATE_unsigned      0x7
 #define DW_ATE_unsigned_char 0x8
 
+#define DW_TAG_structure_type 0x13
+
 #endif // DWARF_H
