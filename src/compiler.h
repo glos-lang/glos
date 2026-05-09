@@ -3,6 +3,7 @@
 
 #include "context.h"
 #include <llvm-c/Target.h>
+#include <llvm-c/TargetMachine.h>
 
 typedef Dynamic_Array(const char *) Link_Flags;
 
@@ -13,9 +14,10 @@ typedef struct {
     Cmd        *cmd;
     Link_Flags *link_flags;
 
-    LLVMContextRef    llvm_context;
-    LLVMModuleRef     llvm_module;
-    LLVMTargetDataRef llvm_target_data;
+    LLVMContextRef       llvm_context;
+    LLVMModuleRef        llvm_module;
+    LLVMTargetDataRef    llvm_target_data;
+    LLVMTargetMachineRef llvm_target_machine;
 
     LLVMBuilderRef llvm_builder;
     LLVMValueRef   llvm_fn;

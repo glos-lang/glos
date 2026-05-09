@@ -1683,9 +1683,29 @@ static AST_Node_Fn *get_main(Compiler *c) {
 }
 
 static void compiler_init_llvm_target_data(Compiler *c) {
+    if (LLVMInitializeNativeTarget() != 0) {
+        fprintf(stderr, "ERROR: Failed to initialize native target\n");
+        exit(1);
+    }
+    LLVMInitializeNativeAsmPrinter();
+
     c->llvm_context = LLVMContextCreate();
     c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
-    c->llvm_target_data = LLVMGetModuleDataLayout(c->llvm_module);
+
+    char *triple = LLVMGetDefaultTargetTriple();
+    LLVMSetTarget(c->llvm_module, triple);
+
+    char *error = NULL;
+
+    LLVMTargetRef target = NULL;
+    if (LLVMGetTargetFromTriple(triple, &target, &error)) {
+        fprintf(stderr, "ERROR: %s\n", error);
+        exit(1);
+    }
+
+    c->llvm_target_machine = LLVMCreateTargetMachine(
+        target, triple, "generic", "", LLVMCodeGenLevelDefault, LLVMRelocPIC, LLVMCodeModelDefault);
+    c->llvm_target_data = LLVMCreateTargetDataLayout(c->llvm_target_machine);
 }
 
 size_t compile_sizeof(Compiler *c, AST_Type *type) {
@@ -1711,11 +1731,8 @@ void compiler_build(Compiler *c, const char *output) {
     assert(c->arena);
 
     if (!c->llvm_context) {
-        c->llvm_context = LLVMContextCreate();
-        c->llvm_module = LLVMModuleCreateWithNameInContext("", c->llvm_context);
-        c->llvm_target_data = LLVMGetModuleDataLayout(c->llvm_module);
+        compiler_init_llvm_target_data(c);
     }
-
     c->llvm_builder = LLVMCreateBuilderInContext(c->llvm_context);
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
@@ -1803,25 +1820,7 @@ void compiler_build(Compiler *c, const char *output) {
             exit(1);
         }
 
-        if (LLVMInitializeNativeTarget() != 0) {
-            fprintf(stderr, "ERROR: Failed to initialize native target\n");
-            exit(1);
-        }
-        LLVMInitializeNativeAsmPrinter();
-
-        char *triple = LLVMGetDefaultTargetTriple();
-        LLVMSetTarget(c->llvm_module, triple);
-
-        LLVMTargetRef target;
-        if (LLVMGetTargetFromTriple(triple, &target, &error)) {
-            fprintf(stderr, "ERROR: %s\n", error);
-            exit(1);
-        }
-
-        LLVMTargetMachineRef target_machine = LLVMCreateTargetMachine(
-            target, triple, "generic", "", LLVMCodeGenLevelDefault, LLVMRelocPIC, LLVMCodeModelDefault);
-
-        if (LLVMTargetMachineEmitToFile(target_machine, c->llvm_module, object, LLVMObjectFile, &error)) {
+        if (LLVMTargetMachineEmitToFile(c->llvm_target_machine, c->llvm_module, object, LLVMObjectFile, &error)) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
