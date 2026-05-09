@@ -162,11 +162,11 @@ typedef struct {
     ABI_Info  returnn;
 } ABI;
 
-static LLVMTypeRef compile_fn_type(Compiler *c, AST_Type *type, ABI *abi) {
+static LLVMTypeRef compile_fn_type(Compiler *c, AST_Type type, ABI *abi) {
     const void *checkpoint = temp_alloc(0);
 
-    assert(!type->ref && type->kind == AST_TYPE_FN);
-    AST_Type_Fn spec = type->spec.fn;
+    assert(!type.ref && type.kind == AST_TYPE_FN);
+    AST_Type_Fn spec = type.spec.fn;
 
     compile_type(c, spec.returnn);
     abi->returnn = get_abi_info_for_type(c, spec.returnn);
@@ -340,7 +340,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 DW_TAG_structure_type,
                 name.data,
                 name.count,
-                c->llvm_debug_scope,
+                c->llvm_debug_file, // TODO(@scope)
                 c->llvm_debug_file,
                 definition->node.token.pos.row + 1,
                 0,
@@ -374,7 +374,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
 
             spec->debug = LLVMDIBuilderCreateStructType(
                 c->llvm_debug_builder,
-                c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
+                c->llvm_debug_file, // TODO(@scope)
                 name.data,
                 name.count,
                 c->llvm_debug_file,
@@ -564,7 +564,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                 it->node.token.pos.row + 1,
                 var_debug_type,
                 false, // TODO: Gather more information on what even is this...
-                NULL,
+                LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
                 NULL,
                 0);
 
@@ -585,7 +585,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     ABI abi = {0};
     abi.args = temp_alloc(fn->args_count * sizeof(*abi.args));
     abi.args_count = fn->args_count;
-    fn->node.type.llvm = compile_fn_type(c, &fn->node.type, &abi);
+    fn->node.type.llvm = compile_fn_type(c, fn->node.type, &abi);
 
     if (fn->is_extern) {
         assert(fn->defined_as);
@@ -623,7 +623,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
         c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
             c->llvm_debug_builder,
-            c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
+            c->llvm_debug_compile_unit, // TODO(@scope)
             fn_name.data,
             fn_name.count,
             fn_name.data,
@@ -1057,7 +1057,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
             case TYPE_CAST_TO_BOOL:
                 set_debug_location(c, n->token.pos);
-                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(n->type.llvm), "");
+                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(from_type), "");
 
             default:
                 unreachable();
@@ -1071,7 +1071,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         abi.args_count = call->args_count;
 
         LLVMValueRef fn_value = compile_expr(c, call->fn, false);
-        LLVMTypeRef  fn_type = compile_fn_type(c, &call->fn->type, &abi);
+        LLVMTypeRef  fn_type = compile_fn_type(c, call->fn->type, &abi);
 
         LLVMValueRef *args = temp_alloc(abi.actual_args_count * sizeof(*args));
 
@@ -1316,8 +1316,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
                 LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, start);
                 LLVMPositionBuilderAtEnd(c->llvm_builder, start);
-
-                set_debug_location(c, forr->condition->token.pos);
                 LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
             } else {
                 LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
@@ -1536,6 +1534,7 @@ void compiler_build(Compiler *c, const char *output) {
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
     c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
+    c->llvm_debug_scope = c->llvm_debug_file;
 
     c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
@@ -1661,3 +1660,5 @@ void compiler_build(Compiler *c, const char *output) {
     }
     temp_reset(object);
 }
+
+// TODO: Associate entities with a namespace for proper scoping
