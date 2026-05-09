@@ -23,6 +23,9 @@ typedef struct {
     LLVMValueRef   llvm_fn;
     LLVMValueRef   llvm_fn_last_alloca;
 
+    unsigned int llvm_attribute_sret;
+    unsigned int llvm_attribute_byval;
+
     LLVMBasicBlockRef llvm_loop_break;
     LLVMBasicBlockRef llvm_loop_continue;
 

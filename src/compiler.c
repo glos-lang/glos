@@ -6,6 +6,7 @@
 #include "llvm-c/Core.h"
 #include "llvm-c/DebugInfo.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -89,36 +90,141 @@ static void compile_type(Compiler *c, AST_Type *type) {
     }
 }
 
-static void compile_fn_type(Compiler *c, AST_Type *type) {
-    const AST_Type_Fn spec = type->spec.fn;
+#define ABI_DIRECT_TYPES_MAX 2
+
+typedef struct {
+    LLVMTypeRef direct_types[ABI_DIRECT_TYPES_MAX];
+    size_t      direct_types_count;
+} ABI_Info;
+
+static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
+    ABI_Info     info = {0};
+    const size_t size = compile_sizeof(c, type);
+
+    if (type->ref) {
+        info.direct_types[info.direct_types_count++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+        return info;
+    }
+
+    static_assert(COUNT_AST_TYPES == 14, "");
+    switch (type->kind) {
+    case AST_TYPE_UNIT:
+        info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
+        return info;
+
+    case AST_TYPE_BOOL:
+        info.direct_types[info.direct_types_count++] = LLVMInt1TypeInContext(c->llvm_context);
+        return info;
+
+    case AST_TYPE_RAWPTR:
+    case AST_TYPE_FN:
+        info.direct_types[info.direct_types_count++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+        return info;
+
+    default:
+        // Pass
+        break;
+    }
+
+    if (size <= 8) {
+        info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, size * 8);
+        return info;
+    }
+
+#ifdef PLATFORM_X86_64_LINUX
+    if (size <= 16) {
+        // TODO(@abi): Check whether manual tracking of registers is necessary, maybe using sanitizer
+        // TODO(@abi): The sizes of the integers depend on the elements present in that portion
+        info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, 64);
+        info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, size * 8 - 64);
+        return info;
+    }
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    if (size <= 16) {
+        // TODO(@abi): Check whether this is correct
+        info.direct_types[info.direct_types_count++] = LLVMArrayType(LLVMInt64TypeInContext(c->llvm_context), 2);
+        return info;
+    }
+#endif // PLATFORM_ARM64_MACOS
+
+    return info;
+}
+
+typedef struct {
+    ABI_Info *args;
+    size_t    args_count;
+    size_t    actual_args_count;
+    ABI_Info  returnn;
+} ABI;
+
+static LLVMTypeRef compile_fn_type(Compiler *c, AST_Type *type, ABI *abi) {
+    const void *checkpoint = temp_alloc(0);
+
+    assert(!type->ref && type->kind == AST_TYPE_FN);
+    AST_Type_Fn spec = type->spec.fn;
+
     compile_type(c, spec.returnn);
+    abi->returnn = get_abi_info_for_type(c, spec.returnn);
 
-    LLVMTypeRef *args = temp_alloc(spec.args_count * sizeof(*args));
+    abi->actual_args_count = 0;
+    if (!abi->returnn.direct_types_count) {
+        abi->actual_args_count++;
+    }
+
     for (size_t i = 0; i < spec.args_count; i++) {
-        AST_Type *it = &spec.args[i]->node.type;
-        compile_type(c, it);
+        ABI_Info *it = &abi->args[i];
+        *it = get_abi_info_for_type(c, &spec.args[i]->node.type);
 
-        LLVMTypeRef type = it->llvm;
-        if (!it->ref && it->kind == AST_TYPE_STRUCT) {
-            const size_t size = compile_sizeof(c, it);
-            if (size <= 8) {
-                type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+        if (it->direct_types_count) {
+            abi->actual_args_count += it->direct_types_count;
+        } else {
+            abi->actual_args_count++;
+        }
+    }
+
+    size_t       args_iota = 0;
+    LLVMTypeRef *args = temp_alloc(abi->actual_args_count * sizeof(*args));
+    if (!abi->returnn.direct_types_count) {
+        args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+    }
+
+    for (size_t i = 0; i < spec.args_count; i++) {
+        const ABI_Info it_abi = abi->args[i];
+        if (it_abi.direct_types_count) {
+            for (size_t j = 0; j < it_abi.direct_types_count; j++) {
+                args[args_iota++] = it_abi.direct_types[j];
             }
-        }
-
-        args[i] = type;
-    }
-
-    LLVMTypeRef return_type = spec.returnn->llvm;
-    if (!spec.returnn->ref && spec.returnn->kind == AST_TYPE_STRUCT) {
-        const size_t size = compile_sizeof(c, spec.returnn);
-        if (size <= 8) {
-            return_type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+        } else {
+            args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         }
     }
 
-    type->llvm = LLVMFunctionType(return_type, args, spec.args_count, false);
-    temp_reset(args);
+    LLVMTypeRef return_type = NULL;
+
+    static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+    switch (abi->returnn.direct_types_count) {
+    case 0:
+        return_type = LLVMVoidTypeInContext(c->llvm_context);
+        break;
+
+    case 1:
+        return_type = abi->returnn.direct_types[0];
+        break;
+
+    case 2:
+        return_type =
+            LLVMStructTypeInContext(c->llvm_context, abi->returnn.direct_types, abi->returnn.direct_types_count, false);
+        break;
+
+    default:
+        unreachable();
+    }
+
+    LLVMTypeRef fn_type = LLVMFunctionType(return_type, args, abi->actual_args_count, false);
+    temp_reset(checkpoint);
+    return fn_type;
 }
 
 static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn);
@@ -130,7 +236,7 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
     if (fn->outer_fn) {
         name = temp_emit_fn_name(c, fn->outer_fn);
     } else {
-        name = temp_sprintf("main");
+        name = temp_sprintf("main"); // TODO(@package)
     }
 
     temp_remove_null();
@@ -346,17 +452,72 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     return alloca;
 }
 
+static void compile_local_var_debug(Compiler *c, AST_Node_Atom *it, LLVMMetadataRef var_debug_type) {
+    const SV        name = it->node.token.sv;
+    LLVMMetadataRef var_debug_metadata = NULL;
+    if (it->arg_index) {
+        var_debug_metadata = LLVMDIBuilderCreateParameterVariable(
+            c->llvm_debug_builder,
+            c->llvm_debug_scope,
+            name.data,
+            name.count,
+            it->arg_index,
+            c->llvm_debug_file,
+            it->node.token.pos.row + 1,
+            var_debug_type,
+            false,
+            0);
+    } else {
+        var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
+            c->llvm_debug_builder,
+            c->llvm_debug_scope,
+            name.data,
+            name.count,
+            c->llvm_debug_file,
+            it->node.token.pos.row + 1,
+            var_debug_type,
+            false,
+            0,
+            LLVMABIAlignmentOfType(c->llvm_target_data, it->node.type.llvm));
+    }
+
+    LLVMMetadataRef var_pos_metadata = LLVMDIBuilderCreateDebugLocation(
+        c->llvm_context, it->node.token.pos.row + 1, it->node.token.pos.col + 1, c->llvm_debug_scope, NULL);
+
+    LLVMValueRef next_inst = c->llvm_fn_last_alloca ? LLVMGetNextInstruction(c->llvm_fn_last_alloca) : NULL;
+    if (next_inst) {
+        LLVMDIBuilderInsertDeclareRecordBefore(
+            c->llvm_debug_builder,
+            it->llvm,
+            var_debug_metadata,
+            LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
+            var_pos_metadata,
+            next_inst);
+    } else {
+        LLVMDIBuilderInsertDeclareRecordAtEnd(
+            c->llvm_debug_builder,
+            it->llvm,
+            var_debug_metadata,
+            LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
+            var_pos_metadata,
+            LLVMGetInsertBlock(c->llvm_builder));
+    }
+}
+
 static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     const void *checkpoint = temp_alloc(0);
 
     compile_type(c, &it->node.type);
 
-    SV name = {0};
-    if (!it->is_local && !it->is_extern) {
-        name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(it->node.token.sv)));
-    } else {
-        // Guarantee a terminating '\0'
-        name = sv_from_cstr(temp_sv_to_cstr(it->node.token.sv));
+    SV name = it->node.token.sv;
+    if (!it->is_local) {
+        if (it->is_extern) {
+            // Guarantee a terminating '\0'
+            name = sv_from_cstr(temp_sv_to_cstr(name));
+        } else {
+            // TODO(@package)
+            name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(name)));
+        }
     }
 
     if (it->is_local && !it->is_extern) {
@@ -368,60 +529,10 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
     if (!it->is_extern) {
         LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
         if (it->is_local) {
-            LLVMMetadataRef var_debug_metadata = NULL;
-            if (it->arg_index) {
-                var_debug_metadata = LLVMDIBuilderCreateParameterVariable(
-                    c->llvm_debug_builder,
-                    c->llvm_debug_scope,
-                    name.data,
-                    name.count,
-                    it->arg_index,
-                    c->llvm_debug_file,
-                    it->node.token.pos.row + 1,
-                    var_debug_type,
-                    false,
-                    0);
-            } else {
-                var_debug_metadata = LLVMDIBuilderCreateAutoVariable(
-                    c->llvm_debug_builder,
-                    c->llvm_debug_scope,
-                    name.data,
-                    name.count,
-                    c->llvm_debug_file,
-                    it->node.token.pos.row + 1,
-                    var_debug_type,
-                    false,
-                    0,
-                    LLVMABIAlignmentOfType(c->llvm_target_data, it->node.type.llvm));
-
-                if (!it->is_assigned) {
-                    LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
-                }
+            if (!it->arg_index && !it->is_assigned) {
+                LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
             }
-
-            LLVMMetadataRef var_pos_metadata = LLVMDIBuilderCreateDebugLocation(
-                c->llvm_context, it->node.token.pos.row + 1, it->node.token.pos.col + 1, c->llvm_debug_scope, NULL);
-
-            {
-                LLVMValueRef next_inst = LLVMGetNextInstruction(c->llvm_fn_last_alloca);
-                if (next_inst) {
-                    LLVMDIBuilderInsertDeclareRecordBefore(
-                        c->llvm_debug_builder,
-                        it->llvm,
-                        var_debug_metadata,
-                        LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
-                        var_pos_metadata,
-                        next_inst);
-                } else {
-                    LLVMDIBuilderInsertDeclareRecordAtEnd(
-                        c->llvm_debug_builder,
-                        it->llvm,
-                        var_debug_metadata,
-                        LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
-                        var_pos_metadata,
-                        LLVMGetInsertBlock(c->llvm_builder));
-                }
-            }
+            compile_local_var_debug(c, it, var_debug_type);
         } else {
             if (it->is_assigned) {
                 LLVMSetInitializer(it->llvm, compile_const_value(c, it->const_value, it->node.type));
@@ -458,7 +569,10 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
 
     const void *checkpoint = temp_alloc(0);
 
-    compile_fn_type(c, &fn->node.type);
+    ABI abi = {0};
+    abi.args = temp_alloc(fn->args_count * sizeof(*abi.args));
+    abi.args_count = fn->args_count;
+    fn->node.type.llvm = compile_fn_type(c, &fn->node.type, &abi);
 
     if (fn->is_extern) {
         assert(fn->defined_as);
@@ -514,18 +628,61 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
         LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
         LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
 
+        size_t abi_iota = 0;
         size_t arg_iota = 0;
+        if (!abi.returnn.direct_types_count) {
+            arg_iota++;
+            LLVMAttributeRef sret =
+                LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_sret, fn_type_spec.returnn->llvm);
+            LLVMAddAttributeAtIndex(fn->llvm, arg_iota, sret);
+        }
+
         for (AST_Node *arg = fn->args.head; arg; arg = arg->next) {
             assert(arg->kind == AST_NODE_DEFINE);
             AST_Node_Define *define = (AST_Node_Define *) arg;
 
             assert(define->name->kind == AST_NODE_ATOM);
             AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-
             assert(!it->llvm);
-            compile_var_def(c, it);
-            LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+
+            const ABI_Info it_abi = abi.args[abi_iota++];
+
+            static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+            switch (it_abi.direct_types_count) {
+            case 0: {
+                it->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
+                compile_local_var_debug(c, it, get_debug_for_type(c, it->node.type));
+
+#ifdef PLATFORM_X86_64_LINUX
+                LLVMAttributeRef byval =
+                    LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, it->node.type.llvm);
+                LLVMAddAttributeAtIndex(fn->llvm, arg_iota, byval);
+#endif // PLATFORM_X86_64_LINUX
+            } break;
+
+            case 1:
+                compile_var_def(c, it);
+                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+                break;
+
+            case 2: {
+                compile_var_def(c, it);
+
+                // First half
+                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+
+                // Second half
+                LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
+                LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
+                LLVMValueRef second = LLVMBuildGEP2(c->llvm_builder, llvm_i8_type, it->llvm, indices, len(indices), "");
+                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), second);
+            } break;
+
+            default:
+                unreachable();
+            }
         }
+        assert(arg_iota == abi.actual_args_count);
 
         assert(fn->body->kind == AST_NODE_BLOCK);
         AST_Node_Block *block = (AST_Node_Block *) fn->body;
@@ -801,7 +958,9 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Compound *compound = (AST_Node_Compound *) n;
 
         LLVMValueRef memory = compile_alloca(c, n->type.llvm);
-        size_t       ordered_iota = 0;
+        LLVMBuildStore(c->llvm_builder, LLVMConstNull(n->type.llvm), memory);
+
+        size_t ordered_iota = 0;
         for (AST_Node *iter = compound->children.head; iter; iter = iter->next) {
             size_t it_iota = 0;
             if (!compound->is_designated) {
@@ -892,76 +1051,139 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
         }
 
-        LLVMValueRef fn = compile_expr(c, call->fn, false);
+        const void *checkpoint = temp_alloc(0);
 
-        LLVMTypeRef  *arg_types = temp_alloc(call->args_count * sizeof(*arg_types));
-        LLVMValueRef *arg_values = temp_alloc(call->args_count * sizeof(*arg_values));
+        ABI abi = {0};
+        abi.args = temp_alloc(call->args_count * sizeof(*abi.args));
+        abi.args_count = call->args_count;
 
-        size_t iota = 0;
+        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
+        LLVMTypeRef  fn_type = compile_fn_type(c, &call->fn->type, &abi);
+
+        LLVMValueRef *args = temp_alloc(abi.actual_args_count * sizeof(*args));
+
+        size_t arg_iota = 0;
+        if (!abi.returnn.direct_types_count) {
+            args[arg_iota++] = compile_alloca(c, n->type.llvm);
+        }
+
+        size_t abi_iota = 0;
         for (AST_Node *arg = call->args.head; arg; arg = arg->next) {
-            LLVMValueRef expr = NULL;
-            LLVMTypeRef  type = NULL;
-            if (!arg->type.ref && arg->type.kind == AST_TYPE_STRUCT) {
-                const size_t size = compile_sizeof(c, &arg->type);
-                if (size <= 8) {
-                    expr = compile_expr(c, arg, true);
-                    type = LLVMIntTypeInContext(c->llvm_context, size * 8);
-                    expr = LLVMBuildLoad2(c->llvm_builder, type, expr, "");
-                }
-            }
+            const ABI_Info arg_abi = abi.args[abi_iota++];
 
-            if (!expr) {
+            static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+            switch (arg_abi.direct_types_count) {
+            case 0: {
+                LLVMValueRef expr = NULL;
+
+#ifdef PLATFORM_X86_64_LINUX
+                expr = compile_expr(c, arg, true);
+#else
                 expr = compile_expr(c, arg, false);
-                type = LLVMTypeOf(expr);
+                LLVMValueRef temp = compile_alloca(c, arg->type.llvm);
+                LLVMBuildStore(c->llvm_builder, expr, temp);
+                expr = temp;
+#endif // PLATFORM_X86_64_LINUX
+
+                args[arg_iota++] = expr;
+            } break;
+
+            case 1: {
+                LLVMValueRef expr = NULL;
+                if (!arg->type.ref && arg->type.kind == AST_TYPE_STRUCT) {
+                    expr = compile_expr(c, arg, true);
+                    expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
+                } else {
+                    expr = compile_expr(c, arg, false);
+                }
+                args[arg_iota++] = expr;
+            } break;
+
+            case 2: {
+                // First half
+                LLVMValueRef first = compile_expr(c, arg, true);
+                args[arg_iota++] = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], first, "");
+
+                // Second half
+                LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
+                LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
+                LLVMValueRef second = LLVMBuildGEP2(c->llvm_builder, llvm_i8_type, first, indices, len(indices), "");
+                args[arg_iota++] = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[1], second, "");
+            } break;
+
+            default:
+                unreachable();
             }
-
-#ifdef PLATFORM_ARM64_MACOS
-            // TODO: ABI
-            // if (arg->type.kind == AST_TYPE_STRUCT) {
-            //     LLVM_Type_Info info = llvm_type_info(arg->type.llvm);
-            //     if (info.size > 16) {
-            //         LLVM_Node *temp =
-            //             (LLVM_Node *) llvm_var_new(&c->llvm, (SV) {0}, arg->type.llvm, true, false, false);
-            //         llvm_build_store(&c->llvm, temp, expr);
-            //         expr = temp;
-            //     }
-            // }
-#endif // PLATFORM_ARM64_MACOS
-
-            arg_types[iota] = type;
-            arg_values[iota] = expr;
-            iota++;
         }
-        assert(iota == call->args_count);
-
-        LLVMTypeRef return_type = n->type.llvm;
-        if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
-            const size_t size = compile_sizeof(c, &n->type);
-            if (size <= 8) {
-                return_type = LLVMIntTypeInContext(c->llvm_context, size * 8);
-            }
-        }
+        assert(arg_iota == abi.actual_args_count);
 
         set_debug_location(c, n->token.pos);
-        LLVMValueRef result = LLVMBuildCall2(
-            c->llvm_builder,
-            LLVMFunctionType(return_type, arg_types, call->args_count, false),
-            fn,
-            arg_values,
-            call->args_count,
-            "");
+        LLVMValueRef result = LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, abi.actual_args_count, "");
+        LLVMValueRef memory = NULL;
 
-        temp_reset(arg_types);
-
+        arg_iota = 0;
         if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
-            LLVMValueRef alloca = compile_alloca(c, n->type.llvm);
-            LLVMBuildStore(c->llvm_builder, result, alloca);
-            if (ref) {
-                return alloca;
+            static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+            switch (abi.returnn.direct_types_count) {
+            case 0: {
+                memory = args[arg_iota++];
+                LLVMAttributeRef sret = LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_sret, n->type.llvm);
+                LLVMAddCallSiteAttribute(result, arg_iota, sret);
+            } break;
+
+            case 1:
+                memory = compile_alloca(c, n->type.llvm);
+                LLVMBuildStore(c->llvm_builder, result, memory);
+                break;
+
+            case 2: {
+                memory = compile_alloca(c, n->type.llvm);
+
+                // First half
+                LLVMValueRef first = memory;
+                LLVMBuildStore(c->llvm_builder, LLVMBuildExtractValue(c->llvm_builder, result, 0, ""), first);
+
+                // Second half
+                LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
+                LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
+                LLVMValueRef second = LLVMBuildGEP2(c->llvm_builder, llvm_i8_type, memory, indices, len(indices), "");
+                LLVMBuildStore(c->llvm_builder, LLVMBuildExtractValue(c->llvm_builder, result, 1, ""), second);
+            } break;
+
+            default:
+                unreachable();
             }
-            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, alloca, "");
         }
 
+#ifdef PLATFORM_X86_64_LINUX
+        assert(call->fn->type.kind == AST_TYPE_FN);
+        const AST_Type_Fn fn_type_spec = call->fn->type.spec.fn;
+
+        for (size_t i = 0; i < abi.args_count; i++) {
+            const ABI_Info it_abi = abi.args[i];
+            if (it_abi.direct_types_count) {
+                arg_iota += it_abi.direct_types_count;
+            } else {
+                arg_iota++;
+
+                LLVMTypeRef it_type = fn_type_spec.args[i]->node.type.llvm;
+                assert(it_type);
+
+                LLVMAttributeRef byval = LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, it_type);
+                LLVMAddCallSiteAttribute(result, arg_iota, byval);
+            }
+        }
+        assert(arg_iota == abi.actual_args_count);
+#endif // PLATFORM_X86_64_LINUX
+
+        temp_reset(checkpoint);
+        if (memory) {
+            if (ref) {
+                return memory;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+        }
         return result;
     }
 
@@ -1422,24 +1644,46 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
         LLVMValueRef value = NULL;
         if (!n->type.ref && n->type.kind == AST_TYPE_STRUCT) {
-            const size_t size = compile_sizeof(c, &n->type);
-            if (size <= 8) {
-                LLVMTypeRef type = LLVMIntTypeInContext(c->llvm_context, size * 8);
+            ABI_Info abi = get_abi_info_for_type(c, &n->type);
+
+            static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+            switch (abi.direct_types_count) {
+            case 0:
+                value = compile_expr(c, returnn->value, false);
+                set_debug_location(c, n->token.pos);
+                LLVMBuildStore(c->llvm_builder, value, LLVMGetParam(c->llvm_fn, 0));
+                LLVMBuildRetVoid(c->llvm_builder);
+                break;
+
+            case 1:
+                value = compile_expr(c, returnn->value, true);
+                value = LLVMBuildLoad2(c->llvm_builder, abi.direct_types[0], value, "");
+                set_debug_location(c, n->token.pos);
+                LLVMBuildRet(c->llvm_builder, value);
+                break;
+
+            case 2: {
+                LLVMTypeRef type =
+                    LLVMStructTypeInContext(c->llvm_context, abi.direct_types, abi.direct_types_count, false);
                 value = compile_expr(c, returnn->value, true);
                 value = LLVMBuildLoad2(c->llvm_builder, type, value, "");
+                set_debug_location(c, n->token.pos);
+                LLVMBuildRet(c->llvm_builder, value);
+            } break;
+
+            default:
+                unreachable();
+            }
+        } else {
+            value = compile_expr(c, returnn->value, false);
+            set_debug_location(c, n->token.pos);
+            if (n->type.kind == AST_TYPE_UNIT) {
+                LLVMBuildRetVoid(c->llvm_builder);
+            } else {
+                LLVMBuildRet(c->llvm_builder, value);
             }
         }
 
-        if (!value) {
-            value = compile_expr(c, returnn->value, false);
-        }
-
-        set_debug_location(c, n->token.pos);
-        if (n->type.kind == AST_TYPE_UNIT) {
-            LLVMBuildRetVoid(c->llvm_builder);
-        } else {
-            LLVMBuildRet(c->llvm_builder, value);
-        }
         LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
     } break;
 
@@ -1735,6 +1979,9 @@ void compiler_build(Compiler *c, const char *output) {
     }
     c->llvm_builder = LLVMCreateBuilderInContext(c->llvm_context);
 
+    c->llvm_attribute_sret = LLVMGetEnumAttributeKindForName("sret", strlen("sret"));
+    c->llvm_attribute_byval = LLVMGetEnumAttributeKindForName("byval", strlen("byval"));
+
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
     c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
 
@@ -1908,3 +2155,5 @@ void compiler_build(Compiler *c, const char *output) {
     //     exit(1);
     // }
 }
+
+// TODO: Implement type_is_compound()
