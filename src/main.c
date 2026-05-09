@@ -28,35 +28,6 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
     return *(*argv)++;
 }
 
-static const char *get_temp_file_path(const char *fallback) {
-#ifdef PLATFORM_X86_64_WINDOWS
-    static char dir[MAX_PATH + 1];
-    static char path[MAX_PATH + 1];
-
-    DWORD length = GetTempPathA(sizeof(dir), dir);
-    if (length == 0 || length > sizeof(dir) - 1) {
-        return fallback;
-    }
-
-    if (!GetTempFileNameA(dir, "glos", 0, path)) {
-        return fallback;
-    }
-
-    DeleteFileA(path);
-    return path;
-#else
-    static char path[] = "/tmp/glos_XXXXXX";
-    const int   fd = mkstemp(path);
-    if (fd < 0) {
-        return fallback;
-    }
-
-    close(fd);
-    unlink(path);
-    return path;
-#endif // PLATFORM_X86_64_WINDOWS
-}
-
 int main(int argc, char **argv) {
     const char *program = shift(&argc, &argv, NULL, NULL);
 
@@ -136,9 +107,6 @@ int main(int argc, char **argv) {
 
     if (!output) {
         output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
-        if (run) {
-            output = get_temp_file_path(output);
-        }
     }
 
 #ifdef PLATFORM_X86_64_WINDOWS
