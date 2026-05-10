@@ -369,6 +369,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     case TOKEN_STRUCT: {
         node = ast_node_alloc(p, AST_NODE_STRUCT, token);
         AST_Node_Struct *structt = (AST_Node_Struct *) node;
+        structt->defined_in = p->fn_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {

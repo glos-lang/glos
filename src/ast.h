@@ -224,7 +224,8 @@ struct AST_Node_Fn {
     AST_Node_Fn   *outer_fn;
     AST_Node_Atom *defined_as;
 
-    LLVMValueRef llvm;
+    LLVMValueRef    llvm;
+    LLVMMetadataRef llvm_debug_scope;
 };
 
 struct AST_Node_Struct {
@@ -234,6 +235,7 @@ struct AST_Node_Struct {
     size_t    fields_count;
 
     AST_Node_Atom *defined_as;
+    AST_Node_Fn   *defined_in; // TODO: Consider whether this should be a field of the defining atom
 };
 
 typedef struct {

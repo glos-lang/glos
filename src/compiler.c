@@ -162,11 +162,11 @@ typedef struct {
     ABI_Info  returnn;
 } ABI;
 
-static LLVMTypeRef compile_fn_type(Compiler *c, AST_Type *type, ABI *abi) {
+static LLVMTypeRef compile_fn_type(Compiler *c, AST_Type type, ABI *abi) {
     const void *checkpoint = temp_alloc(0);
 
-    assert(!type->ref && type->kind == AST_TYPE_FN);
-    AST_Type_Fn spec = type->spec.fn;
+    assert(!type.ref && type.kind == AST_TYPE_FN);
+    AST_Type_Fn spec = type.spec.fn;
 
     compile_type(c, spec.returnn);
     abi->returnn = get_abi_info_for_type(c, spec.returnn);
@@ -251,6 +251,15 @@ static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
     return name;
 }
 
+static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node_Fn *defined_in) {
+    if (!defined_in) {
+        return c->llvm_debug_file;
+    }
+
+    assert(defined_in->llvm_debug_scope);
+    return defined_in->llvm_debug_scope;
+}
+
 static_assert(COUNT_AST_TYPES == 14, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     assert(!type.is_meta);
@@ -313,7 +322,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     }
 
     case AST_TYPE_STRUCT: {
-        // TODO: `c->llvm_debug_file` may not be the file this structure was defined in
         assert(type.spec.structt.definition);
 
         // TODO(@common)
@@ -335,12 +343,12 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 name = sv_from_cstr(temp_sprintf("anon.%zu", c->iota_anonymous_struct++));
             }
 
-            LLVMMetadataRef struct_debug_temp = LLVMDIBuilderCreateReplaceableCompositeType(
+            spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
                 c->llvm_debug_builder,
                 DW_TAG_structure_type,
                 name.data,
                 name.count,
-                c->llvm_debug_scope,
+                get_scope_of_definition(c, spec->definition->defined_in),
                 c->llvm_debug_file,
                 definition->node.token.pos.row + 1,
                 0,
@@ -360,7 +368,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
 
                 fields[i] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
-                    struct_debug_temp,
+                    spec->debug,
                     it->token.sv.data,
                     it->token.sv.count,
                     c->llvm_debug_file,
@@ -372,9 +380,9 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                     get_debug_for_type(c, it->type));
             }
 
-            spec->debug = LLVMDIBuilderCreateStructType(
+            LLVMMetadataRef real = LLVMDIBuilderCreateStructType(
                 c->llvm_debug_builder,
-                c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
+                get_scope_of_definition(c, spec->definition->defined_in),
                 name.data,
                 name.count,
                 c->llvm_debug_file,
@@ -390,7 +398,8 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 "",
                 0);
 
-            LLVMMetadataReplaceAllUsesWith(struct_debug_temp, spec->debug);
+            LLVMMetadataReplaceAllUsesWith(spec->debug, real);
+            spec->debug = real;
             temp_reset(checkpoint);
         }
 
@@ -403,7 +412,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     }
 }
 
-static void set_debug_location(Compiler *c, Pos pos) {
+static void set_debug_pos(Compiler *c, Pos pos) {
     LLVMSetCurrentDebugLocation2(
         c->llvm_builder,
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
@@ -555,7 +564,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
 
             LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
                 c->llvm_debug_builder,
-                c->llvm_debug_compile_unit,
+                c->llvm_debug_file,
                 name.data,
                 name.count,
                 name.data,
@@ -564,7 +573,7 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
                 it->node.token.pos.row + 1,
                 var_debug_type,
                 false, // TODO: Gather more information on what even is this...
-                NULL,
+                LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
                 NULL,
                 0);
 
@@ -585,7 +594,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     ABI abi = {0};
     abi.args = temp_alloc(fn->args_count * sizeof(*abi.args));
     abi.args_count = fn->args_count;
-    fn->node.type.llvm = compile_fn_type(c, &fn->node.type, &abi);
+    fn->node.type.llvm = compile_fn_type(c, fn->node.type, &abi);
 
     if (fn->is_extern) {
         assert(fn->defined_as);
@@ -621,9 +630,9 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             temp_reset(arg_debug_types);
         }
 
-        c->llvm_debug_scope = LLVMDIBuilderCreateFunction(
+        fn->llvm_debug_scope = LLVMDIBuilderCreateFunction(
             c->llvm_debug_builder,
-            c->llvm_debug_scope ? c->llvm_debug_scope : c->llvm_debug_file,
+            get_scope_of_definition(c, fn->outer_fn),
             fn_name.data,
             fn_name.count,
             fn_name.data,
@@ -636,7 +645,9 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             fn->node.token.pos.row + 1,
             0,
             false);
-        LLVMSetSubprogram(fn->llvm, c->llvm_debug_scope);
+
+        LLVMSetSubprogram(fn->llvm, fn->llvm_debug_scope);
+        c->llvm_debug_scope = fn->llvm_debug_scope;
 
         LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
         LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
@@ -703,7 +714,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             compile_stmt(c, it);
         }
 
-        set_debug_location(c, block->end);
+        set_debug_pos(c, block->end);
         if (fn_type_spec.returnn->kind == AST_TYPE_UNIT) {
             LLVMBuildRetVoid(c->llvm_builder);
         } else {
@@ -783,7 +794,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 return definition->llvm;
             }
 
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
         }
 
@@ -800,7 +811,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildNeg(c->llvm_builder, value, "");
 
         case TOKEN_MUL:
@@ -809,7 +820,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 return value;
             }
 
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, value, "");
 
         case TOKEN_BAND:
@@ -817,12 +828,12 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         case TOKEN_BNOT:
             value = compile_expr(c, unary->value, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildNot(c->llvm_builder, value, "");
 
         case TOKEN_LNOT:
             value = compile_expr(c, unary->value, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, value, LLVMConstNull(n->type.llvm), "");
 
         case TOKEN_SIZEOF:
@@ -869,7 +880,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                     rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
                 }
 
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 if (op.u && !ast_type_is_signed(binary->lhs->type)) {
                     result = op.u(c->llvm_builder, lhs, rhs, "");
                 } else {
@@ -904,7 +915,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
                 LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
 
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 if (op.u && !ast_type_is_signed(binary->lhs->type)) {
                     return LLVMBuildICmp(c->llvm_builder, op.u, lhs, rhs, "");
                 } else {
@@ -918,7 +929,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
             LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildStore(c->llvm_builder, rhs, lhs);
         }
 
@@ -935,7 +946,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
         if (member->lhs->type.ref) {
             lhs = compile_expr(c, member->lhs, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
 
             LLVMTypeRef llvm_type_ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
             for (size_t i = 1; i < member->lhs->type.ref; i++) {
@@ -951,7 +962,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         } else {
             lhs = compile_expr(c, member->lhs, true);
             lhs_type = member->lhs->type.llvm;
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
         }
 
         LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, member->field_index, "");
@@ -1019,7 +1030,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 if (from_type == to_type) {
                     return from;
                 }
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
 
                 LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
                 LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
@@ -1056,8 +1067,8 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
 
             case TYPE_CAST_TO_BOOL:
-                set_debug_location(c, n->token.pos);
-                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(n->type.llvm), "");
+                set_debug_pos(c, n->token.pos);
+                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(from_type), "");
 
             default:
                 unreachable();
@@ -1071,7 +1082,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         abi.args_count = call->args_count;
 
         LLVMValueRef fn_value = compile_expr(c, call->fn, false);
-        LLVMTypeRef  fn_type = compile_fn_type(c, &call->fn->type, &abi);
+        LLVMTypeRef  fn_type = compile_fn_type(c, call->fn->type, &abi);
 
         LLVMValueRef *args = temp_alloc(abi.actual_args_count * sizeof(*args));
 
@@ -1130,7 +1141,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
         assert(arg_iota == abi.actual_args_count);
 
-        set_debug_location(c, n->token.pos);
+        set_debug_pos(c, n->token.pos);
         LLVMValueRef result = LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, abi.actual_args_count, "");
         LLVMValueRef memory = NULL;
 
@@ -1226,7 +1237,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         if (!it->llvm) {
             compile_var_def(c, it);
             if (it_expr && it->is_local) {
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->llvm);
             }
         }
@@ -1258,7 +1269,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
 
         // Condition
         LLVMValueRef condition = compile_expr(c, iff->condition, false);
-        set_debug_location(c, n->token.pos);
+        set_debug_pos(c, n->token.pos);
         LLVMBuildCondBr(c->llvm_builder, condition, consequence, antecedence);
 
         // Consequence
@@ -1316,8 +1327,6 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
                 LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, start);
                 LLVMPositionBuilderAtEnd(c->llvm_builder, start);
-
-                set_debug_location(c, forr->condition->token.pos);
                 LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
             } else {
                 LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
@@ -1351,7 +1360,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     } break;
 
     case AST_NODE_JUMP:
-        set_debug_location(c, n->token.pos);
+        set_debug_pos(c, n->token.pos);
         if (n->token.kind == TOKEN_BREAK) {
             LLVMBuildBr(c->llvm_builder, c->llvm_loop_break);
             LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
@@ -1374,7 +1383,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             switch (abi.direct_types_count) {
             case 0:
                 value = compile_expr(c, returnn->value, false);
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 LLVMBuildStore(c->llvm_builder, value, LLVMGetParam(c->llvm_fn, 0));
                 LLVMBuildRetVoid(c->llvm_builder);
                 break;
@@ -1382,7 +1391,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             case 1:
                 value = compile_expr(c, returnn->value, true);
                 value = LLVMBuildLoad2(c->llvm_builder, abi.direct_types[0], value, "");
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 LLVMBuildRet(c->llvm_builder, value);
                 break;
 
@@ -1391,7 +1400,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
                     LLVMStructTypeInContext(c->llvm_context, abi.direct_types, abi.direct_types_count, false);
                 value = compile_expr(c, returnn->value, true);
                 value = LLVMBuildLoad2(c->llvm_builder, type, value, "");
-                set_debug_location(c, n->token.pos);
+                set_debug_pos(c, n->token.pos);
                 LLVMBuildRet(c->llvm_builder, value);
             } break;
 
@@ -1400,7 +1409,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             }
         } else {
             value = compile_expr(c, returnn->value, false);
-            set_debug_location(c, n->token.pos);
+            set_debug_pos(c, n->token.pos);
             if (n->type.kind == AST_TYPE_UNIT) {
                 LLVMBuildRetVoid(c->llvm_builder);
             } else {
@@ -1437,7 +1446,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             }
         }
 
-        set_debug_location(c, n->token.pos);
+        set_debug_pos(c, n->token.pos);
         LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
     } break;
 
@@ -1536,6 +1545,7 @@ void compiler_build(Compiler *c, const char *output) {
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
     c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
+    c->llvm_debug_scope = c->llvm_debug_file;
 
     c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
