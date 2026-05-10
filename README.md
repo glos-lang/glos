@@ -3,11 +3,9 @@
 > This repo is WIP.
 
 ## Quick Start
-Install `clang`
-
 ```console
-$ clang -o first first.c     # On Linux/macOS
-$ clang -o first.exe first.c # On Windows
+$ cc -o first first.c # On Linux/macOS
+$ cl first.c          # On Windows
 $ ./first
 ```
 
