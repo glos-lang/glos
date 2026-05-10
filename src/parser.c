@@ -16,11 +16,12 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 41, "");
+static_assert(COUNT_TOKENS == 44, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
     case TOKEN_LBRACE:
+    case TOKEN_LBRACKET:
         return POWER_DOT;
 
     case TOKEN_COLON:
@@ -122,7 +123,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_AST_NODES] = {
         [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
@@ -135,6 +136,9 @@ static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
         [AST_NODE_COMPOUND] = sizeof(AST_Node_Compound),
 
         [AST_NODE_CALL] = sizeof(AST_Node_Call),
+
+        [AST_NODE_SLICE] = sizeof(AST_Node_Slice),
+        [AST_NODE_INDEX] = sizeof(AST_Node_Index),
 
         [AST_NODE_DEFINE] = sizeof(AST_Node_Define),
         [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
@@ -260,7 +264,7 @@ static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 41, "");
+static_assert(COUNT_TOKENS == 44, "");
 static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -364,6 +368,14 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
 
             p->fn_current = fn_current_save;
         }
+    } break;
+
+    case TOKEN_LBRACKET: {
+        node = ast_node_alloc(p, AST_NODE_SLICE, token);
+        AST_Node_Slice *slice = (AST_Node_Slice *) node;
+
+        expect_token(p, TOKEN_RBRACKET);
+        slice->element = parse_expr(p, POWER_SET, false);
     } break;
 
     case TOKEN_STRUCT: {
@@ -539,6 +551,26 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
             node = (AST_Node *) compound;
         } break;
 
+        case TOKEN_LBRACKET: {
+            AST_Node_Index *index = (AST_Node_Index *) ast_node_alloc(p, AST_NODE_INDEX, token);
+            index->lhs = node;
+
+            if (peek_token(p).kind != TOKEN_RANGE) {
+                index->a = parse_expr(p, POWER_SET, true);
+            }
+
+            token = expect_token(p, TOKEN_RANGE, TOKEN_RBRACKET);
+            if (token.kind == TOKEN_RANGE) {
+                index->is_ranged = true;
+                if (peek_token(p).kind != TOKEN_RBRACKET) {
+                    index->b = parse_expr(p, POWER_SET, true);
+                }
+                expect_token(p, TOKEN_RBRACKET);
+            }
+
+            node = (AST_Node *) index;
+        } break;
+
         default: {
             AST_Node_Binary *binary = (AST_Node_Binary *) ast_node_alloc(p, AST_NODE_BINARY, token);
             binary->lhs = node;
@@ -571,7 +603,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static AST_Node *parse_stmt(Parser *p) {
     AST_Node *node = NULL;
 

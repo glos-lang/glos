@@ -29,7 +29,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 14, "");
+    static_assert(COUNT_AST_TYPES == 15, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -55,7 +55,7 @@ static void check_int_limit(AST_Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static void cast_untyped(Compiler *c, AST_Node *n, AST_Type expected) {
     switch (n->kind) {
     case AST_NODE_ATOM:
@@ -197,7 +197,7 @@ static AST_Type ast_type_assert_type(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 14, "");
+    static_assert(COUNT_AST_TYPES == 15, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
 
@@ -240,7 +240,7 @@ static void ast_node_assert_can_be_referenced(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static bool loop_breaks(AST_Node *n) {
     if (!n) {
         return false;
@@ -278,7 +278,7 @@ static bool is_atom_false(AST_Node *n) {
     return n->kind == AST_NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static bool always_returns(AST_Node *n) {
     if (!n) {
         return false;
@@ -339,7 +339,7 @@ static bool always_returns(AST_Node *n) {
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -349,7 +349,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -380,7 +380,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -423,7 +423,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -513,7 +513,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_MEMBER: {
         AST_Node_Member  *member = (AST_Node_Member *) n;
         const Const_Value value = eval_const_expr(c, member->lhs);
-        assert(value.kind == CONST_VALUE_STRUCT);
+        assert(value.kind == CONST_VALUE_STRUCT); // TODO(@slice)
         return value.as.structt.fields[member->field_index];
     }
 
@@ -526,9 +526,8 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     }
 
-    case AST_NODE_STRUCT: {
+    case AST_NODE_STRUCT:
         return const_value_type(n->type);
-    }
 
     case AST_NODE_COMPOUND: {
         AST_Node_Compound *compound = (AST_Node_Compound *) n;
@@ -593,13 +592,20 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
     } break;
 
+    case AST_NODE_SLICE:
+        return const_value_type(n->type);
+
+    case AST_NODE_INDEX: {
+        todo(); // TODO(@slice)
+    }
+
     default:
         unreachable();
         break;
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static void define_orderless_nodes(Compiler *c, AST_Node *n, const size_t block_start) {
     switch (n->kind) {
     case AST_NODE_DEFINE: {
@@ -760,7 +766,7 @@ static void check_ident(Compiler *c, AST_Node *n) {
     error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static void check_node(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -768,7 +774,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -791,7 +797,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_node(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value, false);
@@ -848,7 +854,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, binary->lhs);
         check_node(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -912,7 +918,38 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Member *member = (AST_Node_Member *) n;
         check_node(c, member->lhs);
 
-        if (!ast_type_kind_eq(member->lhs->type, AST_TYPE_STRUCT)) {
+        if (ast_type_kind_eq(member->lhs->type, AST_TYPE_STRUCT)) {
+            AST_Node_Atom  *definition = NULL;
+            AST_Type_Struct spec = member->lhs->type.spec.structt;
+            for (size_t i = 0; i < spec.fields_count; i++) {
+                AST_Node_Atom *it = spec.fields[i];
+                if (sv_eq(it->node.token.sv, member->field.sv)) {
+                    definition = it;
+                    member->field_index = i;
+                    break;
+                }
+            }
+
+            if (!definition) {
+                error_undefined(&member->field, "field");
+            }
+
+            n->is_memory = true;
+            n->type = definition->node.type;
+        } else if (ast_type_kind_eq(member->lhs->type, AST_TYPE_SLICE)) {
+            if (sv_match(member->field.sv, "data")) {
+                n->type = *member->lhs->type.spec.slice.element;
+                n->type.ref++;
+                member->field_index = 0;
+            } else if (sv_match(member->field.sv, "count")) {
+                n->type = (AST_Type) {.kind = AST_TYPE_I64};
+                member->field_index = 1;
+            } else {
+                error_undefined(&member->field, "field");
+            }
+
+            n->is_memory = true;
+        } else {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot access field of %s\n",
@@ -920,24 +957,6 @@ static void check_node(Compiler *c, AST_Node *n) {
                 ast_type_to_cstr(member->lhs->type));
             exit(1);
         }
-
-        AST_Node_Atom  *definition = NULL;
-        AST_Type_Struct spec = member->lhs->type.spec.structt;
-        for (size_t i = 0; i < spec.fields_count; i++) {
-            AST_Node_Atom *it = spec.fields[i];
-            if (sv_eq(it->node.token.sv, member->field.sv)) {
-                definition = it;
-                member->field_index = i;
-                break;
-            }
-        }
-
-        if (!definition) {
-            error_undefined(&member->field, "field");
-        }
-
-        n->is_memory = true;
-        n->type = definition->node.type;
     } break;
 
     case AST_NODE_FN: {
@@ -1215,6 +1234,109 @@ static void check_node(Compiler *c, AST_Node *n) {
             }
 
             n->type = *fn_type.spec.fn.returnn;
+        }
+    } break;
+
+    case AST_NODE_SLICE: {
+        AST_Node_Slice *slice = (AST_Node_Slice *) n;
+        check_node(c, slice->element);
+
+        AST_Type element_type = ast_type_assert_type(slice->element);
+        element_type.is_meta = false;
+
+        const AST_Type_Slice slice_type_spec = {
+            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
+        };
+
+        n->type = (AST_Type) {
+            .kind = AST_TYPE_SLICE,
+            .is_meta = true,
+            .spec.slice = slice_type_spec,
+        };
+    } break;
+
+    case AST_NODE_INDEX: {
+        AST_Node_Index *index = (AST_Node_Index *) n;
+        check_node(c, index->lhs);
+
+        if (index->is_ranged) {
+            if (index->lhs->type.is_meta) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot take slice into %s\n",
+                    Pos_Arg(index->lhs->token.pos),
+                    ast_type_to_cstr(index->lhs->type));
+
+                exit(1);
+            }
+
+            if (index->lhs->type.ref) {
+                // The beginning can be inferred to be 0
+                if (index->a) {
+                    check_node(c, index->a);
+                    ast_type_assert_numeric(index->a, false);
+                }
+
+                // The ending CANNOT be inferred
+                if (!index->b) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot infer end of range from %s\n",
+                        Pos_Arg(index->lhs->token.pos),
+                        ast_type_to_cstr(index->lhs->type));
+
+                    exit(1);
+                }
+
+                check_node(c, index->b);
+                ast_type_assert_numeric(index->b, false); // TODO(@slice): Should the two types be equal?
+
+                AST_Type element_type = index->lhs->type;
+                element_type.ref--;
+                n->type = (AST_Type) {
+                    .kind = AST_TYPE_SLICE,
+                    .spec.slice.element = arena_clone(c->arena, &element_type, sizeof(element_type)),
+                };
+            } else if (ast_type_kind_eq(index->lhs->type, AST_TYPE_SLICE)) {
+                // The beginning can be inferred to be the beginning of the slice
+                if (index->a) {
+                    check_node(c, index->a);
+                    ast_type_assert_numeric(index->a, false);
+                }
+
+                // The ending can be inferred to be the ending of the slice
+                if (index->b) {
+                    check_node(c, index->b);
+                    ast_type_assert_numeric(index->b, false); // TODO(@slice): Should the two types be equal?
+                }
+
+                n->type = index->lhs->type;
+            } else {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot take slice into %s\n",
+                    Pos_Arg(index->lhs->token.pos),
+                    ast_type_to_cstr(index->lhs->type));
+
+                exit(1);
+            }
+        } else {
+            if (ast_type_kind_eq(index->lhs->type, AST_TYPE_SLICE) && !index->lhs->type.ref) {
+                check_node(c, index->a);
+                ast_type_assert_numeric(index->a, false);
+                n->type = *index->lhs->type.spec.slice.element;
+                n->is_memory = true;
+            } else {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot index into %s\n",
+                    Pos_Arg(index->lhs->token.pos),
+                    ast_type_to_cstr(index->lhs->type));
+
+                // TODO(@slice): if `index->lhs` is a pointer, show a helper message on converting to a slice first
+                // TODO(@slice): if `index->lhs` is a pointer to a slice, show a helper message about dereferencing
+                exit(1);
+            }
         }
     } break;
 

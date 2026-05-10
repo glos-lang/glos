@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 98
+tests/error_expected_slice_index_type_integer.glos:3:8: ERROR: Expected numeric value, got 'bool'
+

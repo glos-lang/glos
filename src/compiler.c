@@ -5,18 +5,19 @@
 #include "token.h"
 
 #include <assert.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 
 #define STB_DS_IMPLEMENTATION
-#include "thirdparty/stb_ds.h"
+#include "thirdparty/stb_ds.h" // TODO: Compile this into an object file
 
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/TargetMachine.h>
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 static void compile_type(Compiler *c, AST_Type *type) {
     if (!type || type->llvm) {
         return;
@@ -86,6 +87,18 @@ static void compile_type(Compiler *c, AST_Type *type) {
         type->llvm = common->llvm;
     } break;
 
+    case AST_TYPE_SLICE:
+        if (!c->llvm_slice_type) {
+            LLVMTypeRef fields[] = {
+                LLVMPointerTypeInContext(c->llvm_context, 0),
+                LLVMInt64TypeInContext(c->llvm_context),
+            };
+            c->llvm_slice_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
+        }
+
+        type->llvm = c->llvm_slice_type;
+        break;
+
     default:
         unreachable();
         break;
@@ -99,8 +112,20 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
+static_assert(COUNT_AST_TYPES == 15, "");
 static bool type_is_compound(AST_Type type) {
-    return !type.ref && type.kind == AST_TYPE_STRUCT;
+    if (type.ref) {
+        return false;
+    }
+
+    switch (type.kind) {
+    case AST_TYPE_STRUCT:
+    case AST_TYPE_SLICE:
+        return true;
+
+    default:
+        return false;
+    }
 }
 
 static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
@@ -112,7 +137,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
         return info;
     }
 
-    static_assert(COUNT_AST_TYPES == 14, "");
+    static_assert(COUNT_AST_TYPES == 15, "");
     switch (type->kind) {
     case AST_TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -275,7 +300,7 @@ static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node *node, AST_
     return defined_in->llvm_debug_scope;
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     assert(!type.is_meta);
     if (type.ref) {
@@ -429,6 +454,73 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
         }
 
         return spec->debug;
+    }
+
+    case AST_TYPE_SLICE: {
+        const void *checkpoint = temp_alloc(0);
+
+        LLVMMetadataRef empty_file_path_metadata = get_debug_file(c, "");
+        LLVMMetadataRef data_type_metadata = LLVMDIBuilderCreatePointerType(
+            c->llvm_debug_builder,
+            get_debug_for_type(c, *type.spec.slice.element),
+            sizeof(void *),
+            sizeof(void *),
+            0,
+            "",
+            0);
+
+        LLVMMetadataRef data_member_metadata = LLVMDIBuilderCreateMemberType(
+            c->llvm_debug_builder,
+            c->llvm_debug_compile_unit,
+            "data",
+            strlen("data"),
+            empty_file_path_metadata,
+            0,
+            64,
+            64,
+            0,
+            0,
+            data_type_metadata);
+
+        LLVMMetadataRef count_type_metadata =
+            LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i64", strlen("i64"), 64, DW_ATE_signed, 0);
+
+        LLVMMetadataRef count_member_metadata = LLVMDIBuilderCreateMemberType(
+            c->llvm_debug_builder,
+            c->llvm_debug_compile_unit,
+            "count",
+            strlen("count"),
+            empty_file_path_metadata,
+            0,
+            64,
+            64,
+            64,
+            0,
+            count_type_metadata);
+
+        SV name = sv_from_cstr(ast_type_to_cstr_raw(type));
+
+        LLVMMetadataRef fields[] = {data_member_metadata, count_member_metadata};
+        LLVMMetadataRef metadata = LLVMDIBuilderCreateStructType(
+            c->llvm_debug_builder,
+            c->llvm_debug_compile_unit,
+            name.data,
+            name.count,
+            empty_file_path_metadata,
+            0,
+            128,
+            64,
+            0,
+            NULL,
+            fields,
+            len(fields),
+            0,
+            NULL,
+            "",
+            0);
+
+        temp_reset(checkpoint);
+        return metadata;
     }
 
     default:
@@ -763,7 +855,81 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
     return fn->llvm;
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+#ifdef PLATFORM_X86_64_WINDOWS
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#endif // PLATFORM_X86_64_WINDOWS
+
+// NOTE: Only stdout and stderr are supported
+static LLVMValueRef compile_get_stdio_file(Compiler *c, int fileno) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    LLVMValueRef iob_args[] = {
+        LLVMConstInt(LLVMInt32TypeInContext(c->llvm_context), fileno, 0),
+    };
+    return LLVMBuildCall2(c->llvm_builder, c->llvm_iob_type, c->llvm_iob_func, iob_args, len(iob_args), "");
+#else
+    LLVMValueRef var = NULL;
+    switch (fileno) {
+    case STDOUT_FILENO:
+        var = c->llvm_stdout_value;
+        break;
+
+    case STDERR_FILENO:
+        var = c->llvm_stderr_value;
+        break;
+
+    default:
+        todo();
+    }
+    return LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), var, "");
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
+static void compile_panic(Compiler *c, const char *fmt, ...) {
+    LLVMValueRef llvm_stdout = compile_get_stdio_file(c, STDOUT_FILENO);
+    LLVMValueRef llvm_stderr = compile_get_stdio_file(c, STDERR_FILENO);
+
+    size_t  count = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    while (true) {
+        LLVMValueRef it = va_arg(ap, LLVMValueRef);
+        if (!it) {
+            break;
+        }
+        count++;
+    }
+    va_end(ap);
+
+    LLVMValueRef *args = temp_alloc(2 + count);
+    size_t        iota = 0;
+
+    args[iota++] = llvm_stderr;
+    args[iota++] = LLVMBuildGlobalString(c->llvm_builder, fmt, "");
+
+    va_start(ap, fmt);
+    while (true < count) {
+        LLVMValueRef it = va_arg(ap, LLVMValueRef);
+        if (!it) {
+            break;
+        }
+        args[iota++] = it;
+    }
+    va_end(ap);
+    assert(iota == 2 + count);
+
+    LLVMBuildCall2(c->llvm_builder, c->llvm_fprintf_type, c->llvm_fprintf_func, args, iota, "");
+
+    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stdout, 1, "");
+    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stderr, 1, "");
+
+    LLVMBuildCall2(c->llvm_builder, c->llvm_abort_type, c->llvm_abort_func, NULL, 0, "");
+    LLVMBuildUnreachable(c->llvm_builder);
+    temp_reset(args);
+}
+#define compile_panic(c, fmt, ...) compile_panic(c, fmt, __VA_ARGS__, NULL)
+
+static_assert(COUNT_AST_NODES == 18, "");
 static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -774,7 +940,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
         case TOKEN_INT:
@@ -836,7 +1002,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVMValueRef    value = NULL;
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -882,7 +1048,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 41, "");
+            static_assert(COUNT_TOKENS == 44, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -929,7 +1095,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 41, "");
+            static_assert(COUNT_TOKENS == 44, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -953,7 +1119,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 41, "");
+        static_assert(COUNT_TOKENS == 44, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1240,13 +1406,198 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         return result;
     }
 
+    case AST_NODE_SLICE:
+        unreachable();
+
+    case AST_NODE_INDEX: {
+        AST_Node_Index *index = (AST_Node_Index *) n;
+
+        LLVMValueRef lhs = compile_expr(c, index->lhs, !index->lhs->type.ref);
+        LLVMValueRef a = compile_expr(c, index->a, false);
+
+        AST_Type *element_type = NULL;
+        if (index->is_ranged) {
+            element_type = n->type.spec.slice.element;
+            compile_type(c, element_type);
+
+            if (a) {
+                if (compile_sizeof(c, &index->a->type) != 64) {
+                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
+                    if (ast_type_is_signed(index->a->type)) {
+                        a = LLVMBuildSExt(c->llvm_builder, a, llvm_type_i64, "");
+                    } else {
+                        a = LLVMBuildZExt(c->llvm_builder, a, llvm_type_i64, "");
+                    }
+                }
+            } else {
+                a = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
+            }
+
+            LLVMValueRef b = compile_expr(c, index->b, false);
+            if (b) {
+                if (compile_sizeof(c, &index->b->type) != 64) {
+                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
+                    if (ast_type_is_signed(index->b->type)) {
+                        b = LLVMBuildSExt(c->llvm_builder, b, llvm_type_i64, "");
+                    } else {
+                        b = LLVMBuildZExt(c->llvm_builder, b, llvm_type_i64, "");
+                    }
+                }
+            }
+
+            set_debug_pos(c, n->token.pos);
+
+            LLVMValueRef ptr = NULL;
+            LLVMValueRef count = NULL;
+            if (index->lhs->type.ref) {
+                ptr = lhs;
+            } else if (index->lhs->type.kind == AST_TYPE_SLICE) {
+                ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+                count = LLVMBuildLoad2(
+                    c->llvm_builder,
+                    LLVMInt64TypeInContext(c->llvm_context),
+                    LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, lhs, 1, ""),
+                    "");
+
+                if (!b) {
+                    b = count;
+                }
+            } else {
+                unreachable();
+            }
+
+            // Check if bounds are ascending
+            {
+                LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+                LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntSLE, a, b, "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                {
+                    const char *message = temp_sprintf(
+                        Pos_Fmt "Range (%%ld..%%ld) is invalid: Beginning of range is more than end\n",
+                        Pos_Arg(n->token.pos));
+
+                    compile_panic(c, message, a, b);
+                    temp_reset(message);
+                }
+
+                // Success
+                LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+            }
+
+            if (count) {
+                // Bounds check
+                {
+                    LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                    LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+                    LLVMValueRef check_begin_of_a =
+                        LLVMBuildICmp(c->llvm_builder, LLVMIntSGE, a, LLVMConstNull(LLVMTypeOf(a)), "");
+                    LLVMValueRef check_end_of_a = LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, a, count, "");
+                    LLVMValueRef check_a = LLVMBuildAnd(c->llvm_builder, check_begin_of_a, check_end_of_a, "");
+
+                    LLVMValueRef check_begin_of_b =
+                        LLVMBuildICmp(c->llvm_builder, LLVMIntSGE, b, LLVMConstNull(LLVMTypeOf(b)), "");
+                    LLVMValueRef check_end_of_b = LLVMBuildICmp(c->llvm_builder, LLVMIntSLE, b, count, "");
+                    LLVMValueRef check_b = LLVMBuildAnd(c->llvm_builder, check_begin_of_b, check_end_of_b, "");
+
+                    LLVMValueRef check = LLVMBuildAnd(c->llvm_builder, check_a, check_b, "");
+                    LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                    // Failure
+                    LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                    {
+                        const char *message = temp_sprintf(
+                            Pos_Fmt "Range (%%ld..%%ld) is out of bounds in slice of length %%ld\n",
+                            Pos_Arg(n->token.pos));
+
+                        compile_panic(c, message, a, b, count);
+                        temp_reset(message);
+                    }
+
+                    // Success
+                    LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+                }
+            }
+
+            LLVMValueRef slice_data = LLVMBuildGEP2(c->llvm_builder, element_type->llvm, ptr, &a, 1, "");
+            LLVMValueRef slice_count = LLVMBuildSub(c->llvm_builder, b, a, "");
+            LLVMValueRef slice_struct = compile_alloca(c, n->type.llvm);
+            LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
+            LLVMBuildStore(
+                c->llvm_builder,
+                slice_count,
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
+
+            if (ref) {
+                return slice_struct;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice_struct, "");
+        }
+
+        assert(index->lhs->type.kind == AST_TYPE_SLICE); // TODO(@slice)
+        element_type = index->lhs->type.spec.slice.element;
+        compile_type(c, element_type);
+
+        set_debug_pos(c, n->token.pos);
+
+        // Bounds check
+        {
+            LLVMValueRef count = NULL;
+            if (index->lhs->type.kind == AST_TYPE_SLICE) {
+                count = LLVMBuildStructGEP2(c->llvm_builder, index->lhs->type.llvm, lhs, 1, "");
+                count = LLVMBuildLoad2(c->llvm_builder, LLVMInt64TypeInContext(c->llvm_context), count, "");
+            } else {
+                unreachable();
+            }
+
+            LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+            LLVMValueRef check_begin_of_a =
+                LLVMBuildICmp(c->llvm_builder, LLVMIntSGE, a, LLVMConstNull(LLVMTypeOf(a)), "");
+            LLVMValueRef check_end_of_a = LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, a, count, "");
+            LLVMValueRef check = LLVMBuildAnd(c->llvm_builder, check_begin_of_a, check_end_of_a, "");
+
+            LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+            // Failure
+            LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+            {
+                const char *message = temp_sprintf(
+                    Pos_Fmt "Index %%ld is out of bounds in slice of length %%ld\n", Pos_Arg(n->token.pos));
+
+                compile_panic(c, message, a, count);
+                temp_reset(message);
+            }
+
+            // Success
+            LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+        }
+
+        assert(index->lhs->type.kind == AST_TYPE_SLICE); // TODO(@slice)
+        LLVMValueRef ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+        ptr = LLVMBuildGEP2(c->llvm_builder, element_type->llvm, ptr, &a, 1, "");
+
+        if (ref) {
+            return ptr;
+        }
+
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
+    }
+
     default:
         unreachable();
         break;
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static void compile_stmt(Compiler *c, AST_Node *n) {
     if (!n) {
         return;
@@ -1470,7 +1821,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
         };
 
         const size_t value_size = compile_sizeof(c, &print->value->type);
-        if (value_size != sizeof(int64_t)) {
+        if (value_size != 8) {
             LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
             if (is_signed) {
                 args[1] = LLVMBuildSExt(c->llvm_builder, args[1], llvm_type_i64, "");
@@ -1622,6 +1973,50 @@ void compiler_build(Compiler *c, const char *output_path) {
         c->llvm_printf_func = LLVMAddFunction(c->llvm_module, "printf", c->llvm_printf_type);
     }
 
+    // Panics
+    {
+        LLVMTypeRef llvm_ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+
+        LLVMTypeRef fprintf_args[] = {
+            llvm_ptr_type,
+            llvm_ptr_type,
+        };
+
+        c->llvm_fprintf_type =
+            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fprintf_args, len(fprintf_args), true);
+        c->llvm_fprintf_func = LLVMAddFunction(c->llvm_module, "fprintf", c->llvm_fprintf_type);
+
+        LLVMTypeRef fflush_args[] = {
+            llvm_ptr_type,
+        };
+
+        c->llvm_fflush_type =
+            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fflush_args, len(fflush_args), false);
+        c->llvm_fflush_func = LLVMAddFunction(c->llvm_module, "fflush", c->llvm_fflush_type);
+
+        c->llvm_abort_type = LLVMFunctionType(LLVMVoidTypeInContext(c->llvm_context), NULL, 0, false);
+        c->llvm_abort_func = LLVMAddFunction(c->llvm_module, "abort", c->llvm_abort_type);
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        LLVMTypeRef iob_args[] = {
+            LLVMInt32TypeInContext(c->llvm_context),
+        };
+
+        c->llvm_iob_type = LLVMFunctionType(llvm_ptr_type, iob_args, len(iob_args), false);
+        c->llvm_iob_func = LLVMAddFunction(c->llvm_module, "__acrt_iob_func", c->llvm_iob_type);
+#endif // PLATFORM_X86_64_WINDOWS
+
+#ifdef PLATFORM_X86_64_LINUX
+        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stdout");
+        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stderr");
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stdoutp");
+        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stderrp");
+#endif // PLATFORM_ARM64_MACOS
+    }
+
     for (size_t i = 0; i < c->globals.count; i++) {
         AST_Node_Atom *it = c->globals.data[i];
         if (it->llvm) {
@@ -1700,3 +2095,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     shfree(c->llvm_debug_files);
     temp_reset(checkpoint);
 }
+
+// TODO: Consider replace LLVMAppendBasicBlockInContext with LLVMCreateBasicBlockInContext
+// TODO: Refactor compile_cast()

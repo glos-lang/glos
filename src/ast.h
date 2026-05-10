@@ -41,6 +41,8 @@ typedef enum {
     AST_TYPE_FN,
     AST_TYPE_STRUCT,
 
+    AST_TYPE_SLICE,
+
     COUNT_AST_TYPES,
 } AST_Type_Kind;
 
@@ -63,6 +65,10 @@ typedef struct {
     LLVMMetadataRef debug;
 } AST_Type_Struct;
 
+typedef struct {
+    AST_Type *element;
+} AST_Type_Slice;
+
 struct AST_Type {
     AST_Type_Kind kind;
     size_t        ref;
@@ -73,12 +79,14 @@ struct AST_Type {
 
     union {
         AST_Type_Fn     fn;
+        AST_Type_Slice  slice;
         AST_Type_Struct structt;
     } spec;
 
     LLVMTypeRef llvm;
 };
 
+const char *ast_type_to_cstr_raw(AST_Type type);
 const char *ast_type_to_cstr(AST_Type type);
 
 bool ast_type_eq(AST_Type a, AST_Type b);
@@ -136,6 +144,9 @@ typedef enum {
     AST_NODE_COMPOUND,
 
     AST_NODE_CALL,
+
+    AST_NODE_SLICE,
+    AST_NODE_INDEX,
 
     AST_NODE_DEFINE,
     AST_NODE_BLOCK,
@@ -230,6 +241,8 @@ struct AST_Node_Fn {
     LLVMMetadataRef llvm_debug_scope;
 };
 
+// This represents a type
+// TODO: Rename it in a manner such that this comment becomes unnecessary
 struct AST_Node_Struct {
     AST_Node node;
 
@@ -287,6 +300,25 @@ typedef struct {
     Type_Cast type_cast;
 } AST_Node_Call;
 
+// This *will* represent the following types:
+// - Slices
+// - Arrays
+// - Dynamic Arrays
+//
+// TODO: Come up with a better name for this
+typedef struct {
+    AST_Node  node;
+    AST_Node *element;
+} AST_Node_Slice;
+
+typedef struct {
+    AST_Node  node;
+    AST_Node *lhs; // TODO: Think of a better name
+    AST_Node *a;
+    AST_Node *b;
+    bool      is_ranged;
+} AST_Node_Index;
+
 struct AST_Node_Define {
     AST_Node  node;
     AST_Node *name;
@@ -341,3 +373,5 @@ void ast_node_debug(FILE *f, AST_Node *n);
 void ast_nodes_debug(FILE *f, AST_Nodes ns);
 
 #endif // AST_H
+
+// TODO: No need to have the ast_ prefix anymore, as the custom llvm code is replaced

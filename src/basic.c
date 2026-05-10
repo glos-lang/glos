@@ -748,6 +748,13 @@ int cmd_wait(Proc proc) {
     }
 
     CloseHandle(proc.id);
+
+    switch (exit_code) {
+    case 0x40000015:
+    case 0xC0000409:
+        exit_code = 134;
+        break;
+    }
     return exit_code;
 #else
     if (proc.id == PROC_INVALID) {
