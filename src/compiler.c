@@ -3,12 +3,13 @@
 #include "basic.h"
 #include "dwarf.h"
 #include "token.h"
-#include "llvm-c/Core.h"
-#include "llvm-c/DebugInfo.h"
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+#define STB_DS_IMPLEMENTATION
+#include "thirdparty/stb_ds.h"
 
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
@@ -254,9 +255,20 @@ static const char *temp_emit_nested_fn_name(Compiler *c, AST_Node_Fn *fn) {
     return name;
 }
 
-static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node_Fn *defined_in) {
+static LLVMMetadataRef get_debug_file(Compiler *c, const char *path) {
+    ptrdiff_t index = shgeti(c->llvm_debug_files, path);
+    if (index != -1) {
+        return c->llvm_debug_files[index].value;
+    }
+
+    LLVMMetadataRef metadata = LLVMDIBuilderCreateFile(c->llvm_debug_builder, path, strlen(path), ".", strlen("."));
+    shput(c->llvm_debug_files, path, metadata);
+    return metadata;
+}
+
+static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node *node, AST_Node_Fn *defined_in) {
     if (!defined_in) {
-        return c->llvm_debug_file;
+        return get_debug_file(c, node->token.pos.path);
     }
 
     assert(defined_in->llvm_debug_scope);
@@ -361,8 +373,8 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 DW_TAG_structure_type,
                 name.data,
                 name.count,
-                get_scope_of_definition(c, spec->definition->defined_in),
-                c->llvm_debug_file,
+                get_scope_of_definition(c, (AST_Node *) spec->definition, spec->definition->defined_in),
+                get_debug_file(c, spec->definition->node.token.pos.path),
                 spec->definition->node.token.pos.row + 1,
                 0,
                 0,
@@ -384,7 +396,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                     spec->debug,
                     it->token.sv.data,
                     it->token.sv.count,
-                    c->llvm_debug_file,
+                    get_debug_file(c, it->token.pos.path),
                     it->token.pos.row + 1,
                     size_bits,
                     align_bits,
@@ -395,10 +407,10 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
 
             LLVMMetadataRef real = LLVMDIBuilderCreateStructType(
                 c->llvm_debug_builder,
-                get_scope_of_definition(c, spec->definition->defined_in),
+                get_scope_of_definition(c, (AST_Node *) spec->definition, spec->definition->defined_in),
                 name.data,
                 name.count,
-                c->llvm_debug_file,
+                get_debug_file(c, spec->definition->node.token.pos.path),
                 spec->definition->node.token.pos.row + 1,
                 LLVMABISizeOfType(c->llvm_target_data, common->llvm) * 8,
                 LLVMABIAlignmentOfType(c->llvm_target_data, common->llvm) * 8,
@@ -497,7 +509,7 @@ static void compile_local_var_debug(Compiler *c, AST_Node_Atom *it, LLVMMetadata
             name.data,
             name.count,
             it->arg_index,
-            c->llvm_debug_file,
+            get_debug_file(c, it->node.token.pos.path),
             it->node.token.pos.row + 1,
             var_debug_type,
             false,
@@ -508,7 +520,7 @@ static void compile_local_var_debug(Compiler *c, AST_Node_Atom *it, LLVMMetadata
             c->llvm_debug_scope,
             name.data,
             name.count,
-            c->llvm_debug_file,
+            get_debug_file(c, it->node.token.pos.path),
             it->node.token.pos.row + 1,
             var_debug_type,
             false,
@@ -577,12 +589,12 @@ static void compile_var_def(Compiler *c, AST_Node_Atom *it) {
 
             LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
                 c->llvm_debug_builder,
-                c->llvm_debug_file,
+                get_debug_file(c, it->node.token.pos.path),
                 name.data,
                 name.count,
                 name.data,
                 name.count,
-                c->llvm_debug_file,
+                get_debug_file(c, it->node.token.pos.path),
                 it->node.token.pos.row + 1,
                 var_debug_type,
                 false, // TODO: Gather more information on what even is this...
@@ -638,19 +650,23 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
             }
 
             fn_debug_type = LLVMDIBuilderCreateSubroutineType(
-                c->llvm_debug_builder, c->llvm_debug_file, arg_debug_types, fn_type_spec.args_count + 1, 0);
+                c->llvm_debug_builder,
+                get_debug_file(c, fn->node.token.pos.path),
+                arg_debug_types,
+                fn_type_spec.args_count + 1,
+                0);
 
             temp_reset(arg_debug_types);
         }
 
         fn->llvm_debug_scope = LLVMDIBuilderCreateFunction(
             c->llvm_debug_builder,
-            get_scope_of_definition(c, fn->outer_fn),
+            get_scope_of_definition(c, (AST_Node *) fn, fn->outer_fn),
             fn_name.data,
             fn_name.count,
             fn_name.data,
             fn_name.count,
-            c->llvm_debug_file,
+            get_debug_file(c, fn->node.token.pos.path),
             fn->node.token.pos.row + 1,
             fn_debug_type,
             true,
@@ -1259,7 +1275,11 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
     case AST_NODE_BLOCK: {
         LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
         c->llvm_debug_scope = LLVMDIBuilderCreateLexicalBlock(
-            c->llvm_debug_builder, c->llvm_debug_scope, c->llvm_debug_file, n->token.pos.row + 1, n->token.pos.col + 1);
+            c->llvm_debug_builder,
+            c->llvm_debug_scope,
+            get_debug_file(c, n->token.pos.path),
+            n->token.pos.row + 1,
+            n->token.pos.col + 1);
 
         AST_Node_Block *block = (AST_Node_Block *) n;
         for (AST_Node *it = block->body.head; it; it = it->next) {
@@ -1313,7 +1333,7 @@ static void compile_stmt(Compiler *c, AST_Node *n) {
             c->llvm_debug_scope = LLVMDIBuilderCreateLexicalBlock(
                 c->llvm_debug_builder,
                 c->llvm_debug_scope,
-                c->llvm_debug_file,
+                get_debug_file(c, n->token.pos.path),
                 n->token.pos.row + 1,
                 n->token.pos.col + 1);
 
@@ -1541,7 +1561,11 @@ size_t compile_sizeof(Compiler *c, AST_Type *type) {
 }
 
 void compiler_build(Compiler *c, const char *output_path) {
+    const void *checkpoint = temp_alloc(0);
+
     assert(c->cmd);
+    AST_Node_Fn *main_fn = get_main(c);
+
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
     }
@@ -1551,13 +1575,11 @@ void compiler_build(Compiler *c, const char *output_path) {
     c->llvm_attribute_byval = LLVMGetEnumAttributeKindForName("byval", strlen("byval"));
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
-    c->llvm_debug_file = LLVMDIBuilderCreateFile(c->llvm_debug_builder, c->path, strlen(c->path), ".", 1);
-    c->llvm_debug_scope = c->llvm_debug_file;
 
     c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
         LLVMDWARFSourceLanguageC,
-        c->llvm_debug_file,
+        get_debug_file(c, main_fn->node.token.pos.path),
         "glos",
         4,
         false,
@@ -1621,8 +1643,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     LLVMValueRef main_func = LLVMAddFunction(c->llvm_module, "main", main_type);
     LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, main_func, ""));
 
-    AST_Node_Fn *fn = get_main(c);
-    LLVMBuildCall2(c->llvm_builder, fn->node.type.llvm, fn->llvm, NULL, 0, "");
+    LLVMBuildCall2(c->llvm_builder, main_fn->node.type.llvm, main_fn->llvm, NULL, 0, "");
     LLVMBuildRet(c->llvm_builder, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)));
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
@@ -1675,5 +1696,7 @@ void compiler_build(Compiler *c, const char *output_path) {
             exit(1);
         }
     }
-    temp_reset(object_path);
+
+    shfree(c->llvm_debug_files);
+    temp_reset(checkpoint);
 }

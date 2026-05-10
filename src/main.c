@@ -161,7 +161,6 @@ int main(int argc, char **argv) {
         .link_flags = &link_flags,
 
         .arena = &arena,
-        .path = input,
     };
     check_nodes(&compiler, parser.nodes);
     compiler_build(&compiler, output_path);

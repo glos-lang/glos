@@ -2,6 +2,7 @@
 #define COMPILER_H
 
 #include "context.h"
+
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
@@ -31,8 +32,12 @@ typedef struct {
 
     LLVMDIBuilderRef llvm_debug_builder;
     LLVMMetadataRef  llvm_debug_compile_unit;
-    LLVMMetadataRef  llvm_debug_file; // TODO: This should not be present, once multiple files are introduced
     LLVMMetadataRef  llvm_debug_scope;
+
+    struct {
+        const char     *key;
+        LLVMMetadataRef value;
+    } *llvm_debug_files;
 
     // TODO: Temporary solution to permanent problems
     LLVMValueRef llvm_iprint_str;
@@ -46,9 +51,6 @@ typedef struct {
     size_t iota_anonymous_fn;
     size_t iota_anonymous_const;
     size_t iota_anonymous_struct;
-
-    // TODO: Temporary solutions to permanent problems
-    const char *path;
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, AST_Type *type);
