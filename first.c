@@ -41,11 +41,6 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
     return *(*argv)++;
 }
 
-static const char *replace_suffix(const char *path, const char *old, const char *new) {
-    const SV base = sv_strip_suffix(sv_from_cstr(path), sv_from_cstr(old));
-    return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
-}
-
 static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
     const char *name = cmd->data[0];
 
@@ -208,7 +203,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     bool need_linking = get_modified_time("glos" EXE_FILE_EXTENSION) == 0;
     for (size_t i = 0; i < len(sources); i++) {
         const char  *src = sources[i];
-        const char  *obj = replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
+        const char  *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
         const size_t src_time = get_modified_time(src);
         const size_t obj_time = get_modified_time(obj);
         if (obj_time >= src_time && obj_time >= headers_time_latest) {
@@ -288,7 +283,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #endif // PLATFORM_X86_64_WINDOWS
 
         for (size_t i = 0; i < len(sources); i++) {
-            cmd_push(cmd, replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
+            cmd_push(cmd, temp_replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
         }
 
         SV sv = {.data = sb.data, .count = sb.count};
@@ -612,7 +607,7 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
         return;
     }
 
-    const char *object_path = replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
+    const char *object_path = temp_replace_suffix(source_path, ".c", OBJ_FILE_EXTENSION);
 
     Cmd_Stdio proc_stdio = {0};
 
@@ -811,7 +806,7 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
             da_push(cmd, arg);
         }
 
-        const char *record_path = replace_suffix(test.name, ".glos", ".bin");
+        const char *record_path = temp_replace_suffix(test.name, ".glos", ".bin");
 
         SV         contents = {0};
         const bool record_exists = read_file_into_arena(record_path, &contents, &arena);

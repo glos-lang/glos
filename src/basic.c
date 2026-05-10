@@ -39,8 +39,10 @@ SV sv_from_cstr(const char *cstr) {
 }
 
 SV sv_strip_suffix(SV a, SV b) {
-    while (sv_has_suffix(a, b)) {
-        a.count -= b.count;
+    if (b.count) {
+        while (sv_has_suffix(a, b)) {
+            a.count -= b.count;
+        }
     }
     return a;
 }
@@ -478,6 +480,24 @@ bool is_lld_available_in_path(void) {
     // The C compiler in macOS is a custom version of clang which does not fare well with lld.
     return false;
 #endif // PLATFORM_ARM64_MACOS
+}
+
+const char *temp_replace_suffix(const char *path, const char *old, const char *new) {
+    const SV base = sv_strip_suffix(sv_from_cstr(path), sv_from_cstr(old));
+    return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
+}
+
+Dynamic_Array(const char *) temp_paths;
+
+void temp_paths_push(const char *path) {
+    da_push(&temp_paths, path);
+}
+
+void temp_paths_cleanup(void) {
+    for (size_t i = 0; i < temp_paths.count; i++) {
+        delete_file(temp_paths.data[i]);
+    }
+    da_free(&temp_paths);
 }
 
 // Processes

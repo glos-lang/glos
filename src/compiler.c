@@ -1527,13 +1527,7 @@ size_t compile_sizeof(Compiler *c, AST_Type *type) {
     return LLVMABISizeOfType(c->llvm_target_data, type->llvm);
 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-#define OBJ_FILE_EXTENSION ".obj"
-#else
-#define OBJ_FILE_EXTENSION ".o"
-#endif // PLATFORM_X86_64_WINDOWS
-
-void compiler_build(Compiler *c, const char *output) {
+void compiler_build(Compiler *c, const char *output_path) {
     assert(c->cmd);
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
@@ -1618,7 +1612,8 @@ void compiler_build(Compiler *c, const char *output) {
     LLVMBuildCall2(c->llvm_builder, fn->node.type.llvm, fn->llvm, NULL, 0, "");
     LLVMBuildRet(c->llvm_builder, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)));
 
-    const char *object = temp_sprintf("%s" OBJ_FILE_EXTENSION, output);
+    const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
+    temp_paths_push(object_path);
     {
         // TODO: Remove
         // LLVMPrintModuleToFile(c->llvm_module, "/dev/stdout", NULL);
@@ -1629,7 +1624,7 @@ void compiler_build(Compiler *c, const char *output) {
             exit(1);
         }
 
-        if (LLVMTargetMachineEmitToFile(c->llvm_target_machine, c->llvm_module, object, LLVMObjectFile, &error)) {
+        if (LLVMTargetMachineEmitToFile(c->llvm_target_machine, c->llvm_module, object_path, LLVMObjectFile, &error)) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
@@ -1641,17 +1636,17 @@ void compiler_build(Compiler *c, const char *output) {
             cmd_push(c->cmd, "link", "/nologo");
         }
 
-        cmd_push(c->cmd, temp_sprintf("/out:%s", output));
+        cmd_push(c->cmd, temp_sprintf("/out:%s", output_path));
         cmd_push(c->cmd, "/defaultlib:libcmt");
 #else
         cmd_push(c->cmd, "cc");
         if (is_lld_available_in_path()) {
             cmd_push(c->cmd, "-fuse-ld=lld");
         }
-        cmd_push(c->cmd, "-o", output);
+        cmd_push(c->cmd, "-o", output_path);
 #endif // PLATFORM_X86_64_WINDOWS
 
-        cmd_push(c->cmd, object);
+        cmd_push(c->cmd, object_path);
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
         const char *proc_name = c->cmd->data[0];
@@ -1666,8 +1661,6 @@ void compiler_build(Compiler *c, const char *output) {
             fprintf(stderr, "ERROR: Process '%s' exited abnormally with code %d\n", proc_name, proc_code);
             exit(1);
         }
-
-        delete_file(object);
     }
-    temp_reset(object);
+    temp_reset(object_path);
 }

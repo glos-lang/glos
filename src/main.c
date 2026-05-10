@@ -2,6 +2,7 @@
 #include "checker.h"
 #include "compiler.h"
 #include "parser.h"
+#include <stdlib.h>
 
 static void usage(FILE *f, const char *program) {
     fprintf(
@@ -28,7 +29,36 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
     return *(*argv)++;
 }
 
+static const char *get_temp_file_path(void) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    static char dir[MAX_PATH + 1];
+    static char path[MAX_PATH + 1];
+
+    DWORD count = GetTempPathA(sizeof(dir), dir);
+    if (count == 0 || count >= sizeof(dir)) {
+        return NULL;
+    }
+
+    if (GetTempFileNameA(dir, "glos", 0, path) == 0) {
+        return NULL;
+    }
+
+    return path;
+#else
+    static char path[] = "/tmp/glos_XXXXXX";
+
+    int fd = mkstemp(path);
+    if (fd < 0) {
+        return NULL;
+    }
+
+    close(fd);
+    return path;
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
 int main(int argc, char **argv) {
+    atexit(temp_paths_cleanup);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
     int   result = 0;
@@ -37,7 +67,7 @@ int main(int argc, char **argv) {
 
     bool        run = false;
     const char *input = NULL;
-    const char *output = NULL;
+    const char *output_path = NULL;
     Link_Flags  link_flags = {0};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
@@ -48,7 +78,7 @@ int main(int argc, char **argv) {
             } else if (!strcmp(arg, "-r")) {
                 run = true;
             } else if (!strcmp(arg, "-o")) {
-                output = shift(&argc, &argv, program, "Output path");
+                output_path = shift(&argc, &argv, program, "Output path");
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'L') {
@@ -105,15 +135,26 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    if (!output) {
-        output = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+    if (!output_path) {
+        output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        if (run) {
+            const char *temp_path = get_temp_file_path();
+            if (temp_path) {
+                temp_paths_push(temp_path);
+                output_path = temp_path;
+            }
+        }
     }
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    if (!sv_has_suffix(sv_from_cstr(output), sv_from_cstr(".exe"))) {
-        output = temp_sprintf("%s.exe", output);
+    if (!sv_has_suffix(sv_from_cstr(output_path), sv_from_cstr(".exe"))) {
+        output_path = temp_sprintf("%s.exe", output_path);
     }
 #endif // PLATFORM_X86_64_WINDOWS
+
+    if (run) {
+        temp_paths_push(output_path);
+    }
 
     Compiler compiler = {
         .cmd = &cmd,
@@ -123,10 +164,10 @@ int main(int argc, char **argv) {
         .path = input,
     };
     check_nodes(&compiler, parser.nodes);
-    compiler_build(&compiler, output);
+    compiler_build(&compiler, output_path);
 
     if (run) {
-        const char *child_name = output;
+        const char *child_name = output_path;
 
 #ifndef PLATFORM_X86_64_WINDOWS
         if (!sv_find(sv_from_cstr(child_name), '/', NULL)) {
@@ -145,7 +186,6 @@ int main(int argc, char **argv) {
         }
 
         result = cmd_wait(child_proc);
-        delete_file(output);
     }
 
     arena_free(&arena);

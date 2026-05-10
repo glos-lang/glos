@@ -16,8 +16,14 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#define OBJ_FILE_EXTENSION ".obj"
+#define EXE_FILE_EXTENSION ".exe"
 #else
 #include <unistd.h>
+
+#define OBJ_FILE_EXTENSION ".o"
+#define EXE_FILE_EXTENSION ""
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -150,6 +156,11 @@ size_t get_modified_time(const char *path);
 
 bool is_cmd_available_in_path(const char *cmd);
 bool is_lld_available_in_path(void);
+
+const char *temp_replace_suffix(const char *path, const char *old, const char *new);
+
+void temp_paths_push(const char *path);
+void temp_paths_cleanup(void);
 
 // Processes
 typedef Dynamic_Array(const char *) Cmd;

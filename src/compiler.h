@@ -52,6 +52,6 @@ typedef struct {
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, AST_Type *type);
-void   compiler_build(Compiler *c, const char *output);
+void   compiler_build(Compiler *c, const char *output_path);
 
 #endif // COMPILER_H
