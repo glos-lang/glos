@@ -221,8 +221,10 @@ struct AST_Node_Fn {
     bool is_type;
     bool is_extern;
 
-    AST_Node_Fn   *outer_fn;
+    AST_Node_Fn *outer_fn;
+
     AST_Node_Atom *defined_as;
+    size_t         defined_as_anon_iota;
 
     LLVMValueRef    llvm;
     LLVMMetadataRef llvm_debug_scope;
@@ -235,7 +237,9 @@ struct AST_Node_Struct {
     size_t    fields_count;
 
     AST_Node_Atom *defined_as;
-    AST_Node_Fn   *defined_in; // TODO: Consider whether this should be a field of the defining atom
+    size_t         defined_as_anon_iota;
+
+    AST_Node_Fn *defined_in;
 };
 
 typedef struct {
@@ -251,6 +255,8 @@ typedef struct {
     //     lhs = <key>
     //     lhs = <value>
     // }
+    //
+    // TODO: Consider adding a designated initializer node, so comments like this are not necessary
     bool is_designated;
 } AST_Node_Compound;
 
@@ -266,7 +272,14 @@ typedef struct {
     AST_Node *fn;
 
     AST_Nodes args;
-    size_t    args_count; // Calculated at checking phase
+
+    // Calculated at checking phase. The reason this is done like this is because in the future functions with multiple
+    // return values will be implemented. In such a case, when one of the elements of a call is another call to such a
+    // function, the actual argument count will be different from the apparent one, and thus cannot be calculated at
+    // parse time.
+    //
+    // TODO: Name this such that this commenet is unnecessary
+    size_t args_count;
 
     Pos end;
 

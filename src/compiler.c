@@ -234,20 +234,23 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn);
 static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref);
 static void         compile_stmt(Compiler *c, AST_Node *n);
 
-static const char *temp_emit_fn_name(Compiler *c, AST_Node_Fn *fn) {
-    const char *name = NULL;
-    if (fn->outer_fn) {
-        name = temp_emit_fn_name(c, fn->outer_fn);
-    } else {
-        name = temp_sprintf("main"); // TODO(@package)
+static const char *temp_emit_nested_fn_name(Compiler *c, AST_Node_Fn *fn) {
+    if (!fn) {
+        return temp_sprintf("main"); // TODO(@package)
     }
 
+    const char *name = temp_emit_nested_fn_name(c, fn->outer_fn);
     temp_remove_null();
+
     if (fn->defined_as) {
         temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
     } else {
-        temp_sprintf(".anon.%zu", c->iota_anonymous_fn++);
+        if (!fn->defined_as_anon_iota) {
+            fn->defined_as_anon_iota = ++c->iota_anonymous_fn;
+        }
+        temp_sprintf(".anon.%zu", fn->defined_as_anon_iota);
     }
+
     return name;
 }
 
@@ -335,12 +338,22 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
         if (!spec->debug) {
             const void *checkpoint = temp_alloc(0);
 
-            SV             name = {0};
-            AST_Node_Atom *definition = spec->definition->defined_as;
-            if (definition) {
-                name = definition->node.token.sv;
-            } else {
-                name = sv_from_cstr(temp_sprintf("anon.%zu", c->iota_anonymous_struct++));
+            SV name = {0};
+            {
+                const char *namespace = temp_emit_nested_fn_name(c, spec->definition->defined_in);
+                temp_remove_null();
+
+                AST_Node_Atom *defined_as = spec->definition->defined_as;
+                if (defined_as) {
+                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                } else {
+                    if (!spec->definition->defined_as_anon_iota) {
+                        spec->definition->defined_as_anon_iota = ++c->iota_anonymous_struct;
+                    }
+                    temp_sprintf(".anon.%zu", spec->definition->defined_as_anon_iota);
+                }
+
+                name = sv_from_cstr(namespace);
             }
 
             spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
@@ -350,7 +363,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 name.count,
                 get_scope_of_definition(c, spec->definition->defined_in),
                 c->llvm_debug_file,
-                definition->node.token.pos.row + 1,
+                spec->definition->node.token.pos.row + 1,
                 0,
                 0,
                 0,
@@ -386,7 +399,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
                 name.data,
                 name.count,
                 c->llvm_debug_file,
-                definition->node.token.pos.row + 1,
+                spec->definition->node.token.pos.row + 1,
                 LLVMABISizeOfType(c->llvm_target_data, common->llvm) * 8,
                 LLVMABIAlignmentOfType(c->llvm_target_data, common->llvm) * 8,
                 0,
@@ -606,7 +619,7 @@ static LLVMValueRef compile_fn(Compiler *c, AST_Node_Fn *fn) {
         LLVMMetadataRef   llvm_debug_scope_save = c->llvm_debug_scope;
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
 
-        SV fn_name = sv_from_cstr(temp_emit_fn_name(c, fn));
+        SV fn_name = sv_from_cstr(temp_emit_nested_fn_name(c, fn));
         fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
 
         c->llvm_fn = fn->llvm;

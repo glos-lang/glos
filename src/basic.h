@@ -139,7 +139,7 @@ void  arena_reset(Arena *a, const void *ptr);
 char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
 
 void *arena_clone(Arena *a, const void *data, size_t size);
-void *arena_clone_from_temp(Arena *a, const void *p);
+void *arena_clone_from_temp(Arena *a, const void *p); // TODO: No more needed
 
 // FS
 bool read_fp(FILE *f, SV *out, SB *sb);
