@@ -31,7 +31,7 @@ typedef struct {
 
     LLVMDIBuilderRef llvm_debug_builder;
     LLVMMetadataRef  llvm_debug_compile_unit;
-    LLVMMetadataRef  llvm_debug_file;
+    LLVMMetadataRef  llvm_debug_file; // TODO: This should not be present, once multiple files are introduced
     LLVMMetadataRef  llvm_debug_scope;
 
     // TODO: Temporary solution to permanent problems
