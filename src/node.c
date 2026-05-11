@@ -82,17 +82,17 @@ const char *type_to_cstr_raw(Type type) {
         temp_sprintf("(");
 
         for (size_t i = 0; i < type.spec.fn.args_count; i++) {
-            Node_Atom *it = type.spec.fn.args[i];
+            Type_Fn_Arg it = type.spec.fn.args[i];
             if (i) {
                 temp_remove_null();
                 temp_sprintf(", ");
             }
 
             temp_remove_null();
-            temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
+            temp_sprintf(SV_Fmt ": ", SV_Arg(it.name));
 
             temp_remove_null();
-            type_to_cstr_raw(it->node.type);
+            type_to_cstr_raw(it.type);
         }
 
         temp_remove_null();
@@ -117,17 +117,17 @@ const char *type_to_cstr_raw(Type type) {
             temp_sprintf("struct {");
 
             for (size_t i = 0; i < type.spec.structt->fields_count; i++) {
-                Node_Atom *it = type.spec.structt->fields[i];
+                Type_Struct_Field it = type.spec.structt->fields[i];
                 if (i) {
                     temp_remove_null();
                     temp_sprintf(", ");
                 }
 
                 temp_remove_null();
-                temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
+                temp_sprintf(SV_Fmt ": ", SV_Arg(it.name));
 
                 temp_remove_null();
-                type_to_cstr_raw(it->node.type);
+                type_to_cstr_raw(it.type);
             }
 
             temp_remove_null();
@@ -190,7 +190,7 @@ bool type_eq(Type a, Type b) {
         }
 
         for (size_t i = 0; i < a.spec.fn.args_count; i++) {
-            if (!type_eq(a.spec.fn.args[i]->node.type, b.spec.fn.args[i]->node.type)) {
+            if (!type_eq(a.spec.fn.args[i].type, b.spec.fn.args[i].type)) {
                 return false;
             }
         }
@@ -208,7 +208,7 @@ bool type_eq(Type a, Type b) {
         }
 
         for (size_t i = 0; i < a.spec.structt->fields_count; i++) {
-            if (!type_eq(a.spec.structt->fields[i]->node.type, b.spec.structt->fields[i]->node.type)) {
+            if (!type_eq(a.spec.structt->fields[i].type, b.spec.structt->fields[i].type)) {
                 return false;
             }
         }

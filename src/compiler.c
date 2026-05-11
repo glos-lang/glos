@@ -72,7 +72,7 @@ static void compile_type(Compiler *c, Type *type) {
 
             LLVMTypeRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
-                Node *it = (Node *) spec->fields[i];
+                Type_Struct_Field *it = (Type_Struct_Field *) &spec->fields[i];
                 compile_type(c, &it->type);
                 fields[i] = it->type.llvm;
             }
@@ -202,7 +202,7 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
 
     for (size_t i = 0; i < spec.args_count; i++) {
         ABI_Info *it = &abi->args[i];
-        *it = get_abi_info_for_type(c, &spec.args[i]->node.type);
+        *it = get_abi_info_for_type(c, &spec.args[i].type);
 
         if (it->direct_types_count) {
             abi->actual_args_count += it->direct_types_count;
@@ -411,7 +411,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         LLVMMetadataRef *args = temp_alloc((spec.args_count + 1) * sizeof(*args));
         args[0] = get_debug_for_type(c, spec.returnn);
         for (size_t i = 0; i < spec.args_count; i++) {
-            args[i + 1] = get_debug_for_type(c, &spec.args[i]->node.type);
+            args[i + 1] = get_debug_for_type(c, &spec.args[i].type);
         }
 
         LLVMMetadataRef fn_debug_type =
@@ -464,7 +464,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
             LLVMMetadataRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
-                Node *it = (Node *) spec->fields[i];
+                Type_Struct_Field *it = &spec->fields[i];
 
                 const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
                 const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
@@ -473,10 +473,10 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 fields[i] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
                     spec->debug,
-                    it->token.sv.data,
-                    it->token.sv.count,
-                    get_debug_file(c, it->token.pos.path),
-                    it->token.pos.row + 1,
+                    it->name.data,
+                    it->name.count,
+                    get_debug_file(c, it->pos.path),
+                    it->pos.row + 1,
                     size_bits,
                     align_bits,
                     offset_bits,
@@ -612,7 +612,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
         LLVMValueRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
         for (size_t i = 0; i < spec->fields_count; i++) {
-            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec->fields[i]->node.type);
+            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec->fields[i].type);
         }
 
         LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec->fields_count, false);
@@ -686,14 +686,12 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     compile_type(c, &it->node.type);
 
     SV name = it->node.token.sv;
-    if (!it->is_local) {
-        if (it->is_extern) {
-            // Guarantee a terminating '\0'
-            name = sv_from_cstr(temp_sv_to_cstr(name));
-        } else {
-            // TODO(@package)
-            name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(name)));
-        }
+    if (it->is_extern) {
+        // Guarantee a terminating '\0'
+        name = sv_from_cstr(temp_sv_to_cstr(name));
+    } else if (!it->is_local) {
+        // TODO(@package)
+        name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(name)));
     }
 
     if (it->is_local && !it->is_extern) {
@@ -752,7 +750,11 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
     if (fn->is_extern) {
         assert(fn->defined_as);
-        fn->llvm = LLVMAddFunction(c->llvm_module, temp_sv_to_cstr(fn->defined_as->node.token.sv), fn->node.type.llvm);
+        fn->llvm = LLVMGetOrInsertFunction(
+            c->llvm_module,
+            fn->defined_as->node.token.sv.data,
+            fn->defined_as->node.token.sv.count,
+            fn->node.type.llvm);
     } else {
         LLVMValueRef llvm_fn_save = c->llvm_fn;
         LLVMValueRef llvm_fn_last_alloca_save = c->llvm_fn_last_alloca;
@@ -775,7 +777,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             arg_debug_types[0] = get_debug_for_type(c, fn_type_spec.returnn);
 
             for (size_t i = 0; i < fn_type_spec.args_count; i++) {
-                arg_debug_types[i + 1] = get_debug_for_type(c, &fn_type_spec.args[i]->node.type);
+                arg_debug_types[i + 1] = get_debug_for_type(c, &fn_type_spec.args[i].type);
             }
 
             fn_debug_type = LLVMDIBuilderCreateSubroutineType(
@@ -1432,7 +1434,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             } else {
                 arg_iota++;
 
-                LLVMTypeRef it_type = fn_type_spec.args[i]->node.type.llvm;
+                LLVMTypeRef it_type = fn_type_spec.args[i].type.llvm;
                 assert(it_type);
 
                 LLVMAttributeRef byval = LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, it_type);
@@ -2146,5 +2148,3 @@ void compiler_build(Compiler *c, const char *output_path) {
     shfree(c->llvm_debug_files);
     temp_reset(checkpoint);
 }
-
-// TODO: Consider replace LLVMAppendBasicBlockInContext with LLVMCreateBasicBlockInContext

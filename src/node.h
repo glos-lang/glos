@@ -49,19 +49,19 @@ typedef enum {
     COUNT_TYPES,
 } Type_Kind;
 
-typedef struct Type Type;
+typedef struct Type              Type;
+typedef struct Type_Fn_Arg       Type_Fn_Arg;
+typedef struct Type_Struct_Field Type_Struct_Field;
 
 typedef struct {
-    // TODO: Instead of Node_Atom, use struct { Pos pos; SV name; Type type; }
-    Node_Atom **args;
-    size_t      args_count;
-    Type       *returnn;
+    Type_Fn_Arg *args;
+    size_t       args_count;
+    Type        *returnn;
 } Type_Fn;
 
 typedef struct {
-    // TODO: Instead of Node_Atom, use struct { Pos pos; SV name; Type type; }
-    Node_Atom **fields;
-    size_t      fields_count;
+    Type_Struct_Field *fields;
+    size_t             fields_count;
 
     Node_Struct *definition;
 
@@ -88,6 +88,18 @@ struct Type {
     } spec;
 
     LLVMTypeRef llvm;
+};
+
+struct Type_Fn_Arg {
+    Pos  pos;
+    SV   name;
+    Type type;
+};
+
+struct Type_Struct_Field {
+    Pos  pos;
+    SV   name;
+    Type type;
 };
 
 const char *type_to_cstr_raw(Type type);

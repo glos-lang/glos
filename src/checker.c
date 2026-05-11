@@ -9,11 +9,11 @@ static void error_undefined(const Token *t, const char *label) {
     exit(1);
 }
 
-static void error_redefinition(const Node_Atom *n, const Node_Atom *previous) {
+static void error_redefinition(const Node_Atom *n, const Pos *previous) {
     fprintf(
         stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->node.token.pos), SV_Arg(n->node.token.sv));
     if (previous) {
-        fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(previous->node.token.pos));
+        fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(*previous));
     }
     exit(1);
 }
@@ -718,7 +718,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                         }
 
                         if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
-                            error_redefinition(it, previous);
+                            error_redefinition(it, &previous->node.token.pos);
                             break;
                         }
                     }
@@ -733,7 +733,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
 
                 Node_Atom *previous = scope_find(c->globals, it->node.token.sv);
                 if (previous) {
-                    error_redefinition(it, previous);
+                    error_redefinition(it, &previous->node.token.pos);
                 }
 
                 da_push(&c->globals, it);
@@ -1017,11 +1017,12 @@ static void check_node(Compiler *c, Node *n) {
         check_node(c, member->lhs);
 
         if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
-            Node_Atom   *definition = NULL;
+            Type_Struct_Field *definition = NULL;
+
             Type_Struct *spec = member->lhs->type.spec.structt;
             for (size_t i = 0; i < spec->fields_count; i++) {
-                Node_Atom *it = spec->fields[i];
-                if (sv_eq(it->node.token.sv, member->field.sv)) {
+                Type_Struct_Field *it = &spec->fields[i];
+                if (sv_eq(it->name, member->field.sv)) {
                     definition = it;
                     member->field_index = i;
                     break;
@@ -1033,7 +1034,7 @@ static void check_node(Compiler *c, Node *n) {
             }
 
             n->is_memory = true;
-            n->type = definition->node.type;
+            n->type = definition->type;
         } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
             if (sv_match(member->field.sv, "data")) {
                 n->type = *member->lhs->type.spec.slice.element;
@@ -1088,15 +1089,21 @@ static void check_node(Compiler *c, Node *n) {
                 Node_Atom *it = (Node_Atom *) define->name;
                 if (!sv_match(it->node.token.sv, "_")) {
                     for (size_t i = 0; i < fn_type_spec.args_count; i++) {
-                        Node_Atom *previous = fn_type_spec.args[i];
-                        if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
-                            error_redefinition(it, previous);
+                        Type_Fn_Arg previous = fn_type_spec.args[i];
+                        if (sv_eq(previous.name, it->node.token.sv)) {
+                            error_redefinition(it, &previous.pos);
                         }
                     }
                 }
-                fn_type_spec.args[fn_type_spec.args_count++] = it;
+
+                Type_Fn_Arg *arg_spec = &fn_type_spec.args[fn_type_spec.args_count++];
+                *arg_spec = (Type_Fn_Arg) {
+                    .name = it->node.token.sv,
+                    .pos = it->node.token.pos,
+                };
 
                 check_node(c, arg);
+                arg_spec->type = it->node.type;
             }
 
             if (fn->returnn) {
@@ -1157,17 +1164,23 @@ static void check_node(Compiler *c, Node *n) {
             Node_Atom *it = (Node_Atom *) define->name;
             if (!sv_match(it->node.token.sv, "_")) {
                 for (size_t i = 0; i < iota; i++) {
-                    Node_Atom *previous = structt_type_spec.fields[i];
-                    if (sv_eq(previous->node.token.sv, it->node.token.sv)) {
-                        error_redefinition(it, previous);
+                    Type_Struct_Field previous = structt_type_spec.fields[i];
+                    if (sv_eq(previous.name, it->node.token.sv)) {
+                        error_redefinition(it, &previous.pos);
                     }
                 }
             }
-            structt_type_spec.fields[iota++] = it;
+
+            Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
+            *it_spec = (Type_Struct_Field) {
+                .name = it->node.token.sv,
+                .pos = it->node.token.pos,
+            };
 
             check_node(c, define->type);
             it->node.type = type_assert_type(define->type);
             it->node.type.is_meta = false;
+            it_spec->type = it->node.type;
         }
     } break;
 
@@ -1217,8 +1230,8 @@ static void check_node(Compiler *c, Node *n) {
 
                     bool ok = false;
                     for (size_t i = 0; i < struct_spec->fields_count; i++) {
-                        Node_Atom *field = struct_spec->fields[i];
-                        if (sv_eq(field->node.token.sv, it_field_name->node.token.sv)) {
+                        Type_Struct_Field field = struct_spec->fields[i];
+                        if (sv_eq(field.name, it_field_name->node.token.sv)) {
                             it->token.as.integer = i;
                             ok = true;
                             break;
@@ -1237,7 +1250,7 @@ static void check_node(Compiler *c, Node *n) {
                 }
 
                 check_node(c, it);
-                type_assert(c, it, struct_spec->fields[it_iota]->node.type);
+                type_assert(c, it, struct_spec->fields[it_iota].type);
             } else {
                 unreachable();
             }
@@ -1336,7 +1349,7 @@ static void check_node(Compiler *c, Node *n) {
                 if (call->args_count >= fn_type.spec.fn.args_count) {
                     error_too_many_arguments(arg->token.pos, fn_type.spec.fn.args_count);
                 }
-                type_assert(c, arg, fn_type.spec.fn.args[call->args_count++]->node.type);
+                type_assert(c, arg, fn_type.spec.fn.args[call->args_count++].type);
             }
 
             if (call->args_count < fn_type.spec.fn.args_count) {
@@ -1546,3 +1559,5 @@ void check_nodes(Compiler *c, Nodes nodes) {
         check_node(c, it);
     }
 }
+
+// TODO: For indexing operations, the result might not be "memory"
