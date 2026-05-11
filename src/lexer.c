@@ -1,9 +1,11 @@
 #include "lexer.h"
+#include "basic.h"
 #include <ctype.h>
 #include <errno.h>
 
-bool lexer_open(Lexer *l, const char *path, Arena *arena) {
-    if (!read_file_into_arena(path, &l->sv, arena)) {
+bool lexer_open(Lexer *l, const char *path) {
+    assert(l->arena);
+    if (!read_file_into_arena(path, &l->sv, l->arena)) {
         return false;
     }
 
@@ -109,6 +111,47 @@ static void error_unterminated(Pos pos, const char *label) {
     exit(1);
 }
 
+static bool escape_char(char *ch) {
+    switch (*ch) {
+    case 'e':
+        *ch = '\033';
+        break;
+
+    case 'n':
+        *ch = '\n';
+        break;
+
+    case 'r':
+        *ch = '\r';
+        break;
+
+    case 't':
+        *ch = '\t';
+        break;
+
+    case '0':
+        *ch = '\0';
+        break;
+
+    case '\'':
+        *ch = '\'';
+        break;
+
+    case '"':
+        *ch = '\"';
+        break;
+
+    case '\\':
+        *ch = '\\';
+        break;
+
+    default:
+        return false;
+    }
+
+    return true;
+}
+
 static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     if (!l->sv.count) {
         error_unterminated(l->pos, label);
@@ -124,7 +167,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     }
 
     ch = *l->sv.data;
-    if (!resolve_escape_char(&ch)) {
+    if (!escape_char(&ch)) {
         error_invalid(l->pos, l->sv, "escape character");
     }
 
@@ -264,22 +307,28 @@ Token lexer_iter(Lexer *l) {
         }
         break;
 
-    case '"':
+    case '"': {
+        const size_t arena_sb_count_save = l->arena->sb.count;
+
         token.kind = TOKEN_STRING;
         while (l->sv.count) {
             if (*l->sv.data == '"') {
                 break;
             }
-            next_char_with_parsed_escape(l, "string");
-            token.as.integer++;
+
+            sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
         }
 
         if (!l->sv.count) {
             error_unterminated(l->pos, "string");
         }
-
         next_char(l);
-        break;
+
+        token.sv.count = l->arena->sb.count - arena_sb_count_save;
+        token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
+        l->arena->sb.count = arena_sb_count_save;
+        return token;
+    }
 
     case '+':
         token.kind = TOKEN_ADD;

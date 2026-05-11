@@ -1020,22 +1020,11 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         }
 
         case TOKEN_STRING: {
-            const size_t start = c->arena->sb.count;
-            for (size_t i = 1; i + 1 < n->token.sv.count;) {
-                char ch = n->token.sv.data[i++];
-                if (ch == '\\') {
-                    ch = n->token.sv.data[i++];
-                    resolve_escape_char(&ch);
-                }
-                sb_push(&c->arena->sb, ch);
-            }
-            const SV sv = {.data = c->arena->sb.data + start, c->arena->sb.count - start};
-
-            LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+            LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, n->token.sv.data, n->token.sv.count, false);
             LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
             LLVMSetInitializer(slice_data, memory);
 
-            LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), sv.count, false);
+            LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), n->token.sv.count, false);
             LLVMValueRef slice_struct = compile_alloca(c, n->type.llvm);
             LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
             LLVMBuildStore(

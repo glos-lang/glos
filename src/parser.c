@@ -697,7 +697,9 @@ static AST_Node *parse_stmt(Parser *p) {
 
 bool parse_file(Parser *p, const char *path) {
     assert(p->arena);
-    if (!lexer_open(&p->lexer, path, p->arena)) {
+    p->lexer.arena = p->arena;
+
+    if (!lexer_open(&p->lexer, path)) {
         return false;
     }
 
