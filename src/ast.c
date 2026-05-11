@@ -15,7 +15,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 const char *ast_type_to_cstr_raw(AST_Type type) {
     assert(!type.is_meta);
 
@@ -32,6 +32,10 @@ const char *ast_type_to_cstr_raw(AST_Type type) {
 
     case AST_TYPE_BOOL:
         temp_sprintf("bool");
+        break;
+
+    case AST_TYPE_CHAR:
+        temp_sprintf("char");
         break;
 
     case AST_TYPE_I8:
@@ -136,6 +140,10 @@ const char *ast_type_to_cstr_raw(AST_Type type) {
         ast_type_to_cstr_raw(*type.spec.slice.element);
         break;
 
+    case AST_TYPE_STRING:
+        temp_sprintf("string");
+        break;
+
     default:
         unreachable();
     }
@@ -156,7 +164,7 @@ const char *ast_type_to_cstr(AST_Type type) {
     return s;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -214,7 +222,7 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
     }
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -227,7 +235,7 @@ bool ast_type_is_numeric(AST_Type type) {
     return ast_type_is_integer(type);
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 bool ast_type_is_integer(AST_Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -268,14 +276,14 @@ bool ast_type_is_scalar(AST_Type type) {
         return true;
     }
 
-    if (type.kind == AST_TYPE_BOOL || type.kind == AST_TYPE_FN) {
+    if (type.kind == AST_TYPE_BOOL || type.kind == AST_TYPE_CHAR || type.kind == AST_TYPE_FN) {
         return true;
     }
 
     return false;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 bool ast_type_is_signed(AST_Type type) {
     if (type.ref || type.is_meta) {
         return false;

@@ -24,6 +24,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n);
 typedef enum {
     AST_TYPE_UNIT,
     AST_TYPE_BOOL,
+    AST_TYPE_CHAR,
 
     AST_TYPE_I8,
     AST_TYPE_I16,
@@ -42,6 +43,8 @@ typedef enum {
     AST_TYPE_STRUCT,
 
     AST_TYPE_SLICE,
+
+    AST_TYPE_STRING,
 
     COUNT_AST_TYPES,
 } AST_Type_Kind;
@@ -102,6 +105,8 @@ typedef enum {
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
     CONST_VALUE_STRUCT,
+
+    CONST_VALUE_STRING,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
@@ -119,6 +124,7 @@ struct Const_Value {
         AST_Type           type;
         AST_Node_Fn       *fn;
         Const_Value_Struct structt;
+        SV                 string;
     } as;
 };
 
@@ -126,6 +132,7 @@ struct Const_Value {
 #define const_value_fn(v)     ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
 #define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
+#define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
 
 typedef enum {
     UNCHECKED,
@@ -375,3 +382,4 @@ void ast_nodes_debug(FILE *f, AST_Nodes ns);
 #endif // AST_H
 
 // TODO: No need to have the ast_ prefix anymore, as the custom llvm code is replaced
+// TODO: `long` on windows is 32 bits...

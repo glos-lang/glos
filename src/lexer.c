@@ -1,9 +1,11 @@
 #include "lexer.h"
+#include "basic.h"
 #include <ctype.h>
 #include <errno.h>
 
-bool lexer_open(Lexer *l, const char *path, Arena *arena) {
-    if (!read_file_into_arena(path, &l->sv, arena)) {
+bool lexer_open(Lexer *l, const char *path) {
+    assert(l->arena);
+    if (!read_file_into_arena(path, &l->sv, l->arena)) {
         return false;
     }
 
@@ -104,7 +106,76 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 44, "");
+static void error_unterminated(Pos pos, const char *label) {
+    fprintf(stderr, Pos_Fmt "ERROR: Unterminated %s\n", Pos_Arg(pos), label);
+    exit(1);
+}
+
+static bool escape_char(char *ch) {
+    switch (*ch) {
+    case 'e':
+        *ch = '\033';
+        break;
+
+    case 'n':
+        *ch = '\n';
+        break;
+
+    case 'r':
+        *ch = '\r';
+        break;
+
+    case 't':
+        *ch = '\t';
+        break;
+
+    case '0':
+        *ch = '\0';
+        break;
+
+    case '\'':
+        *ch = '\'';
+        break;
+
+    case '"':
+        *ch = '\"';
+        break;
+
+    case '\\':
+        *ch = '\\';
+        break;
+
+    default:
+        return false;
+    }
+
+    return true;
+}
+
+static char next_char_with_parsed_escape(Lexer *l, const char *label) {
+    if (!l->sv.count) {
+        error_unterminated(l->pos, label);
+    }
+
+    char ch = read_char(l);
+    if (ch != '\\') {
+        return ch;
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, label);
+    }
+
+    ch = *l->sv.data;
+    if (!escape_char(&ch)) {
+        error_invalid(l->pos, l->sv, "escape character");
+    }
+
+    next_char(l);
+    return ch;
+}
+
+static_assert(COUNT_TOKENS == 46, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -227,6 +298,37 @@ Token lexer_iter(Lexer *l) {
     case ']':
         token.kind = TOKEN_RBRACKET;
         break;
+
+    case '\'':
+        token.kind = TOKEN_CHAR;
+        token.as.integer = next_char_with_parsed_escape(l, "character");
+        if (!match_char(l, '\'')) {
+            error_unterminated(l->pos, "character");
+        }
+        break;
+
+    case '"': {
+        const size_t arena_sb_count_save = l->arena->sb.count;
+
+        token.kind = TOKEN_STRING;
+        while (l->sv.count) {
+            if (*l->sv.data == '"') {
+                break;
+            }
+
+            sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
+        }
+
+        if (!l->sv.count) {
+            error_unterminated(l->pos, "string");
+        }
+        next_char(l);
+
+        token.sv.count = l->arena->sb.count - arena_sb_count_save;
+        token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
+        l->arena->sb.count = arena_sb_count_save;
+        return token;
+    }
 
     case '+':
         token.kind = TOKEN_ADD;

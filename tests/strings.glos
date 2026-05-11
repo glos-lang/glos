@@ -1,0 +1,16 @@
+main :: () {
+	print_str("Hello, world!\n")
+    // TODO: Assertions
+	// assert "foo" == "foo"
+	// assert "foo" != "bar"
+}
+
+print_str :: (s: string) {
+    for i := 0; i < s.count; i = i + 1 {
+        extern {
+            putchar :: (c: i32) -> i32
+        }
+
+        putchar(i32(s[i]))
+    }
+}

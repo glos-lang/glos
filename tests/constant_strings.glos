@@ -1,0 +1,27 @@
+A :: "Hello, world!"
+B :: "Foo Bar".count
+C :: "Foo Bar Baz"[4..7]
+D :: "HEHE"[1]
+
+main :: () {
+	println_str(A)
+	print B
+    println_str(C)
+	println_char(D)
+}
+
+println_str :: (s: string) {
+    for i := 0; i < s.count; i = i + 1 {
+        putchar(i32(s[i]))
+    }
+    putchar(i32('\n'))
+}
+
+println_char :: (c: char) {
+    putchar(i32(c))
+    putchar(i32('\n'))
+}
+
+extern {
+    putchar :: (c: i32) -> i32
+}

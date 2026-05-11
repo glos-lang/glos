@@ -16,7 +16,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 44, "");
+static_assert(COUNT_TOKENS == 46, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -264,7 +264,7 @@ static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 44, "");
+static_assert(COUNT_TOKENS == 46, "");
 static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     AST_Node *node = NULL;
     Token     token = next_token(p);
@@ -272,7 +272,9 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     switch (token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
+    case TOKEN_CHAR:
     case TOKEN_IDENT:
+    case TOKEN_STRING:
         node = ast_node_alloc(p, AST_NODE_ATOM, token);
         break;
 
@@ -695,7 +697,9 @@ static AST_Node *parse_stmt(Parser *p) {
 
 bool parse_file(Parser *p, const char *path) {
     assert(p->arena);
-    if (!lexer_open(&p->lexer, path, p->arena)) {
+    p->lexer.arena = p->arena;
+
+    if (!lexer_open(&p->lexer, path)) {
         return false;
     }
 

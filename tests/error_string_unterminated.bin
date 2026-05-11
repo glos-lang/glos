@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 69
+tests/error_string_unterminated.glos:1:2: ERROR: Unterminated string
+
