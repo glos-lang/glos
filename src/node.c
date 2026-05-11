@@ -108,15 +108,16 @@ const char *type_to_cstr_raw(Type type) {
         break;
 
     case TYPE_STRUCT: {
-        assert(type.spec.structt.definition);
-        const Node_Atom *defined_as = type.spec.structt.definition->defined_as;
+        assert(type.spec.structt);
+        assert(type.spec.structt->definition);
+        const Node_Atom *defined_as = type.spec.structt->definition->defined_as;
         if (defined_as) {
             temp_sv_to_cstr(defined_as->node.token.sv);
         } else {
             temp_sprintf("struct {");
 
-            for (size_t i = 0; i < type.spec.structt.fields_count; i++) {
-                Node_Atom *it = type.spec.structt.fields[i];
+            for (size_t i = 0; i < type.spec.structt->fields_count; i++) {
+                Node_Atom *it = type.spec.structt->fields[i];
                 if (i) {
                     temp_remove_null();
                     temp_sprintf(", ");
@@ -198,16 +199,16 @@ bool type_eq(Type a, Type b) {
     }
 
     case TYPE_STRUCT:
-        if (a.spec.structt.fields_count != b.spec.structt.fields_count) {
+        if (a.spec.structt->fields_count != b.spec.structt->fields_count) {
             return false;
         }
 
-        if (a.spec.structt.fields == b.spec.structt.fields) {
+        if (a.spec.structt->fields == b.spec.structt->fields) {
             return true;
         }
 
-        for (size_t i = 0; i < a.spec.structt.fields_count; i++) {
-            if (!type_eq(a.spec.structt.fields[i]->node.type, b.spec.structt.fields[i]->node.type)) {
+        for (size_t i = 0; i < a.spec.structt->fields_count; i++) {
+            if (!type_eq(a.spec.structt->fields[i]->node.type, b.spec.structt->fields[i]->node.type)) {
                 return false;
             }
         }

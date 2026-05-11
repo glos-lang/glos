@@ -555,12 +555,10 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
 
-        Type_Struct        struct_spec = {0};
         Const_Value_Struct struct_value = {0};
         if (n->type.kind == TYPE_STRUCT) {
-            struct_spec = n->type.spec.structt;
-            struct_value.spec = struct_spec;
-            struct_value.fields = arena_alloc(c->arena, struct_spec.fields_count * sizeof(*struct_value.fields));
+            struct_value.spec = n->type.spec.structt;
+            struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
         }
 
         size_t ordered_iota = 0;
@@ -1019,10 +1017,10 @@ static void check_node(Compiler *c, Node *n) {
         check_node(c, member->lhs);
 
         if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
-            Node_Atom  *definition = NULL;
-            Type_Struct spec = member->lhs->type.spec.structt;
-            for (size_t i = 0; i < spec.fields_count; i++) {
-                Node_Atom *it = spec.fields[i];
+            Node_Atom   *definition = NULL;
+            Type_Struct *spec = member->lhs->type.spec.structt;
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                Node_Atom *it = spec->fields[i];
                 if (sv_eq(it->node.token.sv, member->field.sv)) {
                     definition = it;
                     member->field_index = i;
@@ -1144,7 +1142,11 @@ static void check_node(Compiler *c, Node *n) {
             .definition = structt,
         };
 
-        n->type = (Type) {.kind = TYPE_STRUCT, .is_meta = true, .spec.structt = structt_type_spec};
+        n->type = (Type) {
+            .kind = TYPE_STRUCT,
+            .is_meta = true,
+            .spec.structt = arena_clone(c->arena, &structt_type_spec, sizeof(structt_type_spec)),
+        };
 
         size_t iota = 0;
         for (Node *field = structt->fields.head; field; field = field->next) {
@@ -1186,7 +1188,7 @@ static void check_node(Compiler *c, Node *n) {
         }
 
         // For structure literal
-        Type_Struct struct_spec = {0};
+        Type_Struct *struct_spec = NULL;
         if (n->type.kind == TYPE_STRUCT) {
             struct_spec = n->type.spec.structt;
         }
@@ -1214,8 +1216,8 @@ static void check_node(Compiler *c, Node *n) {
                     Node_Atom *it_field_name = (Node_Atom *) it_binary->lhs;
 
                     bool ok = false;
-                    for (size_t i = 0; i < struct_spec.fields_count; i++) {
-                        Node_Atom *field = struct_spec.fields[i];
+                    for (size_t i = 0; i < struct_spec->fields_count; i++) {
+                        Node_Atom *field = struct_spec->fields[i];
                         if (sv_eq(field->node.token.sv, it_field_name->node.token.sv)) {
                             it->token.as.integer = i;
                             ok = true;
@@ -1229,13 +1231,13 @@ static void check_node(Compiler *c, Node *n) {
 
                     it_iota = it->token.as.integer;
                     it = it_binary->rhs;
-                } else if (it_iota >= struct_spec.fields_count) {
+                } else if (it_iota >= struct_spec->fields_count) {
                     fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
                     exit(1);
                 }
 
                 check_node(c, it);
-                type_assert(c, it, struct_spec.fields[it_iota]->node.type);
+                type_assert(c, it, struct_spec->fields[it_iota]->node.type);
             } else {
                 unreachable();
             }

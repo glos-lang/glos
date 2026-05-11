@@ -65,6 +65,7 @@ typedef struct {
 
     Node_Struct *definition;
 
+    LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
 } Type_Struct;
 
@@ -81,9 +82,9 @@ struct Type {
     bool is_meta;
 
     union {
-        Type_Fn     fn;
-        Type_Slice  slice;
-        Type_Struct structt;
+        Type_Fn      fn;
+        Type_Slice   slice;
+        Type_Struct *structt;
     } spec;
 
     LLVMTypeRef llvm;
@@ -113,7 +114,7 @@ typedef enum {
 typedef struct Const_Value Const_Value;
 
 typedef struct {
-    Type_Struct  spec;
+    Type_Struct *spec;
     Const_Value *fields;
 } Const_Value_Struct;
 

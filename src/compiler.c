@@ -65,26 +65,22 @@ static void compile_type(Compiler *c, Type *type) {
         break;
 
     case TYPE_STRUCT: {
-        assert(type->spec.structt.definition);
+        assert(type->spec.structt);
 
-        // TODO(@common)
-        Type *common = &type->spec.structt.definition->node.type;
-        assert(common->kind == TYPE_STRUCT);
+        Type_Struct *spec = type->spec.structt;
+        if (!spec->llvm) {
 
-        if (!common->llvm) {
-            const Type_Struct spec = common->spec.structt;
-
-            LLVMTypeRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
-            for (size_t i = 0; i < spec.fields_count; i++) {
-                Node *it = (Node *) spec.fields[i];
+            LLVMTypeRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                Node *it = (Node *) spec->fields[i];
                 compile_type(c, &it->type);
                 fields[i] = it->type.llvm;
             }
 
-            common->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec.fields_count, false);
+            spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->fields_count, false);
             temp_reset(fields);
         }
-        type->llvm = common->llvm;
+        type->llvm = spec->llvm;
     } break;
 
     case TYPE_SLICE:
@@ -302,7 +298,7 @@ static LLVMMetadataRef get_scope_of_definition(Compiler *c, Node *node, Node_Fn 
     return defined_in->llvm_debug_scope;
 }
 
-static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type);
+static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type);
 
 // Assertion: sizeof(type) == 8
 typedef struct {
@@ -333,7 +329,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
             64,
             size_bits,
             0,
-            LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, get_debug_for_type(c, it.type), 64, 64, 0, "", 0));
+            LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, get_debug_for_type(c, &it.type), 64, 64, 0, "", 0));
 
         size_bits += 64;
     }
@@ -361,15 +357,17 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
 }
 
 static_assert(COUNT_TYPES == 17, "");
-static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
-    assert(!type.is_meta);
-    if (type.ref) {
-        type.ref--;
+static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
+    assert(!type->is_meta);
+    if (type->ref) {
+        Type inner = *type;
+        inner.ref--;
+        inner.llvm = NULL;
         return LLVMDIBuilderCreatePointerType(
-            c->llvm_debug_builder, get_debug_for_type(c, type), sizeof(void *), sizeof(void *), 0, "", 0);
+            c->llvm_debug_builder, get_debug_for_type(c, &inner), sizeof(void *), sizeof(void *), 0, "", 0);
     }
 
-    switch (type.kind) {
+    switch (type->kind) {
     case TYPE_UNIT:
         return NULL;
 
@@ -408,12 +406,12 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
         return LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, NULL, sizeof(void *), sizeof(void *), 0, "", 0);
 
     case TYPE_FN: {
-        const Type_Fn spec = type.spec.fn;
+        const Type_Fn spec = type->spec.fn;
 
         LLVMMetadataRef *args = temp_alloc((spec.args_count + 1) * sizeof(*args));
-        args[0] = get_debug_for_type(c, *spec.returnn);
+        args[0] = get_debug_for_type(c, spec.returnn);
         for (size_t i = 0; i < spec.args_count; i++) {
-            args[i + 1] = get_debug_for_type(c, spec.args[i]->node.type);
+            args[i + 1] = get_debug_for_type(c, &spec.args[i]->node.type);
         }
 
         LLVMMetadataRef fn_debug_type =
@@ -425,16 +423,9 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
     }
 
     case TYPE_STRUCT: {
-        assert(type.spec.structt.definition);
+        compile_type(c, type);
 
-        // TODO(@common)
-        Type *common = &type.spec.structt.definition->node.type;
-        assert(common->kind == TYPE_STRUCT);
-        if (!common->llvm) {
-            compile_type(c, common);
-        }
-
-        Type_Struct *spec = &common->spec.structt;
+        Type_Struct *spec = type->spec.structt;
         if (!spec->debug) {
             const void *checkpoint = temp_alloc(0);
 
@@ -477,7 +468,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
 
                 const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
                 const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
-                const size_t offset_bits = LLVMOffsetOfElement(c->llvm_target_data, common->llvm, i) * 8;
+                const size_t offset_bits = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i) * 8;
 
                 fields[i] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
@@ -490,7 +481,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
                     align_bits,
                     offset_bits,
                     0,
-                    get_debug_for_type(c, it->type));
+                    get_debug_for_type(c, &it->type));
             }
 
             LLVMMetadataRef real = LLVMDIBuilderCreateStructType(
@@ -500,8 +491,8 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
                 name.count,
                 get_debug_file(c, spec->definition->node.token.pos.path),
                 spec->definition->node.token.pos.row + 1,
-                LLVMABISizeOfType(c->llvm_target_data, common->llvm) * 8,
-                LLVMABIAlignmentOfType(c->llvm_target_data, common->llvm) * 8,
+                LLVMABISizeOfType(c->llvm_target_data, spec->llvm) * 8,
+                LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8,
                 0,
                 NULL,
                 fields,
@@ -522,12 +513,13 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type type) {
     case TYPE_SLICE: {
         const void *checkpoint = temp_alloc(0);
 
-        SV name = sv_from_cstr(type_to_cstr_raw(type));
+        SV name = sv_from_cstr(type_to_cstr_raw(*type));
 
         Builtin_Compound_Type_Field fields[2] = {0};
         fields[0].name = sv_from_cstr("data");
-        fields[0].type = *type.spec.slice.element;
+        fields[0].type = *type->spec.slice.element;
         fields[0].type.ref++;
+        fields[0].type.llvm = NULL;
 
         fields[1].name = sv_from_cstr("count");
         fields[1].type = (Type) {.kind = TYPE_I64};
@@ -616,14 +608,14 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
         unreachable();
 
     case CONST_VALUE_STRUCT: {
-        const Type_Struct spec = value.as.structt.spec;
+        const Type_Struct *spec = value.as.structt.spec;
 
-        LLVMValueRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
-        for (size_t i = 0; i < spec.fields_count; i++) {
-            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec.fields[i]->node.type);
+        LLVMValueRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec->fields[i]->node.type);
         }
 
-        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec.fields_count, false);
+        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec->fields_count, false);
         temp_reset(fields);
         return result;
     }
@@ -711,7 +703,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     }
 
     if (!it->is_extern) {
-        LLVMMetadataRef var_debug_type = get_debug_for_type(c, it->node.type);
+        LLVMMetadataRef var_debug_type = get_debug_for_type(c, &it->node.type);
         if (it->is_local) {
             if (!it->arg_index && !it->is_assigned) {
                 LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
@@ -780,10 +772,10 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         {
 
             LLVMMetadataRef *arg_debug_types = temp_alloc((fn_type_spec.args_count + 1) * sizeof(*arg_debug_types));
-            arg_debug_types[0] = get_debug_for_type(c, *fn_type_spec.returnn);
+            arg_debug_types[0] = get_debug_for_type(c, fn_type_spec.returnn);
 
             for (size_t i = 0; i < fn_type_spec.args_count; i++) {
-                arg_debug_types[i + 1] = get_debug_for_type(c, fn_type_spec.args[i]->node.type);
+                arg_debug_types[i + 1] = get_debug_for_type(c, &fn_type_spec.args[i]->node.type);
             }
 
             fn_debug_type = LLVMDIBuilderCreateSubroutineType(
@@ -841,7 +833,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             switch (it_abi.direct_types_count) {
             case 0: {
                 it->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
-                compile_local_var_debug(c, it, get_debug_for_type(c, it->node.type));
+                compile_local_var_debug(c, it, get_debug_for_type(c, &it->node.type));
 
 #ifdef PLATFORM_X86_64_LINUX
                 LLVMAttributeRef byval =
