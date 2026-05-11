@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-void check_nodes(Compiler *c, AST_Nodes nodes);
+void check_nodes(Compiler *c, Nodes nodes);
 
 #endif // CHECKER_H

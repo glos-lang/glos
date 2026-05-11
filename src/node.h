@@ -1,0 +1,384 @@
+#ifndef NODE_H
+#define NODE_H
+
+#include "token.h"
+#include "llvm-c/Types.h"
+
+typedef struct Context_Fn Context_Fn;
+
+typedef struct Node Node;
+
+typedef struct Node_Atom   Node_Atom;
+typedef struct Node_Define Node_Define;
+
+typedef struct Node_Fn     Node_Fn;
+typedef struct Node_Struct Node_Struct;
+
+typedef struct {
+    Node *head;
+    Node *tail;
+} Nodes;
+
+void nodes_push(Nodes *ns, Node *n);
+
+typedef enum {
+    TYPE_UNIT,
+    TYPE_BOOL,
+    TYPE_CHAR,
+
+    TYPE_I8,
+    TYPE_I16,
+    TYPE_I32,
+    TYPE_I64,
+
+    TYPE_U8,
+    TYPE_U16,
+    TYPE_U32,
+    TYPE_U64,
+
+    TYPE_INT,
+    TYPE_RAWPTR,
+
+    TYPE_FN,
+    TYPE_STRUCT,
+
+    TYPE_SLICE,
+
+    TYPE_STRING,
+
+    COUNT_TYPES,
+} Type_Kind;
+
+typedef struct Type Type;
+
+typedef struct {
+    // TODO: Instead of Node_Atom, use struct { Pos pos; SV name; Type type; }
+    Node_Atom **args;
+    size_t      args_count;
+    Type       *returnn;
+} Type_Fn;
+
+typedef struct {
+    // TODO: Instead of Node_Atom, use struct { Pos pos; SV name; Type type; }
+    Node_Atom **fields;
+    size_t      fields_count;
+
+    Node_Struct *definition;
+
+    LLVMMetadataRef debug;
+} Type_Struct;
+
+typedef struct {
+    Type *element;
+} Type_Slice;
+
+struct Type {
+    Type_Kind kind;
+    size_t    ref;
+
+    // A :: 69  // typeof(A) => Type { kind = TYPE_I64, is_meta = false }
+    // B :: i64 // typeof(B) => Type { kind = TYPE_I64, is_meta = true  }
+    bool is_meta;
+
+    union {
+        Type_Fn     fn;
+        Type_Slice  slice;
+        Type_Struct structt;
+    } spec;
+
+    LLVMTypeRef llvm;
+};
+
+const char *type_to_cstr_raw(Type type);
+const char *type_to_cstr(Type type);
+
+bool type_eq(Type a, Type b);
+bool type_kind_eq(Type type, Type_Kind kind);
+bool type_is_numeric(Type type);
+bool type_is_integer(Type type);
+bool type_is_pointer(Type type);
+bool type_is_scalar(Type type);
+bool type_is_signed(Type type);
+
+typedef enum {
+    CONST_VALUE_INT,
+    CONST_VALUE_FN,
+    CONST_VALUE_TYPE,
+    CONST_VALUE_STRUCT,
+
+    CONST_VALUE_STRING,
+    COUNT_CONST_VALUES
+} Const_Value_Kind;
+
+typedef struct Const_Value Const_Value;
+
+typedef struct {
+    Type_Struct  spec;
+    Const_Value *fields;
+} Const_Value_Struct;
+
+struct Const_Value {
+    Const_Value_Kind kind;
+    union {
+        long               integer;
+        Type               type;
+        Node_Fn           *fn;
+        Const_Value_Struct structt;
+        SV                 string;
+    } as;
+};
+
+#define const_value_int(v)    ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_fn(v)     ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+#define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
+#define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+
+typedef enum {
+    UNCHECKED,
+    CHECKING,
+    CHECKED,
+} Check_Status;
+
+typedef enum {
+    NODE_ATOM,
+    NODE_UNARY,
+    NODE_BINARY,
+    NODE_MEMBER,
+
+    NODE_FN,
+    NODE_STRUCT,
+    NODE_COMPOUND,
+
+    NODE_CALL,
+
+    NODE_SLICE,
+    NODE_INDEX,
+
+    NODE_DEFINE,
+    NODE_BLOCK,
+    NODE_IF,
+    NODE_FOR,
+
+    NODE_JUMP,
+    NODE_RETURN,
+
+    NODE_EXTERN,
+
+    NODE_PRINT,
+    COUNT_NODES
+} Node_Kind;
+
+struct Node {
+    Node_Kind kind;
+
+    Token token;
+    Type  type;
+
+    bool is_memory;
+
+    Node *next;
+};
+
+// TODO: Consider a better way to store definition information, rather than using so much memory for every single atom
+struct Node_Atom {
+    Node node;
+
+    // When this atom is a definition {
+    bool   is_local;
+    bool   is_extern;
+    bool   is_assigned;
+    size_t arg_index;
+
+    Node_Define *definition_node;
+    Node        *assignment_node;
+    bool         is_assignment_const;
+
+    Context_Fn  *context;
+    Check_Status check_status;
+
+    bool        is_const;
+    Const_Value const_value;
+
+    LLVMValueRef llvm;
+    // }
+
+    // When this atom is a reference to another defining atom {
+    Node_Atom *definition;
+    // }
+};
+
+typedef struct {
+    Node  node;
+    Node *value;
+} Node_Unary;
+
+typedef struct {
+    Node  node;
+    Node *lhs;
+    Node *rhs;
+} Node_Binary;
+
+typedef struct {
+    Node  node;
+    Node *lhs;
+    Token field;
+
+    size_t field_index;
+} Node_Member;
+
+struct Node_Fn {
+    Node node;
+
+    Nodes  args;
+    size_t args_count;
+
+    Node *returnn;
+    Node *body;
+
+    bool is_type;
+    bool is_extern;
+
+    Node_Fn *outer_fn;
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    LLVMValueRef    llvm;
+    LLVMMetadataRef llvm_debug_scope;
+};
+
+// This represents a type
+// TODO: Rename it in a manner such that this comment becomes unnecessary
+struct Node_Struct {
+    Node node;
+
+    Nodes  fields;
+    size_t fields_count;
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    Node_Fn *defined_in;
+};
+
+typedef struct {
+    Node  node;
+    Node *lhs;
+
+    Nodes children;
+
+    // For designated initializers, each node of children is as follows:
+    //
+    // Node_Binary('=') {
+    //     token.as.integer = <index>
+    //     lhs = <key>
+    //     lhs = <value>
+    // }
+    //
+    // TODO: Consider adding a designated initializer node, so comments like this are not necessary
+    bool is_designated;
+} Node_Compound;
+
+typedef enum {
+    TYPE_CAST_NOP,
+    TYPE_CAST_NORMAL,
+    TYPE_CAST_TO_BOOL,
+    COUNT_TYPE_CASTS,
+} Type_Cast;
+
+typedef struct {
+    Node  node;
+    Node *fn;
+
+    Nodes args;
+
+    // Calculated at checking phase. The reason this is done like this is because in the future functions with multiple
+    // return values will be implemented. In such a case, when one of the elements of a call is another call to such a
+    // function, the actual argument count will be different from the apparent one, and thus cannot be calculated at
+    // parse time.
+    //
+    // TODO: Name this such that this commenet is unnecessary
+    size_t args_count;
+
+    Pos end;
+
+    bool      is_type_cast;
+    Type_Cast type_cast;
+} Node_Call;
+
+// This *will* represent the following types:
+// - Slices
+// - Arrays
+// - Dynamic Arrays
+//
+// TODO: Come up with a better name for this
+typedef struct {
+    Node  node;
+    Node *element;
+} Node_Slice;
+
+typedef struct {
+    Node  node;
+    Node *lhs; // TODO: Think of a better name
+    Node *a;
+    Node *b;
+    bool  is_ranged;
+} Node_Index;
+
+struct Node_Define {
+    Node  node;
+    Node *name;
+    Node *type;
+    Node *expr;
+
+    bool   is_const;
+    size_t count;
+};
+
+typedef struct {
+    Node  node;
+    Nodes body;
+    Pos   end;
+} Node_Block;
+
+typedef struct {
+    Node  node;
+    Node *condition;
+    Node *consequence;
+    Node *antecedence;
+} Node_If;
+
+typedef struct {
+    Node  node;
+    Node *init;
+    Node *condition;
+    Node *update;
+    Node *body;
+} Node_For;
+
+typedef struct {
+    Node node;
+} Node_Jump;
+
+typedef struct {
+    Node  node;
+    Node *value;
+} Node_Return;
+
+typedef struct {
+    Node  node;
+    Nodes nodes;
+} Node_Extern;
+
+typedef struct {
+    Node  node;
+    Node *value;
+} Node_Print;
+
+void node_debug(FILE *f, Node *n);
+void nodes_debug(FILE *f, Nodes ns);
+
+#endif // NODE_H
+
+// TODO: `long` on windows is 32 bits...
