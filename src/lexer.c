@@ -104,7 +104,35 @@ static void error_invalid(Pos pos, SV sv, const char *label) {
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 44, "");
+static void error_unterminated(Pos pos, const char *label) {
+    fprintf(stderr, Pos_Fmt "ERROR: Unterminated %s\n", Pos_Arg(pos), label);
+    exit(1);
+}
+
+static char next_char_with_parsed_escape(Lexer *l, const char *label) {
+    if (!l->sv.count) {
+        error_unterminated(l->pos, label);
+    }
+
+    char ch = read_char(l);
+    if (ch != '\\') {
+        return ch;
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, label);
+    }
+
+    ch = *l->sv.data;
+    if (!resolve_escape_char(&ch)) {
+        error_invalid(l->pos, l->sv, "escape character");
+    }
+
+    next_char(l);
+    return ch;
+}
+
+static_assert(COUNT_TOKENS == 46, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -226,6 +254,18 @@ Token lexer_iter(Lexer *l) {
 
     case ']':
         token.kind = TOKEN_RBRACKET;
+        break;
+
+    case '\'':
+        token.kind = TOKEN_CHAR;
+        token.as.integer = next_char_with_parsed_escape(l, "character");
+        if (!match_char(l, '\'')) {
+            error_unterminated(l->pos, "character");
+        }
+        break;
+
+    case '"':
+        todo();
         break;
 
     case '+':

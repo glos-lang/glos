@@ -116,6 +116,9 @@ typedef Dynamic_Array(char) SB;
 void sb_sprintf(SB *sb, const char *fmt, ...) Printf_Like(2);
 void sb_push_cstr(SB *sb, const char *cstr);
 
+// Characters
+bool resolve_escape_char(char *ch);
+
 // Temporary Allocator
 void  temp_reset(const void *p);
 void *temp_alloc(size_t n);

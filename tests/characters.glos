@@ -1,0 +1,17 @@
+main :: () {
+    putc :: (c: char) {
+        extern {
+            putchar :: (ch: i32) -> i32
+        }
+
+        putchar(i32(c))
+    }
+
+    putc('H')
+    putc('e')
+    putc('l')
+    putc('l')
+    putc('o')
+    putc('!')
+    putc('\n')
+}

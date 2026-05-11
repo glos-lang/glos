@@ -159,6 +159,48 @@ void sb_push_cstr(SB *sb, const char *cstr) {
     sb_push_many(sb, cstr, n);
 }
 
+// Characters
+bool resolve_escape_char(char *ch) {
+    switch (*ch) {
+    case 'e':
+        *ch = '\033';
+        break;
+
+    case 'n':
+        *ch = '\n';
+        break;
+
+    case 'r':
+        *ch = '\r';
+        break;
+
+    case 't':
+        *ch = '\t';
+        break;
+
+    case '0':
+        *ch = '\0';
+        break;
+
+    case '\'':
+        *ch = '\'';
+        break;
+
+    case '"':
+        *ch = '\"';
+        break;
+
+    case '\\':
+        *ch = '\\';
+        break;
+
+    default:
+        return false;
+    }
+
+    return true;
+}
+
 // Temporary Allocator
 static char   temp_data[16 * 1024 * 1024];
 static size_t temp_count;

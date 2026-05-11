@@ -29,7 +29,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 15, "");
+    static_assert(COUNT_AST_TYPES == 16, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -197,9 +197,10 @@ static AST_Type ast_type_assert_type(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 15, "");
+    static_assert(COUNT_AST_TYPES == 16, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
+        [AST_TYPE_CHAR] = "char",
 
         [AST_TYPE_I8] = "i8",
         [AST_TYPE_I16] = "i16",
@@ -349,10 +350,11 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
-        case TOKEN_BOOL:
         case TOKEN_INT:
+        case TOKEN_BOOL:
+        case TOKEN_CHAR:
             return const_value_int(n->token.as.integer);
 
         case TOKEN_IDENT: {
@@ -370,6 +372,9 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
             return atom->definition->const_value;
         }
 
+        case TOKEN_STRING:
+            todo(); // TODO(@strings)
+
         default:
             unreachable();
             break;
@@ -380,7 +385,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         Const_Value     value = {0};
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -423,7 +428,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         Const_Value      lhs = {0};
         Const_Value      rhs = {0};
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -774,7 +779,7 @@ static void check_node(Compiler *c, AST_Node *n) {
 
     switch (n->kind) {
     case AST_NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (AST_Type) {.kind = AST_TYPE_BOOL};
@@ -784,8 +789,16 @@ static void check_node(Compiler *c, AST_Node *n) {
             n->type = (AST_Type) {.kind = AST_TYPE_INT};
             break;
 
+        case TOKEN_CHAR:
+            n->type = (AST_Type) {.kind = AST_TYPE_CHAR};
+            break;
+
         case TOKEN_IDENT:
             check_ident(c, n);
+            break;
+
+        case TOKEN_STRING:
+            todo(); // TODO(@strings)
             break;
 
         default:
@@ -797,7 +810,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         check_node(c, unary->value);
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             n->type = ast_type_assert_numeric(unary->value, false);
@@ -854,7 +867,7 @@ static void check_node(Compiler *c, AST_Node *n) {
         check_node(c, binary->lhs);
         check_node(c, binary->rhs);
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

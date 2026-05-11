@@ -24,6 +24,7 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n);
 typedef enum {
     AST_TYPE_UNIT,
     AST_TYPE_BOOL,
+    AST_TYPE_CHAR,
 
     AST_TYPE_I8,
     AST_TYPE_I16,

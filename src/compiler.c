@@ -17,7 +17,7 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/TargetMachine.h>
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 16, "");
 static void compile_type(Compiler *c, AST_Type *type) {
     if (!type || type->llvm) {
         return;
@@ -40,6 +40,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
 
     case AST_TYPE_I8:
     case AST_TYPE_U8:
+    case AST_TYPE_CHAR:
         type->llvm = LLVMInt8TypeInContext(c->llvm_context);
         break;
 
@@ -112,7 +113,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 16, "");
 static bool type_is_compound(AST_Type type) {
     if (type.ref) {
         return false;
@@ -137,7 +138,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
         return info;
     }
 
-    static_assert(COUNT_AST_TYPES == 15, "");
+    static_assert(COUNT_AST_TYPES == 16, "");
     switch (type->kind) {
     case AST_TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -300,7 +301,7 @@ static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node *node, AST_
     return defined_in->llvm_debug_scope;
 }
 
-static_assert(COUNT_AST_TYPES == 15, "");
+static_assert(COUNT_AST_TYPES == 16, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     assert(!type.is_meta);
     if (type.ref) {
@@ -315,6 +316,9 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
 
     case AST_TYPE_BOOL:
         return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "bool", strlen("bool"), 8, DW_ATE_boolean, 0);
+
+    case AST_TYPE_CHAR:
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "char", strlen("char"), 8, DW_ATE_unsigned_char, 0);
 
     case AST_TYPE_I8:
         return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i8", strlen("i8"), 8, DW_ATE_signed, 0);
@@ -940,10 +944,11 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_ATOM: {
         AST_Node_Atom *atom = (AST_Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
-        case TOKEN_BOOL:
         case TOKEN_INT:
+        case TOKEN_BOOL:
+        case TOKEN_CHAR:
             return LLVMConstInt(n->type.llvm, n->token.as.integer, ast_type_is_signed(n->type));
 
         case TOKEN_IDENT: {
@@ -993,6 +998,9 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
         }
 
+        case TOKEN_STRING:
+            todo(); // TODO(@strings)
+
         default:
             unreachable();
         }
@@ -1002,7 +1010,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         AST_Node_Unary *unary = (AST_Node_Unary *) n;
         LLVMValueRef    value = NULL;
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1048,7 +1056,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 44, "");
+            static_assert(COUNT_TOKENS == 46, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1095,7 +1103,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 44, "");
+            static_assert(COUNT_TOKENS == 46, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1119,7 +1127,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 44, "");
+        static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
