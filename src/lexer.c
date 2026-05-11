@@ -175,7 +175,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 46, "");
+static_assert(COUNT_TOKENS == 55, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -332,6 +332,9 @@ Token lexer_iter(Lexer *l) {
 
     case '+':
         token.kind = TOKEN_ADD;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_ADD_SET;
+        }
         break;
 
     case '-':
@@ -339,27 +342,45 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_ARROW;
         } else {
             token.kind = TOKEN_SUB;
+            if (match_char(l, '=')) {
+                token.kind = TOKEN_SUB_SET;
+            }
         }
         break;
 
     case '*':
         token.kind = TOKEN_MUL;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_MUL_SET;
+        }
         break;
 
     case '/':
         token.kind = TOKEN_DIV;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_DIV_SET;
+        }
         break;
 
     case '%':
         token.kind = TOKEN_MOD;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_MOD_SET;
+        }
         break;
 
     case '|':
         token.kind = TOKEN_BOR;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_BOR_SET;
+        }
         break;
 
     case '&':
         token.kind = TOKEN_BAND;
+        if (match_char(l, '=')) {
+            token.kind = TOKEN_BAND_SET;
+        }
         break;
 
     case '~':
@@ -377,6 +398,9 @@ Token lexer_iter(Lexer *l) {
     case '>':
         if (match_char(l, '>')) {
             token.kind = TOKEN_SHR;
+            if (match_char(l, '=')) {
+                token.kind = TOKEN_SHR_SET;
+            }
         } else if (match_char(l, '=')) {
             token.kind = TOKEN_GE;
         } else {
@@ -387,6 +411,9 @@ Token lexer_iter(Lexer *l) {
     case '<':
         if (match_char(l, '<')) {
             token.kind = TOKEN_SHL;
+            if (match_char(l, '=')) {
+                token.kind = TOKEN_SHL_SET;
+            }
         } else if (match_char(l, '=')) {
             token.kind = TOKEN_LE;
         } else {

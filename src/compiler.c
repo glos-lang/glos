@@ -1019,7 +1019,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 55, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1088,7 +1088,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 46, "");
+        static_assert(COUNT_TOKENS == 55, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1128,13 +1128,14 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
 
+        // Arithmetic
         {
             typedef struct {
                 LLVMValueRef (*i)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 46, "");
+            static_assert(COUNT_TOKENS == 55, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1175,13 +1176,14 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
+        // Comparison
         {
             typedef struct {
                 LLVMIntPredicate i;
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 46, "");
+            static_assert(COUNT_TOKENS == 55, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1205,7 +1207,56 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 46, "");
+        // Arithmetic assignment
+        {
+            typedef struct {
+                LLVMValueRef (*i)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
+                LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
+            } Op;
+
+            static_assert(COUNT_TOKENS == 55, "");
+            static const Op ops[COUNT_TOKENS] = {
+                [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
+                [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
+                [TOKEN_MUL_SET] = {.i = LLVMBuildMul},
+                [TOKEN_DIV_SET] = {.i = LLVMBuildSDiv, .u = LLVMBuildUDiv},
+                [TOKEN_MOD_SET] = {.i = LLVMBuildSRem, .u = LLVMBuildURem},
+
+                [TOKEN_SHL_SET] = {.i = LLVMBuildShl},
+                [TOKEN_SHR_SET] = {.i = LLVMBuildAShr, .u = LLVMBuildLShr},
+                [TOKEN_BOR_SET] = {.i = LLVMBuildOr},
+                [TOKEN_BAND_SET] = {.i = LLVMBuildAnd},
+            };
+
+            const Op op = ops[n->token.kind];
+            if (op.i) {
+                LLVMValueRef ptr = compile_expr(c, binary->lhs, true);
+                LLVMValueRef lhs = LLVMBuildLoad2(c->llvm_builder, binary->lhs->type.llvm, ptr, "");
+                LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+                LLVMValueRef result = NULL;
+
+                const bool is_pointer_arithmetic = type_is_pointer(n->type);
+                if (is_pointer_arithmetic) {
+                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
+                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
+                }
+
+                set_debug_pos(c, n->token.pos);
+                if (op.u && !type_is_signed(binary->lhs->type)) {
+                    result = op.u(c->llvm_builder, lhs, rhs, "");
+                } else {
+                    result = op.i(c->llvm_builder, lhs, rhs, "");
+                }
+
+                if (is_pointer_arithmetic) {
+                    result = LLVMBuildIntToPtr(c->llvm_builder, result, n->type.llvm, "");
+                }
+                return LLVMBuildStore(c->llvm_builder, result, ptr);
+            }
+        }
+
+        static_assert(COUNT_TOKENS == 55, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
