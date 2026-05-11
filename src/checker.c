@@ -627,12 +627,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             case CONST_VALUE_STRING: {
                 SV sv = lhs.as.string;
 
-                size_t begin = 0;
+                int64_t begin = 0;
                 if (index->a) {
                     begin = eval_const_expr(c, index->a).as.integer;
                 }
 
-                size_t end = sv.count;
+                int64_t end = sv.count;
                 if (index->b) {
                     end = eval_const_expr(c, index->b).as.integer;
                 }
@@ -640,17 +640,17 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 if (begin > end) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Range (%ld..%ld) is invalid: Beginning of range is more than end\n",
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos),
                         begin,
                         end);
                     exit(1);
                 }
 
-                if (begin < 0 || end < 0 || begin > sv.count || end > sv.count) {
+                if (begin < 0 || end < 0 || (size_t) begin > sv.count || (size_t) end > sv.count) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Range (%ld..%ld) is out of bounds in string of length %ld\n",
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is out of bounds in string of length %zu\n",
                         Pos_Arg(n->token.pos),
                         begin,
                         end,
@@ -667,15 +667,15 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 unreachable();
             }
         } else {
-            const size_t at = eval_const_expr(c, index->a).as.integer;
+            const int64_t at = eval_const_expr(c, index->a).as.integer;
 
             // TODO(@slice)
             switch (lhs.kind) {
             case CONST_VALUE_STRING: {
-                if (at < 0 || at >= lhs.as.string.count) {
+                if (at < 0 || (size_t) at >= lhs.as.string.count) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Index %ld is out of bounds in string of length %ld\n",
+                        Pos_Fmt "ERROR: Index %zd is out of bounds in string of length %zu\n",
                         Pos_Arg(n->token.pos),
                         at,
                         lhs.as.string.count);

@@ -120,7 +120,7 @@ typedef struct {
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        long               integer;
+        int64_t            integer;
         Type               type;
         Node_Fn           *fn;
         Const_Value_Struct structt;
@@ -380,5 +380,3 @@ void node_debug(FILE *f, Node *n);
 void nodes_debug(FILE *f, Nodes ns);
 
 #endif // NODE_H
-
-// TODO: `long` on windows is 32 bits...
