@@ -1488,12 +1488,31 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             } else {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Cannot index into %s\n",
+                    Pos_Fmt "ERROR: Cannot index into %s",
                     Pos_Arg(index->lhs->token.pos),
                     type_to_cstr(index->lhs->type));
 
-                // TODO(@slice): if `index->lhs` is a pointer, show a helper message on converting to a slice first
-                // TODO(@slice): if `index->lhs` is a pointer to a slice, show a helper message about dereferencing
+                if (index->lhs->type.ref) {
+                    fprintf(
+                        stderr,
+                        ". Pointers must be converted into slices before they can be indexed\n"
+                        "\n"
+                        "```\n"
+                        "slice := pointer[begin..end];\n"
+                        "slice[index];\n"
+                        "```\n");
+
+                    if (type_kind_eq(index->lhs->type, TYPE_SLICE) || type_kind_eq(index->lhs->type, TYPE_STRING)) {
+                        fprintf(
+                            stderr,
+                            "\n"
+                            "NOTE: Here the value is a %s. Perhaps it was meant to be dereferenced before indexing?\n",
+                            type_to_cstr(index->lhs->type));
+                    }
+                } else {
+                    fprintf(stderr, "\n");
+                }
+
                 exit(1);
             }
         }
