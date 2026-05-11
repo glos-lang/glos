@@ -1,6 +1,0 @@
-EXIT 1
-STDOUT 0
-
-STDERR 108
-tests/error_cannot_take_reference_to_constant.glos:3:5: ERROR: Cannot take reference to value not in memory
-

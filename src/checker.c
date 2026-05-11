@@ -235,13 +235,6 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static void node_assert_can_be_referenced(Node *n) {
-    if (!n->is_memory) {
-        fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference to value not in memory\n", Pos_Arg(n->token.pos));
-        exit(1);
-    }
-}
-
 static_assert(COUNT_NODES == 18, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
@@ -754,7 +747,13 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
     }
 }
 
-static void check_node(Compiler *c, Node *n);
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_ASSIGN,
+} Ref_Kind;
+
+static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
 static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
     assert(it->check_status != CHECKING); // It is already checked
@@ -764,13 +763,13 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
     it->check_status = CHECKING;
 
     if (type) {
-        check_node(c, type);
+        check_node(c, type, REF_NONE);
         it->node.type = type_assert_type(type);
         it->node.type.is_meta = false;
     }
 
     if (it_expr) {
-        check_node(c, it_expr);
+        check_node(c, it_expr, REF_NONE);
 
         if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->is_const)) {
             fprintf(
@@ -808,7 +807,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
     it->check_status = CHECKED;
 }
 
-static void check_ident(Compiler *c, Node *n) {
+static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom *atom = (Node_Atom *) n;
     if (sv_match(n->token.sv, "_")) {
         fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
@@ -843,7 +842,28 @@ static void check_ident(Compiler *c, Node *n) {
         }
 
         n->type = definition->node.type;
-        n->is_memory = !definition->is_const;
+        if (definition->is_const) {
+            switch (ref) {
+            case REF_NONE:
+                // OK
+                break;
+
+            case REF_ADDR:
+                if (!n->type.is_meta) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
+                        Pos_Arg(n->token.pos));
+                    exit(1);
+                }
+                break;
+
+            case REF_ASSIGN:
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
+                exit(1);
+                break;
+            }
+        }
         return;
     }
 
@@ -857,11 +877,12 @@ static void check_ident(Compiler *c, Node *n) {
 }
 
 static_assert(COUNT_NODES == 18, "");
-static void check_node(Compiler *c, Node *n) {
+static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
     }
 
+    bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
         static_assert(COUNT_TOKENS == 46, "");
@@ -879,7 +900,8 @@ static void check_node(Compiler *c, Node *n) {
             break;
 
         case TOKEN_IDENT:
-            check_ident(c, n);
+            check_ident(c, n, ref);
+            is_ref_valid = true; // check_ident() has already checked whether the reference is valid
             break;
 
         case TOKEN_STRING:
@@ -893,15 +915,15 @@ static void check_node(Compiler *c, Node *n) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        check_node(c, unary->value);
-
         static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
+            check_node(c, unary->value, REF_NONE);
             n->type = type_assert_numeric(unary->value, false);
             break;
 
         case TOKEN_MUL:
+            check_node(c, unary->value, REF_NONE);
             if (!unary->value->type.ref) {
                 if (type_kind_eq(unary->value->type, TYPE_RAWPTR)) {
                     fprintf(
@@ -919,26 +941,27 @@ static void check_node(Compiler *c, Node *n) {
 
             n->type = unary->value->type;
             n->type.ref--;
-            n->is_memory = true;
+            is_ref_valid = true;
             break;
 
         case TOKEN_BAND:
+            check_node(c, unary->value, REF_ADDR);
             n->type = unary->value->type;
-            if (!n->type.is_meta) {
-                node_assert_can_be_referenced(unary->value);
-            }
             n->type.ref++;
             break;
 
         case TOKEN_BNOT:
+            check_node(c, unary->value, REF_NONE);
             n->type = type_assert_numeric(unary->value, false);
             break;
 
         case TOKEN_LNOT:
+            check_node(c, unary->value, REF_NONE);
             n->type = type_assert(c, unary->value, (Type) {.kind = TYPE_BOOL});
             break;
 
         case TOKEN_SIZEOF:
+            check_node(c, unary->value, REF_NONE);
             n->type = (Type) {.kind = TYPE_INT};
             break;
 
@@ -949,13 +972,12 @@ static void check_node(Compiler *c, Node *n) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        check_node(c, binary->lhs);
-        check_node(c, binary->rhs);
-
         static_assert(COUNT_TOKENS == 46, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
+            check_node(c, binary->lhs, REF_NONE);
+            check_node(c, binary->rhs, REF_NONE);
             type_assert_numeric(binary->lhs, true);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
@@ -963,6 +985,8 @@ static void check_node(Compiler *c, Node *n) {
         case TOKEN_MUL:
         case TOKEN_DIV:
         case TOKEN_MOD:
+            check_node(c, binary->lhs, REF_NONE);
+            check_node(c, binary->rhs, REF_NONE);
             type_assert_numeric(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
@@ -971,6 +995,8 @@ static void check_node(Compiler *c, Node *n) {
         case TOKEN_SHR:
         case TOKEN_BOR:
         case TOKEN_BAND:
+            check_node(c, binary->lhs, REF_NONE);
+            check_node(c, binary->rhs, REF_NONE);
             type_assert_numeric(binary->lhs, false);
             n->type = type_assert_node(c, binary->rhs, binary->lhs);
             break;
@@ -981,28 +1007,16 @@ static void check_node(Compiler *c, Node *n) {
         case TOKEN_LE:
         case TOKEN_EQ:
         case TOKEN_NE:
+            check_node(c, binary->lhs, REF_NONE);
+            check_node(c, binary->rhs, REF_NONE);
             type_assert_numeric(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
         case TOKEN_SET:
-            // TODO: Check whether lhs can be mutated as well
-            //
-            // Example:
-            // ```
-            // Vec2 :: struct {
-            //     x: i32,
-            //     y: i32
-            // }
-
-            // v :: Vec2 {69, 420}
-
-            // main :: () {
-            //     v.x = 1337 // This should be illegal, but it is currently not
-            // }
-            // ```
-            node_assert_can_be_referenced(binary->lhs);
+            check_node(c, binary->lhs, REF_ASSIGN);
+            check_node(c, binary->rhs, REF_NONE);
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_UNIT};
             break;
@@ -1014,7 +1028,9 @@ static void check_node(Compiler *c, Node *n) {
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
-        check_node(c, member->lhs);
+
+        check_node(c, member->lhs, ref);
+        is_ref_valid = true; // check_node() has already determined that the reference is valid
 
         if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
             Type_Struct_Field *definition = NULL;
@@ -1033,7 +1049,6 @@ static void check_node(Compiler *c, Node *n) {
                 error_undefined(&member->field, "field");
             }
 
-            n->is_memory = true;
             n->type = definition->type;
         } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
             if (sv_match(member->field.sv, "data")) {
@@ -1046,8 +1061,6 @@ static void check_node(Compiler *c, Node *n) {
             } else {
                 error_undefined(&member->field, "field");
             }
-
-            n->is_memory = true;
         } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
             if (sv_match(member->field.sv, "data")) {
                 n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
@@ -1058,8 +1071,6 @@ static void check_node(Compiler *c, Node *n) {
             } else {
                 error_undefined(&member->field, "field");
             }
-
-            n->is_memory = true;
         } else {
             fprintf(
                 stderr,
@@ -1102,12 +1113,12 @@ static void check_node(Compiler *c, Node *n) {
                     .pos = it->node.token.pos,
                 };
 
-                check_node(c, arg);
+                check_node(c, arg, REF_NONE);
                 arg_spec->type = it->node.type;
             }
 
             if (fn->returnn) {
-                check_node(c, fn->returnn);
+                check_node(c, fn->returnn, REF_NONE);
                 type_assert_type(fn->returnn);
                 fn_type_spec.returnn = arena_clone(c->arena, &fn->returnn->type, sizeof(Type));
                 fn_type_spec.returnn->is_meta = false;
@@ -1126,8 +1137,9 @@ static void check_node(Compiler *c, Node *n) {
 
             if (fn->is_type) {
                 n->type.is_meta = true;
+                is_ref_valid = ref == REF_ADDR;
             } else if (fn->body) {
-                check_node(c, fn->body);
+                check_node(c, fn->body, REF_NONE);
                 if (fn->returnn && !always_returns(fn->body)) {
                     assert(fn->body->kind == NODE_BLOCK);
                     const Pos end = ((Node_Block *) fn->body)->end;
@@ -1177,16 +1189,18 @@ static void check_node(Compiler *c, Node *n) {
                 .pos = it->node.token.pos,
             };
 
-            check_node(c, define->type);
+            check_node(c, define->type, REF_NONE);
             it->node.type = type_assert_type(define->type);
             it->node.type.is_meta = false;
             it_spec->type = it->node.type;
         }
+
+        is_ref_valid = ref == REF_ADDR;
     } break;
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
-        check_node(c, compound->lhs);
+        check_node(c, compound->lhs, REF_NONE);
         type_assert_type(compound->lhs);
 
         n->type = compound->lhs->type;
@@ -1249,17 +1263,19 @@ static void check_node(Compiler *c, Node *n) {
                     exit(1);
                 }
 
-                check_node(c, it);
+                check_node(c, it, REF_NONE);
                 type_assert(c, it, struct_spec->fields[it_iota].type);
             } else {
                 unreachable();
             }
         }
+
+        is_ref_valid = ref == REF_ADDR;
     } break;
 
     case NODE_CALL: {
         Node_Call *call = (Node_Call *) n;
-        check_node(c, call->fn);
+        check_node(c, call->fn, REF_NONE);
 
         const Type fn_type = call->fn->type;
         if (fn_type.is_meta) {
@@ -1281,7 +1297,7 @@ static void check_node(Compiler *c, Node *n) {
                 exit(1);
             }
 
-            check_node(c, call->args.head);
+            check_node(c, call->args.head, REF_NONE);
             const Type from_type = call->args.head->type;
 
             if (type_is_scalar(n->type)) {
@@ -1345,7 +1361,7 @@ static void check_node(Compiler *c, Node *n) {
 
             call->args_count = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
-                check_node(c, arg);
+                check_node(c, arg, REF_NONE);
                 if (call->args_count >= fn_type.spec.fn.args_count) {
                     error_too_many_arguments(arg->token.pos, fn_type.spec.fn.args_count);
                 }
@@ -1362,7 +1378,18 @@ static void check_node(Compiler *c, Node *n) {
 
     case NODE_SLICE: {
         Node_Slice *slice = (Node_Slice *) n;
-        check_node(c, slice->element);
+
+        // The type `[]T` gets compiled to:
+        //
+        // ```
+        // struct {
+        //     T  *data;
+        //     i64 count;
+        // }
+        // ```
+        //
+        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
+        check_node(c, slice->element, REF_ADDR);
 
         Type element_type = type_assert_type(slice->element);
         element_type.is_meta = false;
@@ -1376,12 +1403,15 @@ static void check_node(Compiler *c, Node *n) {
             .is_meta = true,
             .spec.slice = slice_type_spec,
         };
+
+        is_ref_valid = ref == REF_ADDR;
     } break;
 
     case NODE_INDEX: {
         // TODO: What about the signedness of indexing operations
         Node_Index *index = (Node_Index *) n;
-        check_node(c, index->lhs);
+        check_node(c, index->lhs, ref);
+        is_ref_valid = true; // check_node() has already determined that the reference is valid
 
         if (index->is_ranged) {
             if (index->lhs->type.is_meta) {
@@ -1397,7 +1427,7 @@ static void check_node(Compiler *c, Node *n) {
             if (index->lhs->type.ref) {
                 // The beginning can be inferred to be 0
                 if (index->a) {
-                    check_node(c, index->a);
+                    check_node(c, index->a, REF_NONE);
                     type_assert_numeric(index->a, false);
                 }
 
@@ -1412,7 +1442,7 @@ static void check_node(Compiler *c, Node *n) {
                     exit(1);
                 }
 
-                check_node(c, index->b);
+                check_node(c, index->b, REF_NONE);
                 type_assert_numeric(index->b, false);
 
                 Type element_type = index->lhs->type;
@@ -1424,13 +1454,13 @@ static void check_node(Compiler *c, Node *n) {
             } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) || type_kind_eq(index->lhs->type, TYPE_STRING)) {
                 // The beginning can be inferred to be the beginning of the slice
                 if (index->a) {
-                    check_node(c, index->a);
+                    check_node(c, index->a, REF_NONE);
                     type_assert_numeric(index->a, false);
                 }
 
                 // The ending can be inferred to be the ending of the slice
                 if (index->b) {
-                    check_node(c, index->b);
+                    check_node(c, index->b, REF_NONE);
                     type_assert_numeric(index->b, false);
                 }
 
@@ -1444,17 +1474,17 @@ static void check_node(Compiler *c, Node *n) {
 
                 exit(1);
             }
+
+            is_ref_valid = false;
         } else {
             if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
-                check_node(c, index->a);
+                check_node(c, index->a, REF_NONE);
                 type_assert_numeric(index->a, false);
                 n->type = *index->lhs->type.spec.slice.element;
-                n->is_memory = true;
             } else if (type_kind_eq(index->lhs->type, TYPE_STRING) && !index->lhs->type.ref) {
-                check_node(c, index->a);
+                check_node(c, index->a, REF_NONE);
                 type_assert_numeric(index->a, false);
                 n->type = (Type) {.kind = TYPE_CHAR};
-                n->is_memory = true;
             } else {
                 fprintf(
                     stderr,
@@ -1484,17 +1514,17 @@ static void check_node(Compiler *c, Node *n) {
         }
 
         for (Node *it = block->body.head; it; it = it->next) {
-            check_node(c, it);
+            check_node(c, it, REF_NONE);
         }
         context_set_end(&c->context, context_end_save);
     } break;
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
-        check_node(c, iff->condition);
+        check_node(c, iff->condition, REF_NONE);
         type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
-        check_node(c, iff->consequence);
-        check_node(c, iff->antecedence);
+        check_node(c, iff->consequence, REF_NONE);
+        check_node(c, iff->antecedence, REF_NONE);
     } break;
 
     case NODE_FOR: {
@@ -1502,13 +1532,13 @@ static void check_node(Compiler *c, Node *n) {
 
         const size_t context_end_save = c->context.current->end;
         {
-            check_node(c, forr->init);
-            check_node(c, forr->condition);
+            check_node(c, forr->init, REF_NONE);
+            check_node(c, forr->condition, REF_NONE);
             if (forr->condition) {
                 type_assert(c, forr->condition, (Type) {.kind = TYPE_BOOL});
             }
-            check_node(c, forr->update);
-            check_node(c, forr->body);
+            check_node(c, forr->update, REF_NONE);
+            check_node(c, forr->body, REF_NONE);
         }
         context_set_end(&c->context, context_end_save);
     } break;
@@ -1523,7 +1553,7 @@ static void check_node(Compiler *c, Node *n) {
 
         n->type.kind = TYPE_UNIT;
         if (returnn->value) {
-            check_node(c, returnn->value);
+            check_node(c, returnn->value, REF_NONE);
             type_assert(c, returnn->value, expected);
             n->type = returnn->value->type;
         } else {
@@ -1534,19 +1564,38 @@ static void check_node(Compiler *c, Node *n) {
     case NODE_EXTERN: {
         Node_Extern *externn = (Node_Extern *) n;
         for (Node *it = externn->nodes.head; it; it = it->next) {
-            check_node(c, it);
+            check_node(c, it, REF_NONE);
         }
     } break;
 
     case NODE_PRINT: {
         Node_Print *print = (Node_Print *) n;
-        check_node(c, print->value);
+        check_node(c, print->value, REF_NONE);
         type_assert_scalar(print->value);
     } break;
 
     default:
-        check_node(c, n);
-        break;
+        unreachable();
+    }
+
+    if (!is_ref_valid) {
+        switch (ref) {
+        case REF_NONE:
+            // OK
+            break;
+
+        case REF_ADDR:
+            if (!n->type.is_meta) {
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference to value not in memory\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+            break;
+
+        case REF_ASSIGN:
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to value not in memory\n", Pos_Arg(n->token.pos));
+            exit(1);
+            break;
+        }
     }
 }
 
@@ -1556,8 +1605,6 @@ void check_nodes(Compiler *c, Nodes nodes) {
     }
 
     for (Node *it = nodes.head; it; it = it->next) {
-        check_node(c, it);
+        check_node(c, it, REF_NONE);
     }
 }
-
-// TODO: For indexing operations, the result might not be "memory"

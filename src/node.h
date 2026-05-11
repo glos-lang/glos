@@ -184,13 +184,9 @@ typedef enum {
 
 struct Node {
     Node_Kind kind;
-
-    Token token;
-    Type  type;
-
-    bool is_memory;
-
-    Node *next;
+    Token     token;
+    Type      type;
+    Node     *next;
 };
 
 // TODO: Consider a better way to store definition information, rather than using so much memory for every single atom
