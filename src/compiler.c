@@ -879,7 +879,7 @@ static LLVMValueRef compile_get_stdio_file(Compiler *c, int fileno) {
         break;
 
     default:
-        todo();
+        unreachable();
     }
     return LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), var, "");
 #endif // PLATFORM_X86_64_WINDOWS

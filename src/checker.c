@@ -1256,6 +1256,7 @@ static void check_node(Compiler *c, AST_Node *n) {
     } break;
 
     case AST_NODE_INDEX: {
+        // TODO: What about the signedness of indexing operations
         AST_Node_Index *index = (AST_Node_Index *) n;
         check_node(c, index->lhs);
 
@@ -1289,7 +1290,7 @@ static void check_node(Compiler *c, AST_Node *n) {
                 }
 
                 check_node(c, index->b);
-                ast_type_assert_numeric(index->b, false); // TODO(@slice): Should the two types be equal?
+                ast_type_assert_numeric(index->b, false);
 
                 AST_Type element_type = index->lhs->type;
                 element_type.ref--;
@@ -1307,7 +1308,7 @@ static void check_node(Compiler *c, AST_Node *n) {
                 // The ending can be inferred to be the ending of the slice
                 if (index->b) {
                     check_node(c, index->b);
-                    ast_type_assert_numeric(index->b, false); // TODO(@slice): Should the two types be equal?
+                    ast_type_assert_numeric(index->b, false);
                 }
 
                 n->type = index->lhs->type;
