@@ -44,6 +44,8 @@ typedef enum {
 
     AST_TYPE_SLICE,
 
+    AST_TYPE_STRING,
+
     COUNT_AST_TYPES,
 } AST_Type_Kind;
 

@@ -265,7 +265,20 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '"':
-        todo();
+        token.kind = TOKEN_STRING;
+        while (l->sv.count) {
+            if (*l->sv.data == '"') {
+                break;
+            }
+            next_char_with_parsed_escape(l, "string");
+            token.as.integer++;
+        }
+
+        if (!l->sv.count) {
+            error_unterminated(l->pos, "string");
+        }
+
+        next_char(l);
         break;
 
     case '+':

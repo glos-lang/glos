@@ -29,7 +29,7 @@ static void error_too_many_arguments(Pos pos, size_t expected) {
 }
 
 static void check_int_limit(AST_Node *n, size_t value) {
-    static_assert(COUNT_AST_TYPES == 16, "");
+    static_assert(COUNT_AST_TYPES == 17, "");
     const size_t int_limits[COUNT_AST_TYPES] = {
         [AST_TYPE_I8] = INT8_MAX,
         [AST_TYPE_I16] = INT16_MAX,
@@ -197,7 +197,7 @@ static AST_Type ast_type_assert_type(const AST_Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
-    static_assert(COUNT_AST_TYPES == 16, "");
+    static_assert(COUNT_AST_TYPES == 17, "");
     static const char *names[COUNT_AST_TYPES] = {
         [AST_TYPE_BOOL] = "bool",
         [AST_TYPE_CHAR] = "char",
@@ -213,6 +213,8 @@ static bool get_builtin_type_kind(SV name, AST_Type_Kind *kind) {
         [AST_TYPE_U64] = "u64",
 
         [AST_TYPE_RAWPTR] = "rawptr",
+
+        [AST_TYPE_STRING] = "string",
     };
 
     for (AST_Type_Kind k = 0; k < len(names); k++) {
@@ -798,7 +800,7 @@ static void check_node(Compiler *c, AST_Node *n) {
             break;
 
         case TOKEN_STRING:
-            todo(); // TODO(@strings)
+            n->type = (AST_Type) {.kind = AST_TYPE_STRING};
             break;
 
         default:
@@ -953,6 +955,18 @@ static void check_node(Compiler *c, AST_Node *n) {
             if (sv_match(member->field.sv, "data")) {
                 n->type = *member->lhs->type.spec.slice.element;
                 n->type.ref++;
+                member->field_index = 0;
+            } else if (sv_match(member->field.sv, "count")) {
+                n->type = (AST_Type) {.kind = AST_TYPE_I64};
+                member->field_index = 1;
+            } else {
+                error_undefined(&member->field, "field");
+            }
+
+            n->is_memory = true;
+        } else if (ast_type_kind_eq(member->lhs->type, AST_TYPE_STRING)) {
+            if (sv_match(member->field.sv, "data")) {
+                n->type = (AST_Type) {.kind = AST_TYPE_CHAR, .ref = 1};
                 member->field_index = 0;
             } else if (sv_match(member->field.sv, "count")) {
                 n->type = (AST_Type) {.kind = AST_TYPE_I64};
@@ -1311,7 +1325,9 @@ static void check_node(Compiler *c, AST_Node *n) {
                     .kind = AST_TYPE_SLICE,
                     .spec.slice.element = arena_clone(c->arena, &element_type, sizeof(element_type)),
                 };
-            } else if (ast_type_kind_eq(index->lhs->type, AST_TYPE_SLICE)) {
+            } else if (
+                ast_type_kind_eq(index->lhs->type, AST_TYPE_SLICE) ||
+                ast_type_kind_eq(index->lhs->type, AST_TYPE_STRING)) {
                 // The beginning can be inferred to be the beginning of the slice
                 if (index->a) {
                     check_node(c, index->a);
@@ -1339,6 +1355,11 @@ static void check_node(Compiler *c, AST_Node *n) {
                 check_node(c, index->a);
                 ast_type_assert_numeric(index->a, false);
                 n->type = *index->lhs->type.spec.slice.element;
+                n->is_memory = true;
+            } else if (ast_type_kind_eq(index->lhs->type, AST_TYPE_STRING) && !index->lhs->type.ref) {
+                check_node(c, index->a);
+                ast_type_assert_numeric(index->a, false);
+                n->type = (AST_Type) {.kind = AST_TYPE_CHAR};
                 n->is_memory = true;
             } else {
                 fprintf(

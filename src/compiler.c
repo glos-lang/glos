@@ -17,7 +17,7 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/TargetMachine.h>
 
-static_assert(COUNT_AST_TYPES == 16, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 static void compile_type(Compiler *c, AST_Type *type) {
     if (!type || type->llvm) {
         return;
@@ -89,6 +89,7 @@ static void compile_type(Compiler *c, AST_Type *type) {
     } break;
 
     case AST_TYPE_SLICE:
+    case AST_TYPE_STRING:
         if (!c->llvm_slice_type) {
             LLVMTypeRef fields[] = {
                 LLVMPointerTypeInContext(c->llvm_context, 0),
@@ -113,7 +114,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_AST_TYPES == 16, "");
+static_assert(COUNT_AST_TYPES == 17, "");
 static bool type_is_compound(AST_Type type) {
     if (type.ref) {
         return false;
@@ -122,6 +123,7 @@ static bool type_is_compound(AST_Type type) {
     switch (type.kind) {
     case AST_TYPE_STRUCT:
     case AST_TYPE_SLICE:
+    case AST_TYPE_STRING:
         return true;
 
     default:
@@ -138,7 +140,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, AST_Type *type) {
         return info;
     }
 
-    static_assert(COUNT_AST_TYPES == 16, "");
+    static_assert(COUNT_AST_TYPES == 17, "");
     switch (type->kind) {
     case AST_TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -301,7 +303,65 @@ static LLVMMetadataRef get_scope_of_definition(Compiler *c, AST_Node *node, AST_
     return defined_in->llvm_debug_scope;
 }
 
-static_assert(COUNT_AST_TYPES == 16, "");
+static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type);
+
+// Assertion: sizeof(type) == 8
+typedef struct {
+    SV       name;
+    AST_Type type;
+} Builtin_Compound_Type_Field;
+
+static LLVMMetadataRef
+get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_Field *fields, size_t fields_count) {
+    const void *checkpoint = temp_alloc(0);
+
+    LLVMMetadataRef  empty_file_path_metadata = get_debug_file(c, "");
+    LLVMMetadataRef *members = temp_alloc(fields_count * sizeof(*members));
+
+    size_t size_bits = 0;
+    for (size_t i = 0; i < fields_count; i++) {
+        Builtin_Compound_Type_Field it = fields[i];
+        assert(compile_sizeof(c, &it.type) == 8);
+
+        members[i] = LLVMDIBuilderCreateMemberType(
+            c->llvm_debug_builder,
+            c->llvm_debug_compile_unit,
+            it.name.data,
+            it.name.count,
+            empty_file_path_metadata,
+            0,
+            64,
+            64,
+            size_bits,
+            0,
+            LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, get_debug_for_type(c, it.type), 64, 64, 0, "", 0));
+
+        size_bits += 64;
+    }
+
+    LLVMMetadataRef metadata = LLVMDIBuilderCreateStructType(
+        c->llvm_debug_builder,
+        c->llvm_debug_compile_unit,
+        name.data,
+        name.count,
+        empty_file_path_metadata,
+        0,
+        size_bits,
+        64,
+        0,
+        NULL,
+        members,
+        fields_count,
+        0,
+        NULL,
+        "",
+        0);
+
+    temp_reset(checkpoint);
+    return metadata;
+}
+
+static_assert(COUNT_AST_TYPES == 17, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     assert(!type.is_meta);
     if (type.ref) {
@@ -463,68 +523,29 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, AST_Type type) {
     case AST_TYPE_SLICE: {
         const void *checkpoint = temp_alloc(0);
 
-        LLVMMetadataRef empty_file_path_metadata = get_debug_file(c, "");
-        LLVMMetadataRef data_type_metadata = LLVMDIBuilderCreatePointerType(
-            c->llvm_debug_builder,
-            get_debug_for_type(c, *type.spec.slice.element),
-            sizeof(void *),
-            sizeof(void *),
-            0,
-            "",
-            0);
-
-        LLVMMetadataRef data_member_metadata = LLVMDIBuilderCreateMemberType(
-            c->llvm_debug_builder,
-            c->llvm_debug_compile_unit,
-            "data",
-            strlen("data"),
-            empty_file_path_metadata,
-            0,
-            64,
-            64,
-            0,
-            0,
-            data_type_metadata);
-
-        LLVMMetadataRef count_type_metadata =
-            LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "i64", strlen("i64"), 64, DW_ATE_signed, 0);
-
-        LLVMMetadataRef count_member_metadata = LLVMDIBuilderCreateMemberType(
-            c->llvm_debug_builder,
-            c->llvm_debug_compile_unit,
-            "count",
-            strlen("count"),
-            empty_file_path_metadata,
-            0,
-            64,
-            64,
-            64,
-            0,
-            count_type_metadata);
-
         SV name = sv_from_cstr(ast_type_to_cstr_raw(type));
 
-        LLVMMetadataRef fields[] = {data_member_metadata, count_member_metadata};
-        LLVMMetadataRef metadata = LLVMDIBuilderCreateStructType(
-            c->llvm_debug_builder,
-            c->llvm_debug_compile_unit,
-            name.data,
-            name.count,
-            empty_file_path_metadata,
-            0,
-            128,
-            64,
-            0,
-            NULL,
-            fields,
-            len(fields),
-            0,
-            NULL,
-            "",
-            0);
+        Builtin_Compound_Type_Field fields[2] = {0};
+        fields[0].name = sv_from_cstr("data");
+        fields[0].type = *type.spec.slice.element;
+        fields[0].type.ref++;
 
+        fields[1].name = sv_from_cstr("count");
+        fields[1].type = (AST_Type) {.kind = AST_TYPE_I64};
+
+        LLVMMetadataRef metadata = get_debug_for_builtin_compound_type(c, name, fields, len(fields));
         temp_reset(checkpoint);
         return metadata;
+    }
+
+    case AST_TYPE_STRING: {
+        Builtin_Compound_Type_Field fields[2] = {0};
+        fields[0].name = sv_from_cstr("data");
+        fields[0].type = (AST_Type) {.kind = AST_TYPE_CHAR, .ref = 1};
+
+        fields[1].name = sv_from_cstr("count");
+        fields[1].type = (AST_Type) {.kind = AST_TYPE_I64};
+        return get_debug_for_builtin_compound_type(c, sv_from_cstr("string"), fields, len(fields));
     }
 
     default:
@@ -998,8 +1019,36 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
         }
 
-        case TOKEN_STRING:
-            todo(); // TODO(@strings)
+        case TOKEN_STRING: {
+            const size_t start = c->arena->sb.count;
+            for (size_t i = 1; i + 1 < n->token.sv.count;) {
+                char ch = n->token.sv.data[i++];
+                if (ch == '\\') {
+                    ch = n->token.sv.data[i++];
+                    resolve_escape_char(&ch);
+                }
+                sb_push(&c->arena->sb, ch);
+            }
+            const SV sv = {.data = c->arena->sb.data + start, c->arena->sb.count - start};
+
+            LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+            LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
+            LLVMSetInitializer(slice_data, memory);
+
+            LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), sv.count, false);
+            LLVMValueRef slice_struct = compile_alloca(c, n->type.llvm);
+            LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
+            LLVMBuildStore(
+                c->llvm_builder,
+                slice_count,
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
+
+            if (ref) {
+                return slice_struct;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice_struct, "");
+        }
 
         default:
             unreachable();
@@ -1423,11 +1472,20 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
         LLVMValueRef lhs = compile_expr(c, index->lhs, !index->lhs->type.ref);
         LLVMValueRef a = compile_expr(c, index->a, false);
 
-        AST_Type *element_type = NULL;
-        if (index->is_ranged) {
+        AST_Type  element_type_buffer = {0};
+        AST_Type *element_type = &element_type_buffer;
+        if (index->lhs->type.ref) {
             element_type = n->type.spec.slice.element;
-            compile_type(c, element_type);
+        } else if (index->lhs->type.kind == AST_TYPE_SLICE) {
+            element_type = index->lhs->type.spec.slice.element;
+        } else if (index->lhs->type.kind == AST_TYPE_STRING) {
+            element_type_buffer.kind = AST_TYPE_CHAR;
+        } else {
+            unreachable();
+        }
+        compile_type(c, element_type);
 
+        if (index->is_ranged) {
             if (a) {
                 if (compile_sizeof(c, &index->a->type) != 64) {
                     LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
@@ -1459,7 +1517,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             LLVMValueRef count = NULL;
             if (index->lhs->type.ref) {
                 ptr = lhs;
-            } else if (index->lhs->type.kind == AST_TYPE_SLICE) {
+            } else if (index->lhs->type.kind == AST_TYPE_SLICE || index->lhs->type.kind == AST_TYPE_STRING) {
                 ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
                 count = LLVMBuildLoad2(
                     c->llvm_builder,
@@ -1548,16 +1606,12 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice_struct, "");
         }
 
-        assert(index->lhs->type.kind == AST_TYPE_SLICE); // TODO(@slice)
-        element_type = index->lhs->type.spec.slice.element;
-        compile_type(c, element_type);
-
         set_debug_pos(c, n->token.pos);
 
         // Bounds check
         {
             LLVMValueRef count = NULL;
-            if (index->lhs->type.kind == AST_TYPE_SLICE) {
+            if (index->lhs->type.kind == AST_TYPE_SLICE || index->lhs->type.kind == AST_TYPE_STRING) {
                 count = LLVMBuildStructGEP2(c->llvm_builder, index->lhs->type.llvm, lhs, 1, "");
                 count = LLVMBuildLoad2(c->llvm_builder, LLVMInt64TypeInContext(c->llvm_context), count, "");
             } else {
@@ -1588,14 +1642,17 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, success);
         }
 
-        assert(index->lhs->type.kind == AST_TYPE_SLICE); // TODO(@slice)
-        LLVMValueRef ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+        LLVMValueRef ptr = NULL;
+        if (index->lhs->type.kind == AST_TYPE_SLICE || index->lhs->type.kind == AST_TYPE_STRING) {
+            ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+        } else {
+            unreachable();
+        }
         ptr = LLVMBuildGEP2(c->llvm_builder, element_type->llvm, ptr, &a, 1, "");
 
         if (ref) {
             return ptr;
         }
-
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
     }
 
@@ -1923,6 +1980,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     const void *checkpoint = temp_alloc(0);
 
     assert(c->cmd);
+    assert(c->arena);
     AST_Node_Fn *main_fn = get_main(c);
 
     if (!c->llvm_context) {
