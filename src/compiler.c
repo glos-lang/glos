@@ -560,36 +560,6 @@ static void set_debug_pos(Compiler *c, Pos pos) {
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
 }
 
-static_assert(COUNT_CONST_VALUES == 4, "");
-static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, AST_Type type) {
-    switch (value.kind) {
-    case CONST_VALUE_INT:
-        return LLVMConstInt(type.llvm, value.as.integer, ast_type_is_signed(type));
-
-    case CONST_VALUE_FN:
-        return compile_fn(c, value.as.fn);
-
-    case CONST_VALUE_TYPE:
-        unreachable();
-
-    case CONST_VALUE_STRUCT: {
-        const AST_Type_Struct spec = value.as.structt.spec;
-
-        LLVMValueRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
-        for (size_t i = 0; i < spec.fields_count; i++) {
-            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec.fields[i]->node.type);
-        }
-
-        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec.fields_count, false);
-        temp_reset(fields);
-        return result;
-    }
-
-    default:
-        unreachable();
-    }
-}
-
 static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
     if (c->llvm_fn_last_alloca) {
@@ -614,6 +584,57 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     c->llvm_fn_last_alloca = alloca;
     LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
     return alloca;
+}
+
+static LLVMValueRef compile_string(Compiler *c, SV sv, bool ref) {
+    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+    LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
+    LLVMSetInitializer(slice_data, memory);
+
+    LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), sv.count, false);
+    LLVMValueRef slice_struct = compile_alloca(c, c->llvm_slice_type);
+    LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
+    LLVMBuildStore(
+        c->llvm_builder, slice_count, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
+
+    if (ref) {
+        return slice_struct;
+    }
+
+    return LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, slice_struct, "");
+}
+
+static_assert(COUNT_CONST_VALUES == 5, "");
+static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, AST_Type type) {
+    switch (value.kind) {
+    case CONST_VALUE_INT:
+        return LLVMConstInt(type.llvm, value.as.integer, ast_type_is_signed(type));
+
+    case CONST_VALUE_FN:
+        return compile_fn(c, value.as.fn);
+
+    case CONST_VALUE_TYPE:
+        unreachable();
+
+    case CONST_VALUE_STRUCT: {
+        const AST_Type_Struct spec = value.as.structt.spec;
+
+        LLVMValueRef *fields = temp_alloc(spec.fields_count * sizeof(*fields));
+        for (size_t i = 0; i < spec.fields_count; i++) {
+            fields[i] = compile_const_value(c, value.as.structt.fields[i], spec.fields[i]->node.type);
+        }
+
+        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec.fields_count, false);
+        temp_reset(fields);
+        return result;
+    }
+
+    case CONST_VALUE_STRING:
+        return compile_string(c, value.as.string, false);
+
+    default:
+        unreachable();
+    }
 }
 
 static void compile_local_var_debug(Compiler *c, AST_Node_Atom *it, LLVMMetadataRef var_debug_type) {
@@ -977,7 +998,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             assert(definition);
 
             if (definition->is_const) {
-                static_assert(COUNT_CONST_VALUES == 4, "");
+                static_assert(COUNT_CONST_VALUES == 5, "");
                 switch (definition->const_value.kind) {
                 case CONST_VALUE_INT:
                     return LLVMConstInt(n->type.llvm, definition->const_value.as.integer, ast_type_is_signed(n->type));
@@ -1002,6 +1023,9 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
                 }
 
+                case CONST_VALUE_STRING:
+                    return compile_string(c, definition->const_value.as.string, ref);
+
                 default:
                     unreachable();
                 }
@@ -1019,25 +1043,8 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
         }
 
-        case TOKEN_STRING: {
-            LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, n->token.sv.data, n->token.sv.count, false);
-            LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
-            LLVMSetInitializer(slice_data, memory);
-
-            LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), n->token.sv.count, false);
-            LLVMValueRef slice_struct = compile_alloca(c, n->type.llvm);
-            LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
-            LLVMBuildStore(
-                c->llvm_builder,
-                slice_count,
-                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
-
-            if (ref) {
-                return slice_struct;
-            }
-
-            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice_struct, "");
-        }
+        case TOKEN_STRING:
+            return compile_string(c, n->token.sv, ref);
 
         default:
             unreachable();
@@ -1458,6 +1465,24 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
     case AST_NODE_INDEX: {
         AST_Node_Index *index = (AST_Node_Index *) n;
 
+        const char *label = "slice";
+        if (!index->lhs->type.ref) {
+            static_assert(COUNT_AST_TYPES == 17, "");
+            switch (index->lhs->type.kind) {
+            case AST_TYPE_SLICE:
+                // Pass
+                break;
+
+            case AST_TYPE_STRING:
+                label = "string";
+                break;
+
+            default:
+                unreachable();
+                break;
+            }
+        }
+
         LLVMValueRef lhs = compile_expr(c, index->lhs, !index->lhs->type.ref);
         LLVMValueRef a = compile_expr(c, index->a, false);
 
@@ -1552,7 +1577,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
 
                     LLVMValueRef check_begin_of_a =
                         LLVMBuildICmp(c->llvm_builder, LLVMIntSGE, a, LLVMConstNull(LLVMTypeOf(a)), "");
-                    LLVMValueRef check_end_of_a = LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, a, count, "");
+                    LLVMValueRef check_end_of_a = LLVMBuildICmp(c->llvm_builder, LLVMIntSLE, a, count, "");
                     LLVMValueRef check_a = LLVMBuildAnd(c->llvm_builder, check_begin_of_a, check_end_of_a, "");
 
                     LLVMValueRef check_begin_of_b =
@@ -1567,8 +1592,9 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
                     LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
                     {
                         const char *message = temp_sprintf(
-                            Pos_Fmt "Range (%%ld..%%ld) is out of bounds in slice of length %%ld\n",
-                            Pos_Arg(n->token.pos));
+                            Pos_Fmt "Range (%%ld..%%ld) is out of bounds in %s of length %%ld\n",
+                            Pos_Arg(n->token.pos),
+                            label);
 
                         compile_panic(c, message, a, b, count);
                         temp_reset(message);
@@ -1621,7 +1647,7 @@ static LLVMValueRef compile_expr(Compiler *c, AST_Node *n, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
             {
                 const char *message = temp_sprintf(
-                    Pos_Fmt "Index %%ld is out of bounds in slice of length %%ld\n", Pos_Arg(n->token.pos));
+                    Pos_Fmt "Index %%ld is out of bounds in %s of length %%ld\n", Pos_Arg(n->token.pos), label);
 
                 compile_panic(c, message, a, count);
                 temp_reset(message);

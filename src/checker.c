@@ -375,7 +375,7 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         }
 
         case TOKEN_STRING:
-            todo(); // TODO(@strings)
+            return const_value_string(n->token.sv);
 
         default:
             unreachable();
@@ -519,9 +519,26 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
 
     case AST_NODE_MEMBER: {
         AST_Node_Member  *member = (AST_Node_Member *) n;
-        const Const_Value value = eval_const_expr(c, member->lhs);
-        assert(value.kind == CONST_VALUE_STRUCT); // TODO(@slice)
-        return value.as.structt.fields[member->field_index];
+        const Const_Value lhs = eval_const_expr(c, member->lhs);
+
+        // TODO(@slice)
+        switch (lhs.kind) {
+        case CONST_VALUE_STRUCT:
+            return lhs.as.structt.fields[member->field_index];
+
+        case CONST_VALUE_STRING:
+            if (member->field_index == 0) {
+                // TODO: Pointers in constant expressions
+                todo();
+            } else if (member->field_index == 1) {
+                return const_value_int(lhs.as.string.count);
+            } else {
+                unreachable();
+            }
+
+        default:
+            unreachable();
+        }
     }
 
     case AST_NODE_FN: {
@@ -603,7 +620,76 @@ static Const_Value eval_const_expr(Compiler *c, AST_Node *n) {
         return const_value_type(n->type);
 
     case AST_NODE_INDEX: {
-        todo(); // TODO(@slice)
+        AST_Node_Index   *index = (AST_Node_Index *) n;
+        const Const_Value lhs = eval_const_expr(c, index->lhs);
+        if (index->is_ranged) {
+            // TODO(@slice)
+            switch (lhs.kind) {
+            case CONST_VALUE_STRING: {
+                SV sv = lhs.as.string;
+
+                size_t begin = 0;
+                if (index->a) {
+                    begin = eval_const_expr(c, index->a).as.integer;
+                }
+
+                size_t end = sv.count;
+                if (index->b) {
+                    end = eval_const_expr(c, index->b).as.integer;
+                }
+
+                if (begin > end) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%ld..%ld) is invalid: Beginning of range is more than end\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end);
+                    exit(1);
+                }
+
+                if (begin < 0 || end < 0 || begin > sv.count || end > sv.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%ld..%ld) is out of bounds in string of length %ld\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end,
+                        sv.count);
+                    exit(1);
+                }
+
+                sv.data += begin;
+                sv.count = end - begin;
+                return const_value_string(sv);
+            }
+
+            default:
+                unreachable();
+            }
+        } else {
+            const size_t at = eval_const_expr(c, index->a).as.integer;
+
+            // TODO(@slice)
+            switch (lhs.kind) {
+            case CONST_VALUE_STRING: {
+                if (at < 0 || at >= lhs.as.string.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Index %ld is out of bounds in string of length %ld\n",
+                        Pos_Arg(n->token.pos),
+                        at,
+                        lhs.as.string.count);
+                    exit(1);
+                };
+
+                return const_value_int(lhs.as.string.data[at]);
+            }
+
+            default:
+                unreachable();
+            }
+        }
     }
 
     default:
