@@ -966,6 +966,46 @@ static void compile_panic(Compiler *c, const char *fmt, ...) {
 }
 #define compile_panic(c, fmt, ...) compile_panic(c, fmt, __VA_ARGS__, NULL)
 
+static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
+    LLVMTypeRef from_type = LLVMTypeOf(from);
+    if (from_type == to_type) {
+        return from;
+    }
+
+    LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
+    LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
+
+    // Pointer -> Integer
+    if (from_kind == LLVMPointerTypeKind && to_kind == LLVMIntegerTypeKind) {
+        return LLVMBuildPtrToInt(c->llvm_builder, from, to_type, "");
+    }
+
+    // Integer -> Pointer
+    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMPointerTypeKind) {
+        return LLVMBuildIntToPtr(c->llvm_builder, from, to_type, "");
+    }
+
+    // Integer -> Integer
+    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMIntegerTypeKind) {
+        const size_t from_width = LLVMGetIntTypeWidth(from_type);
+        const size_t to_width = LLVMGetIntTypeWidth(to_type);
+        if (from_width > to_width) {
+            return LLVMBuildTrunc(c->llvm_builder, from, to_type, "");
+        } else if (from_width < to_width) {
+            // Smaller -> Bigger
+            if (is_signed) {
+                return LLVMBuildSExt(c->llvm_builder, from, to_type, "");
+            }
+            return LLVMBuildZExt(c->llvm_builder, from, to_type, "");
+        } else {
+            // Bigger -> Smaller
+            return LLVMBuildBitCast(c->llvm_builder, from, to_type, "");
+        }
+    }
+
+    unreachable();
+}
+
 static_assert(COUNT_NODES == 18, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -1264,46 +1304,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             case TYPE_CAST_NOP:
                 return from;
 
-            case TYPE_CAST_NORMAL: {
-                LLVMTypeRef to_type = n->type.llvm;
-                if (from_type == to_type) {
-                    return from;
-                }
+            case TYPE_CAST_NORMAL:
                 set_debug_pos(c, n->token.pos);
-
-                LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
-                LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
-
-                // Pointer -> Integer
-                if (from_kind == LLVMPointerTypeKind && to_kind == LLVMIntegerTypeKind) {
-                    return LLVMBuildPtrToInt(c->llvm_builder, from, to_type, "");
-                }
-
-                // Integer -> Pointer
-                if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMPointerTypeKind) {
-                    return LLVMBuildIntToPtr(c->llvm_builder, from, to_type, "");
-                }
-
-                // Integer -> Integer
-                if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMIntegerTypeKind) {
-                    const size_t from_width = LLVMGetIntTypeWidth(from_type);
-                    const size_t to_width = LLVMGetIntTypeWidth(to_type);
-                    if (from_width > to_width) {
-                        return LLVMBuildTrunc(c->llvm_builder, from, to_type, "");
-                    } else if (from_width < to_width) {
-                        // Smaller -> Bigger
-                        if (type_is_signed(call->args.head->type)) {
-                            return LLVMBuildSExt(c->llvm_builder, from, to_type, "");
-                        }
-                        return LLVMBuildZExt(c->llvm_builder, from, to_type, "");
-                    } else {
-                        // Bigger -> Smaller
-                        return LLVMBuildBitCast(c->llvm_builder, from, to_type, "");
-                    }
-                }
-
-                unreachable();
-            }
+                return compile_cast(c, from, n->type.llvm, type_is_signed(call->args.head->type));
 
             case TYPE_CAST_TO_BOOL:
                 set_debug_pos(c, n->token.pos);
@@ -1492,28 +1495,14 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         if (index->is_ranged) {
             if (a) {
-                if (compile_sizeof(c, &index->a->type) != 64) {
-                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-                    if (type_is_signed(index->a->type)) {
-                        a = LLVMBuildSExt(c->llvm_builder, a, llvm_type_i64, "");
-                    } else {
-                        a = LLVMBuildZExt(c->llvm_builder, a, llvm_type_i64, "");
-                    }
-                }
+                a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type));
             } else {
                 a = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
             }
 
             LLVMValueRef b = compile_expr(c, index->b, false);
             if (b) {
-                if (compile_sizeof(c, &index->b->type) != 64) {
-                    LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-                    if (type_is_signed(index->b->type)) {
-                        b = LLVMBuildSExt(c->llvm_builder, b, llvm_type_i64, "");
-                    } else {
-                        b = LLVMBuildZExt(c->llvm_builder, b, llvm_type_i64, "");
-                    }
-                }
+                b = compile_cast(c, b, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->b->type));
             }
 
             set_debug_pos(c, n->token.pos);
@@ -1888,18 +1877,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         const bool   is_signed = type_is_signed(print->value->type);
         LLVMValueRef args[] = {
             is_signed ? c->llvm_iprint_str : c->llvm_uprint_str,
-            compile_expr(c, print->value, false),
+            compile_cast(c, compile_expr(c, print->value, false), LLVMInt64TypeInContext(c->llvm_context), is_signed),
         };
-
-        const size_t value_size = compile_sizeof(c, &print->value->type);
-        if (value_size != 8) {
-            LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-            if (is_signed) {
-                args[1] = LLVMBuildSExt(c->llvm_builder, args[1], llvm_type_i64, "");
-            } else {
-                args[1] = LLVMBuildZExt(c->llvm_builder, args[1], llvm_type_i64, "");
-            }
-        }
 
         set_debug_pos(c, n->token.pos);
         LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
@@ -2169,4 +2148,3 @@ void compiler_build(Compiler *c, const char *output_path) {
 }
 
 // TODO: Consider replace LLVMAppendBasicBlockInContext with LLVMCreateBasicBlockInContext
-// TODO: Refactor compile_cast()
