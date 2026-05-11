@@ -1,0 +1,4 @@
+main :: () {
+    xs: []u32
+    xs[true]
+}

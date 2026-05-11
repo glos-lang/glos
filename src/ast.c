@@ -15,8 +15,8 @@ void ast_nodes_push(AST_Nodes *ns, AST_Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
-static const char *ast_type_to_cstr_impl(AST_Type type) {
+static_assert(COUNT_AST_TYPES == 15, "");
+const char *ast_type_to_cstr_raw(AST_Type type) {
     assert(!type.is_meta);
 
     const char *s = temp_alloc(0);
@@ -88,7 +88,7 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
             temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
 
             temp_remove_null();
-            ast_type_to_cstr_impl(it->node.type);
+            ast_type_to_cstr_raw(it->node.type);
         }
 
         temp_remove_null();
@@ -99,7 +99,7 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
             temp_sprintf(" -> ");
 
             temp_remove_null();
-            ast_type_to_cstr_impl(*type.spec.fn.returnn);
+            ast_type_to_cstr_raw(*type.spec.fn.returnn);
         }
         break;
 
@@ -122,13 +122,19 @@ static const char *ast_type_to_cstr_impl(AST_Type type) {
                 temp_sprintf(SV_Fmt ": ", SV_Arg(it->node.token.sv));
 
                 temp_remove_null();
-                ast_type_to_cstr_impl(it->node.type);
+                ast_type_to_cstr_raw(it->node.type);
             }
 
             temp_remove_null();
             temp_sprintf("}");
         }
     } break;
+
+    case AST_TYPE_SLICE:
+        temp_sprintf("[]");
+        temp_remove_null();
+        ast_type_to_cstr_raw(*type.spec.slice.element);
+        break;
 
     default:
         unreachable();
@@ -144,13 +150,13 @@ const char *ast_type_to_cstr(AST_Type type) {
 
     const char *s = temp_sprintf("'");
     temp_remove_null();
-    ast_type_to_cstr_impl(type);
+    ast_type_to_cstr_raw(type);
     temp_remove_null();
     temp_sprintf("'");
     return s;
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 bool ast_type_eq(AST_Type a, AST_Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -183,7 +189,7 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
         return ast_type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
     }
 
-    case AST_TYPE_STRUCT: {
+    case AST_TYPE_STRUCT:
         if (a.spec.structt.fields_count != b.spec.structt.fields_count) {
             return false;
         }
@@ -199,14 +205,16 @@ bool ast_type_eq(AST_Type a, AST_Type b) {
         }
 
         return true;
-    }
+
+    case AST_TYPE_SLICE:
+        return ast_type_eq(*a.spec.slice.element, *b.spec.slice.element);
 
     default:
         return true;
     }
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 bool ast_type_kind_eq(AST_Type type, AST_Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -219,7 +227,7 @@ bool ast_type_is_numeric(AST_Type type) {
     return ast_type_is_integer(type);
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 bool ast_type_is_integer(AST_Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -267,7 +275,7 @@ bool ast_type_is_scalar(AST_Type type) {
     return false;
 }
 
-static_assert(COUNT_AST_TYPES == 14, "");
+static_assert(COUNT_AST_TYPES == 15, "");
 bool ast_type_is_signed(AST_Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -313,7 +321,7 @@ static void ast_nodes_debug_impl(FILE *f, AST_Nodes ns, int depth, const char *l
     }
 }
 
-static_assert(COUNT_AST_NODES == 16, "");
+static_assert(COUNT_AST_NODES == 18, "");
 static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -380,6 +388,26 @@ static void ast_node_debug_impl(FILE *f, AST_Node *n, int depth, const char *lab
         fprintf(f, "Call {\n");
         ast_node_debug_impl(f, call->fn, depth + 1, "Fn");
         ast_nodes_debug_impl(f, call->args, depth + 1, "Args");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_SLICE: {
+        AST_Node_Slice *slice = (AST_Node_Slice *) n;
+        fprintf(f, "Slice {\n");
+        ast_node_debug_impl(f, slice->element, depth + 1, "Element");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case AST_NODE_INDEX: {
+        AST_Node_Index *index = (AST_Node_Index *) n;
+        fprintf(f, "Index {\n");
+        ast_node_debug_impl(f, index->lhs, depth + 1, "Lhs");
+        if (index->is_ranged) {
+            ast_node_debug_impl(f, index->a, depth + 1, "Index");
+        } else {
+            ast_node_debug_impl(f, index->a, depth + 1, "From");
+            ast_node_debug_impl(f, index->b, depth + 1, "To");
+        }
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
