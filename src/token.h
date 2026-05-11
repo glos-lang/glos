@@ -84,7 +84,7 @@ typedef struct {
     bool newline;
 
     union {
-        int64_t integer;
+        i64 integer;
     } as;
 } Token;
 

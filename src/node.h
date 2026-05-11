@@ -120,7 +120,7 @@ typedef struct {
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        int64_t            integer;
+        i64                integer;
         Type               type;
         Node_Fn           *fn;
         Const_Value_Struct structt;

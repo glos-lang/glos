@@ -37,6 +37,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+// AAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+//
+// On Linux, long is 64 bits, long long is 64 bits, int64_t is long
+// On macOS, long is 64 bits, long long is 64 bits, int64_t is long long
+// On Windows, long is 32 bits, long long is 64 bits, int64_t is long long
+//
+// In printf, long long requires the format specifier %lld, and long requires %ld
+//
+// Literally ALL THREE of these platforms have different versions of the same damn thing.
+// And the solution is to use those goofy ahh PRI*N macros.
+//
+// Thank you K&R. Very cool...
+typedef long long i64;
+static_assert(sizeof(i64) == 8, "");
+
 // Helper Macros
 #define len(a)    (sizeof(a) / sizeof(*(a)))
 #define unused(v) (void) (v)
