@@ -9,8 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define STB_DS_IMPLEMENTATION
-#include "thirdparty/stb_ds.h" // TODO: Compile this into an object file
+#include "thirdparty/stb_ds.h"
 
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>

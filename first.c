@@ -189,6 +189,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/checker.c",
         "src/compiler.c",
         "src/main.c",
+        "src/thirdparty/stb_ds.c",
     };
 
     const void *save = temp_alloc(0);
