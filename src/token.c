@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 55, "");
+static_assert(COUNT_TOKENS == 56, "");
 const char *token_kind_to_cstr(Token_Kind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -152,6 +152,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_FOR:
         return "'for'";
+
+    case TOKEN_DEFER:
+        return "'defer'";
 
     case TOKEN_BREAK:
         return "'break'";

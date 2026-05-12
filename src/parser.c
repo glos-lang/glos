@@ -16,7 +16,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 55, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -132,7 +132,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static Node *node_alloc(Parser *p, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // Prevent clang-format from messing this up
@@ -155,6 +155,7 @@ static Node *node_alloc(Parser *p, Node_Kind kind, Token token) {
         [NODE_FOR] = sizeof(Node_For),
 
         [NODE_JUMP] = sizeof(Node_Jump),
+        [NODE_DEFER] = sizeof(Node_Defer),
         [NODE_RETURN] = sizeof(Node_Return),
 
         [NODE_EXTERN] = sizeof(Node_Extern),
@@ -276,7 +277,7 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 55, "");
+static_assert(COUNT_TOKENS == 56, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -617,7 +618,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -641,6 +642,22 @@ static Node *parse_stmt(Parser *p) {
         node = parse_for(p, token);
         break;
 
+    case TOKEN_DEFER: {
+        not_in_extern_assert(p, token);
+        local_assert(p, true, token, NULL);
+        if (p->in_defer) {
+            fprintf(stderr, Pos_Fmt "ERROR: Nested 'defer' is not allowed\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        const bool in_defer_save = p->in_defer;
+        p->in_defer = true;
+        node = node_alloc(p, NODE_DEFER, token);
+        Node_Defer *defer = (Node_Defer *) node;
+        defer->stmt = parse_stmt(p);
+        p->in_defer = in_defer_save;
+    } break;
+
     case TOKEN_BREAK:
     case TOKEN_CONTINUE:
         not_in_extern_assert(p, token);
@@ -653,12 +670,30 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        if (p->in_defer) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot use %s inside 'defer' statement\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
         node = node_alloc(p, NODE_JUMP, token);
         break;
 
     case TOKEN_RETURN: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
+        if (p->in_defer) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot use %s inside 'defer' statement\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
         node = node_alloc(p, NODE_RETURN, token);
 
         Node_Return *returnn = (Node_Return *) node;

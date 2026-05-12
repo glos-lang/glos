@@ -174,6 +174,7 @@ typedef enum {
     NODE_FOR,
 
     NODE_JUMP,
+    NODE_DEFER,
     NODE_RETURN,
 
     NODE_EXTERN,
@@ -370,6 +371,11 @@ typedef struct {
 typedef struct {
     Node node;
 } Node_Jump;
+
+typedef struct {
+    Node  node;
+    Node *stmt;
+} Node_Defer;
 
 typedef struct {
     Node  node;

@@ -12,6 +12,7 @@ typedef struct {
     bool  peeked;
 
     bool in_loop;
+    bool in_defer;
     bool in_extern;
 
     Node_Fn *fn_current;

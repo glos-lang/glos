@@ -1,7 +1,8 @@
 main :: () {
     b := board_new(30)
+    defer board_free(b)
 
-    b[b.count - 2 ] = 1
+    b[b.count - 2] = 1
     for i := 0; i < b.count - 2; i = i + 1 {
         board_show(b)
 
@@ -13,25 +14,29 @@ main :: () {
     }
 }
 
-board_new :: (n: i64) -> []i32 {
-    extern {
-        calloc :: (count: i64, size: i64) -> rawptr
-    }
+Board :: []i32
 
+board_new :: (n: i64) -> Board {
     return (&i32(calloc(n, sizeof(i32))))[..n]
 }
 
-board_show :: (b: []i32) {
-    extern {
-        putchar :: (ch: i32) -> i32
-    }
+board_free :: (b: Board) {
+    free(rawptr(b.data))
+}
 
+board_show :: (b: Board) {
     for i := 0; i < b.count; i = i + 1 {
         if bool(b[i]) {
-            putchar(42)
+            putchar(i32('*'))
         } else {
-            putchar(32)
+            putchar(i32(' '))
         }
     }
-    putchar(10)
+    putchar(i32('\n'))
+}
+
+extern {
+    calloc :: (count: i64, size: i64) -> rawptr
+    free :: (ptr: rawptr)
+    putchar :: (ch: i32) -> i32
 }

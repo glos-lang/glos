@@ -577,7 +577,7 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     return alloca;
 }
 
-static LLVMValueRef compile_string(Compiler *c, SV sv, bool ref) {
+static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
     LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
     LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
     LLVMSetInitializer(slice_data, memory);
@@ -592,6 +592,9 @@ static LLVMValueRef compile_string(Compiler *c, SV sv, bool ref) {
         return slice_struct;
     }
 
+    if (pos) {
+        set_debug_pos(c, *pos);
+    }
     return LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, slice_struct, "");
 }
 
@@ -621,7 +624,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
     }
 
     case CONST_VALUE_STRING:
-        return compile_string(c, value.as.string, false);
+        return compile_string(c, value.as.string, NULL, false);
 
     default:
         unreachable();
@@ -737,6 +740,16 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     temp_reset(checkpoint);
 }
 
+static void compile_defers(Compiler *c, size_t from, bool rollback) {
+    for (size_t i = c->defers.count; i > from; i--) {
+        compile_stmt(c, c->defers.data[i - 1]);
+    }
+
+    if (rollback) {
+        c->defers.count = from;
+    }
+}
+
 static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     if (fn->llvm) {
         return fn->llvm;
@@ -757,6 +770,9 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             fn->defined_as->node.token.sv.count,
             fn->node.type.llvm);
     } else {
+        const size_t defers_start_save = c->defers_start;
+        c->defers_start = c->defers.count;
+
         LLVMValueRef llvm_fn_save = c->llvm_fn;
         LLVMValueRef llvm_fn_last_alloca_save = c->llvm_fn_last_alloca;
 
@@ -876,13 +892,18 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             compile_stmt(c, it);
         }
 
-        set_debug_pos(c, block->end);
         if (fn_type_spec.returnn->kind == TYPE_UNIT) {
+            compile_defers(c, c->defers_start, true);
+            set_debug_pos(c, block->end);
             LLVMBuildRetVoid(c->llvm_builder);
         } else {
             // The semantic analyzer has already determined that the function returns in all execution paths
+            set_debug_pos(c, block->end);
             LLVMBuildUnreachable(c->llvm_builder);
         }
+
+        c->defers.count = c->defers_start;
+        c->defers_start = defers_start_save;
 
         c->llvm_fn = llvm_fn_save;
         c->llvm_fn_last_alloca = llvm_fn_last_alloca_save;
@@ -1010,7 +1031,7 @@ static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_
     unreachable();
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1021,7 +1042,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 55, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1058,11 +1079,13 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                     if (ref) {
                         return definition->definition_spec->llvm;
                     }
+
+                    set_debug_pos(c, n->token.pos);
                     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
                 }
 
                 case CONST_VALUE_STRING:
-                    return compile_string(c, definition->definition_spec->const_value.as.string, ref);
+                    return compile_string(c, definition->definition_spec->const_value.as.string, &n->token.pos, ref);
 
                 default:
                     unreachable();
@@ -1082,7 +1105,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         case TOKEN_STRING:
-            return compile_string(c, n->token.sv, ref);
+            return compile_string(c, n->token.sv, &n->token.pos, ref);
 
         default:
             unreachable();
@@ -1093,7 +1116,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 55, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1140,7 +1163,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 55, "");
+            static_assert(COUNT_TOKENS == 56, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1188,7 +1211,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 55, "");
+            static_assert(COUNT_TOKENS == 56, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1219,7 +1242,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 55, "");
+            static_assert(COUNT_TOKENS == 56, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1261,7 +1284,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 55, "");
+        static_assert(COUNT_TOKENS == 56, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1715,7 +1738,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1742,6 +1765,8 @@ static void compile_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_BLOCK: {
+        const size_t defers_count_save = c->defers.count;
+
         LLVMMetadataRef llvm_debug_scope_save = c->llvm_debug_scope;
         c->llvm_debug_scope = LLVMDIBuilderCreateLexicalBlock(
             c->llvm_debug_builder,
@@ -1755,6 +1780,7 @@ static void compile_stmt(Compiler *c, Node *n) {
             compile_stmt(c, it);
         }
 
+        compile_defers(c, defers_count_save, true);
         c->llvm_debug_scope = llvm_debug_scope_save;
     } break;
 
@@ -1819,9 +1845,12 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
 
         LLVMBasicBlockRef llvm_loop_break_save = c->llvm_loop_break;
-        LLVMBasicBlockRef llvm_loop_condition_save = c->llvm_loop_continue;
         c->llvm_loop_break = end;
+
+        LLVMBasicBlockRef llvm_loop_condition_save = c->llvm_loop_continue;
         c->llvm_loop_continue = update;
+
+        size_t loop_defers_start_save = c->loop_defers_start;
         {
             // Condition
             if (forr->condition) {
@@ -1857,11 +1886,13 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
         c->llvm_loop_break = llvm_loop_break_save;
         c->llvm_loop_continue = llvm_loop_condition_save;
+        c->loop_defers_start = loop_defers_start_save;
 
         c->llvm_debug_scope = llvm_debug_scope_save;
     } break;
 
     case NODE_JUMP:
+        compile_defers(c, c->loop_defers_start, false);
         set_debug_pos(c, n->token.pos);
         if (n->token.kind == TOKEN_BREAK) {
             LLVMBuildBr(c->llvm_builder, c->llvm_loop_break);
@@ -1873,6 +1904,11 @@ static void compile_stmt(Compiler *c, Node *n) {
             unreachable();
         }
         break;
+
+    case NODE_DEFER: {
+        Node_Defer *defer = (Node_Defer *) n;
+        da_push(&c->defers, defer->stmt);
+    } break;
 
     case NODE_RETURN: {
         Node_Return *returnn = (Node_Return *) n;
@@ -1887,12 +1923,15 @@ static void compile_stmt(Compiler *c, Node *n) {
                 value = compile_expr(c, returnn->value, false);
                 set_debug_pos(c, n->token.pos);
                 LLVMBuildStore(c->llvm_builder, value, LLVMGetParam(c->llvm_fn, 0));
+                compile_defers(c, c->defers_start, false);
+                set_debug_pos(c, n->token.pos);
                 LLVMBuildRetVoid(c->llvm_builder);
                 break;
 
             case 1:
                 value = compile_expr(c, returnn->value, true);
                 value = LLVMBuildLoad2(c->llvm_builder, abi.direct_types[0], value, "");
+                compile_defers(c, c->defers_start, false);
                 set_debug_pos(c, n->token.pos);
                 LLVMBuildRet(c->llvm_builder, value);
                 break;
@@ -1902,6 +1941,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                     LLVMStructTypeInContext(c->llvm_context, abi.direct_types, abi.direct_types_count, false);
                 value = compile_expr(c, returnn->value, true);
                 value = LLVMBuildLoad2(c->llvm_builder, type, value, "");
+                compile_defers(c, c->defers_start, false);
                 set_debug_pos(c, n->token.pos);
                 LLVMBuildRet(c->llvm_builder, value);
             } break;
@@ -1911,6 +1951,9 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
         } else {
             value = compile_expr(c, returnn->value, false);
+            set_debug_pos(c, n->token.pos);
+
+            compile_defers(c, c->defers_start, false);
             set_debug_pos(c, n->token.pos);
             if (n->type.kind == TYPE_UNIT) {
                 LLVMBuildRetVoid(c->llvm_builder);
