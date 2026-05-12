@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "basic.h"
 #include "node.h"
+#include "token.h"
 
 typedef enum {
     POWER_NIL,
@@ -16,7 +17,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 56, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -132,13 +133,14 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static Node *node_alloc(Parser *p, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // Prevent clang-format from messing this up
         [NODE_UNARY] = sizeof(Node_Unary),
         [NODE_BINARY] = sizeof(Node_Binary),
         [NODE_MEMBER] = sizeof(Node_Member),
+        [NODE_ASSERT] = sizeof(Node_Assert),
 
         [NODE_FN] = sizeof(Node_Fn),
         [NODE_STRUCT] = sizeof(Node_Struct),
@@ -277,7 +279,7 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 56, "");
+static_assert(COUNT_TOKENS == 58, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -618,12 +620,42 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static Node *parse_assert(Parser *p, Token token, bool is_compile_time) {
+    if (!is_compile_time) {
+        not_in_extern_assert(p, token);
+        local_assert(p, true, token, NULL);
+    }
+
+    Node        *node = node_alloc(p, NODE_ASSERT, token);
+    Node_Assert *assertt = (Node_Assert *) node;
+    assertt->is_compile_time = is_compile_time;
+
+    expect_token(p, TOKEN_LPAREN);
+    assertt->expr = parse_expr(p, POWER_SET, true);
+
+    if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind == TOKEN_COMMA) {
+        assertt->message = parse_expr(p, POWER_SET, true);
+        expect_token(p, TOKEN_RPAREN);
+    }
+
+    return node;
+}
+
+static_assert(COUNT_NODES == 20, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
     Token token = next_token(p);
     switch (token.kind) {
+    case TOKEN_ATSIGN:
+        token = expect_token(p, TOKEN_ASSERT);
+        node = parse_assert(p, token, true);
+        break;
+
+    case TOKEN_ASSERT:
+        node = parse_assert(p, token, false);
+        break;
+
     case TOKEN_LBRACE:
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);

@@ -1,0 +1,2 @@
+@assert(true)
+@assert(69 == 420)

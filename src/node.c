@@ -330,7 +330,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -365,6 +365,18 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         Node_Member *member = (Node_Member *) n;
         fprintf(f, "Member '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
         node_debug_impl(f, member->lhs, depth + 1, "Lhs");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_ASSERT: {
+        Node_Assert *assertt = (Node_Assert *) n;
+        if (assertt->is_compile_time) {
+            fprintf(f, "@");
+        }
+
+        fprintf(f, "Assert {\n");
+        node_debug_impl(f, assertt->expr, depth + 1, "Expr");
+        node_debug_impl(f, assertt->message, depth + 1, "Message");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

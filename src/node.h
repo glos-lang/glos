@@ -158,6 +158,7 @@ typedef enum {
     NODE_UNARY,
     NODE_BINARY,
     NODE_MEMBER,
+    NODE_ASSERT,
 
     NODE_FN,
     NODE_STRUCT,
@@ -237,6 +238,16 @@ typedef struct {
 
     size_t field_index;
 } Node_Member;
+
+typedef struct {
+    Node  node;
+    Node *expr;
+
+    Node *message;
+    SV    message_sv;
+
+    bool is_compile_time;
+} Node_Assert;
 
 struct Node_Fn {
     Node node;
