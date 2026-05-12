@@ -296,15 +296,6 @@ void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
 }
 
-void *arena_clone_from_temp(Arena *a, const void *p) {
-    assert((const char *) p >= temp_data && (const char *) p <= temp_data + temp_count);
-    const size_t start = (const char *) p - temp_data;
-
-    void *memory = arena_clone(a, p, temp_count - start);
-    temp_count = start;
-    return memory;
-}
-
 // FS
 bool read_fp(FILE *f, SV *out, SB *sb) {
     bool         result = true;

@@ -2,13 +2,13 @@
 #include "basic.h"
 #include "token.h"
 
-void scope_push(Scope *scope, AST_Node_Atom *node) {
+void scope_push(Scope *scope, Node_Atom *node) {
     da_push(scope, node);
 }
 
-AST_Node_Atom *scope_find(Scope scope, SV name) {
+Node_Atom *scope_find(Scope scope, SV name) {
     for (size_t i = scope.count; i > 0; i--) {
-        AST_Node_Atom *it = scope.data[i - 1];
+        Node_Atom *it = scope.data[i - 1];
         if (sv_eq(it->node.token.sv, name)) {
             return it;
         }
@@ -17,7 +17,7 @@ AST_Node_Atom *scope_find(Scope scope, SV name) {
     return NULL;
 }
 
-AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts) {
+Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts) {
     if (!fn) {
         return NULL;
     }
@@ -25,8 +25,8 @@ AST_Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV nam
     assert(fn->begin <= locals->count);
     assert(fn->end <= locals->count);
     for (size_t i = fn->end; i > fn->begin; i--) {
-        AST_Node_Atom *it = locals->data[i - 1];
-        if (!it->is_const && only_consts) {
+        Node_Atom *it = locals->data[i - 1];
+        if (!it->definition_spec->is_const && only_consts) {
             continue;
         }
 
@@ -58,14 +58,14 @@ void context_restore_fn(Context *c, Context_Fn *save) {
     }
 }
 
-void context_push_local(Context *c, AST_Node_Atom *atom) {
+void context_push_local(Context *c, Node_Atom *atom) {
     assert(c->current);
     assert(c->current->end == c->locals.count);
     da_push(&c->locals, atom);
     c->current->end++;
 }
 
-AST_Node_Atom *context_find_local(const Context *c, SV name) {
+Node_Atom *context_find_local(const Context *c, SV name) {
     return context_fn_find(c->current, &c->locals, name, false);
 }
 

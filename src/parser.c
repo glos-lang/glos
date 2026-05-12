@@ -1,6 +1,6 @@
 #include "parser.h"
-#include "ast.h"
 #include "basic.h"
+#include "node.h"
 
 typedef enum {
     POWER_NIL,
@@ -16,7 +16,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 46, "");
+static_assert(COUNT_TOKENS == 55, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -48,6 +48,15 @@ static Power token_kind_to_power(Token_Kind kind) {
         return POWER_BOR;
 
     case TOKEN_SET:
+    case TOKEN_ADD_SET:
+    case TOKEN_SUB_SET:
+    case TOKEN_MUL_SET:
+    case TOKEN_DIV_SET:
+    case TOKEN_MOD_SET:
+    case TOKEN_SHL_SET:
+    case TOKEN_SHR_SET:
+    case TOKEN_BOR_SET:
+    case TOKEN_BAND_SET:
         return POWER_SET;
 
     case TOKEN_GT:
@@ -123,59 +132,59 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_AST_NODES == 18, "");
-static AST_Node *ast_node_alloc(Parser *p, AST_Node_Kind kind, Token token) {
-    static const size_t sizes[COUNT_AST_NODES] = {
-        [AST_NODE_ATOM] = sizeof(AST_Node_Atom), // Prevent clang-format from messing this up
-        [AST_NODE_UNARY] = sizeof(AST_Node_Unary),
-        [AST_NODE_BINARY] = sizeof(AST_Node_Binary),
-        [AST_NODE_MEMBER] = sizeof(AST_Node_Member),
+static_assert(COUNT_NODES == 18, "");
+static Node *node_alloc(Parser *p, Node_Kind kind, Token token) {
+    static const size_t sizes[COUNT_NODES] = {
+        [NODE_ATOM] = sizeof(Node_Atom), // Prevent clang-format from messing this up
+        [NODE_UNARY] = sizeof(Node_Unary),
+        [NODE_BINARY] = sizeof(Node_Binary),
+        [NODE_MEMBER] = sizeof(Node_Member),
 
-        [AST_NODE_FN] = sizeof(AST_Node_Fn),
-        [AST_NODE_STRUCT] = sizeof(AST_Node_Struct),
-        [AST_NODE_COMPOUND] = sizeof(AST_Node_Compound),
+        [NODE_FN] = sizeof(Node_Fn),
+        [NODE_STRUCT] = sizeof(Node_Struct),
+        [NODE_COMPOUND] = sizeof(Node_Compound),
 
-        [AST_NODE_CALL] = sizeof(AST_Node_Call),
+        [NODE_CALL] = sizeof(Node_Call),
 
-        [AST_NODE_SLICE] = sizeof(AST_Node_Slice),
-        [AST_NODE_INDEX] = sizeof(AST_Node_Index),
+        [NODE_SLICE] = sizeof(Node_Slice),
+        [NODE_INDEX] = sizeof(Node_Index),
 
-        [AST_NODE_DEFINE] = sizeof(AST_Node_Define),
-        [AST_NODE_BLOCK] = sizeof(AST_Node_Block),
-        [AST_NODE_IF] = sizeof(AST_Node_If),
-        [AST_NODE_FOR] = sizeof(AST_Node_For),
+        [NODE_DEFINE] = sizeof(Node_Define),
+        [NODE_BLOCK] = sizeof(Node_Block),
+        [NODE_IF] = sizeof(Node_If),
+        [NODE_FOR] = sizeof(Node_For),
 
-        [AST_NODE_JUMP] = sizeof(AST_Node_Jump),
-        [AST_NODE_RETURN] = sizeof(AST_Node_Return),
+        [NODE_JUMP] = sizeof(Node_Jump),
+        [NODE_RETURN] = sizeof(Node_Return),
 
-        [AST_NODE_EXTERN] = sizeof(AST_Node_Extern),
+        [NODE_EXTERN] = sizeof(Node_Extern),
 
-        [AST_NODE_PRINT] = sizeof(AST_Node_Print),
+        [NODE_PRINT] = sizeof(Node_Print),
     };
 
-    assert(kind >= AST_NODE_ATOM && kind < COUNT_AST_NODES);
-    AST_Node *node = arena_alloc(p->arena, sizes[kind]);
+    assert(kind >= NODE_ATOM && kind < COUNT_NODES);
+    Node *node = arena_alloc(p->arena, sizes[kind]);
     node->kind = kind;
     node->token = token;
     return node;
 }
 
-static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed);
-static AST_Node *parse_stmt(Parser *p);
+static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed);
+static Node *parse_stmt(Parser *p);
 
-static AST_Node *parse_block(Parser *p, Token token) {
-    AST_Node_Block *block = (AST_Node_Block *) ast_node_alloc(p, AST_NODE_BLOCK, token);
+static Node *parse_block(Parser *p, Token token) {
+    Node_Block *block = (Node_Block *) node_alloc(p, NODE_BLOCK, token);
     while (!read_token(p, TOKEN_RBRACE)) {
-        ast_nodes_push(&block->body, parse_stmt(p));
+        nodes_push(&block->body, parse_stmt(p));
     }
 
     assert(p->ahead.kind == TOKEN_RBRACE);
     block->end = p->ahead.pos;
-    return (AST_Node *) block;
+    return (Node *) block;
 }
 
-static AST_Node *parse_if(Parser *p, Token token) {
-    AST_Node_If *iff = (AST_Node_If *) ast_node_alloc(p, AST_NODE_IF, token);
+static Node *parse_if(Parser *p, Token token) {
+    Node_If *iff = (Node_If *) node_alloc(p, NODE_IF, token);
     iff->condition = parse_expr(p, POWER_SET, false);
 
     token = expect_token(p, TOKEN_LBRACE);
@@ -190,17 +199,16 @@ static AST_Node *parse_if(Parser *p, Token token) {
         }
     }
 
-    return (AST_Node *) iff;
+    return (Node *) iff;
 }
 
-static AST_Node *parse_for(Parser *p, Token token) {
-    AST_Node_For *forr = (AST_Node_For *) ast_node_alloc(p, AST_NODE_FOR, token);
+static Node *parse_for(Parser *p, Token token) {
+    Node_For *forr = (Node_For *) node_alloc(p, NODE_FOR, token);
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL, false);
-        if (forr->condition->kind == AST_NODE_DEFINE ||
-            (forr->condition->kind == AST_NODE_BINARY &&
-             token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
+        if (forr->condition->kind == NODE_DEFINE ||
+            (forr->condition->kind == NODE_BINARY && token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
             buffer_token(p, expect_token(p, TOKEN_EOL));
         }
 
@@ -223,7 +231,7 @@ static AST_Node *parse_for(Parser *p, Token token) {
         forr->body = parse_block(p, token);
     }
     p->in_loop = inside_loop_save;
-    return (AST_Node *) forr;
+    return (Node *) forr;
 }
 
 static void not_in_extern_assert(Parser *p, Token token) {
@@ -236,27 +244,31 @@ static void not_in_extern_assert(Parser *p, Token token) {
     }
 }
 
-static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
+static void definition_atom_setup(Parser *p, Node_Define *define) {
     const bool is_assignment_const = define->expr && (define->is_const || p->fn_current == NULL);
 
-    if (define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
-        AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-        AST_Node      *it_expr = define->expr;
+    if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
+        Node_Atom *it = (Node_Atom *) define->name;
+        Node      *it_expr = define->expr;
 
-        it->is_const = define->is_const;
-        it->is_local = p->fn_current != NULL;
-        it->is_extern = p->in_extern;
-        it->is_assigned = define->expr != NULL;
-        it->definition_node = define;
-        it->assignment_node = define->expr;
-        it->is_assignment_const = is_assignment_const;
+        if (!it->definition_spec) {
+            it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
+        }
 
-        if (it->is_const) {
+        it->definition_spec->is_const = define->is_const;
+        it->definition_spec->is_local = p->fn_current != NULL;
+        it->definition_spec->is_extern = p->in_extern;
+        it->definition_spec->is_assigned = define->expr != NULL;
+        it->definition_spec->definition_node = define;
+        it->definition_spec->assignment_node = define->expr;
+        it->definition_spec->is_assignment_const = is_assignment_const;
+
+        if (it->definition_spec->is_const) {
             assert(it_expr);
-            if (it_expr->kind == AST_NODE_FN) {
-                ((AST_Node_Fn *) it_expr)->defined_as = it;
-            } else if (it_expr->kind == AST_NODE_STRUCT) {
-                ((AST_Node_Struct *) it_expr)->defined_as = it;
+            if (it_expr->kind == NODE_FN) {
+                ((Node_Fn *) it_expr)->defined_as = it;
+            } else if (it_expr->kind == NODE_STRUCT) {
+                ((Node_Struct *) it_expr)->defined_as = it;
             }
         }
     } else {
@@ -264,10 +276,10 @@ static void definition_atom_setup(Parser *p, AST_Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 46, "");
-static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
-    AST_Node *node = NULL;
-    Token     token = next_token(p);
+static_assert(COUNT_TOKENS == 55, "");
+static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
+    Node *node = NULL;
+    Token token = next_token(p);
 
     switch (token.kind) {
     case TOKEN_INT:
@@ -275,21 +287,21 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     case TOKEN_CHAR:
     case TOKEN_IDENT:
     case TOKEN_STRING:
-        node = ast_node_alloc(p, AST_NODE_ATOM, token);
+        node = node_alloc(p, NODE_ATOM, token);
         break;
 
     case TOKEN_SUB:
     case TOKEN_MUL:
     case TOKEN_BNOT:
     case TOKEN_LNOT: {
-        node = ast_node_alloc(p, AST_NODE_UNARY, token);
-        AST_Node_Unary *unary = (AST_Node_Unary *) node;
+        node = node_alloc(p, NODE_UNARY, token);
+        Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, are_compounds_allowed);
     } break;
 
     case TOKEN_BAND: {
-        node = ast_node_alloc(p, AST_NODE_UNARY, token);
-        AST_Node_Unary *unary = (AST_Node_Unary *) node;
+        node = node_alloc(p, NODE_UNARY, token);
+        Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_REF, are_compounds_allowed);
     } break;
 
@@ -299,9 +311,9 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
             is_fn = true;
         } else {
             node = parse_expr(p, POWER_NIL, true);
-            if (node->kind == AST_NODE_DEFINE) {
+            if (node->kind == NODE_DEFINE) {
                 is_fn = true;
-            } else if (node->kind == AST_NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
+            } else if (node->kind == NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
                 error_unexpected(node->token);
             } else {
                 expect_token(p, TOKEN_RPAREN);
@@ -309,22 +321,22 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
         }
 
         if (is_fn) {
-            AST_Node *arg = node;
-            node = ast_node_alloc(p, AST_NODE_FN, token);
+            Node *arg = node;
+            node = node_alloc(p, NODE_FN, token);
 
-            AST_Node_Fn *fn = (AST_Node_Fn *) node;
+            Node_Fn *fn = (Node_Fn *) node;
             fn->outer_fn = p->fn_current;
 
-            AST_Node_Fn *fn_current_save = p->fn_current;
+            Node_Fn *fn_current_save = p->fn_current;
             p->fn_current = fn;
 
             if (arg) {
-                definition_atom_setup(p, (AST_Node_Define *) arg);
+                definition_atom_setup(p, (Node_Define *) arg);
             }
 
             size_t args_iota = 1;
             while (arg) {
-                AST_Node_Define *define = (AST_Node_Define *) arg;
+                Node_Define *define = (Node_Define *) arg;
                 if (define->is_const) {
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Expected argument, got constant definition\n", Pos_Arg(arg->token.pos));
@@ -337,14 +349,14 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                     exit(1);
                 }
 
-                if (define->name->kind == AST_NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
-                    AST_Node_Atom *it = (AST_Node_Atom *) define->name;
-                    it->arg_index = args_iota++;
+                if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
+                    Node_Atom *it = (Node_Atom *) define->name;
+                    it->definition_spec->arg_index = args_iota++;
                 } else {
                     unreachable();
                 }
 
-                ast_nodes_push(&fn->args, arg);
+                nodes_push(&fn->args, arg);
                 fn->args_count += define->count;
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
@@ -352,7 +364,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 }
 
                 arg = parse_expr(p, POWER_NIL, true);
-                if (arg->kind != AST_NODE_DEFINE) {
+                if (arg->kind != NODE_DEFINE) {
                     fprintf(stderr, Pos_Fmt "ERROR: Expected argument, got expression\n", Pos_Arg(arg->token.pos));
                     exit(1);
                 }
@@ -373,27 +385,27 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     } break;
 
     case TOKEN_LBRACKET: {
-        node = ast_node_alloc(p, AST_NODE_SLICE, token);
-        AST_Node_Slice *slice = (AST_Node_Slice *) node;
+        node = node_alloc(p, NODE_SLICE, token);
+        Node_Slice *slice = (Node_Slice *) node;
 
         expect_token(p, TOKEN_RBRACKET);
         slice->element = parse_expr(p, POWER_SET, false);
     } break;
 
     case TOKEN_STRUCT: {
-        node = ast_node_alloc(p, AST_NODE_STRUCT, token);
-        AST_Node_Struct *structt = (AST_Node_Struct *) node;
+        node = node_alloc(p, NODE_STRUCT, token);
+        Node_Struct *structt = (Node_Struct *) node;
         structt->defined_in = p->fn_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            AST_Node *field = parse_expr(p, POWER_NIL, true);
-            if (field->kind != AST_NODE_DEFINE) {
+            Node *field = parse_expr(p, POWER_NIL, true);
+            if (field->kind != NODE_DEFINE) {
                 fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
                 exit(1);
             }
 
-            AST_Node_Define *define = (AST_Node_Define *) field;
+            Node_Define *define = (Node_Define *) field;
             if (define->is_const) {
                 fprintf(stderr, Pos_Fmt "ERROR: Expected field, got constant definition\n", Pos_Arg(field->token.pos));
                 exit(1);
@@ -404,7 +416,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 exit(1);
             }
 
-            ast_nodes_push(&structt->fields, field);
+            nodes_push(&structt->fields, field);
             structt->fields_count += define->count;
 
             if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
@@ -414,8 +426,8 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
     } break;
 
     case TOKEN_SIZEOF: {
-        node = ast_node_alloc(p, AST_NODE_UNARY, token);
-        AST_Node_Unary *unary = (AST_Node_Unary *) node;
+        node = node_alloc(p, NODE_UNARY, token);
+        Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
         unary->value = parse_expr(p, POWER_SET, true);
         expect_token(p, TOKEN_RPAREN);
@@ -439,15 +451,15 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            AST_Node_Member *member = (AST_Node_Member *) ast_node_alloc(p, AST_NODE_MEMBER, token);
+            Node_Member *member = (Node_Member *) node_alloc(p, NODE_MEMBER, token);
             member->lhs = node;
             member->field = expect_token(p, TOKEN_IDENT);
-            node = (AST_Node *) member;
+            node = (Node *) member;
         } break;
 
         case TOKEN_COLON: {
-            AST_Node_Define *define = (AST_Node_Define *) ast_node_alloc(p, AST_NODE_DEFINE, token);
-            if (node->kind == AST_NODE_ATOM && node->token.kind == TOKEN_IDENT) {
+            Node_Define *define = (Node_Define *) node_alloc(p, NODE_DEFINE, token);
+            if (node->kind == NODE_ATOM && node->token.kind == TOKEN_IDENT) {
                 define->count = 1;
             } else {
                 error_unexpected(token);
@@ -472,11 +484,11 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 define->is_const = true;
 
                 if (p->in_extern) {
-                    if (define->expr->kind != AST_NODE_FN) {
+                    if (define->expr->kind != NODE_FN) {
                         not_in_extern_assert(p, define->expr->token);
                     }
 
-                    AST_Node_Fn *fn = (AST_Node_Fn *) define->expr;
+                    Node_Fn *fn = (Node_Fn *) define->expr;
                     if (fn->body) {
                         fprintf(
                             stderr,
@@ -491,15 +503,15 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
             }
 
             definition_atom_setup(p, define);
-            return (AST_Node *) define;
+            return (Node *) define;
         } break;
 
         case TOKEN_LPAREN: {
-            AST_Node_Call *call = (AST_Node_Call *) ast_node_alloc(p, AST_NODE_CALL, token);
+            Node_Call *call = (Node_Call *) node_alloc(p, NODE_CALL, token);
             call->fn = node;
 
             while (!read_token(p, TOKEN_RPAREN)) {
-                ast_nodes_push(&call->args, parse_expr(p, POWER_SET, true));
+                nodes_push(&call->args, parse_expr(p, POWER_SET, true));
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
                 }
@@ -507,7 +519,7 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
 
             assert(p->ahead.kind == TOKEN_RPAREN);
             call->end = p->ahead.pos;
-            node = (AST_Node *) call;
+            node = (Node *) call;
         } break;
 
         case TOKEN_LBRACE: {
@@ -516,19 +528,19 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 return node;
             }
 
-            AST_Node_Compound *compound = (AST_Node_Compound *) ast_node_alloc(p, AST_NODE_COMPOUND, token);
+            Node_Compound *compound = (Node_Compound *) node_alloc(p, NODE_COMPOUND, token);
             compound->lhs = node;
             compound->is_designated = false;
             while (!read_token(p, TOKEN_RBRACE)) {
-                AST_Node *child = parse_expr(p, POWER_SET, true);
+                Node *child = parse_expr(p, POWER_SET, true);
 
                 bool child_is_designated = false;
                 if (read_token(p, TOKEN_SET)) {
                     assert(p->ahead.kind == TOKEN_SET);
-                    AST_Node_Binary *binary = (AST_Node_Binary *) ast_node_alloc(p, AST_NODE_BINARY, p->ahead);
+                    Node_Binary *binary = (Node_Binary *) node_alloc(p, NODE_BINARY, p->ahead);
                     binary->lhs = child;
                     binary->rhs = parse_expr(p, POWER_SET, true);
-                    child = (AST_Node *) binary;
+                    child = (Node *) binary;
                     child_is_designated = true;
                 }
 
@@ -544,17 +556,17 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                     compound->is_designated = child_is_designated;
                 }
 
-                ast_nodes_push(&compound->children, child);
+                nodes_push(&compound->children, child);
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
                     break;
                 }
             }
 
-            node = (AST_Node *) compound;
+            node = (Node *) compound;
         } break;
 
         case TOKEN_LBRACKET: {
-            AST_Node_Index *index = (AST_Node_Index *) ast_node_alloc(p, AST_NODE_INDEX, token);
+            Node_Index *index = (Node_Index *) node_alloc(p, NODE_INDEX, token);
             index->lhs = node;
 
             if (peek_token(p).kind != TOKEN_RANGE) {
@@ -570,14 +582,14 @@ static AST_Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
                 expect_token(p, TOKEN_RBRACKET);
             }
 
-            node = (AST_Node *) index;
+            node = (Node *) index;
         } break;
 
         default: {
-            AST_Node_Binary *binary = (AST_Node_Binary *) ast_node_alloc(p, AST_NODE_BINARY, token);
+            Node_Binary *binary = (Node_Binary *) node_alloc(p, NODE_BINARY, token);
             binary->lhs = node;
             binary->rhs = parse_expr(p, lbp, are_compounds_allowed);
-            node = (AST_Node *) binary;
+            node = (Node *) binary;
             if (lbp == POWER_SET) {
                 return node;
             }
@@ -605,9 +617,9 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_AST_NODES == 18, "");
-static AST_Node *parse_stmt(Parser *p) {
-    AST_Node *node = NULL;
+static_assert(COUNT_NODES == 18, "");
+static Node *parse_stmt(Parser *p) {
+    Node *node = NULL;
 
     Token token = next_token(p);
     switch (token.kind) {
@@ -641,15 +653,15 @@ static AST_Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        node = ast_node_alloc(p, AST_NODE_JUMP, token);
+        node = node_alloc(p, NODE_JUMP, token);
         break;
 
     case TOKEN_RETURN: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        node = ast_node_alloc(p, AST_NODE_RETURN, token);
+        node = node_alloc(p, NODE_RETURN, token);
 
-        AST_Node_Return *returnn = (AST_Node_Return *) node;
+        Node_Return *returnn = (Node_Return *) node;
         if (!peek_token(p).newline) {
             returnn->value = parse_expr(p, POWER_SET, true);
         }
@@ -661,13 +673,13 @@ static AST_Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        node = ast_node_alloc(p, AST_NODE_EXTERN, token);
-        AST_Node_Extern *externn = (AST_Node_Extern *) node;
+        node = node_alloc(p, NODE_EXTERN, token);
+        Node_Extern *externn = (Node_Extern *) node;
 
         expect_token(p, TOKEN_LBRACE);
         p->in_extern = true;
         while (!read_token(p, TOKEN_RBRACE)) {
-            ast_nodes_push(&externn->nodes, parse_stmt(p));
+            nodes_push(&externn->nodes, parse_stmt(p));
         }
         p->in_extern = false;
     } break;
@@ -675,16 +687,16 @@ static AST_Node *parse_stmt(Parser *p) {
     case TOKEN_PRINT: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        AST_Node_Print *print = (AST_Node_Print *) ast_node_alloc(p, AST_NODE_PRINT, token);
+        Node_Print *print = (Node_Print *) node_alloc(p, NODE_PRINT, token);
         print->value = parse_expr(p, POWER_SET, true);
-        node = (AST_Node *) print;
+        node = (Node *) print;
         break;
     }
 
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true);
-        if (node->kind != AST_NODE_DEFINE) {
+        if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
             local_assert(p, true, node->token, "expression");
         }
@@ -709,7 +721,7 @@ bool parse_file(Parser *p, const char *path) {
             break;
         }
 
-        ast_nodes_push(&p->nodes, parse_stmt(p));
+        nodes_push(&p->nodes, parse_stmt(p));
     }
     return true;
 }

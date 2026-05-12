@@ -74,7 +74,7 @@ typedef struct {
     size_t iota_anonymous_struct;
 } Compiler;
 
-size_t compile_sizeof(Compiler *c, AST_Type *type);
+size_t compile_sizeof(Compiler *c, Type *type);
 void   compiler_build(Compiler *c, const char *output_path);
 
 #endif // COMPILER_H

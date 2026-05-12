@@ -171,7 +171,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/basic.h",
         "src/token.h",
         "src/lexer.h",
-        "src/ast.h",
+        "src/node.h",
         "src/parser.h",
         "src/context.h",
         "src/checker.h",
@@ -183,12 +183,13 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/basic.c",
         "src/token.c",
         "src/lexer.c",
-        "src/ast.c",
+        "src/node.c",
         "src/parser.c",
         "src/context.c",
         "src/checker.c",
         "src/compiler.c",
         "src/main.c",
+        "src/thirdparty/stb_ds.c",
     };
 
     const void *save = temp_alloc(0);

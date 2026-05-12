@@ -47,6 +47,15 @@ typedef enum {
     TOKEN_BNOT,
 
     TOKEN_SET,
+    TOKEN_ADD_SET,
+    TOKEN_SUB_SET,
+    TOKEN_MUL_SET,
+    TOKEN_DIV_SET,
+    TOKEN_MOD_SET,
+    TOKEN_SHL_SET,
+    TOKEN_SHR_SET,
+    TOKEN_BOR_SET,
+    TOKEN_BAND_SET,
 
     TOKEN_LNOT,
 
@@ -84,7 +93,7 @@ typedef struct {
     bool newline;
 
     union {
-        long integer;
+        i64 integer;
     } as;
 } Token;
 
