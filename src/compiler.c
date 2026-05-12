@@ -631,13 +631,13 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 static void compile_local_var_debug(Compiler *c, Node_Atom *it, LLVMMetadataRef var_debug_type) {
     const SV        name = it->node.token.sv;
     LLVMMetadataRef var_debug_metadata = NULL;
-    if (it->arg_index) {
+    if (it->definition_spec->arg_index) {
         var_debug_metadata = LLVMDIBuilderCreateParameterVariable(
             c->llvm_debug_builder,
             c->llvm_debug_scope,
             name.data,
             name.count,
-            it->arg_index,
+            it->definition_spec->arg_index,
             get_debug_file(c, it->node.token.pos.path),
             it->node.token.pos.row + 1,
             var_debug_type,
@@ -664,7 +664,7 @@ static void compile_local_var_debug(Compiler *c, Node_Atom *it, LLVMMetadataRef 
     if (next_inst) {
         LLVMDIBuilderInsertDeclareRecordBefore(
             c->llvm_debug_builder,
-            it->llvm,
+            it->definition_spec->llvm,
             var_debug_metadata,
             LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
             var_pos_metadata,
@@ -672,7 +672,7 @@ static void compile_local_var_debug(Compiler *c, Node_Atom *it, LLVMMetadataRef 
     } else {
         LLVMDIBuilderInsertDeclareRecordAtEnd(
             c->llvm_debug_builder,
-            it->llvm,
+            it->definition_spec->llvm,
             var_debug_metadata,
             LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
             var_pos_metadata,
@@ -686,32 +686,33 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     compile_type(c, &it->node.type);
 
     SV name = it->node.token.sv;
-    if (it->is_extern) {
+    if (it->definition_spec->is_extern) {
         // Guarantee a terminating '\0'
         name = sv_from_cstr(temp_sv_to_cstr(name));
-    } else if (!it->is_local) {
+    } else if (!it->definition_spec->is_local) {
         // TODO(@package)
         name = sv_from_cstr(temp_sprintf("main." SV_Fmt, SV_Arg(name)));
     }
 
-    if (it->is_local && !it->is_extern) {
-        it->llvm = compile_alloca(c, it->node.type.llvm);
+    if (it->definition_spec->is_local && !it->definition_spec->is_extern) {
+        it->definition_spec->llvm = compile_alloca(c, it->node.type.llvm);
     } else {
-        it->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
+        it->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
     }
 
-    if (!it->is_extern) {
+    if (!it->definition_spec->is_extern) {
         LLVMMetadataRef var_debug_type = get_debug_for_type(c, &it->node.type);
-        if (it->is_local) {
-            if (!it->arg_index && !it->is_assigned) {
-                LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->llvm);
+        if (it->definition_spec->is_local) {
+            if (!it->definition_spec->arg_index && !it->definition_spec->is_assigned) {
+                LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->definition_spec->llvm);
             }
             compile_local_var_debug(c, it, var_debug_type);
         } else {
-            if (it->is_assigned) {
-                LLVMSetInitializer(it->llvm, compile_const_value(c, it->const_value, it->node.type));
+            if (it->definition_spec->is_assigned) {
+                LLVMSetInitializer(
+                    it->definition_spec->llvm, compile_const_value(c, it->definition_spec->const_value, it->node.type));
             } else {
-                LLVMSetInitializer(it->llvm, LLVMConstNull(it->node.type.llvm));
+                LLVMSetInitializer(it->definition_spec->llvm, LLVMConstNull(it->node.type.llvm));
             }
 
             LLVMMetadataRef var_debug_metadata = LLVMDIBuilderCreateGlobalVariableExpression(
@@ -729,7 +730,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
                 NULL,
                 0);
 
-            LLVMGlobalSetMetadata(it->llvm, 0, var_debug_metadata);
+            LLVMGlobalSetMetadata(it->definition_spec->llvm, 0, var_debug_metadata);
         }
     }
 
@@ -827,14 +828,14 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
             assert(define->name->kind == NODE_ATOM);
             Node_Atom *it = (Node_Atom *) define->name;
-            assert(!it->llvm);
+            assert(!it->definition_spec->llvm);
 
             const ABI_Info it_abi = abi.args[abi_iota++];
 
             static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
             switch (it_abi.direct_types_count) {
             case 0: {
-                it->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
+                it->definition_spec->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
                 compile_local_var_debug(c, it, get_debug_for_type(c, &it->node.type));
 
 #ifdef PLATFORM_X86_64_LINUX
@@ -846,19 +847,20 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
             case 1:
                 compile_var_def(c, it);
-                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->definition_spec->llvm);
                 break;
 
             case 2: {
                 compile_var_def(c, it);
 
                 // First half
-                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->llvm);
+                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->definition_spec->llvm);
 
                 // Second half
                 LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
                 LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
-                LLVMValueRef second = LLVMBuildGEP2(c->llvm_builder, llvm_i8_type, it->llvm, indices, len(indices), "");
+                LLVMValueRef second =
+                    LLVMBuildGEP2(c->llvm_builder, llvm_i8_type, it->definition_spec->llvm, indices, len(indices), "");
                 LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), second);
             } break;
 
@@ -1030,50 +1032,53 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             Node_Atom *definition = (Node_Atom *) atom->definition;
             assert(definition);
 
-            if (definition->is_const) {
+            if (definition->definition_spec->is_const) {
                 static_assert(COUNT_CONST_VALUES == 5, "");
-                switch (definition->const_value.kind) {
+                switch (definition->definition_spec->const_value.kind) {
                 case CONST_VALUE_INT:
-                    return LLVMConstInt(n->type.llvm, definition->const_value.as.integer, type_is_signed(n->type));
+                    return LLVMConstInt(
+                        n->type.llvm, definition->definition_spec->const_value.as.integer, type_is_signed(n->type));
 
                 case CONST_VALUE_FN:
-                    return compile_fn(c, definition->const_value.as.fn);
+                    return compile_fn(c, definition->definition_spec->const_value.as.fn);
 
                 case CONST_VALUE_TYPE:
                     unreachable();
 
                 case CONST_VALUE_STRUCT: {
-                    if (!definition->llvm) {
+                    if (!definition->definition_spec->llvm) {
                         const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
-                        definition->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
+                        definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
                         temp_reset(name);
-                        LLVMSetInitializer(definition->llvm, compile_const_value(c, definition->const_value, n->type));
+                        LLVMSetInitializer(
+                            definition->definition_spec->llvm,
+                            compile_const_value(c, definition->definition_spec->const_value, n->type));
                     }
 
                     if (ref) {
-                        return definition->llvm;
+                        return definition->definition_spec->llvm;
                     }
-                    return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
+                    return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
                 }
 
                 case CONST_VALUE_STRING:
-                    return compile_string(c, definition->const_value.as.string, ref);
+                    return compile_string(c, definition->definition_spec->const_value.as.string, ref);
 
                 default:
                     unreachable();
                 }
             }
 
-            if (!definition->llvm) {
-                compile_stmt(c, (Node *) definition->definition_node);
+            if (!definition->definition_spec->llvm) {
+                compile_stmt(c, (Node *) definition->definition_spec->definition_node);
             }
 
             if (ref) {
-                return definition->llvm;
+                return definition->definition_spec->llvm;
             }
 
             set_debug_pos(c, n->token.pos);
-            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->llvm, "");
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
         }
 
         case TOKEN_STRING:
@@ -1727,11 +1732,11 @@ static void compile_stmt(Compiler *c, Node *n) {
         Node_Atom *it = (Node_Atom *) define->name;
         Node      *it_expr = define->expr;
 
-        if (!it->llvm) {
+        if (!it->definition_spec->llvm) {
             compile_var_def(c, it);
-            if (it_expr && it->is_local) {
+            if (it_expr && it->definition_spec->is_local) {
                 set_debug_pos(c, n->token.pos);
-                LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->llvm);
+                LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->definition_spec->llvm);
             }
         }
     } break;
@@ -1957,7 +1962,7 @@ static Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (!main->is_const || main->const_value.kind != CONST_VALUE_FN) {
+    if (!main->definition_spec->is_const || main->definition_spec->const_value.kind != CONST_VALUE_FN) {
         fprintf(
             stderr, Pos_Fmt "ERROR: Identifier 'main' must be a constant function\n", Pos_Arg(main->node.token.pos));
         exit(1);
@@ -1973,7 +1978,7 @@ static Node_Fn *get_main(Compiler *c) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
-    return main->const_value.as.fn;
+    return main->definition_spec->const_value.as.fn;
 }
 
 static void compiler_init_llvm_target_data(Compiler *c) {
@@ -2123,13 +2128,13 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     for (size_t i = 0; i < c->globals.count; i++) {
         Node_Atom *it = c->globals.data[i];
-        if (it->llvm) {
+        if (it->definition_spec->llvm) {
             continue;
         }
 
-        if (it->is_const) {
-            if (it->const_value.kind == CONST_VALUE_FN) {
-                compile_fn(c, it->const_value.as.fn);
+        if (it->definition_spec->is_const) {
+            if (it->definition_spec->const_value.kind == CONST_VALUE_FN) {
+                compile_fn(c, it->definition_spec->const_value.as.fn);
             }
         } else {
             compile_var_def(c, it);

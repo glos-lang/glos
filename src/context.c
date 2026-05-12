@@ -26,7 +26,7 @@ Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, b
     assert(fn->end <= locals->count);
     for (size_t i = fn->end; i > fn->begin; i--) {
         Node_Atom *it = locals->data[i - 1];
-        if (!it->is_const && only_consts) {
+        if (!it->definition_spec->is_const && only_consts) {
             continue;
         }
 

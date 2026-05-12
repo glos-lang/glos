@@ -251,15 +251,19 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
         Node_Atom *it = (Node_Atom *) define->name;
         Node      *it_expr = define->expr;
 
-        it->is_const = define->is_const;
-        it->is_local = p->fn_current != NULL;
-        it->is_extern = p->in_extern;
-        it->is_assigned = define->expr != NULL;
-        it->definition_node = define;
-        it->assignment_node = define->expr;
-        it->is_assignment_const = is_assignment_const;
+        if (!it->definition_spec) {
+            it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
+        }
 
-        if (it->is_const) {
+        it->definition_spec->is_const = define->is_const;
+        it->definition_spec->is_local = p->fn_current != NULL;
+        it->definition_spec->is_extern = p->in_extern;
+        it->definition_spec->is_assigned = define->expr != NULL;
+        it->definition_spec->definition_node = define;
+        it->definition_spec->assignment_node = define->expr;
+        it->definition_spec->is_assignment_const = is_assignment_const;
+
+        if (it->definition_spec->is_const) {
             assert(it_expr);
             if (it_expr->kind == NODE_FN) {
                 ((Node_Fn *) it_expr)->defined_as = it;
@@ -347,7 +351,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed) {
 
                 if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
                     Node_Atom *it = (Node_Atom *) define->name;
-                    it->arg_index = args_iota++;
+                    it->definition_spec->arg_index = args_iota++;
                 } else {
                     unreachable();
                 }

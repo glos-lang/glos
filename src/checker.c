@@ -67,10 +67,10 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 
         case TOKEN_IDENT: {
             Node_Atom *atom = (Node_Atom *) n;
-            assert(atom->definition->is_const); // Only constants can be defined as untyped int
+            assert(atom->definition->definition_spec->is_const); // Only constants can be defined as untyped int
 
             n->type = expected;
-            check_int_limit(n, atom->definition->const_value.as.integer);
+            check_int_limit(n, atom->definition->definition_spec->const_value.as.integer);
         } break;
 
         default:
@@ -357,13 +357,13 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             }
 
             assert(atom->definition);
-            if (!atom->definition->is_const) {
+            if (!atom->definition->definition_spec->is_const) {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
                 exit(1);
             }
 
-            return atom->definition->const_value;
+            return atom->definition->definition_spec->const_value;
         }
 
         case TOKEN_STRING:
@@ -697,8 +697,8 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
 
         Node_Atom *it = (Node_Atom *) define->name;
         if (!sv_match(it->node.token.sv, "_")) {
-            if (it->is_local) {
-                if (it->is_const) {
+            if (it->definition_spec->is_local) {
+                if (it->definition_spec->is_const) {
                     const Context_Fn *fn = c->context.current;
 
                     assert(fn->end <= c->context.locals.count);
@@ -706,7 +706,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     assert(block_start <= fn->end);
                     for (size_t i = fn->end; i > block_start; i--) {
                         Node_Atom *previous = c->context.locals.data[i - 1];
-                        if (!previous->is_const) {
+                        if (!previous->definition_spec->is_const) {
                             continue;
                         }
 
@@ -716,7 +716,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                         }
                     }
 
-                    it->context = c->context.current;
+                    it->definition_spec->context = c->context.current;
                     context_push_local(&c->context, it);
                 }
             } else {
@@ -756,11 +756,11 @@ typedef enum {
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
 static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
-    assert(it->check_status != CHECKING); // It is already checked
-    if (it->check_status == CHECKED) {
+    assert(it->definition_spec->check_status != CHECKING); // It is already checked
+    if (it->definition_spec->check_status == CHECKED) {
         return;
     }
-    it->check_status = CHECKING;
+    it->definition_spec->check_status = CHECKING;
 
     if (type) {
         check_node(c, type, REF_NONE);
@@ -771,13 +771,13 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
     if (it_expr) {
         check_node(c, it_expr, REF_NONE);
 
-        if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->is_const)) {
+        if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->definition_spec->is_const)) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot store %s in a %s\n",
                 Pos_Arg(it_expr->token.pos),
                 type_to_cstr(it_expr->type),
-                it->is_const ? "constant" : "variable");
+                it->definition_spec->is_const ? "constant" : "variable");
 
             exit(1);
         }
@@ -785,26 +785,26 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
         if (type) {
             type_assert(c, it_expr, it->node.type);
         } else {
-            if (!it->is_const) {
+            if (!it->definition_spec->is_const) {
                 node_finalize_type_of_untyped(it_expr);
             }
             it->node.type = it_expr->type;
         }
     }
 
-    if (it->is_const) {
-        it->const_value = eval_const_expr(c, it_expr);
-    } else if (!it->is_local && it_expr) {
-        it->const_value = eval_const_expr(c, it_expr);
+    if (it->definition_spec->is_const) {
+        it->definition_spec->const_value = eval_const_expr(c, it_expr);
+    } else if (!it->definition_spec->is_local && it_expr) {
+        it->definition_spec->const_value = eval_const_expr(c, it_expr);
     }
 
-    if (it->is_local) {
-        if (!it->is_const && !sv_match(it->node.token.sv, "_")) {
+    if (it->definition_spec->is_local) {
+        if (!it->definition_spec->is_const && !sv_match(it->node.token.sv, "_")) {
             context_push_local(&c->context, it);
         }
     }
 
-    it->check_status = CHECKED;
+    it->definition_spec->check_status = CHECKED;
 }
 
 static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
@@ -821,13 +821,17 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     atom->definition = definition;
 
     if (definition) {
-        switch (definition->check_status) {
+        switch (definition->definition_spec->check_status) {
         case UNCHECKED: {
             Context_Fn *context_fn_save = c->context.current;
-            c->context.current = definition->context;
+            c->context.current = definition->definition_spec->context;
 
             // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
-            check_definition(c, definition, definition->definition_node->type, definition->assignment_node);
+            check_definition(
+                c,
+                definition,
+                definition->definition_spec->definition_node->type,
+                definition->definition_spec->assignment_node);
             context_restore_fn(&c->context, context_fn_save);
         } break;
 
@@ -842,7 +846,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         }
 
         n->type = definition->node.type;
-        if (definition->is_const) {
+        if (definition->definition_spec->is_const) {
             switch (ref) {
             case REF_NONE:
                 // OK
@@ -1162,7 +1166,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             if (fn->defined_as) {
                 // The body of a function is irrelevant for outer expressions
                 fn->defined_as->node.type = n->type;
-                fn->defined_as->check_status = CHECKED;
+                fn->defined_as->definition_spec->check_status = CHECKED;
             }
 
             if (fn->is_type) {

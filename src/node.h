@@ -189,11 +189,7 @@ struct Node {
     Node     *next;
 };
 
-// TODO: Consider a better way to store definition information, rather than using so much memory for every single atom
-struct Node_Atom {
-    Node node;
-
-    // When this atom is a definition {
+typedef struct {
     bool   is_local;
     bool   is_extern;
     bool   is_assigned;
@@ -210,11 +206,16 @@ struct Node_Atom {
     Const_Value const_value;
 
     LLVMValueRef llvm;
-    // }
+} Definition_Spec;
 
-    // When this atom is a reference to another defining atom {
+struct Node_Atom {
+    Node node;
+
+    // When this atom is a definition
+    Definition_Spec *definition_spec;
+
+    // When this atom is a reference to another defining atom
     Node_Atom *definition;
-    // }
 };
 
 typedef struct {
