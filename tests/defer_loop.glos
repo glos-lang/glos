@@ -1,0 +1,25 @@
+main :: () {
+    for i := 0; i < 10; i += 1 {
+		defer {
+            write("Defer ")
+            print i
+        }
+
+		if i == 2 {
+			continue
+		}
+
+		if i == 5 {
+			break
+		}
+
+		print i
+	}
+}
+
+write :: (s: string) {
+    for i := 0; i < s.count; i += 1 {
+        extern { putchar :: (c: i32) -> i32 }
+        putchar(i32(s[i]))
+    }
+}

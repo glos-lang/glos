@@ -330,7 +330,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 18, "");
+static_assert(COUNT_NODES == 19, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -466,6 +466,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
             unreachable();
         }
         break;
+
+    case NODE_DEFER: {
+        Node_Defer *defer = (Node_Defer *) n;
+        fprintf(f, "Defer {\n");
+        node_debug_impl(f, defer->stmt, depth + 1, "Stmt");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
 
     case NODE_RETURN: {
         Node_Return *returnn = (Node_Return *) n;

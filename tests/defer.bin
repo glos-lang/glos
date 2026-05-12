@@ -1,0 +1,7 @@
+EXIT 0
+STDOUT 12
+foo()
+defer
+
+STDERR 0
+

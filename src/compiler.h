@@ -9,11 +9,17 @@
 typedef Dynamic_Array(const char *) Link_Flags;
 
 typedef struct {
+    Arena *arena;
+
     Scope   globals;
     Context context;
 
     Cmd        *cmd;
     Link_Flags *link_flags;
+
+    Dynamic_Array(Node *) defers;
+    size_t defers_start;
+    size_t loop_defers_start;
 
     LLVMContextRef       llvm_context;
     LLVMModuleRef        llvm_module;
@@ -66,8 +72,6 @@ typedef struct {
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.
     LLVMTypeRef llvm_slice_type;
-
-    Arena *arena;
 
     size_t iota_anonymous_fn;
     size_t iota_anonymous_const;
