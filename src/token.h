@@ -20,6 +20,7 @@ typedef enum {
     TOKEN_COLON,
     TOKEN_COMMA,
     TOKEN_RANGE,
+    TOKEN_ATSIGN,
 
     TOKEN_INT,
     TOKEN_BOOL,
@@ -68,6 +69,7 @@ typedef enum {
 
     TOKEN_STRUCT,
     TOKEN_SIZEOF,
+    TOKEN_ASSERT,
 
     TOKEN_IF,
     TOKEN_ELSE,

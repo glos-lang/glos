@@ -55,7 +55,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -235,7 +235,7 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -273,13 +273,18 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
     }
 
     switch (n->kind) {
+    case NODE_ASSERT: {
+        Node_Assert *assertt = (Node_Assert *) n;
+        return is_atom_false(assertt->expr);
+    }
+
     case NODE_BLOCK: {
         Node_Block *block = (Node_Block *) n;
         for (Node *it = block->body.head; it; it = it->next) {
@@ -334,7 +339,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -344,7 +349,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -379,7 +384,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -422,7 +427,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -688,7 +693,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -880,7 +885,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -889,7 +894,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_BOOL:
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -919,7 +924,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -976,7 +981,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1111,6 +1116,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 Pos_Fmt "ERROR: Cannot access field of %s\n",
                 Pos_Arg(n->token.pos),
                 type_to_cstr(member->lhs->type));
+            exit(1);
+        }
+    } break;
+
+    case NODE_ASSERT: {
+        Node_Assert *assertt = (Node_Assert *) n;
+        check_node(c, assertt->expr, REF_NONE);
+        type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
+
+        if (assertt->message) {
+            check_node(c, assertt->message, REF_NONE);
+            type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
+        }
+
+        bool ok = true;
+        if (assertt->is_compile_time) {
+            ok = eval_const_expr(c, assertt->expr).as.integer;
+        }
+
+        assertt->message_sv = eval_const_expr(c, assertt->message).as.string;
+        if (assertt->is_compile_time && !ok) {
+            fprintf(stderr, Pos_Fmt "Assertion failed", Pos_Arg(n->token.pos));
+            if (assertt->message) {
+                fprintf(stderr, ": " SV_Fmt, SV_Arg(assertt->message_sv));
+            }
+            fprintf(stderr, "\n");
             exit(1);
         }
     } break;

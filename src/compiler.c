@@ -989,7 +989,8 @@ static void compile_panic(Compiler *c, const char *fmt, ...) {
     LLVMBuildUnreachable(c->llvm_builder);
     temp_reset(args);
 }
-#define compile_panic(c, fmt, ...) compile_panic(c, fmt, __VA_ARGS__, NULL)
+#define compile_panic(c, fmt, ...)    compile_panic(c, fmt, __VA_ARGS__, NULL)
+#define compile_panic_no_args(c, fmt) compile_panic(c, fmt, NULL)
 
 static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
     LLVMTypeRef from_type = LLVMTypeOf(from);
@@ -1031,7 +1032,7 @@ static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_
     unreachable();
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1042,7 +1043,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1116,7 +1117,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1163,7 +1164,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 56, "");
+            static_assert(COUNT_TOKENS == 58, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1211,7 +1212,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 56, "");
+            static_assert(COUNT_TOKENS == 58, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1242,7 +1243,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 56, "");
+            static_assert(COUNT_TOKENS == 58, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1284,7 +1285,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 56, "");
+        static_assert(COUNT_TOKENS == 58, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1738,13 +1739,45 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 19, "");
+static_assert(COUNT_NODES == 20, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
     }
 
     switch (n->kind) {
+    case NODE_ASSERT: {
+        Node_Assert *assertt = (Node_Assert *) n;
+        if (assertt->is_compile_time) {
+            return;
+        }
+
+        LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMValueRef      check = compile_expr(c, assertt->expr, false);
+
+        set_debug_pos(c, n->token.pos);
+        LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+        // Failure
+        LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+        {
+            const char *message = NULL;
+            if (assertt->message) {
+                message = temp_sprintf(
+                    Pos_Fmt "Assertion failed: " SV_Fmt "\n", Pos_Arg(n->token.pos), SV_Arg(assertt->message_sv));
+            } else {
+                message = temp_sprintf(Pos_Fmt "Assertion failed\n", Pos_Arg(n->token.pos));
+            }
+
+            compile_panic_no_args(c, message);
+            temp_reset(message);
+        }
+
+        // Success
+        LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+    } break;
+
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
         if (define->is_const) {
