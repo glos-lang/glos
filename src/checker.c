@@ -841,8 +841,12 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         } break;
 
         case CHECKING:
-            fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
-            exit(1);
+            if (ref == REF_ADDR && definition->node.type.is_meta) {
+                // Reference to incomplete type definition is allowed
+            } else {
+                fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
+                exit(1);
+            }
             break;
 
         case CHECKED:
@@ -1231,6 +1235,10 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             .is_meta = true,
             .spec.structt = arena_clone(c->arena, &structt_type_spec, sizeof(structt_type_spec)),
         };
+
+        if (structt->defined_as) {
+            structt->defined_as->node.type = n->type;
+        }
 
         size_t iota = 0;
         for (Node *field = structt->fields.head; field; field = field->next) {

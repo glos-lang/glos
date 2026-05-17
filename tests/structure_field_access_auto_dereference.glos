@@ -1,0 +1,23 @@
+Iota :: struct {
+    x: i64
+}
+
+single :: (i: &Iota) {
+    i.x = i.x + 1
+}
+
+double :: (i: &&Iota) {
+    i.x = i.x + 1
+}
+
+main :: () {
+    iota := Iota {x = 67}
+    ptr := &iota
+    print(iota.x)
+
+    single(ptr)
+    print(iota.x)
+
+    double(&ptr)
+    print(iota.x)
+}

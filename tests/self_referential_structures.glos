@@ -1,0 +1,52 @@
+test_self_ptr :: () {
+    Foo :: struct {
+        v: i32,
+        next: &Foo
+    }
+
+    foo_print :: (f: &Foo) {
+        if f == &Foo(0) {
+            return
+        }
+
+        print f.v
+        foo_print(f.next)
+    }
+
+    b := Foo {v = 420}
+    a := Foo {v = 69, next = &b}
+    foo_print(&a)
+}
+
+test_self_slice :: () {
+    Foo :: struct {
+        v: i32,
+        children: []Foo
+    }
+
+    foo_print :: (f: &Foo) {
+        if f == &Foo(0) {
+            return
+        }
+
+        print f.v
+        for i := 0; i < f.children.count; i += 1 {
+            foo_print(&f.children[i])
+        }
+    }
+
+    alloc_foos :: (n: i64) -> []Foo {
+        extern { calloc :: (count: i64, size: i64) -> rawptr }
+        return (&Foo(calloc(n, sizeof(Foo))))[..n]
+    }
+
+    a := Foo {v = 1337, children = alloc_foos(2)}
+    a.children[0] = Foo {v = 80085}
+    a.children[1] = Foo {v = 8008135}
+    foo_print(&a)
+}
+
+main :: () {
+    test_self_ptr()
+    test_self_slice()
+}
