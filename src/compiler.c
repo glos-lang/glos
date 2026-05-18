@@ -1032,7 +1032,7 @@ static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_
     unreachable();
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1043,7 +1043,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1120,7 +1120,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1167,7 +1167,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 59, "");
+            static_assert(COUNT_TOKENS == 60, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1215,7 +1215,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 59, "");
+            static_assert(COUNT_TOKENS == 60, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1246,7 +1246,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 59, "");
+            static_assert(COUNT_TOKENS == 60, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1288,7 +1288,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1742,7 +1742,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -1925,6 +1925,49 @@ static void compile_stmt(Compiler *c, Node *n) {
         c->loop_defers_start = loop_defers_start_save;
 
         c->llvm_debug_scope = llvm_debug_scope_save;
+    } break;
+
+    case NODE_CASE:
+        unreachable();
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+
+        LLVMValueRef      expr = compile_expr(c, sw->expr, false);
+        LLVMBasicBlockRef fallback = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBasicBlockRef end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+        set_debug_pos(c, n->token.pos);
+        LLVMValueRef sw_llvm = LLVMBuildSwitch(c->llvm_builder, expr, fallback, sw->preds_count);
+
+        size_t iota = 0;
+        for (Node *it = sw->cases.head; it; it = it->next) {
+            Node_Case *case_ = (Node_Case *) it;
+            if (!case_->preds.head) {
+                continue; // Fallback
+            }
+
+            LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                LLVMAddCase(sw_llvm, compile_const_value(c, sw->preds[iota++].value, sw->expr->type), block);
+            }
+            LLVMPositionBuilderAtEnd(c->llvm_builder, block);
+            compile_stmt(c, case_->body);
+
+            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMBuildBr(c->llvm_builder, end);
+        }
+        assert(iota == sw->preds_count);
+
+        LLVMPositionBuilderAtEnd(c->llvm_builder, fallback);
+        if (sw->fallback) {
+            compile_stmt(c, ((Node_Case *) sw->fallback)->body);
+        }
+
+        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+        LLVMBuildBr(c->llvm_builder, end);
+
+        LLVMPositionBuilderAtEnd(c->llvm_builder, end);
     } break;
 
     case NODE_JUMP:
@@ -2283,3 +2326,5 @@ void compiler_build(Compiler *c, const char *output_path) {
     shfree(c->llvm_debug_files);
     temp_reset(checkpoint);
 }
+
+// TODO: Should we use '%llu' instead of '%zu' for symmetry?

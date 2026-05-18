@@ -1,7 +1,9 @@
 #include "basic.h"
 #include "checker.h"
 #include "compiler.h"
+#include "node.h"
 #include "parser.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 static void usage(FILE *f, const char *program) {

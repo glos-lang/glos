@@ -3,6 +3,8 @@
 #include "context.h"
 #include "node.h"
 #include "token.h"
+#include <assert.h>
+#include <stdio.h>
 
 static void error_undefined(const Token *t, const char *label) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -26,6 +28,54 @@ static void error_too_few_arguments(Pos pos, size_t expected) {
 static void error_too_many_arguments(Pos pos, size_t expected) {
     fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected %zu\n", Pos_Arg(pos), expected);
     exit(1);
+}
+
+static void print_quoted_char(FILE *f, char ch, char quote) {
+    switch (ch) {
+    case 033:
+        fputs("\\e", f);
+        break;
+
+    case '\n':
+        fputs("\\n", f);
+        break;
+
+    case '\r':
+        fputs("\\r", f);
+        break;
+
+    case '\t':
+        fputs("\\t", f);
+        break;
+
+    case '\0':
+        fputs("\\0", f);
+        break;
+
+    case '\\':
+        fputs("\\\\", f);
+        break;
+
+    case '\'':
+        if (quote == '\'') {
+            fputs("\\'", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    case '"':
+        if (quote == '"') {
+            fputs("\\\"", f);
+        } else {
+            fputc(ch, f);
+        }
+        break;
+
+    default:
+        fputc(ch, f);
+        break;
+    }
 }
 
 static void check_int_limit(Node *n, size_t value) {
@@ -55,7 +105,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -179,7 +229,7 @@ static Type type_assert_numeric(const Node *n, bool pointers_allowed) {
         return n->type;
     }
 
-    if (type_is_pointer(n->type) && pointers_allowed) {
+    if (pointers_allowed && type_is_pointer(n->type)) {
         return n->type;
     }
 
@@ -250,7 +300,7 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -272,6 +322,21 @@ static bool loop_breaks(Node *n) {
         return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
     }
 
+    case NODE_CASE: {
+        Node_Case *case_ = (Node_Case *) n;
+        return loop_breaks(case_->body);
+    }
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        for (Node *it = sw->cases.head; it; it = it->next) {
+            if (!loop_breaks(it)) {
+                return false;
+            }
+        }
+        return sw->fallback != NULL;
+    }
+
     case NODE_JUMP:
         return n->token.kind == TOKEN_BREAK;
 
@@ -288,7 +353,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -346,6 +411,21 @@ static bool always_returns(Node *n) {
         return false;
     }
 
+    case NODE_CASE: {
+        Node_Case *case_ = (Node_Case *) n;
+        return always_returns(case_->body);
+    }
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        for (Node *it = sw->cases.head; it; it = it->next) {
+            if (!always_returns(it)) {
+                return false;
+            }
+        }
+        return sw->fallback != NULL;
+    }
+
     case NODE_RETURN:
         return true;
 
@@ -354,7 +434,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -364,7 +444,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -402,7 +482,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -445,7 +525,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -711,7 +791,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -907,7 +987,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -916,7 +996,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -950,7 +1030,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1007,7 +1087,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 59, "");
+        static_assert(COUNT_TOKENS == 60, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1655,6 +1735,78 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             check_node(c, forr->body, REF_NONE);
         }
         context_set_end(&c->context, context_end_save);
+    } break;
+
+    case NODE_CASE:
+        unreachable();
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        check_node(c, sw->expr, REF_NONE);
+
+        node_finalize_type_of_untyped(sw->expr);
+        if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected numeric or character value, got %s\n",
+                Pos_Arg(sw->expr->token.pos),
+                type_to_cstr(sw->expr->type));
+            exit(1);
+        }
+
+        if (!sw->preds) {
+            sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
+        }
+
+        size_t iota = 0;
+        for (Node *it = sw->cases.head; it; it = it->next) {
+            Node_Case *case_ = (Node_Case *) it;
+            for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                check_node(c, pred, REF_NONE);
+                type_assert(c, pred, sw->expr->type);
+
+                const Const_Value value = eval_const_expr(c, pred);
+                for (size_t i = 0; i < iota; i++) {
+                    if (const_value_eq(sw->preds[i].value, value)) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
+
+                        static_assert(COUNT_CONST_VALUES == 5, "");
+                        switch (value.kind) {
+                        case CONST_VALUE_INT:
+                            if (type_kind_eq(pred->type, TYPE_CHAR)) {
+                                fprintf(stderr, "'");
+                                print_quoted_char(stderr, value.as.integer, '\'');
+                                fprintf(stderr, "'");
+                            } else if (type_is_signed(pred->type)) {
+                                fprintf(stderr, "%lld", value.as.integer);
+                            } else {
+                                fprintf(stderr, "%llu", value.as.integer);
+                            }
+                            break;
+
+                        case CONST_VALUE_FN:
+                        case CONST_VALUE_TYPE:
+                        case CONST_VALUE_STRUCT:
+                        case CONST_VALUE_STRING:
+                            unreachable();
+
+                        default:
+                            unreachable();
+                        }
+
+                        fprintf(stderr, "\n");
+                        fprintf(stderr, Pos_Fmt "NOTE: Already here\n", Pos_Arg(sw->preds[i].pred->token.pos));
+                        exit(1);
+                    }
+                }
+
+                sw->preds[iota].pred = pred;
+                sw->preds[iota].value = value;
+                iota++;
+            }
+            check_node(c, case_->body, REF_NONE);
+        }
+        assert(iota == sw->preds_count);
     } break;
 
     case NODE_JUMP:

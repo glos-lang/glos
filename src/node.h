@@ -147,6 +147,8 @@ struct Const_Value {
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
 
+bool const_value_eq(Const_Value a, Const_Value b);
+
 typedef enum {
     UNCHECKED,
     CHECKING,
@@ -173,6 +175,9 @@ typedef enum {
     NODE_BLOCK,
     NODE_IF,
     NODE_FOR,
+
+    NODE_CASE,
+    NODE_SWITCH,
 
     NODE_JUMP,
     NODE_DEFER,
@@ -378,6 +383,25 @@ typedef struct {
     Node *update;
     Node *body;
 } Node_For;
+
+typedef struct {
+    Node  node;
+    Nodes preds;
+    Node *body;
+} Node_Case;
+
+typedef struct {
+    Node  node;
+    Node *expr;
+    Nodes cases;
+    Node *fallback;
+
+    struct {
+        Node       *pred;
+        Const_Value value;
+    }     *preds;
+    size_t preds_count;
+} Node_Switch;
 
 typedef struct {
     Node node;

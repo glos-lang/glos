@@ -1,0 +1,32 @@
+main :: () {
+    if 69 == {
+    case 1
+        println("One")
+    case 2
+        println("Two")
+    case 3, 4
+        println("3 or 4")
+    case 69
+        println("Nice!")
+    case
+        println("None of the above")
+    }
+
+    if 69 == {
+        case 420; println("Let's go!")
+        case;     println("Hehe boi")
+    }
+
+    if 69 == {
+        case 420; println("Let's go!")
+    }
+}
+
+
+println :: (s: string) {
+    extern { putchar :: (c: i32) -> i32 }
+    for i := 0; i < s.count; i += 1 {
+        putchar(i32(s[i]))
+    }
+    putchar(i32('\n'))
+}

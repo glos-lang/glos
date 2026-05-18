@@ -1,5 +1,6 @@
 #include "node.h"
 #include "basic.h"
+#include <assert.h>
 
 void nodes_push(Nodes *ns, Node *n) {
     if (!n) {
@@ -165,6 +166,24 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
+static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
+    if (a->fields_count != b->fields_count) {
+        return false;
+    }
+
+    if (a->fields == b->fields) {
+        return true;
+    }
+
+    for (size_t i = 0; i < a->fields_count; i++) {
+        if (!type_eq(a->fields[i].type, b->fields[i].type)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static_assert(COUNT_TYPES == 17, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
@@ -199,21 +218,7 @@ bool type_eq(Type a, Type b) {
     }
 
     case TYPE_STRUCT:
-        if (a.spec.structt->fields_count != b.spec.structt->fields_count) {
-            return false;
-        }
-
-        if (a.spec.structt->fields == b.spec.structt->fields) {
-            return true;
-        }
-
-        for (size_t i = 0; i < a.spec.structt->fields_count; i++) {
-            if (!type_eq(a.spec.structt->fields[i].type, b.spec.structt->fields[i].type)) {
-                return false;
-            }
-        }
-
-        return true;
+        return type_struct_eq(a.spec.structt, b.spec.structt);
 
     case TYPE_SLICE:
         return type_eq(*a.spec.slice.element, *b.spec.slice.element);
@@ -303,6 +308,44 @@ bool type_is_signed(Type type) {
     }
 }
 
+static_assert(COUNT_CONST_VALUES == 5, "");
+bool const_value_eq(Const_Value a, Const_Value b) {
+    if (a.kind != b.kind) {
+        return false;
+    }
+
+    switch (a.kind) {
+    case CONST_VALUE_INT:
+        return a.as.integer == b.as.integer;
+
+    case CONST_VALUE_FN:
+        return a.as.fn == b.as.fn;
+
+    case CONST_VALUE_TYPE:
+        return type_eq(a.as.type, b.as.type);
+
+    case CONST_VALUE_STRUCT: {
+        if (!type_struct_eq(a.as.structt.spec, b.as.structt.spec)) {
+            return false;
+        }
+
+        for (size_t i = 0; i < a.as.structt.spec->fields_count; i++) {
+            if (!const_value_eq(a.as.structt.fields[i], b.as.structt.fields[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    case CONST_VALUE_STRING:
+        return sv_eq(a.as.string, b.as.string);
+
+    default:
+        unreachable();
+    }
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
@@ -330,7 +373,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 20, "");
+static_assert(COUNT_NODES == 22, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -466,6 +509,28 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         node_debug_impl(f, forr->condition, depth + 1, "Condition");
         node_debug_impl(f, forr->update, depth + 1, "Update");
         node_debug_impl(f, forr->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_CASE: {
+        Node_Case *case_ = (Node_Case *) n;
+        fprintf(f, "Case");
+        if (!case_->preds.head) {
+            fprintf(f, " (fallback)");
+        }
+        fprintf(f, " {\n");
+        if (case_->preds.head) {
+            nodes_debug_impl(f, case_->preds, depth + 1, "Predicates");
+        }
+        node_debug_impl(f, case_->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        fprintf(f, "Switch {\n");
+        node_debug_impl(f, sw->expr, depth + 1, "Expr");
+        nodes_debug_impl(f, sw->cases, depth + 1, "Cases");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
