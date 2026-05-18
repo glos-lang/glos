@@ -1,2 +1,2 @@
-@assert(true)
-@assert(69 == 420)
+#assert(true)
+#assert(69 == 420)

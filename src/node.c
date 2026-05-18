@@ -414,7 +414,7 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     case NODE_ASSERT: {
         Node_Assert *assertt = (Node_Assert *) n;
         if (assertt->is_compile_time) {
-            fprintf(f, "@");
+            fprintf(f, "#");
         }
 
         fprintf(f, "Assert {\n");

@@ -1,5 +1,6 @@
 #include "lexer.h"
 #include "basic.h"
+#include "token.h"
 #include <ctype.h>
 #include <errno.h>
 
@@ -283,10 +284,6 @@ Token lexer_iter(Lexer *l) {
         token.kind = TOKEN_COMMA;
         break;
 
-    case '@':
-        token.kind = TOKEN_ATSIGN;
-        break;
-
     case '(':
         token.kind = TOKEN_LPAREN;
         break;
@@ -438,6 +435,24 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_EQ;
         } else {
             token.kind = TOKEN_SET;
+        }
+        break;
+
+    case '#':
+        while (l->sv.count > 0 && isident(*l->sv.data)) {
+            next_char(l);
+        }
+        token.sv.count -= l->sv.count;
+
+        if (sv_match(token.sv, "#assert")) {
+            token.kind = TOKEN_HASH_ASSERT;
+        } else {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Invalid compile time directive '" SV_Fmt "'\n",
+                Pos_Arg(token.pos),
+                SV_Arg(token.sv));
+            exit(1);
         }
         break;
 

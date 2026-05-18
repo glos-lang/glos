@@ -679,41 +679,32 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static Node *parse_assert(Parser *p, Token token, bool is_compile_time) {
-    if (!is_compile_time) {
-        not_in_extern_assert(p, token);
-        local_assert(p, true, token, NULL);
-    }
-
-    Node        *node = node_alloc(p, NODE_ASSERT, token);
-    Node_Assert *assertt = (Node_Assert *) node;
-    assertt->is_compile_time = is_compile_time;
-
-    expect_token(p, TOKEN_LPAREN);
-    assertt->expr = parse_expr(p, POWER_SET, true, NULL);
-
-    if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind == TOKEN_COMMA) {
-        assertt->message = parse_expr(p, POWER_SET, true, NULL);
-        expect_token(p, TOKEN_RPAREN);
-    }
-
-    return node;
-}
-
 static_assert(COUNT_NODES == 22, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
     Token token = next_token(p);
     switch (token.kind) {
-    case TOKEN_ATSIGN:
-        token = expect_token(p, TOKEN_ASSERT);
-        node = parse_assert(p, token, true);
-        break;
-
     case TOKEN_ASSERT:
-        node = parse_assert(p, token, false);
-        break;
+    case TOKEN_HASH_ASSERT: {
+        const bool is_compile_time = token.kind == TOKEN_HASH_ASSERT;
+        if (!is_compile_time) {
+            not_in_extern_assert(p, token);
+            local_assert(p, true, token, NULL);
+        }
+
+        node = node_alloc(p, NODE_ASSERT, token);
+        Node_Assert *assertt = (Node_Assert *) node;
+        assertt->is_compile_time = is_compile_time;
+
+        expect_token(p, TOKEN_LPAREN);
+        assertt->expr = parse_expr(p, POWER_SET, true, NULL);
+
+        if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind == TOKEN_COMMA) {
+            assertt->message = parse_expr(p, POWER_SET, true, NULL);
+            expect_token(p, TOKEN_RPAREN);
+        }
+    } break;
 
     case TOKEN_LBRACE:
         not_in_extern_assert(p, token);

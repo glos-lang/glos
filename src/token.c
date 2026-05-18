@@ -24,9 +24,6 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_RANGE:
         return "'..'";
 
-    case TOKEN_ATSIGN:
-        return "'@'";
-
     case TOKEN_INT:
         return "integer";
 
@@ -152,6 +149,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_ASSERT:
         return "'assert'";
+
+    case TOKEN_HASH_ASSERT:
+        return "'#assert'";
 
     case TOKEN_IF:
         return "'if'";

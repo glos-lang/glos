@@ -2,5 +2,5 @@ EXIT 1
 STDOUT 0
 
 STDERR 100
-tests/compile_time_assertions_custom_message.glos:2:2: Assertion failed: Custom message for testing
+tests/compile_time_assertions_custom_message.glos:2:1: Assertion failed: Custom message for testing
 

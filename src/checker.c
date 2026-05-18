@@ -599,11 +599,17 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_EQ:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
+            if (lhs.kind == CONST_VALUE_STRING) {
+                return const_value_int(sv_eq(lhs.as.string, rhs.as.string));
+            }
             return const_value_int(lhs.as.integer == rhs.as.integer);
 
         case TOKEN_NE:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
+            if (lhs.kind == CONST_VALUE_STRING) {
+                return const_value_int(!sv_eq(lhs.as.string, rhs.as.string));
+            }
             return const_value_int(lhs.as.integer != rhs.as.integer);
 
         default:
