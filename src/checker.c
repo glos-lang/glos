@@ -1120,11 +1120,25 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_GE:
         case TOKEN_LT:
         case TOKEN_LE:
+            check_node(c, binary->lhs, REF_NONE);
+            check_node(c, binary->rhs, REF_NONE);
+            type_assert_numeric(binary->lhs, true);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = (Type) {.kind = TYPE_BOOL};
+            break;
+
         case TOKEN_EQ:
         case TOKEN_NE:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, true);
+            if (!type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Expected scalar or string value, got %s",
+                    Pos_Arg(binary->lhs->token.pos),
+                    type_to_cstr(binary->lhs->type));
+                exit(1);
+            }
             type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;

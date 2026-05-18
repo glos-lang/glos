@@ -1032,6 +1032,45 @@ static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_
     unreachable();
 }
 
+static LLVMValueRef compile_string_eq(Compiler *c, LLVMValueRef lhs, LLVMValueRef rhs) {
+    LLVMValueRef lhs_count = LLVMBuildExtractValue(c->llvm_builder, lhs, 1, "");
+    LLVMValueRef rhs_count = LLVMBuildExtractValue(c->llvm_builder, rhs, 1, "");
+
+    LLVMBasicBlockRef count_equal_block = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMBasicBlockRef data_equal_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef end_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+    LLVMValueRef count_equal = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, lhs_count, rhs_count, "");
+    LLVMBuildCondBr(c->llvm_builder, count_equal, data_equal_block, end_block);
+
+    // Count equal
+    LLVMValueRef data_equal = NULL;
+    {
+        LLVMPositionBuilderAtEnd(c->llvm_builder, data_equal_block);
+
+        LLVMValueRef memcmp_args[] = {
+            LLVMBuildExtractValue(c->llvm_builder, lhs, 0, ""),
+            LLVMBuildExtractValue(c->llvm_builder, rhs, 0, ""),
+            lhs_count,
+        };
+
+        data_equal = LLVMBuildCall2(
+            c->llvm_builder, c->llvm_memcmp_type, c->llvm_memcmp_func, memcmp_args, len(memcmp_args), "");
+        data_equal = LLVMBuildICmp(
+            c->llvm_builder, LLVMIntEQ, data_equal, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)), "");
+        LLVMBuildBr(c->llvm_builder, end_block);
+    }
+
+    LLVMPositionBuilderAtEnd(c->llvm_builder, end_block);
+    LLVMTypeRef  llvm_type_i1 = LLVMInt1TypeInContext(c->llvm_context);
+    LLVMValueRef string_equal = LLVMBuildPhi(c->llvm_builder, llvm_type_i1, "");
+
+    LLVMValueRef      phi_values[] = {data_equal, LLVMConstNull(llvm_type_i1)};
+    LLVMBasicBlockRef phi_blocks[] = {data_equal_block, count_equal_block};
+    LLVMAddIncoming(string_equal, phi_values, phi_blocks, len(phi_blocks));
+    return string_equal;
+}
+
 static_assert(COUNT_NODES == 22, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -1159,6 +1198,25 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
+
+        // String comparison
+        if (binary->lhs->type.kind == TYPE_STRING) {
+            LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
+            LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+            set_debug_pos(c, n->token.pos);
+
+            LLVMValueRef equal = compile_string_eq(c, lhs, rhs);
+            switch (n->token.kind) {
+            case TOKEN_EQ:
+                return equal;
+
+            case TOKEN_NE:
+                return LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, equal, LLVMConstNull(n->type.llvm), "");
+
+            default:
+                unreachable();
+            }
+        }
 
         // Arithmetic
         {
@@ -2246,6 +2304,19 @@ void compiler_build(Compiler *c, const char *output_path) {
         c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stdoutp");
         c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stderrp");
 #endif // PLATFORM_ARM64_MACOS
+    }
+
+    // String comparisons
+    {
+        LLVMTypeRef memcmp_args[] = {
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMInt64TypeInContext(c->llvm_context),
+        };
+
+        c->llvm_memcmp_type =
+            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), memcmp_args, len(memcmp_args), false);
+        c->llvm_memcmp_func = LLVMAddFunction(c->llvm_module, "memcmp", c->llvm_memcmp_type);
     }
 
     for (size_t i = 0; i < c->globals.count; i++) {

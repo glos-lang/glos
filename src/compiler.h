@@ -61,6 +61,10 @@ typedef struct {
     LLVMTypeRef  llvm_abort_type;
     LLVMValueRef llvm_abort_func;
 
+    // For string comparisons
+    LLVMTypeRef  llvm_memcmp_type;
+    LLVMValueRef llvm_memcmp_func;
+
 #ifdef PLATFORM_X86_64_WINDOWS
     LLVMTypeRef  llvm_iob_type;
     LLVMValueRef llvm_iob_func;

@@ -1,8 +1,7 @@
 main :: () {
 	print_str("Hello, world!\n")
-    // TODO: Assertions
-	// assert "foo" == "foo"
-	// assert "foo" != "bar"
+	assert("foo" == "foo")
+	assert("foo" != "bar")
 }
 
 print_str :: (s: string) {
