@@ -1,0 +1,4 @@
+main :: () {
+    x: &u8 = null
+    print x
+}

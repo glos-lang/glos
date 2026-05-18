@@ -126,6 +126,11 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
+    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && expected.ref) {
+        n->type = expected;
+        return expected;
+    }
+
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -146,6 +151,16 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     }
 
     if (try_auto_cast_untyped(c, a, b->type)) {
+        return b->type;
+    }
+
+    if (a->kind == NODE_ATOM && a->token.kind == TOKEN_NULL && b->type.ref) {
+        a->type = b->type;
+        return a->type;
+    }
+
+    if (b->kind == NODE_ATOM && b->token.kind == TOKEN_NULL && a->type.ref) {
+        b->type = a->type;
         return b->type;
     }
 
@@ -349,12 +364,15 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
         case TOKEN_CHAR:
             return const_value_int(n->token.as.integer);
+
+        case TOKEN_NULL:
+            return const_value_int(0); // TODO: Pointers in constant expressions
 
         case TOKEN_IDENT: {
             if (n->type.is_meta) {
@@ -384,7 +402,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -427,7 +445,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -898,18 +916,22 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
-        case TOKEN_BOOL:
-            n->type = (Type) {.kind = TYPE_BOOL};
-            break;
-
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
             break;
 
+        case TOKEN_BOOL:
+            n->type = (Type) {.kind = TYPE_BOOL};
+            break;
+
         case TOKEN_CHAR:
             n->type = (Type) {.kind = TYPE_CHAR};
+            break;
+
+        case TOKEN_NULL:
+            n->type = (Type) {.kind = TYPE_RAWPTR};
             break;
 
         case TOKEN_IDENT:
@@ -928,7 +950,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -985,7 +1007,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 58, "");
+        static_assert(COUNT_TOKENS == 59, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

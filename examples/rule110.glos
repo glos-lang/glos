@@ -1,6 +1,6 @@
 main :: () {
     b := board_new(30)
-    defer board_free(b)
+    defer board_free(&b)
 
     b[b.count - 2] = 1
     for i := 0; i < b.count - 2; i = i + 1 {
@@ -20,8 +20,10 @@ board_new :: (n: i64) -> Board {
     return (&i32(calloc(n, sizeof(i32))))[..n]
 }
 
-board_free :: (b: Board) {
+board_free :: (b: &Board) {
     free(rawptr(b.data))
+    b.data = null
+    b.count = 0
 }
 
 board_show :: (b: Board) {
