@@ -133,53 +133,11 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static_assert(COUNT_NODES == 22, "");
-static Node *node_alloc(Parser *p, Node_Kind kind, Token token) {
-    static const size_t sizes[COUNT_NODES] = {
-        [NODE_ATOM] = sizeof(Node_Atom), // Prevent clang-format from messing this up
-        [NODE_UNARY] = sizeof(Node_Unary),
-        [NODE_BINARY] = sizeof(Node_Binary),
-        [NODE_MEMBER] = sizeof(Node_Member),
-        [NODE_ASSERT] = sizeof(Node_Assert),
-
-        [NODE_FN] = sizeof(Node_Fn),
-        [NODE_STRUCT] = sizeof(Node_Struct),
-        [NODE_COMPOUND] = sizeof(Node_Compound),
-
-        [NODE_CALL] = sizeof(Node_Call),
-
-        [NODE_SLICE] = sizeof(Node_Slice),
-        [NODE_INDEX] = sizeof(Node_Index),
-
-        [NODE_DEFINE] = sizeof(Node_Define),
-        [NODE_BLOCK] = sizeof(Node_Block),
-        [NODE_IF] = sizeof(Node_If),
-        [NODE_FOR] = sizeof(Node_For),
-
-        [NODE_CASE] = sizeof(Node_Case),
-        [NODE_SWITCH] = sizeof(Node_Switch),
-
-        [NODE_JUMP] = sizeof(Node_Jump),
-        [NODE_DEFER] = sizeof(Node_Defer),
-        [NODE_RETURN] = sizeof(Node_Return),
-
-        [NODE_EXTERN] = sizeof(Node_Extern),
-
-        [NODE_PRINT] = sizeof(Node_Print),
-    };
-
-    assert(kind >= NODE_ATOM && kind < COUNT_NODES);
-    Node *node = arena_alloc(p->arena, sizes[kind]);
-    node->kind = kind;
-    node->token = token;
-    return node;
-}
-
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
 static Node *parse_block(Parser *p, Token token) {
-    Node_Block *block = (Node_Block *) node_alloc(p, NODE_BLOCK, token);
+    Node_Block *block = (Node_Block *) node_alloc(p->arena, NODE_BLOCK, token);
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
     }
@@ -193,7 +151,7 @@ static Node *parse_if(Parser *p, Token token) {
     bool  should_be_switch = false;
     Node *expr = parse_expr(p, POWER_SET, false, &should_be_switch);
     if (should_be_switch) {
-        Node_Switch *sw = (Node_Switch *) node_alloc(p, NODE_SWITCH, token);
+        Node_Switch *sw = (Node_Switch *) node_alloc(p->arena, NODE_SWITCH, token);
         sw->expr = expr;
 
         expect_token(p, TOKEN_LBRACE);
@@ -212,7 +170,7 @@ static Node *parse_if(Parser *p, Token token) {
                 fallback = true;
             }
 
-            Node_Case *case_ = (Node_Case *) node_alloc(p, NODE_CASE, token);
+            Node_Case *case_ = (Node_Case *) node_alloc(p->arena, NODE_CASE, token);
             if (!fallback) {
                 do {
                     nodes_push(&case_->preds, parse_expr(p, POWER_SET, false, NULL));
@@ -221,7 +179,7 @@ static Node *parse_if(Parser *p, Token token) {
             }
             consume_tokens(p, TOKEN_EOL);
 
-            case_->body = node_alloc(p, NODE_BLOCK, token);
+            case_->body = node_alloc(p->arena, NODE_BLOCK, token);
             Node_Block *block = (Node_Block *) case_->body;
             while (true) {
                 ahead = peek_token(p);
@@ -239,7 +197,7 @@ static Node *parse_if(Parser *p, Token token) {
 
         return (Node *) sw;
     } else {
-        Node_If *iff = (Node_If *) node_alloc(p, NODE_IF, token);
+        Node_If *iff = (Node_If *) node_alloc(p->arena, NODE_IF, token);
         iff->condition = expr;
 
         token = expect_token(p, TOKEN_LBRACE);
@@ -259,7 +217,7 @@ static Node *parse_if(Parser *p, Token token) {
 }
 
 static Node *parse_for(Parser *p, Token token) {
-    Node_For *forr = (Node_For *) node_alloc(p, NODE_FOR, token);
+    Node_For *forr = (Node_For *) node_alloc(p->arena, NODE_FOR, token);
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL, false, NULL);
@@ -344,20 +302,20 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_NULL:
     case TOKEN_IDENT:
     case TOKEN_STRING:
-        node = node_alloc(p, NODE_ATOM, token);
+        node = node_alloc(p->arena, NODE_ATOM, token);
         break;
 
     case TOKEN_SUB:
     case TOKEN_MUL:
     case TOKEN_BNOT:
     case TOKEN_LNOT: {
-        node = node_alloc(p, NODE_UNARY, token);
+        node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, are_compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {
-        node = node_alloc(p, NODE_UNARY, token);
+        node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_REF, are_compounds_allowed, NULL);
     } break;
@@ -379,7 +337,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 
         if (is_fn) {
             Node *arg = node;
-            node = node_alloc(p, NODE_FN, token);
+            node = node_alloc(p->arena, NODE_FN, token);
 
             Node_Fn *fn = (Node_Fn *) node;
             fn->outer_fn = p->fn_current;
@@ -391,6 +349,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 definition_atom_setup(p, (Node_Define *) arg);
             }
 
+            bool has_default_args = false;
+
             size_t args_iota = 1;
             while (arg) {
                 Node_Define *define = (Node_Define *) arg;
@@ -401,9 +361,20 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 }
 
                 if (define->expr) {
-                    fprintf(
-                        stderr, Pos_Fmt "ERROR: Argument definition cannot have assignment\n", Pos_Arg(arg->token.pos));
-                    exit(1);
+                    has_default_args = true;
+                } else {
+                    if (has_default_args) {
+                        // TODO: Currently there is no support for named arguments, therefore this needs to be mandated.
+                        //       This will be removed once named arguments are implemented
+                        //
+                        //       Since this is a temporary error, so the error message does not need to be pretty.
+                        fprintf(
+                            stderr,
+                            Pos_Fmt
+                            "ERROR: Cannot have argument without default value after argument with default value\n",
+                            Pos_Arg(arg->token.pos));
+                        exit(1);
+                    }
                 }
 
                 if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
@@ -415,6 +386,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 
                 nodes_push(&fn->args, arg);
                 fn->args_count += define->count;
+                if (!define->expr) {
+                    fn->args_count_min += define->count;
+                }
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
@@ -442,7 +416,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     } break;
 
     case TOKEN_LBRACKET: {
-        node = node_alloc(p, NODE_SLICE, token);
+        node = node_alloc(p->arena, NODE_SLICE, token);
         Node_Slice *slice = (Node_Slice *) node;
 
         expect_token(p, TOKEN_RBRACKET);
@@ -450,7 +424,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     } break;
 
     case TOKEN_STRUCT: {
-        node = node_alloc(p, NODE_STRUCT, token);
+        node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
         structt->defined_in = p->fn_current;
 
@@ -483,7 +457,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     } break;
 
     case TOKEN_SIZEOF: {
-        node = node_alloc(p, NODE_UNARY, token);
+        node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
         unary->value = parse_expr(p, POWER_SET, true, NULL);
@@ -508,14 +482,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            Node_Member *member = (Node_Member *) node_alloc(p, NODE_MEMBER, token);
+            Node_Member *member = (Node_Member *) node_alloc(p->arena, NODE_MEMBER, token);
             member->lhs = node;
             member->field = expect_token(p, TOKEN_IDENT);
             node = (Node *) member;
         } break;
 
         case TOKEN_COLON: {
-            Node_Define *define = (Node_Define *) node_alloc(p, NODE_DEFINE, token);
+            Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
             if (node->kind == NODE_ATOM && node->token.kind == TOKEN_IDENT) {
                 define->count = 1;
             } else {
@@ -564,7 +538,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         } break;
 
         case TOKEN_LPAREN: {
-            Node_Call *call = (Node_Call *) node_alloc(p, NODE_CALL, token);
+            Node_Call *call = (Node_Call *) node_alloc(p->arena, NODE_CALL, token);
             call->fn = node;
 
             while (!read_token(p, TOKEN_RPAREN)) {
@@ -585,7 +559,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 return node;
             }
 
-            Node_Compound *compound = (Node_Compound *) node_alloc(p, NODE_COMPOUND, token);
+            Node_Compound *compound = (Node_Compound *) node_alloc(p->arena, NODE_COMPOUND, token);
             compound->lhs = node;
             compound->is_designated = false;
             while (!read_token(p, TOKEN_RBRACE)) {
@@ -594,7 +568,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 bool child_is_designated = false;
                 if (read_token(p, TOKEN_SET)) {
                     assert(p->ahead.kind == TOKEN_SET);
-                    Node_Binary *binary = (Node_Binary *) node_alloc(p, NODE_BINARY, p->ahead);
+                    Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->ahead);
                     binary->lhs = child;
                     binary->rhs = parse_expr(p, POWER_SET, true, NULL);
                     child = (Node *) binary;
@@ -623,7 +597,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         } break;
 
         case TOKEN_LBRACKET: {
-            Node_Index *index = (Node_Index *) node_alloc(p, NODE_INDEX, token);
+            Node_Index *index = (Node_Index *) node_alloc(p->arena, NODE_INDEX, token);
             index->lhs = node;
 
             if (peek_token(p).kind != TOKEN_RANGE) {
@@ -647,7 +621,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 *should_be_switch = true;
                 return node;
             } else {
-                Node_Binary *binary = (Node_Binary *) node_alloc(p, NODE_BINARY, token);
+                Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, token);
                 binary->lhs = node;
                 binary->rhs = parse_expr(p, lbp, are_compounds_allowed, NULL);
                 node = (Node *) binary;
@@ -679,7 +653,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -693,7 +667,7 @@ static Node *parse_stmt(Parser *p) {
             local_assert(p, true, token, NULL);
         }
 
-        node = node_alloc(p, NODE_ASSERT, token);
+        node = node_alloc(p->arena, NODE_ASSERT, token);
         Node_Assert *assertt = (Node_Assert *) node;
         assertt->is_compile_time = is_compile_time;
 
@@ -734,7 +708,7 @@ static Node *parse_stmt(Parser *p) {
 
         const bool in_defer_save = p->in_defer;
         p->in_defer = true;
-        node = node_alloc(p, NODE_DEFER, token);
+        node = node_alloc(p->arena, NODE_DEFER, token);
         Node_Defer *defer = (Node_Defer *) node;
         defer->stmt = parse_stmt(p);
         p->in_defer = in_defer_save;
@@ -761,7 +735,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        node = node_alloc(p, NODE_JUMP, token);
+        node = node_alloc(p->arena, NODE_JUMP, token);
         break;
 
     case TOKEN_RETURN: {
@@ -776,7 +750,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        node = node_alloc(p, NODE_RETURN, token);
+        node = node_alloc(p->arena, NODE_RETURN, token);
 
         Node_Return *returnn = (Node_Return *) node;
         if (!peek_token(p).newline) {
@@ -790,7 +764,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        node = node_alloc(p, NODE_EXTERN, token);
+        node = node_alloc(p->arena, NODE_EXTERN, token);
         Node_Extern *externn = (Node_Extern *) node;
 
         expect_token(p, TOKEN_LBRACE);
@@ -804,7 +778,7 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_PRINT: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        Node_Print *print = (Node_Print *) node_alloc(p, NODE_PRINT, token);
+        Node_Print *print = (Node_Print *) node_alloc(p->arena, NODE_PRINT, token);
         print->value = parse_expr(p, POWER_SET, true, NULL);
         node = (Node *) print;
         break;

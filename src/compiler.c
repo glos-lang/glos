@@ -1071,7 +1071,7 @@ static LLVMValueRef compile_string_eq(Compiler *c, LLVMValueRef lhs, LLVMValueRe
     return string_equal;
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1097,26 +1097,17 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             assert(definition);
 
             if (definition->definition_spec->is_const) {
+                const Const_Value const_value = definition->definition_spec->const_value;
+
                 static_assert(COUNT_CONST_VALUES == 5, "");
-                switch (definition->definition_spec->const_value.kind) {
-                case CONST_VALUE_INT:
-                    return LLVMConstInt(
-                        n->type.llvm, definition->definition_spec->const_value.as.integer, type_is_signed(n->type));
-
-                case CONST_VALUE_FN:
-                    return compile_fn(c, definition->definition_spec->const_value.as.fn);
-
-                case CONST_VALUE_TYPE:
-                    unreachable();
-
-                case CONST_VALUE_STRUCT: {
+                switch (const_value.kind) {
+                case CONST_VALUE_STRUCT:
                     if (!definition->definition_spec->llvm) {
                         const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
                         definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
                         temp_reset(name);
                         LLVMSetInitializer(
-                            definition->definition_spec->llvm,
-                            compile_const_value(c, definition->definition_spec->const_value, n->type));
+                            definition->definition_spec->llvm, compile_const_value(c, const_value, n->type));
                     }
 
                     if (ref) {
@@ -1125,13 +1116,12 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
                     set_debug_pos(c, n->token.pos);
                     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
-                }
 
                 case CONST_VALUE_STRING:
-                    return compile_string(c, definition->definition_spec->const_value.as.string, &n->token.pos, ref);
+                    return compile_string(c, const_value.as.string, &n->token.pos, ref);
 
                 default:
-                    unreachable();
+                    return compile_const_value(c, const_value, n->type);
                 }
             }
 
@@ -1153,7 +1143,36 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         default:
             unreachable();
         }
-    } break;
+    }
+
+    case NODE_GHOST: {
+        Node_Ghost *ghost = (Node_Ghost *) n;
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+
+        const Const_Value const_value = *ghost->arg->default_value;
+        static_assert(COUNT_CONST_VALUES == 5, "");
+        switch (const_value.kind) {
+        case CONST_VALUE_STRUCT:
+            if (!ghost->arg->default_value_llvm) {
+                const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+                ghost->arg->default_value_llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
+                temp_reset(name);
+                LLVMSetInitializer(ghost->arg->default_value_llvm, compile_const_value(c, const_value, n->type));
+            }
+
+            if (ref) {
+                return ghost->arg->default_value_llvm;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ghost->arg->default_value_llvm, "");
+
+        case CONST_VALUE_STRING:
+            return compile_string(c, const_value.as.string, NULL, ref);
+
+        default:
+            return compile_const_value(c, const_value, n->type);
+        }
+    }
 
     case NODE_UNARY: {
         Node_Unary  *unary = (Node_Unary *) n;
@@ -1800,7 +1819,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

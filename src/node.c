@@ -346,6 +346,49 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
+static_assert(COUNT_NODES == 23, "");
+Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
+    static const size_t sizes[COUNT_NODES] = {
+        [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
+        [NODE_GHOST] = sizeof(Node_Ghost),
+        [NODE_UNARY] = sizeof(Node_Unary),
+        [NODE_BINARY] = sizeof(Node_Binary),
+        [NODE_MEMBER] = sizeof(Node_Member),
+        [NODE_ASSERT] = sizeof(Node_Assert),
+
+        [NODE_FN] = sizeof(Node_Fn),
+        [NODE_STRUCT] = sizeof(Node_Struct),
+        [NODE_COMPOUND] = sizeof(Node_Compound),
+
+        [NODE_CALL] = sizeof(Node_Call),
+
+        [NODE_SLICE] = sizeof(Node_Slice),
+        [NODE_INDEX] = sizeof(Node_Index),
+
+        [NODE_DEFINE] = sizeof(Node_Define),
+        [NODE_BLOCK] = sizeof(Node_Block),
+        [NODE_IF] = sizeof(Node_If),
+        [NODE_FOR] = sizeof(Node_For),
+
+        [NODE_CASE] = sizeof(Node_Case),
+        [NODE_SWITCH] = sizeof(Node_Switch),
+
+        [NODE_JUMP] = sizeof(Node_Jump),
+        [NODE_DEFER] = sizeof(Node_Defer),
+        [NODE_RETURN] = sizeof(Node_Return),
+
+        [NODE_EXTERN] = sizeof(Node_Extern),
+
+        [NODE_PRINT] = sizeof(Node_Print),
+    };
+
+    assert(kind >= NODE_ATOM && kind < COUNT_NODES);
+    Node *node = arena_alloc(arena, sizes[kind]);
+    node->kind = kind;
+    node->token = token;
+    return node;
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
@@ -373,7 +416,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -387,6 +430,10 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     switch (n->kind) {
     case NODE_ATOM:
         fprintf(f, "Atom " SV_Fmt "\n", SV_Arg(n->token.sv));
+        break;
+
+    case NODE_GHOST:
+        fprintf(f, "Ghost\n");
         break;
 
     case NODE_UNARY: {
