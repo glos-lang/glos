@@ -1071,7 +1071,7 @@ static LLVMValueRef compile_string_eq(Compiler *c, LLVMValueRef lhs, LLVMValueRe
     return string_equal;
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1082,7 +1082,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1097,26 +1097,17 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             assert(definition);
 
             if (definition->definition_spec->is_const) {
+                const Const_Value const_value = definition->definition_spec->const_value;
+
                 static_assert(COUNT_CONST_VALUES == 5, "");
-                switch (definition->definition_spec->const_value.kind) {
-                case CONST_VALUE_INT:
-                    return LLVMConstInt(
-                        n->type.llvm, definition->definition_spec->const_value.as.integer, type_is_signed(n->type));
-
-                case CONST_VALUE_FN:
-                    return compile_fn(c, definition->definition_spec->const_value.as.fn);
-
-                case CONST_VALUE_TYPE:
-                    unreachable();
-
-                case CONST_VALUE_STRUCT: {
+                switch (const_value.kind) {
+                case CONST_VALUE_STRUCT:
                     if (!definition->definition_spec->llvm) {
                         const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
                         definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
                         temp_reset(name);
                         LLVMSetInitializer(
-                            definition->definition_spec->llvm,
-                            compile_const_value(c, definition->definition_spec->const_value, n->type));
+                            definition->definition_spec->llvm, compile_const_value(c, const_value, n->type));
                     }
 
                     if (ref) {
@@ -1125,13 +1116,12 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
                     set_debug_pos(c, n->token.pos);
                     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
-                }
 
                 case CONST_VALUE_STRING:
-                    return compile_string(c, definition->definition_spec->const_value.as.string, &n->token.pos, ref);
+                    return compile_string(c, const_value.as.string, &n->token.pos, ref);
 
                 default:
-                    unreachable();
+                    return compile_const_value(c, const_value, n->type);
                 }
             }
 
@@ -1153,13 +1143,58 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         default:
             unreachable();
         }
-    } break;
+    }
+
+    case NODE_GHOST: {
+        Node_Ghost *ghost = (Node_Ghost *) n;
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+
+        if (ghost->arg->default_value_is_caller_location) {
+            const char *cstr = temp_sprintf(Pos_Fmt, Pos_Arg(n->token.pos));
+
+            SV sv = sv_from_cstr(cstr);
+            // Since Pos_Fmt is `%s:%zu:%zu `
+            //                             ^
+            //                             This space here
+            //
+            // TODO: Remove this space from the macro itself
+            sv.count -= 1;
+
+            LLVMValueRef value = compile_string(c, sv, NULL, ref);
+            temp_reset(cstr);
+            return value;
+        }
+
+        const Const_Value const_value = *ghost->arg->default_value;
+        static_assert(COUNT_CONST_VALUES == 5, "");
+        switch (const_value.kind) {
+        case CONST_VALUE_STRUCT:
+            if (!ghost->arg->default_value_llvm) {
+                const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
+                ghost->arg->default_value_llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
+                temp_reset(name);
+                LLVMSetInitializer(ghost->arg->default_value_llvm, compile_const_value(c, const_value, n->type));
+            }
+
+            if (ref) {
+                return ghost->arg->default_value_llvm;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ghost->arg->default_value_llvm, "");
+
+        case CONST_VALUE_STRING:
+            return compile_string(c, const_value.as.string, NULL, ref);
+
+        default:
+            return compile_const_value(c, const_value, n->type);
+        }
+    }
 
     case NODE_UNARY: {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1225,7 +1260,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 60, "");
+            static_assert(COUNT_TOKENS == 61, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1273,7 +1308,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 60, "");
+            static_assert(COUNT_TOKENS == 61, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1304,7 +1339,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 60, "");
+            static_assert(COUNT_TOKENS == 61, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1346,7 +1381,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1800,7 +1835,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

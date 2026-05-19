@@ -21,12 +21,12 @@ static void error_redefinition(const Node_Atom *n, const Pos *previous) {
 }
 
 static void error_too_few_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected %zu\n", Pos_Arg(pos), expected);
+    fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected at least %zu\n", Pos_Arg(pos), expected);
     exit(1);
 }
 
 static void error_too_many_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected %zu\n", Pos_Arg(pos), expected);
+    fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected at most %zu\n", Pos_Arg(pos), expected);
     exit(1);
 }
 
@@ -105,7 +105,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -300,7 +300,7 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -353,7 +353,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -434,7 +434,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -444,7 +444,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -482,7 +482,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -525,7 +525,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -797,7 +797,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -864,6 +864,10 @@ typedef enum {
 
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
+static bool is_node_caller_location(Node *n) {
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_CALLER_LOCATION;
+}
+
 static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
@@ -878,17 +882,21 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
     }
 
     if (it_expr) {
-        check_node(c, it_expr, REF_NONE);
+        if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
+            // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location` maybe?
+            it_expr->type = (Type) {.kind = TYPE_STRING};
+        } else {
+            check_node(c, it_expr, REF_NONE);
+            if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->definition_spec->is_const)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot store %s in a %s\n",
+                    Pos_Arg(it_expr->token.pos),
+                    type_to_cstr(it_expr->type),
+                    it->definition_spec->is_const ? "constant" : "variable");
 
-        if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->definition_spec->is_const)) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot store %s in a %s\n",
-                Pos_Arg(it_expr->token.pos),
-                type_to_cstr(it_expr->type),
-                it->definition_spec->is_const ? "constant" : "variable");
-
-            exit(1);
+                exit(1);
+            }
         }
 
         if (type) {
@@ -993,7 +1001,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&n->token, "identifier");
 }
 
-static_assert(COUNT_NODES == 22, "");
+static_assert(COUNT_NODES == 23, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1002,7 +1010,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1029,14 +1037,25 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
+        case TOKEN_CALLER_LOCATION:
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot use %s here. It can only be used as the default value for a function argument\n",
+                Pos_Arg(n->token.pos),
+                token_kind_to_cstr(n->token.kind));
+            exit(1);
+
         default:
             unreachable();
         }
     } break;
 
+    case NODE_GHOST:
+        unreachable();
+
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1093,7 +1112,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 60, "");
+        static_assert(COUNT_TOKENS == 61, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1281,6 +1300,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         {
             Type_Fn fn_type_spec = {
                 .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
+                .args_count_min = fn->args_count_min,
             };
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -1298,14 +1318,22 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     }
                 }
 
-                Type_Fn_Arg *arg_spec = &fn_type_spec.args[fn_type_spec.args_count++];
-                *arg_spec = (Type_Fn_Arg) {
-                    .name = it->node.token.sv,
-                    .pos = it->node.token.pos,
-                };
+                fn_type_spec.args[fn_type_spec.args_count].name = it->node.token.sv;
+                fn_type_spec.args[fn_type_spec.args_count].pos = it->node.token.pos;
 
                 check_node(c, arg, REF_NONE);
-                arg_spec->type = it->node.type;
+
+                if (define->expr) {
+                    if (is_node_caller_location(define->expr)) {
+                        fn_type_spec.args[fn_type_spec.args_count].default_value_is_caller_location = true;
+                    } else {
+                        it->definition_spec->const_value = eval_const_expr(c, define->expr);
+                        fn_type_spec.args[fn_type_spec.args_count].default_value = &it->definition_spec->const_value;
+                    }
+                }
+                fn_type_spec.args[fn_type_spec.args_count].type = it->node.type;
+
+                fn_type_spec.args_count += define->count;
             }
 
             if (fn->returnn) {
@@ -1553,18 +1581,29 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     type_to_cstr(fn_type));
                 exit(1);
             }
+            const Type_Fn fn_type_spec = fn_type.spec.fn;
 
             call->args_count = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
                 check_node(c, arg, REF_NONE);
-                if (call->args_count >= fn_type.spec.fn.args_count) {
-                    error_too_many_arguments(arg->token.pos, fn_type.spec.fn.args_count);
+                if (call->args_count >= fn_type_spec.args_count) {
+                    error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
                 }
-                type_assert(c, arg, fn_type.spec.fn.args[call->args_count++].type);
+                type_assert(c, arg, fn_type_spec.args[call->args_count++].type);
             }
 
-            if (call->args_count < fn_type.spec.fn.args_count) {
-                error_too_few_arguments(call->end, fn_type.spec.fn.args_count);
+            if (call->args_count < fn_type_spec.args_count_min) {
+                error_too_few_arguments(call->end, fn_type_spec.args_count_min);
+            }
+
+            for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
+                const Token ghost_token = {.pos = call->fn->token.pos};
+                Node_Ghost *ghost = (Node_Ghost *) node_alloc(c->arena, NODE_GHOST, ghost_token);
+                ghost->arg = &fn_type_spec.args[i];
+                ghost->node.type = fn_type_spec.args[i].type;
+
+                nodes_push(&call->args, (Node *) ghost);
+                call->args_count++;
             }
 
             n->type = *fn_type.spec.fn.returnn;

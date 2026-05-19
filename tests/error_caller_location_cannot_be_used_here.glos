@@ -1,0 +1,3 @@
+main :: () {
+    #caller_location
+}

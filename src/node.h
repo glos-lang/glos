@@ -56,6 +56,7 @@ typedef struct Type_Struct_Field Type_Struct_Field;
 typedef struct {
     Type_Fn_Arg *args;
     size_t       args_count;
+    size_t       args_count_min;
     Type        *returnn;
 } Type_Fn;
 
@@ -90,10 +91,18 @@ struct Type {
     LLVMTypeRef llvm;
 };
 
+typedef struct Const_Value Const_Value;
+
 struct Type_Fn_Arg {
     Pos  pos;
     SV   name;
     Type type;
+
+    // For default arguments
+    Const_Value *default_value;
+    LLVMValueRef default_value_llvm;
+
+    bool default_value_is_caller_location;
 };
 
 struct Type_Struct_Field {
@@ -122,8 +131,6 @@ typedef enum {
     CONST_VALUE_STRING,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
-
-typedef struct Const_Value Const_Value;
 
 typedef struct {
     Type_Struct *spec;
@@ -157,6 +164,7 @@ typedef enum {
 
 typedef enum {
     NODE_ATOM,
+    NODE_GHOST,
     NODE_UNARY,
     NODE_BINARY,
     NODE_MEMBER,
@@ -196,10 +204,14 @@ struct Node {
     Node     *next;
 };
 
+Node *node_alloc(Arena *a, Node_Kind kind, Token token);
+
 typedef struct {
-    bool   is_local;
-    bool   is_extern;
-    bool   is_assigned;
+    bool is_local;
+    bool is_extern;
+    bool is_assigned;
+
+    // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
 
     Node_Define *definition_node;
@@ -224,6 +236,15 @@ struct Node_Atom {
     // When this atom is a reference to another defining atom
     Node_Atom *definition;
 };
+
+// TODO: This is the solution I came up with so far for default arguments.
+// This feels like a bad solution, but better than a non-existent perfect one.
+//
+// This WILL be replaced later, so it need not be pretty now.
+typedef struct {
+    Node         node;
+    Type_Fn_Arg *arg;
+} Node_Ghost;
 
 typedef struct {
     Node  node;
@@ -258,7 +279,8 @@ struct Node_Fn {
     Node node;
 
     Nodes  args;
-    size_t args_count;
+    size_t args_count;     // Actual
+    size_t args_count_min; // Minimum
 
     Node *returnn;
     Node *body;

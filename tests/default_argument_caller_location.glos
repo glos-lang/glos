@@ -1,0 +1,21 @@
+where :: (message := "", location := #caller_location) {
+    display(location)
+    display(" HERE")
+    if message != "" {
+        display(": ")
+        display(message)
+    }
+    display("\n")
+}
+
+main :: () {
+    where()
+    where("Additional message!")
+}
+
+display :: (s: string) {
+    for i := 0; i < s.count; i += 1 {
+        extern { putchar :: (c: i32) -> i32 }
+        putchar(i32(s[i]))
+    }
+}
