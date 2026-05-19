@@ -17,7 +17,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -290,7 +290,7 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -302,6 +302,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_NULL:
     case TOKEN_IDENT:
     case TOKEN_STRING:
+    case TOKEN_CALLER_LOCATION:
         node = node_alloc(p->arena, NODE_ATOM, token);
         break;
 

@@ -101,6 +101,8 @@ struct Type_Fn_Arg {
     // For default arguments
     Const_Value *default_value;
     LLVMValueRef default_value_llvm;
+
+    bool default_value_is_caller_location;
 };
 
 struct Type_Struct_Field {
@@ -205,9 +207,11 @@ struct Node {
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
 
 typedef struct {
-    bool   is_local;
-    bool   is_extern;
-    bool   is_assigned;
+    bool is_local;
+    bool is_extern;
+    bool is_assigned;
+
+    // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
 
     Node_Define *definition_node;

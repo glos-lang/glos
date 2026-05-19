@@ -1,0 +1,7 @@
+EXIT 0
+STDOUT 131
+tests/default_argument_caller_location.glos:12:5: HERE
+tests/default_argument_caller_location.glos:13:5: HERE: Additional message!
+
+STDERR 0
+

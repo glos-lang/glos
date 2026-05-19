@@ -176,7 +176,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 60, "");
+static_assert(COUNT_TOKENS == 61, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -446,6 +446,8 @@ Token lexer_iter(Lexer *l) {
 
         if (sv_match(token.sv, "#assert")) {
             token.kind = TOKEN_HASH_ASSERT;
+        } else if (sv_match(token.sv, "#caller_location")) {
+            token.kind = TOKEN_CALLER_LOCATION;
         } else {
             fprintf(
                 stderr,
