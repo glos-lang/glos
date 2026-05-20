@@ -493,10 +493,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         Node_Import *import = (Node_Import *) node;
         token = expect_token(p, TOKEN_STRING);
 
+        const char *root = NULL;
         const char *absolute_path = NULL;
         if (!absolute_path) {
             absolute_path = get_absolute_path(sv_from_cstr(p->root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
+            if (directory_exists(absolute_path)) {
+                root = p->root;
+            } else {
                 arena_reset(p->arena, absolute_path);
                 absolute_path = NULL;
             }
@@ -512,17 +515,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         {
             Module *module = module_get(p, absolute_path);
             if (!module->name) {
-                // TODO: Find a better solution for the main module name.
-                if (!strcmp(module->relative_path, "main")) {
+                module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
+                if (!strcmp(module->name, "main")) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
                         Pos_Arg(token.pos));
                     exit(1);
                 }
-
-                // TODO: This is very ugly. The link name should be against the nearest "root"
-                module->name = module->relative_path;
 
                 p->module_current = module;
 
@@ -553,8 +553,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                     unreachable();
                 }
             }
-
-            // TODO: Should importing the main module be banned?
 
             import->module = module;
         }

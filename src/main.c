@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     Arena arena = {0};
 
     bool        run = false;
-    const char *input = NULL;
+    const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
     while (argc) {
@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         } else {
-            if (input) {
+            if (input_path) {
                 fprintf(stderr, "ERROR: Multiple input paths provided\n");
                 if (run) {
                     fprintf(stderr, "Hint: When using '-r', pass program arguments after '--'\n");
@@ -135,62 +135,26 @@ int main(int argc, char **argv) {
                 exit(1);
             }
 
-            input = arg;
+            input_path = arg;
         }
     }
 
     Parser parser = {.arena = &arena, .cwd = get_cwd(&arena)};
 
-    if (!input) {
-        input = ".";
+    if (!input_path) {
+        input_path = ".";
     }
-    input = get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
-
-    Module *main_module = module_get(&parser, input);
-    main_module->name = "main";
-
-    parser.module_current = main_module;
-    if (directory_exists(input)) {
-        parser.root = input;
-        input = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
-
-        switch (parse_directory(&parser, input)) {
-        case PARSE_OK:
-            // Pass
-            break;
-
-        case PARSE_FAILURE:
-            fprintf(stderr, "ERROR: Could not read directory '%s'\n", input);
-            exit(1);
-            break;
-
-        case PARSE_EMPTY_DIRECTORY:
-            fprintf(stderr, "ERROR: Directory '%s' does not contain any glos files\n", input);
-            exit(1);
-            break;
-
-        default:
-            unreachable();
-        }
-    } else {
-        parser.root = get_parent_dir_path(input, &arena);
-        input = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
-
-        if (parse_file(&parser, input) != PARSE_OK) {
-            fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
-            exit(1);
-        }
-    }
+    input_path = get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
 
     if (!output_path) {
-        if (directory_exists(input)) {
-            output_path = get_path_last(get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena));
+        if (directory_exists(input_path)) {
+            output_path = get_path_last(input_path);
             if (!output_path) {
                 fprintf(stderr, "ERROR: Could not infer output path. Provide it manually via '-o'\n");
                 exit(1);
             }
         } else {
-            output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+            output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
         }
 
         if (run) {
@@ -199,6 +163,47 @@ int main(int argc, char **argv) {
                 temporary_files_push(temp_path);
                 output_path = temp_path;
             }
+        } else {
+            if (directory_exists(output_path)) {
+                fprintf(stderr, "ERROR: The output path '%s' exists and is a directory\n", output_path);
+                exit(1);
+            }
+        }
+    }
+
+    Module *main_module = module_get(&parser, input_path);
+    main_module->name = "main";
+
+    parser.module_current = main_module;
+    if (directory_exists(input_path)) {
+        parser.root = input_path;
+        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+
+        switch (parse_directory(&parser, input_path)) {
+        case PARSE_OK:
+            // Pass
+            break;
+
+        case PARSE_FAILURE:
+            fprintf(stderr, "ERROR: Could not read directory '%s'\n", input_path);
+            exit(1);
+            break;
+
+        case PARSE_EMPTY_DIRECTORY:
+            fprintf(stderr, "ERROR: Directory '%s' does not contain any glos files\n", input_path);
+            exit(1);
+            break;
+
+        default:
+            unreachable();
+        }
+    } else {
+        parser.root = get_parent_dir_path(input_path, &arena);
+        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+
+        if (parse_file(&parser, input_path) != PARSE_OK) {
+            fprintf(stderr, "ERROR: Could not read file '%s'\n", input_path);
+            exit(1);
         }
     }
 
