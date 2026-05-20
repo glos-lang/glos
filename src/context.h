@@ -3,8 +3,6 @@
 
 #include "node.h"
 
-typedef Dynamic_Array(Node_Atom *) Scope;
-
 void       scope_push(Scope *scope, Node_Atom *node);
 Node_Atom *scope_find(Scope scope, SV name);
 

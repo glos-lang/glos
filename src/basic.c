@@ -93,6 +93,7 @@ SV sv_drop(SV s, size_t count) {
 }
 
 SV sv_drop_mut(SV *s, size_t count) {
+    count = min(count, s->count);
     const SV result = (SV) {.data = s->data, .count = count};
     s->data += count;
     s->count -= count;
@@ -292,6 +293,12 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) {
     return result;
 }
 
+char *arena_sv_to_cstr(Arena *a, SV sv) {
+    char *p = memcpy(arena_alloc(a, sv.count + 1), sv.data, sv.count);
+    p[sv.count] = '\0';
+    return p;
+}
+
 void *arena_clone(Arena *a, const void *data, size_t size) {
     return memcpy(arena_alloc(a, size), data, size);
 }
@@ -392,12 +399,21 @@ bool delete_file(const char *path) {
 }
 
 bool create_directory(const char *path) {
-#ifdef _WIN32
+#ifdef PLATFORM_X86_64_WINDOWS
     const int result = _mkdir(path);
 #else
     const int result = mkdir(path, 0755);
-#endif
+#endif // PLATFORM_X86_64_WINDOWS
+
     return result >= 0 || errno == EEXIST;
+}
+
+bool file_exists(const char *path) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    return _access(path, 0) == 0;
+#else
+    return access(path, F_OK) == 0;
+#endif // PLATFORM_X86_64_WINDOWS
 }
 
 bool directory_exists(const char *path) {
@@ -478,17 +494,212 @@ const char *temp_replace_suffix(const char *path, const char *old, const char *n
     return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
 }
 
-Dynamic_Array(const char *) temp_paths;
+Dynamic_Array(const char *) temporary_files;
 
-void temp_paths_push(const char *path) {
-    da_push(&temp_paths, path);
+void temporary_files_push(const char *path) {
+    da_push(&temporary_files, path);
 }
 
-void temp_paths_cleanup(void) {
-    for (size_t i = 0; i < temp_paths.count; i++) {
-        delete_file(temp_paths.data[i]);
+void temporary_files_cleanup(void) {
+    for (size_t i = 0; i < temporary_files.count; i++) {
+        delete_file(temporary_files.data[i]);
     }
-    da_free(&temp_paths);
+    da_free(&temporary_files);
+}
+
+// Paths
+static bool path_is_rooted(SV path) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    if (path.count >= 2 && isalpha(path.data[0]) && path.data[1] == ':') {
+        return true;
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
+    return path.count >= 1 && path.data[0] == '/';
+}
+
+const char *get_cwd(Arena *a) {
+    const char  *result = NULL;
+    const size_t start = a->sb.count;
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    const DWORD count = GetCurrentDirectory(0, NULL);
+    if (!count) {
+        return_defer(NULL);
+    }
+
+    sb_grow(&a->sb, a->sb.count + count);
+    if (!GetCurrentDirectory(count, a->sb.data + start)) {
+        return_defer(NULL);
+    }
+
+    for (size_t i = start; i < start + count; i++) {
+        if (a->sb.data[i] == '\\') {
+            a->sb.data[i] = '/';
+        }
+    }
+#else
+    sb_grow(&a->sb, a->sb.count + DA_INIT_CAP);
+    while (!getcwd(a->sb.data + start, a->sb.capacity)) {
+        if (errno != ERANGE) {
+            return_defer(NULL);
+        }
+
+        a->sb.count = a->sb.capacity;
+        sb_grow(&a->sb, a->sb.count + DA_INIT_CAP);
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
+    return_defer(arena_sprintf(a, "%s", a->sb.data + start));
+
+defer:
+    a->sb.count = start;
+    return result;
+}
+
+static bool is_path_separator(char ch) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    return ch == '/' || ch == '\\';
+#else
+    return ch == '/';
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
+// `cwd` must be absolute
+const char *get_absolute_path(SV cwd, SV path, Arena *a) {
+    const size_t start = a->sb.count;
+
+    if (path_is_rooted(path)) {
+#ifdef PLATFORM_X86_64_WINDOWS
+        if (path.count && path.data[0] == '/') {
+            assert(cwd.count >= 2 && isalpha(cwd.data[0]) && cwd.data[1] == ':');
+            sb_push_many(&a->sb, cwd.data, 2);
+        }
+#endif // PLATFORM_X86_64_WINDOWS
+    } else {
+        sb_push_many(&a->sb, cwd.data, cwd.count);
+        if (a->sb.count > start && a->sb.data[a->sb.count - 1] == '/') {
+            a->sb.count--;
+        }
+    }
+
+    while (path.count) {
+        SV component = sv_split_by_mut(&path, is_path_separator);
+        if (!component.count) {
+            continue;
+        }
+
+        if (sv_match(component, ".")) {
+            continue;
+        }
+
+        if (sv_match(component, "..")) {
+            for (size_t i = a->sb.count; i > start; i--) {
+                if (a->sb.data[i - 1] == '/') {
+                    a->sb.count = i - 1;
+                    break;
+                }
+            }
+
+            continue;
+        }
+
+        bool push_slash = true;
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        if (a->sb.count == start) {
+            assert(path_is_rooted(component));
+            push_slash = false;
+        }
+#endif // PLATFORM_X86_64_WINDOWS
+
+        if (push_slash) {
+            sb_push(&a->sb, '/');
+        }
+        sb_push_many(&a->sb, component.data, component.count);
+    }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    assert(path_is_rooted((SV) {.data = a->sb.data + start, .count = a->sb.count - start}));
+    if (a->sb.count == start + 2) {
+        sb_push(&a->sb, '/');
+    }
+#else
+    if (a->sb.count == start) {
+        sb_push(&a->sb, '/');
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
+    const char *result = arena_sv_to_cstr(a, (SV) {.data = a->sb.data + start, .count = a->sb.count - start});
+    a->sb.count = start;
+    return result;
+}
+
+// `cwd` and `path` must be absolute
+const char *get_relative_path(SV cwd, SV path, Arena *a) {
+    const size_t start = a->sb.count;
+    while (cwd.count && path.count) {
+        const SV cwd_component = sv_split(cwd, '/');
+        const SV path_component = sv_split(path, '/');
+        if (!sv_eq(cwd_component, path_component)) {
+            break;
+        }
+
+        sv_drop_mut(&cwd, cwd_component.count + 1);
+        sv_drop_mut(&path, path_component.count + 1);
+    }
+
+    while (cwd.count) {
+        sv_split_mut(&cwd, '/');
+        if (a->sb.count != start) {
+            sb_push(&a->sb, '/');
+        }
+        sb_push_cstr(&a->sb, "..");
+    }
+
+    if (path.count) {
+        if (a->sb.count != start) {
+            sb_push(&a->sb, '/');
+        }
+        sb_push_many(&a->sb, path.data, path.count);
+    }
+
+    if (a->sb.count == start) {
+        sb_push(&a->sb, '.');
+    }
+
+    const char *result = arena_sv_to_cstr(a, (SV) {.data = a->sb.data + start, .count = a->sb.count - start});
+    a->sb.count = start;
+    return result;
+}
+
+// `path` must be absolute
+const char *get_parent_dir_path(const char *path, Arena *a) {
+    SV sv = sv_from_cstr(path);
+    if (sv.count && sv.data[sv.count - 1] == '/') {
+        // The way everything is designed, this means that `path` is root
+        return arena_sv_to_cstr(a, sv);
+    }
+
+    for (size_t i = sv.count; i > 0; i--) {
+        if (sv.data[i - 1] == '/') {
+            sv.count = i - 1;
+
+#ifdef PLATFORM_X86_64_WINDOWS
+            if (sv.count < 3) {
+                sv.count++;
+            }
+#else
+            if (sv.count < 1) {
+                sv.count++;
+            }
+#endif // PLATFORM_X86_64_WINDOWS
+
+            break;
+        }
+    }
+
+    return arena_sv_to_cstr(a, sv);
 }
 
 // Processes

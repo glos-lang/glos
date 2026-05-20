@@ -2,7 +2,7 @@
 #define NODE_H
 
 #include "token.h"
-#include "llvm-c/Types.h"
+#include <llvm-c/Types.h>
 
 typedef struct Context_Fn Context_Fn;
 
@@ -13,6 +13,11 @@ typedef struct Node_Define Node_Define;
 
 typedef struct Node_Fn     Node_Fn;
 typedef struct Node_Struct Node_Struct;
+
+// Defined in `parser.h`. Already marked as TODO, but still a reminder to find a better place to put this in
+typedef struct Module Module;
+
+typedef Dynamic_Array(Node_Atom *) Scope;
 
 typedef struct {
     Node *head;
@@ -46,6 +51,7 @@ typedef enum {
 
     TYPE_STRING,
 
+    TYPE_MODULE,
     COUNT_TYPES,
 } Type_Kind;
 
@@ -86,6 +92,7 @@ struct Type {
         Type_Fn      fn;
         Type_Slice   slice;
         Type_Struct *structt;
+        Module      *module;
     } spec;
 
     LLVMTypeRef llvm;
@@ -127,8 +134,8 @@ typedef enum {
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
     CONST_VALUE_STRUCT,
-
     CONST_VALUE_STRING,
+    CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
@@ -145,6 +152,7 @@ struct Const_Value {
         Node_Fn           *fn;
         Const_Value_Struct structt;
         SV                 string;
+        Module            *module;
     } as;
 };
 
@@ -153,6 +161,7 @@ struct Const_Value {
 #define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+#define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
 bool const_value_eq(Const_Value a, Const_Value b);
 
@@ -169,6 +178,7 @@ typedef enum {
     NODE_BINARY,
     NODE_MEMBER,
     NODE_ASSERT,
+    NODE_IMPORT,
 
     NODE_FN,
     NODE_STRUCT,
@@ -230,6 +240,9 @@ typedef struct {
 struct Node_Atom {
     Node node;
 
+    // The module this atom was parsed in
+    Module *module;
+
     // When this atom is a definition
     Definition_Spec *definition_spec;
 
@@ -258,11 +271,15 @@ typedef struct {
 } Node_Binary;
 
 typedef struct {
-    Node  node;
-    Node *lhs;
-    Token field;
-
+    Node   node;
+    Node  *lhs;
+    Token  field;
     size_t field_index;
+
+    // Foo :: #import "Foo"
+    // Foo.bar
+    //     ^
+    Node_Atom *module_access_definition;
 } Node_Member;
 
 typedef struct {
@@ -274,6 +291,11 @@ typedef struct {
 
     bool is_compile_time;
 } Node_Assert;
+
+typedef struct {
+    Node    node;
+    Module *module;
+} Node_Import;
 
 struct Node_Fn {
     Node node;
@@ -293,6 +315,9 @@ struct Node_Fn {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
+    // The module this function was parsed in
+    Module *module;
+
     LLVMValueRef    llvm;
     LLVMMetadataRef llvm_debug_scope;
 };
@@ -307,6 +332,9 @@ struct Node_Struct {
 
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
+
+    // The module this function was parsed in
+    Module *module;
 
     Node_Fn *defined_in;
 };

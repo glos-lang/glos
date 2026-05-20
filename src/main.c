@@ -1,7 +1,6 @@
 #include "basic.h"
 #include "checker.h"
 #include "compiler.h"
-#include "node.h"
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +9,7 @@ static void usage(FILE *f, const char *program) {
     fprintf(
         f,
         "Usage:\n"
-        "    %s [FLAGS...] FILE\n"
+        "    %s [FLAGS...] [FILE|DIRECTORY]\n"
         "\n"
         "Flags:\n"
         "    -h              Show this message\n"
@@ -29,6 +28,21 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
 
     (*argc)--;
     return *(*argv)++;
+}
+
+static const char *get_path_last(const char *path) {
+    SV sv = sv_from_cstr(path);
+    if (sv.count && sv.data[sv.count - 1] == '/') {
+        sv.count--;
+    }
+
+    for (size_t i = sv.count; i > 0; i--) {
+        if (sv.data[i - 1] == '/') {
+            return path + i;
+        }
+    }
+
+    return NULL;
 }
 
 static const char *get_temp_file_path(void) {
@@ -60,7 +74,7 @@ static const char *get_temp_file_path(void) {
 }
 
 int main(int argc, char **argv) {
-    atexit(temp_paths_cleanup);
+    atexit(temporary_files_cleanup);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
     int   result = 0;
@@ -125,24 +139,64 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!input) {
-        fprintf(stderr, "ERROR: Input path not provided\n\n");
-        usage(stderr, program);
-        exit(1);
-    }
+    Parser parser = {.arena = &arena, .cwd = get_cwd(&arena)};
 
-    Parser parser = {.arena = &arena};
-    if (!parse_file(&parser, input)) {
-        fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
-        exit(1);
+    if (!input) {
+        input = ".";
+    }
+    input = get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
+
+    Module *main_module = module_get(&parser, input);
+    main_module->name = "main";
+
+    parser.module_current = main_module;
+    if (directory_exists(input)) {
+        parser.root = input;
+        input = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
+
+        switch (parse_directory(&parser, input)) {
+        case PARSE_OK:
+            // Pass
+            break;
+
+        case PARSE_FAILURE:
+            fprintf(stderr, "ERROR: Could not read directory '%s'\n", input);
+            exit(1);
+            break;
+
+        case PARSE_EMPTY_DIRECTORY:
+            fprintf(stderr, "ERROR: Directory '%s' does not contain any glos files\n", input);
+            exit(1);
+            break;
+
+        default:
+            unreachable();
+        }
+    } else {
+        parser.root = get_parent_dir_path(input, &arena);
+        input = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena);
+
+        if (parse_file(&parser, input) != PARSE_OK) {
+            fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
+            exit(1);
+        }
     }
 
     if (!output_path) {
-        output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        if (directory_exists(input)) {
+            output_path = get_path_last(get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input), &arena));
+            if (!output_path) {
+                fprintf(stderr, "ERROR: Could not infer output path. Provide it manually via '-o'\n");
+                exit(1);
+            }
+        } else {
+            output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        }
+
         if (run) {
             const char *temp_path = get_temp_file_path();
             if (temp_path) {
-                temp_paths_push(temp_path);
+                temporary_files_push(temp_path);
                 output_path = temp_path;
             }
         }
@@ -155,7 +209,7 @@ int main(int argc, char **argv) {
 #endif // PLATFORM_X86_64_WINDOWS
 
     if (run) {
-        temp_paths_push(output_path);
+        temporary_files_push(output_path);
     }
 
     Compiler compiler = {
@@ -163,9 +217,10 @@ int main(int argc, char **argv) {
         .link_flags = &link_flags,
 
         .arena = &arena,
+        .modules = parser.modules,
     };
-    check_nodes(&compiler, parser.nodes);
-    compiler_build(&compiler, output_path);
+    check_nodes(&compiler, parser.modules);
+    compiler_build(&compiler, main_module, output_path);
 
     if (run) {
         const char *child_name = output_path;

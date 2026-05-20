@@ -152,6 +152,7 @@ void  arena_free(Arena *a);
 void *arena_alloc(Arena *a, size_t size);
 void  arena_reset(Arena *a, const void *ptr);
 char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
+char *arena_sv_to_cstr(Arena *a, SV sv);
 
 void *arena_clone(Arena *a, const void *data, size_t size);
 
@@ -164,6 +165,8 @@ bool read_file_into_arena(const char *path, SV *out, Arena *arena);
 
 bool delete_file(const char *path);
 bool create_directory(const char *path);
+
+bool file_exists(const char *path); // TODO: Is this needed?
 bool directory_exists(const char *path);
 
 size_t get_modified_time(const char *path);
@@ -173,8 +176,14 @@ bool is_lld_available_in_path(void);
 
 const char *temp_replace_suffix(const char *path, const char *old, const char *new);
 
-void temp_paths_push(const char *path);
-void temp_paths_cleanup(void);
+void temporary_files_push(const char *path);
+void temporary_files_cleanup(void);
+
+// Paths
+const char *get_cwd(Arena *a);
+const char *get_absolute_path(SV cwd, SV path, Arena *a);    // `cwd` must be absolute
+const char *get_relative_path(SV cwd, SV path, Arena *a);    // `cwd` and `path` must be absolute
+const char *get_parent_dir_path(const char *path, Arena *a); // `path` must be absolute
 
 // Processes
 typedef Dynamic_Array(const char *) Cmd;

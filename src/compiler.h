@@ -2,6 +2,7 @@
 #define COMPILER_H
 
 #include "context.h"
+#include "parser.h" // TODO: Use definition of 'Module'
 
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
@@ -9,10 +10,9 @@
 typedef Dynamic_Array(const char *) Link_Flags;
 
 typedef struct {
-    Arena *arena;
-
-    Scope   globals;
+    Arena  *arena;
     Context context;
+    Modules modules;
 
     Cmd        *cmd;
     Link_Flags *link_flags;
@@ -83,6 +83,6 @@ typedef struct {
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);
-void   compiler_build(Compiler *c, const char *output_path);
+void   compiler_build(Compiler *c, Module *main_module, const char *output_path);
 
 #endif // COMPILER_H

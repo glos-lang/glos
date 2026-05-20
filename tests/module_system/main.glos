@@ -1,0 +1,8 @@
+foo :: #import "foo"
+bar :: #import "bar"
+
+main :: () {
+    println("Hello, world!")
+    foo.hello()
+    bar.hello()
+}

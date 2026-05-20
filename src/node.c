@@ -1,5 +1,6 @@
 #include "node.h"
 #include "basic.h"
+#include "parser.h" // For the definition of 'Module'
 #include <assert.h>
 
 void nodes_push(Nodes *ns, Node *n) {
@@ -16,7 +17,7 @@ void nodes_push(Nodes *ns, Node *n) {
     ns->tail = n;
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -146,6 +147,9 @@ const char *type_to_cstr_raw(Type type) {
         temp_sprintf("string");
         break;
 
+    case TYPE_MODULE:
+        unreachable();
+
     default:
         unreachable();
     }
@@ -156,6 +160,10 @@ const char *type_to_cstr_raw(Type type) {
 const char *type_to_cstr(Type type) {
     if (type.is_meta) {
         return temp_sprintf("a type");
+    }
+
+    if (type.kind == TYPE_MODULE) {
+        return temp_sprintf("a module");
     }
 
     const char *s = temp_sprintf("'");
@@ -184,7 +192,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -228,7 +236,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -241,7 +249,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type);
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -289,7 +297,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 17, "");
+static_assert(COUNT_TYPES == 18, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -308,7 +316,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_CONST_VALUES == 5, "");
+static_assert(COUNT_CONST_VALUES == 6, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -341,12 +349,15 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     case CONST_VALUE_STRING:
         return sv_eq(a.as.string, b.as.string);
 
+    case CONST_VALUE_MODULE:
+        unreachable();
+
     default:
         unreachable();
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -355,6 +366,7 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_BINARY] = sizeof(Node_Binary),
         [NODE_MEMBER] = sizeof(Node_Member),
         [NODE_ASSERT] = sizeof(Node_Assert),
+        [NODE_IMPORT] = sizeof(Node_Import),
 
         [NODE_FN] = sizeof(Node_Fn),
         [NODE_STRUCT] = sizeof(Node_Struct),
@@ -416,7 +428,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -468,6 +480,11 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         node_debug_impl(f, assertt->expr, depth + 1, "Expr");
         node_debug_impl(f, assertt->message, depth + 1, "Message");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_IMPORT: {
+        Node_Import *import = (Node_Import *) n;
+        fprintf(f, "Import '%s'\n ", import->module->relative_path);
     } break;
 
     case NODE_FN: {

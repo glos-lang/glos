@@ -3,6 +3,13 @@
 #include "node.h"
 #include "token.h"
 
+#ifndef PLATFORM_X86_64_WINDOWS
+#include <dirent.h>
+#include <errno.h>
+#endif //  PLATFORM_X86_64_WINDOWS
+
+#include "thirdparty/stb_ds.h"
+
 typedef enum {
     POWER_NIL,
     POWER_SET,
@@ -17,7 +24,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 61, "");
+static_assert(COUNT_TOKENS == 62, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -73,38 +80,51 @@ static Power token_kind_to_power(Token_Kind kind) {
     }
 }
 
+Module *module_get(Parser *p, const char *path) {
+    const ptrdiff_t index = shgeti(p->modules, path);
+    if (index != -1) {
+        return p->modules[index].value;
+    }
+
+    Module *module = arena_alloc(p->arena, sizeof(*module));
+    module->absolute_path = path;
+    module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
+    shput(p->modules, path, module);
+    return module;
+}
+
 static void error_unexpected(Token token) {
     fprintf(stderr, Pos_Fmt "ERROR: Unexpected %s\n", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
     exit(1);
 }
 
 static void buffer_token(Parser *p, Token token) {
-    p->peeked = true;
-    p->ahead = token;
+    p->state.peeked = true;
+    p->state.ahead = token;
 }
 
 static Token next_token(Parser *p) {
-    if (p->peeked) {
-        p->peeked = false;
-        return p->ahead;
+    if (p->state.peeked) {
+        p->state.peeked = false;
+        return p->state.ahead;
     }
 
-    return lexer_iter(&p->lexer);
+    return lexer_iter(&p->state.lexer);
 }
 
 static Token peek_token(Parser *p) {
-    if (p->peeked) {
-        return p->ahead;
+    if (p->state.peeked) {
+        return p->state.ahead;
     }
 
-    buffer_token(p, lexer_iter(&p->lexer));
-    return p->ahead;
+    buffer_token(p, lexer_iter(&p->state.lexer));
+    return p->state.ahead;
 }
 
 static bool read_token(Parser *p, Token_Kind kind) {
     peek_token(p);
-    p->peeked = p->ahead.kind != kind;
-    return !p->peeked;
+    p->state.peeked = p->state.ahead.kind != kind;
+    return !p->state.peeked;
 }
 
 static Token expect_token(Parser *p, const Token_Kind *kinds) {
@@ -142,8 +162,8 @@ static Node *parse_block(Parser *p, Token token) {
         nodes_push(&block->body, parse_stmt(p));
     }
 
-    assert(p->ahead.kind == TOKEN_RBRACE);
-    block->end = p->ahead.pos;
+    assert(p->state.ahead.kind == TOKEN_RBRACE);
+    block->end = p->state.ahead.pos;
     return (Node *) block;
 }
 
@@ -238,18 +258,18 @@ static Node *parse_for(Parser *p, Token token) {
         }
     }
 
-    const bool inside_loop_save = p->in_loop;
-    p->in_loop = true;
+    const bool inside_loop_save = p->state.in_loop;
+    p->state.in_loop = true;
     {
         token = expect_token(p, TOKEN_LBRACE);
         forr->body = parse_block(p, token);
     }
-    p->in_loop = inside_loop_save;
+    p->state.in_loop = inside_loop_save;
     return (Node *) forr;
 }
 
 static void not_in_extern_assert(Parser *p, Token token) {
-    if (p->in_extern) {
+    if (p->state.in_extern) {
         fprintf(
             stderr,
             Pos_Fmt "ERROR: Extern blocks can only have variable and function definitions\n",
@@ -259,7 +279,7 @@ static void not_in_extern_assert(Parser *p, Token token) {
 }
 
 static void definition_atom_setup(Parser *p, Node_Define *define) {
-    const bool is_assignment_const = define->expr && (define->is_const || p->fn_current == NULL);
+    const bool is_assignment_const = define->expr && (define->is_const || p->state.fn_current == NULL);
 
     if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
         Node_Atom *it = (Node_Atom *) define->name;
@@ -270,8 +290,8 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
         }
 
         it->definition_spec->is_const = define->is_const;
-        it->definition_spec->is_local = p->fn_current != NULL;
-        it->definition_spec->is_extern = p->in_extern;
+        it->definition_spec->is_local = p->state.fn_current != NULL;
+        it->definition_spec->is_extern = p->state.in_extern;
         it->definition_spec->is_assigned = define->expr != NULL;
         it->definition_spec->definition_node = define;
         it->definition_spec->assignment_node = define->expr;
@@ -290,7 +310,7 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 61, "");
+static_assert(COUNT_TOKENS == 62, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -304,6 +324,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_STRING:
     case TOKEN_CALLER_LOCATION:
         node = node_alloc(p->arena, NODE_ATOM, token);
+        ((Node_Atom *) node)->module = p->module_current;
         break;
 
     case TOKEN_SUB:
@@ -341,10 +362,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             node = node_alloc(p->arena, NODE_FN, token);
 
             Node_Fn *fn = (Node_Fn *) node;
-            fn->outer_fn = p->fn_current;
+            fn->outer_fn = p->state.fn_current;
+            fn->module = p->module_current;
 
-            Node_Fn *fn_current_save = p->fn_current;
-            p->fn_current = fn;
+            Node_Fn *fn_current_save = p->state.fn_current;
+            p->state.fn_current = fn;
 
             if (arg) {
                 definition_atom_setup(p, (Node_Define *) arg);
@@ -412,7 +434,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 fn->is_type = true;
             }
 
-            p->fn_current = fn_current_save;
+            p->state.fn_current = fn_current_save;
         }
     } break;
 
@@ -427,7 +449,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_STRUCT: {
         node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
-        structt->defined_in = p->fn_current;
+        structt->defined_in = p->state.fn_current;
+        structt->module = p->module_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -465,6 +488,79 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         expect_token(p, TOKEN_RPAREN);
     } break;
 
+    case TOKEN_IMPORT: {
+        node = node_alloc(p->arena, NODE_IMPORT, token);
+        Node_Import *import = (Node_Import *) node;
+        token = expect_token(p, TOKEN_STRING);
+
+        const char *absolute_path = NULL;
+        if (!absolute_path) {
+            absolute_path = get_absolute_path(sv_from_cstr(p->root), token.sv, p->arena);
+            if (!directory_exists(absolute_path)) {
+                arena_reset(p->arena, absolute_path);
+                absolute_path = NULL;
+            }
+        }
+
+        if (!absolute_path) {
+            fprintf(
+                stderr, Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n", Pos_Arg(token.pos), SV_Arg(token.sv));
+            exit(1);
+        }
+
+        Module *module_current_save = p->module_current;
+        {
+            Module *module = module_get(p, absolute_path);
+            if (!module->name) {
+                // TODO: Find a better solution for the main module name.
+                if (!strcmp(module->relative_path, "main")) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
+                        Pos_Arg(token.pos));
+                    exit(1);
+                }
+
+                // TODO: This is very ugly. The link name should be against the nearest "root"
+                module->name = module->relative_path;
+
+                p->module_current = module;
+
+                switch (parse_directory(p, module->relative_path)) {
+                case PARSE_OK:
+                    // Pass
+                    break;
+
+                case PARSE_FAILURE:
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Could not read directory '%s'\n",
+                        Pos_Arg(token.pos),
+                        module->relative_path);
+                    exit(1);
+                    break;
+
+                case PARSE_EMPTY_DIRECTORY:
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Directory '%s' does not contain any glos files\n",
+                        Pos_Arg(token.pos),
+                        module->relative_path);
+                    exit(1);
+                    break;
+
+                default:
+                    unreachable();
+                }
+            }
+
+            // TODO: Should importing the main module be banned?
+
+            import->module = module;
+        }
+        p->module_current = module_current_save;
+    } break;
+
     default:
         error_unexpected(token);
     }
@@ -479,7 +575,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         if (lbp <= mbp) {
             break;
         }
-        p->peeked = false;
+        p->state.peeked = false;
 
         switch (token.kind) {
         case TOKEN_DOT: {
@@ -504,9 +600,12 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             }
 
             if (read_token(p, TOKEN_SET)) {
-                if (p->in_extern) {
-                    assert(p->ahead.kind == TOKEN_SET);
-                    fprintf(stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->ahead.pos));
+                if (p->state.in_extern) {
+                    assert(p->state.ahead.kind == TOKEN_SET);
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: External variable cannot have assignment\n",
+                        Pos_Arg(p->state.ahead.pos));
                     exit(1);
                 }
 
@@ -515,7 +614,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 define->expr = parse_expr(p, POWER_SET, true, NULL);
                 define->is_const = true;
 
-                if (p->in_extern) {
+                if (p->state.in_extern) {
                     if (define->expr->kind != NODE_FN) {
                         not_in_extern_assert(p, define->expr->token);
                     }
@@ -549,8 +648,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 }
             }
 
-            assert(p->ahead.kind == TOKEN_RPAREN);
-            call->end = p->ahead.pos;
+            assert(p->state.ahead.kind == TOKEN_RPAREN);
+            call->end = p->state.ahead.pos;
             node = (Node *) call;
         } break;
 
@@ -568,8 +667,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 
                 bool child_is_designated = false;
                 if (read_token(p, TOKEN_SET)) {
-                    assert(p->ahead.kind == TOKEN_SET);
-                    Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->ahead);
+                    assert(p->state.ahead.kind == TOKEN_SET);
+                    Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->state.ahead);
                     binary->lhs = child;
                     binary->rhs = parse_expr(p, POWER_SET, true, NULL);
                     child = (Node *) binary;
@@ -638,7 +737,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 }
 
 static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
-    if ((p->fn_current != NULL) != expected_is_local) {
+    if ((p->state.fn_current != NULL) != expected_is_local) {
         if (!label) {
             label = token_kind_to_cstr(token.kind);
         }
@@ -648,13 +747,13 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
             Pos_Fmt "ERROR: Unexpected %s %s function\n",
             Pos_Arg(token.pos),
             label,
-            p->fn_current ? "inside" : "outside");
+            p->state.fn_current ? "inside" : "outside");
 
         exit(1);
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -702,23 +801,23 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_DEFER: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        if (p->in_defer) {
+        if (p->state.in_defer) {
             fprintf(stderr, Pos_Fmt "ERROR: Nested 'defer' is not allowed\n", Pos_Arg(token.pos));
             exit(1);
         }
 
-        const bool in_defer_save = p->in_defer;
-        p->in_defer = true;
+        const bool in_defer_save = p->state.in_defer;
+        p->state.in_defer = true;
         node = node_alloc(p->arena, NODE_DEFER, token);
         Node_Defer *defer = (Node_Defer *) node;
         defer->stmt = parse_stmt(p);
-        p->in_defer = in_defer_save;
+        p->state.in_defer = in_defer_save;
     } break;
 
     case TOKEN_BREAK:
     case TOKEN_CONTINUE:
         not_in_extern_assert(p, token);
-        if (!p->in_loop) {
+        if (!p->state.in_loop) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot use %s outside of a loop\n",
@@ -727,7 +826,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        if (p->in_defer) {
+        if (p->state.in_defer) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot use %s inside 'defer' statement\n",
@@ -742,7 +841,7 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_RETURN: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        if (p->in_defer) {
+        if (p->state.in_defer) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot use %s inside 'defer' statement\n",
@@ -760,7 +859,7 @@ static Node *parse_stmt(Parser *p) {
     } break;
 
     case TOKEN_EXTERN: {
-        if (p->in_extern) {
+        if (p->state.in_extern) {
             fprintf(stderr, Pos_Fmt "ERROR: Cannot have nested externs\n", Pos_Arg(token.pos));
             exit(1);
         }
@@ -769,11 +868,11 @@ static Node *parse_stmt(Parser *p) {
         Node_Extern *externn = (Node_Extern *) node;
 
         expect_token(p, TOKEN_LBRACE);
-        p->in_extern = true;
+        p->state.in_extern = true;
         while (!read_token(p, TOKEN_RBRACE)) {
             nodes_push(&externn->nodes, parse_stmt(p));
         }
-        p->in_extern = false;
+        p->state.in_extern = false;
     } break;
 
     case TOKEN_PRINT: {
@@ -788,7 +887,7 @@ static Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true, NULL);
-        if (node->kind != NODE_DEFINE) {
+        if (node->kind != NODE_DEFINE && node->kind != NODE_IMPORT) {
             not_in_extern_assert(p, token);
             local_assert(p, true, node->token, "expression");
         }
@@ -799,21 +898,165 @@ static Node *parse_stmt(Parser *p) {
     return node;
 }
 
-bool parse_file(Parser *p, const char *path) {
-    assert(p->arena);
-    p->lexer.arena = p->arena;
+void parser_free(Parser *p) {
+    da_free(&p->paths);
+    shfree(p->modules); // TODO: Should this be the responsibility of the parser?
+}
 
-    if (!lexer_open(&p->lexer, path)) {
-        return false;
+Parse_Result parse_file(Parser *p, const char *path) {
+    assert(p->arena);
+    p->state.lexer.arena = p->arena;
+
+    if (!lexer_open(&p->state.lexer, path, p->arena)) {
+        return PARSE_FAILURE;
     }
 
+    assert(p->module_current);
     while (true) {
         consume_tokens(p, TOKEN_EOL);
         if (read_token(p, TOKEN_EOF)) {
             break;
         }
 
-        nodes_push(&p->nodes, parse_stmt(p));
+        nodes_push(&p->module_current->nodes, parse_stmt(p));
     }
-    return true;
+    return PARSE_OK;
+}
+
+static int compare_cstrs(const void *a, const void *b) {
+    const char *str1 = *(const char **) a;
+    const char *str2 = *(const char **) b;
+    return strcmp(str1, str2);
+}
+
+// `path` should be relative. No processing will be done
+static bool get_source_files(const char *path, Paths *items, Arena *a) {
+    bool         result = true;
+    const size_t start = items->count;
+
+    const SV   path_sv = sv_from_cstr(path);
+    const bool path_is_dot = sv_match(path_sv, ".");
+    const bool path_ends_with_slash = sv_has_suffix(path_sv, sv_from_cstr("/"));
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    char *search_path = temp_sprintf("%s\\*", path);
+
+    WIN32_FIND_DATA find_file_data;
+    HANDLE          handle = FindFirstFile(search_path, &find_file_data);
+    do {
+        if (handle == INVALID_HANDLE_VALUE) {
+            return_defer(false);
+        }
+
+        if (!strcmp(find_file_data.cFileName, ".") || !strcmp(find_file_data.cFileName, "..")) {
+            continue;
+        }
+
+        if (find_file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            continue;
+        }
+
+        if (!sv_has_suffix(sv_from_cstr(find_file_data.cFileName), sv_from_cstr(".glos"))) {
+            continue;
+        }
+
+        const char *item = NULL;
+        if (path_is_dot) {
+            item = arena_sprintf(a, "%s", find_file_data.cFileName);
+        } else if (path_ends_with_slash) {
+            item = arena_sprintf(a, "%s%s", path, find_file_data.cFileName);
+        } else {
+            item = arena_sprintf(a, "%s/%s", path, find_file_data.cFileName);
+        }
+        da_push(items, item);
+    } while (FindNextFile(handle, &find_file_data) != 0);
+
+    FindClose(handle);
+#else
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return_defer(false);
+    }
+
+    errno = 0;
+    struct dirent *entry = NULL;
+    while ((entry = readdir(dir))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+            continue;
+        }
+
+        if (entry->d_type == DT_DIR) {
+            continue;
+        }
+
+        if (!sv_has_suffix(sv_from_cstr(entry->d_name), sv_from_cstr(".glos"))) {
+            continue;
+        }
+
+        const char *item = NULL;
+        if (path_is_dot) {
+            item = arena_sprintf(a, "%s", entry->d_name);
+        } else if (path_ends_with_slash) {
+            item = arena_sprintf(a, "%s%s", path, entry->d_name);
+        } else {
+            item = arena_sprintf(a, "%s/%s", path, entry->d_name);
+        }
+        da_push(items, item);
+    }
+
+    if (errno) {
+        return_defer(false);
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
+    qsort(items->data + start, items->count - start, sizeof(*items->data), compare_cstrs);
+    return_defer(true);
+
+defer:
+    if (!result && items->count > start) {
+        arena_reset(a, items->data[start]);
+        items->count = start;
+    }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    temp_reset(search_path);
+#else
+    if (dir) {
+        closedir(dir);
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
+    return result;
+}
+
+Parse_Result parse_directory(Parser *p, const char *path) {
+    assert(p->arena);
+
+    const size_t start = p->paths.count;
+    if (!get_source_files(path, &p->paths, p->arena)) {
+        return PARSE_FAILURE;
+    }
+
+    bool empty = true;
+
+    const Parser_State parser_state_save = p->state;
+    memset(&p->state, 0, sizeof(p->state));
+
+    for (size_t i = start; i < p->paths.count; i++) {
+        const char *it = p->paths.data[i];
+
+        empty = false;
+        if (parse_file(p, it) != PARSE_OK) {
+            fprintf(stderr, "ERROR: Could not read file '%s'", it);
+            exit(1);
+        }
+    }
+
+    p->paths.count = start;
+    p->state = parser_state_save;
+
+    if (empty) {
+        return PARSE_EMPTY_DIRECTORY;
+    }
+    return PARSE_OK;
 }
