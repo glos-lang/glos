@@ -113,7 +113,6 @@ static const char *get_std_dir_path(Arena *a) {
         }
     }
 
-    data = resolve_absolute_path(data);
     count = strlen(data);
 #endif // PLATFORM_ARM64_MACOS
 
@@ -223,6 +222,9 @@ int main(int argc, char **argv) {
         .cwd = get_cwd(&arena),
         .std = get_std_dir_path(&arena),
     };
+
+    puts(parser.std);
+    exit(0);
 
     if (!input_path) {
         input_path = ".";
