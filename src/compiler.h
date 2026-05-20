@@ -2,7 +2,6 @@
 #define COMPILER_H
 
 #include "context.h"
-#include "parser.h" // TODO: Use definition of 'Module'
 
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>

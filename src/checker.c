@@ -146,7 +146,14 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     } break;
 
     case NODE_MEMBER: {
-        todo(); // TODO: Check for `module.CONSTANT_WITH_TYPE_INT`
+        Node_Member *member = (Node_Member *) n;
+        assert(member->module_access_definition); // Must be a module access
+
+        const Definition_Spec *definition_spec = member->module_access_definition->definition_spec;
+        assert(definition_spec->is_const); // Only constants can be defined as untyped int
+
+        n->type = expected;
+        check_int_limit(n, definition_spec->const_value.as.integer);
     } break;
 
     case NODE_RETURN: {
@@ -1027,10 +1034,12 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         return;
     }
 
-    Type_Kind kind;
-    if (get_builtin_type_kind(token.sv, &kind)) {
-        n->type = (Type) {.kind = kind, .is_meta = true};
-        return;
+    if (atom) {
+        Type_Kind kind;
+        if (get_builtin_type_kind(token.sv, &kind)) {
+            n->type = (Type) {.kind = kind, .is_meta = true};
+            return;
+        }
     }
 
     error_undefined(&token, "identifier");

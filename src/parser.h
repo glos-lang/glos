@@ -6,20 +6,6 @@
 
 typedef Dynamic_Array(const char *) Paths;
 
-struct Module {
-    const char *name;
-    const char *absolute_path;
-    const char *relative_path;
-
-    Nodes nodes;
-    Scope globals;
-};
-
-typedef struct {
-    const char *key; // Absolute path
-    Module     *value;
-} *Modules;
-
 typedef struct {
     Lexer lexer;
     Token ahead;

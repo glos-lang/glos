@@ -21,7 +21,7 @@ static void compile_type(Compiler *c, Type *type) {
         return;
     }
 
-    assert(type->kind != TYPE_MODULE); // TODO: Gather more information on this
+    assert(type->kind != TYPE_MODULE);
 
     // NOTE: Do not use `type*` functions because this function should not care whether a type is a metatype or not.
     if (type->ref || type->kind == TYPE_RAWPTR || type->kind == TYPE_FN) {
@@ -261,7 +261,7 @@ static void         compile_stmt(Compiler *c, Node *n);
 
 static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *module) {
     if (!fn) {
-        return temp_sprintf("%s", module->name); // TODO(@package)
+        return temp_sprintf("%s", module->name);
     }
 
     const char *name = temp_emit_nested_fn_name(c, fn->outer_fn, module);
@@ -1446,7 +1446,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 
     case NODE_IMPORT:
-        todo(); // TODO: What should be done here?
+        unreachable();
 
     case NODE_FN:
         return compile_fn(c, (Node_Fn *) n);

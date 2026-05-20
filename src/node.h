@@ -14,17 +14,28 @@ typedef struct Node_Define Node_Define;
 typedef struct Node_Fn     Node_Fn;
 typedef struct Node_Struct Node_Struct;
 
-// Defined in `parser.h`. Already marked as TODO, but still a reminder to find a better place to put this in
-typedef struct Module Module;
-
-typedef Dynamic_Array(Node_Atom *) Scope;
-
 typedef struct {
     Node *head;
     Node *tail;
 } Nodes;
 
 void nodes_push(Nodes *ns, Node *n);
+
+typedef Dynamic_Array(Node_Atom *) Scope;
+
+typedef struct {
+    const char *name;
+    const char *absolute_path;
+    const char *relative_path;
+
+    Nodes nodes;
+    Scope globals;
+} Module;
+
+typedef struct {
+    const char *key; // Absolute path
+    Module     *value;
+} *Modules;
 
 typedef enum {
     TYPE_UNIT,

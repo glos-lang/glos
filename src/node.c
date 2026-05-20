@@ -1,6 +1,5 @@
 #include "node.h"
 #include "basic.h"
-#include "parser.h" // For the definition of 'Module'
 #include <assert.h>
 
 void nodes_push(Nodes *ns, Node *n) {
