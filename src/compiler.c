@@ -1132,6 +1132,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         return NULL;
     }
 
+    if (n->type.kind == TYPE_MODULE) {
+        return NULL;
+    }
+
     compile_type(c, &n->type);
     switch (n->kind) {
     case NODE_ATOM: {
