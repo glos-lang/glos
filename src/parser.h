@@ -24,6 +24,7 @@ typedef struct {
 
     // TODO: Should these be SV?
     const char *cwd;
+    const char *std;
     const char *root;
 
     Parser_State state;

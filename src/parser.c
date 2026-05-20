@@ -518,6 +518,17 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         }
 
         if (!absolute_path) {
+            // Directory inside std
+            root = p->std;
+            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
+            if (!directory_exists(absolute_path)) {
+                arena_reset(p->arena, absolute_path);
+                root = NULL;
+                absolute_path = NULL;
+            }
+        }
+
+        if (!absolute_path) {
             fprintf(
                 stderr, Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n", Pos_Arg(token.pos), SV_Arg(token.sv));
             exit(1);

@@ -59,6 +59,7 @@ static const char *get_temp_file_path(void) {
         return NULL;
     }
 
+    unixify_path_separators_inplace(path, strlen(path));
     return path;
 #else
     static char path[] = "/tmp/glos_XXXXXX";
@@ -71,6 +72,84 @@ static const char *get_temp_file_path(void) {
     close(fd);
     return path;
 #endif // PLATFORM_X86_64_WINDOWS
+}
+
+static const char *get_std_dir_path(Arena *a) {
+    const void *checkpoint = temp_alloc(0);
+    const char *result = NULL;
+
+#ifdef PLATFORM_X86_64_LINUX
+    i64   count = 0;
+    char *data = NULL;
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = temp_alloc(capacity);
+        count = readlink("/proc/self/exe", data, capacity);
+
+        if (count == -1) {
+            return_defer(NULL);
+        }
+
+        if ((size_t) count < capacity) {
+            break;
+        }
+
+        temp_reset(checkpoint);
+    }
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    uint32_t count = DA_INIT_CAP;
+    char    *data = temp_alloc(count);
+
+    int _NSGetExecutablePath(char *buffer, uint32_t *size);
+    if (_NSGetExecutablePath(data, &count) == -1) {
+        temp_reset(data);
+        data = temp_alloc(count);
+
+        if (_NSGetExecutablePath(data, &count) == -1) {
+            temp_reset(data);
+            return NULL;
+        }
+    }
+
+    data = resolve_absolute_path(data);
+    count = strlen(data);
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    i64   count = 0;
+    char *data = temp_alloc(0);
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = temp_alloc(capacity);
+        count = GetModuleFileNameA(NULL, data, capacity);
+
+        if (count == 0) {
+            return_defer(NULL);
+        }
+
+        if (count < capacity - 1) {
+            break;
+        }
+    }
+
+    unixify_path_separators_inplace(data, count);
+#endif // PLATFORM_X86_64_WINDOWS
+
+    SV sv = {.data = data, .count = count};
+    for (size_t i = sv.count; i; i--) {
+        if (sv.data[i - 1] == '/') {
+            sv.count = i;
+            break;
+        }
+    }
+
+    return_defer(arena_sprintf(a, SV_Fmt "std", SV_Arg(sv)));
+
+defer:
+    temp_reset(checkpoint);
+    return result;
 }
 
 int main(int argc, char **argv) {
@@ -139,7 +218,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    Parser parser = {.arena = &arena, .cwd = get_cwd(&arena)};
+    Parser parser = {
+        .arena = &arena,
+        .cwd = get_cwd(&arena),
+        .std = get_std_dir_path(&arena),
+    };
 
     if (!input_path) {
         input_path = ".";

@@ -533,11 +533,7 @@ const char *get_cwd(Arena *a) {
         return_defer(NULL);
     }
 
-    for (size_t i = start; i < start + count; i++) {
-        if (a->sb.data[i] == '\\') {
-            a->sb.data[i] = '/';
-        }
-    }
+    unixify_path_separators_inplace(a->sb.data + start, count);
 #else
     sb_grow(&a->sb, a->sb.count + DA_INIT_CAP);
     while (!getcwd(a->sb.data + start, a->sb.capacity)) {
@@ -701,6 +697,16 @@ const char *get_parent_dir_path(const char *path, Arena *a) {
 
     return arena_sv_to_cstr(a, sv);
 }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+void unixify_path_separators_inplace(char *data, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (data[i] == '\\') {
+            data[i] = '/';
+        }
+    }
+}
+#endif // PLATFORM_X86_64_WINDOWS
 
 // Processes
 void cmd_show(Cmd cmd, FILE *f) {

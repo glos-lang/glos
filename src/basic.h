@@ -185,6 +185,10 @@ const char *get_absolute_path(SV cwd, SV path, Arena *a);    // `cwd` must be ab
 const char *get_relative_path(SV cwd, SV path, Arena *a);    // `cwd` and `path` must be absolute
 const char *get_parent_dir_path(const char *path, Arena *a); // `path` must be absolute
 
+#ifdef PLATFORM_X86_64_WINDOWS
+void unixify_path_separators_inplace(char *data, size_t count);
+#endif // PLATFORM_X86_64_WINDOWS
+
 // Processes
 typedef Dynamic_Array(const char *) Cmd;
 
