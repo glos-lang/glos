@@ -496,11 +496,23 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         const char *root = NULL;
         const char *absolute_path = NULL;
         if (!absolute_path) {
-            absolute_path = get_absolute_path(sv_from_cstr(p->root), token.sv, p->arena);
-            if (directory_exists(absolute_path)) {
-                root = p->root;
-            } else {
+            // Directory inside the current module
+            root = p->module_current->absolute_path;
+            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
+            if (!directory_exists(absolute_path)) {
                 arena_reset(p->arena, absolute_path);
+                root = NULL;
+                absolute_path = NULL;
+            }
+        }
+
+        if (!absolute_path) {
+            // Directory inside root
+            root = p->root;
+            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
+            if (!directory_exists(absolute_path)) {
+                arena_reset(p->arena, absolute_path);
+                root = NULL;
                 absolute_path = NULL;
             }
         }
