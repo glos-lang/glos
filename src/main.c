@@ -223,9 +223,6 @@ int main(int argc, char **argv) {
         .std = get_std_dir_path(&arena),
     };
 
-    puts(parser.std);
-    exit(0);
-
     if (!input_path) {
         input_path = ".";
     }
