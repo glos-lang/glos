@@ -1,0 +1,9 @@
+main :: () {
+    fmt.println("Hello, world!")
+
+    #if true {
+        fmt :: #import "fmt"
+    } else {
+        fmt :: #import "does_not_exist"
+    }
+}

@@ -2401,10 +2401,9 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
         c->llvm_memcmp_func = LLVMAddFunction(c->llvm_module, "memcmp", c->llvm_memcmp_type);
     }
 
-    for (ptrdiff_t i = 0; i < shlen(c->modules); i++) {
-        Scope *globals = &c->modules[i].value->globals;
-        for (size_t i = 0; i < globals->count; i++) {
-            Node_Atom *it = globals->data[i];
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (size_t i = 0; i < m->globals.count; i++) {
+            Node_Atom *it = m->globals.data[i];
             if (it->definition_spec->llvm) {
                 continue;
             }

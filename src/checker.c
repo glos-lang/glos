@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "context.h"
 #include "node.h"
+#include "parser.h"
 #include "token.h"
 
 #include "thirdparty/stb_ds.h"
@@ -1390,6 +1391,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
+        if (!import->module) {
+            parser_import(c->parser, import);
+
+            const Context context_save = c->context;
+            memset(&c->context, 0, sizeof(c->context));
+            {
+                for (Node *it = import->module->nodes.head; it; it = it->next) {
+                    define_orderless_nodes(c, it, 0);
+                }
+            }
+            c->context = context_save;
+        }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
     } break;
 
@@ -2049,17 +2062,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-void check_nodes(Compiler *c, Modules modules) {
-    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
-        const Nodes nodes = modules[i].value->nodes;
-        for (Node *it = nodes.head; it; it = it->next) {
+void check_nodes(Compiler *c) {
+    assert(c->parser);
+    assert(c->modules);
+
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (Node *it = m->nodes.head; it; it = it->next) {
             define_orderless_nodes(c, it, 0);
         }
     }
 
-    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
-        const Nodes nodes = modules[i].value->nodes;
-        for (Node *it = nodes.head; it; it = it->next) {
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (Node *it = m->nodes.head; it; it = it->next) {
             check_node(c, it, REF_NONE);
         }
     }

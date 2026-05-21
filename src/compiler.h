@@ -2,6 +2,7 @@
 #define COMPILER_H
 
 #include "context.h"
+#include "parser.h"
 
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
@@ -9,10 +10,14 @@
 typedef Dynamic_Array(const char *) Link_Flags;
 
 typedef struct {
+    // These are used both by the analyzer and the compiler
     Arena  *arena;
     Context context;
-    Modules modules;
 
+    Parser  *parser;
+    Modules *modules;
+
+    // Rest all are only used by compiler
     Cmd        *cmd;
     Link_Flags *link_flags;
 

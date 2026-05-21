@@ -23,19 +23,30 @@ void nodes_push(Nodes *ns, Node *n);
 
 typedef Dynamic_Array(Node_Atom *) Scope;
 
-typedef struct {
+typedef struct Module Module;
+
+struct Module {
     const char *name;
     const char *absolute_path;
     const char *relative_path;
 
     Nodes nodes;
     Scope globals;
-} Module;
+
+    Module *next;
+};
 
 typedef struct {
-    const char *key; // Absolute path
-    Module     *value;
-} *Modules;
+    struct {
+        const char *key; // Absolute path
+        Module     *value;
+    } *table;
+
+    Module *head;
+    Module *tail;
+} Modules;
+
+void modules_free(Modules *m);
 
 typedef enum {
     TYPE_UNIT,
@@ -305,6 +316,7 @@ typedef struct {
 
 typedef struct {
     Node    node;
+    Token   path;
     Module *module;
 } Node_Import;
 
@@ -381,10 +393,10 @@ typedef struct {
 
     Nodes args;
 
-    // Calculated at checking phase. The reason this is done like this is because in the future functions with multiple
-    // return values will be implemented. In such a case, when one of the elements of a call is another call to such a
-    // function, the actual argument count will be different from the apparent one, and thus cannot be calculated at
-    // parse time.
+    // Calculated at checking phase. The reason this is done like this is because in the future functions with
+    // multiple return values will be implemented. In such a case, when one of the elements of a call is another
+    // call to such a function, the actual argument count will be different from the apparent one, and thus cannot
+    // be calculated at parse time.
     //
     // TODO: Name this such that this comment is unnecessary
     size_t args_count;

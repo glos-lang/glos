@@ -81,15 +81,25 @@ static Power token_kind_to_power(Token_Kind kind) {
 }
 
 Module *module_get(Parser *p, const char *path) {
-    const ptrdiff_t index = shgeti(p->modules, path);
+    assert(p->arena);
+    assert(p->modules);
+
+    const ptrdiff_t index = shgeti(p->modules->table, path);
     if (index != -1) {
-        return p->modules[index].value;
+        return p->modules->table[index].value;
     }
 
     Module *module = arena_alloc(p->arena, sizeof(*module));
     module->absolute_path = path;
     module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
-    shput(p->modules, path, module);
+
+    shput(p->modules->table, path, module);
+    if (p->modules->tail) {
+        p->modules->tail->next = module;
+    } else {
+        p->modules->head = module;
+    }
+    p->modules->tail = module;
     return module;
 }
 
@@ -326,6 +336,103 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
+void parser_import(Parser *p, Node_Import *import) {
+    if (import->module) {
+        return;
+    }
+
+    const char *root = NULL;
+    const char *absolute_path = NULL;
+    if (!absolute_path) {
+        // Directory inside the current module
+        root = p->module_current->absolute_path;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        // Directory inside root
+        root = p->root;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        // Directory inside std
+        root = p->std;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n",
+            Pos_Arg(import->path.pos),
+            SV_Arg(import->path.sv));
+        exit(1);
+    }
+
+    Module *module_current_save = p->module_current;
+    {
+        Module *module = module_get(p, absolute_path);
+        if (!module->name) {
+            module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
+            if (!strcmp(module->name, "main")) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
+                    Pos_Arg(import->path.pos));
+                exit(1);
+            }
+
+            p->module_current = module;
+
+            switch (parse_directory(p, module->relative_path)) {
+            case PARSE_OK:
+                // Pass
+                break;
+
+            case PARSE_FAILURE:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Could not read directory '%s'\n",
+                    Pos_Arg(import->path.pos),
+                    module->relative_path);
+                exit(1);
+                break;
+
+            case PARSE_EMPTY_DIRECTORY:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Directory '%s' does not contain any glos files\n",
+                    Pos_Arg(import->path.pos),
+                    module->relative_path);
+                exit(1);
+                break;
+
+            default:
+                unreachable();
+            }
+        }
+
+        import->module = module;
+    }
+    p->module_current = module_current_save;
+}
+
 static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
@@ -505,102 +612,18 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     } break;
 
     case TOKEN_DIRECTIVE_IMPORT: {
-        // TODO(@compile-time-conditions): What to do if inside '#if'
         node = node_alloc(p->arena, NODE_IMPORT, token);
         Node_Import *import = (Node_Import *) node;
-        token = expect_token(p, TOKEN_STRING);
+        import->path = expect_token(p, TOKEN_STRING);
 
-        const char *root = NULL;
-        const char *absolute_path = NULL;
-        if (!absolute_path) {
-            // Directory inside the current module
-            root = p->module_current->absolute_path;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
+        if (!p->state.in_compile_time_condition) {
+            parser_import(p, import);
         }
-
-        if (!absolute_path) {
-            // Directory inside root
-            root = p->root;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
-        }
-
-        if (!absolute_path) {
-            // Directory inside std
-            root = p->std;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
-        }
-
-        if (!absolute_path) {
-            fprintf(
-                stderr, Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n", Pos_Arg(token.pos), SV_Arg(token.sv));
-            exit(1);
-        }
-
-        Module *module_current_save = p->module_current;
-        {
-            Module *module = module_get(p, absolute_path);
-            if (!module->name) {
-                module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
-                if (!strcmp(module->name, "main")) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
-                        Pos_Arg(token.pos));
-                    exit(1);
-                }
-
-                p->module_current = module;
-
-                switch (parse_directory(p, module->relative_path)) {
-                case PARSE_OK:
-                    // Pass
-                    break;
-
-                case PARSE_FAILURE:
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Could not read directory '%s'\n",
-                        Pos_Arg(token.pos),
-                        module->relative_path);
-                    exit(1);
-                    break;
-
-                case PARSE_EMPTY_DIRECTORY:
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Directory '%s' does not contain any glos files\n",
-                        Pos_Arg(token.pos),
-                        module->relative_path);
-                    exit(1);
-                    break;
-
-                default:
-                    unreachable();
-                }
-            }
-
-            import->module = module;
-        }
-        p->module_current = module_current_save;
     } break;
 
     default:
         error_unexpected(token);
+        break;
     }
 
     while (true) {
@@ -942,18 +965,18 @@ static Node *parse_stmt(Parser *p) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
-    shfree(p->modules); // TODO: Should this be the responsibility of the parser?
 }
 
 Parse_Result parse_file(Parser *p, const char *path) {
     assert(p->arena);
-    p->state.lexer.arena = p->arena;
+    assert(p->modules);
+    assert(p->module_current);
 
+    p->state.lexer.arena = p->arena;
     if (!lexer_open(&p->state.lexer, path, p->arena)) {
         return PARSE_FAILURE;
     }
 
-    assert(p->module_current);
     while (true) {
         consume_tokens(p, TOKEN_EOL);
         if (read_token(p, TOKEN_EOF)) {
@@ -1073,6 +1096,8 @@ defer:
 
 Parse_Result parse_directory(Parser *p, const char *path) {
     assert(p->arena);
+    assert(p->modules);
+    assert(p->module_current);
 
     const size_t start = p->paths.count;
     if (!get_source_files(path, &p->paths, p->arena)) {

@@ -30,8 +30,8 @@ typedef struct {
 
     Parser_State state;
 
-    Module *module_current;
-    Modules modules;
+    Module  *module_current;
+    Modules *modules;
 } Parser;
 
 Module *module_get(Parser *p, const char *path); // `path` is absolute
@@ -43,6 +43,7 @@ typedef enum {
 } Parse_Result;
 
 void parser_free(Parser *p);
+void parser_import(Parser *p, Node_Import *import);
 
 Parse_Result parse_file(Parser *p, const char *path);
 Parse_Result parse_directory(Parser *p, const char *path);
