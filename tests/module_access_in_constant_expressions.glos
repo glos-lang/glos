@@ -1,0 +1,6 @@
+fmt :: #import "fmt"
+println :: fmt.println
+
+main :: () {
+    println("Hello, world!")
+}

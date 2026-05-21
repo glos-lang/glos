@@ -4,8 +4,10 @@
 #include <ctype.h>
 #include <errno.h>
 
-bool lexer_open(Lexer *l, const char *path) {
-    assert(l->arena);
+bool lexer_open(Lexer *l, const char *path, Arena *a) {
+    memset(l, 0, sizeof(*l));
+
+    l->arena = a;
     if (!read_file_into_arena(path, &l->sv, l->arena)) {
         return false;
     }
@@ -176,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 61, "");
+static_assert(COUNT_TOKENS == 62, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -446,6 +448,8 @@ Token lexer_iter(Lexer *l) {
 
         if (sv_match(token.sv, "#assert")) {
             token.kind = TOKEN_HASH_ASSERT;
+        } else if (sv_match(token.sv, "#import")) {
+            token.kind = TOKEN_IMPORT;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_CALLER_LOCATION;
         } else {

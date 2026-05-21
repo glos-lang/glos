@@ -3,8 +3,8 @@
 #include "context.h"
 #include "node.h"
 #include "token.h"
-#include <assert.h>
-#include <stdio.h>
+
+#include "thirdparty/stb_ds.h"
 
 static void error_undefined(const Token *t, const char *label) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -79,7 +79,7 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
 }
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 17, "");
+    static_assert(COUNT_TYPES == 18, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -105,7 +105,7 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM:
@@ -143,6 +143,17 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         cast_untyped(c, binary->lhs, expected);
         cast_untyped(c, binary->rhs, expected);
         n->type = expected;
+    } break;
+
+    case NODE_MEMBER: {
+        Node_Member *member = (Node_Member *) n;
+        assert(member->module_access_definition); // Must be a module access
+
+        const Definition_Spec *definition_spec = member->module_access_definition->definition_spec;
+        assert(definition_spec->is_const); // Only constants can be defined as untyped int
+
+        n->type = expected;
+        check_int_limit(n, definition_spec->const_value.as.integer);
     } break;
 
     case NODE_RETURN: {
@@ -261,7 +272,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 17, "");
+    static_assert(COUNT_TYPES == 18, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -300,7 +311,7 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -353,7 +364,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -434,7 +445,7 @@ static bool always_returns(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -444,7 +455,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -454,7 +465,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_NULL:
             return const_value_int(0); // TODO: Pointers in constant expressions
 
-        case TOKEN_IDENT: {
+        case TOKEN_IDENT:
             if (n->type.is_meta) {
                 return const_value_type(n->type);
             }
@@ -467,7 +478,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             }
 
             return atom->definition->definition_spec->const_value;
-        }
 
         case TOKEN_STRING:
             return const_value_string(n->token.sv);
@@ -482,7 +492,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -525,7 +535,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -637,10 +647,31 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 unreachable();
             }
 
+        case CONST_VALUE_MODULE: {
+            Node_Atom *definition = member->module_access_definition;
+            assert(definition);
+
+            if (n->type.is_meta) {
+                return const_value_type(n->type);
+            }
+
+            if (!definition->definition_spec->is_const) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            return definition->definition_spec->const_value;
+        }
+
         default:
             unreachable();
         }
     }
+
+    case NODE_IMPORT:
+        assert(n->type.kind == TYPE_MODULE);
+        return const_value_module(n->type.spec.module);
 
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
@@ -797,7 +828,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -833,12 +864,12 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     error_redefinition(it, NULL);
                 }
 
-                Node_Atom *previous = scope_find(c->globals, it->node.token.sv);
+                Node_Atom *previous = scope_find(it->module->globals, it->node.token.sv);
                 if (previous) {
                     error_redefinition(it, &previous->node.token.pos);
                 }
 
-                da_push(&c->globals, it);
+                da_push(&it->module->globals, it);
             }
         }
     } break;
@@ -887,7 +918,11 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
             it_expr->type = (Type) {.kind = TYPE_STRING};
         } else {
             check_node(c, it_expr, REF_NONE);
-            if (type_kind_eq(it_expr->type, TYPE_UNIT) || (it_expr->type.is_meta && !it->definition_spec->is_const)) {
+
+            const bool is_it_unit = type_kind_eq(it_expr->type, TYPE_UNIT);
+            const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
+            const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
+            if (is_it_unit || is_it_a_module || is_it_a_type) {
                 fprintf(
                     stderr,
                     Pos_Fmt "ERROR: Cannot store %s in a %s\n",
@@ -925,17 +960,40 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
 }
 
 static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
-    Node_Atom *atom = (Node_Atom *) n;
-    if (sv_match(n->token.sv, "_")) {
-        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
+    Node_Atom   *atom = NULL;
+    Node_Member *member = NULL;
+
+    Token token = {0};
+    Scope globals = {0};
+    if (n->kind == NODE_ATOM) {
+        atom = (Node_Atom *) n;
+        token = n->token;
+        globals = atom->module->globals;
+    } else if (n->kind == NODE_MEMBER) {
+        member = (Node_Member *) n;
+        assert(member->lhs->type.kind == TYPE_MODULE);
+
+        token = member->field;
+        globals = member->lhs->type.spec.module->globals;
+    } else {
+        unreachable();
+    }
+
+    if (sv_match(token.sv, "_")) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(token.pos));
         exit(1);
     }
 
-    Node_Atom *definition = context_find_local(&c->context, n->token.sv);
+    Node_Atom *definition = context_find_local(&c->context, token.sv);
     if (!definition) {
-        definition = scope_find(c->globals, n->token.sv);
+        definition = scope_find(globals, token.sv);
     }
-    atom->definition = definition;
+
+    if (atom) {
+        atom->definition = definition;
+    } else if (member) {
+        member->module_access_definition = definition;
+    }
 
     if (definition) {
         switch (definition->definition_spec->check_status) {
@@ -978,13 +1036,13 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
-                        Pos_Arg(n->token.pos));
+                        Pos_Arg(token.pos));
                     exit(1);
                 }
                 break;
 
             case REF_ASSIGN:
-                fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(token.pos));
                 exit(1);
                 break;
             }
@@ -992,16 +1050,18 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         return;
     }
 
-    Type_Kind kind;
-    if (get_builtin_type_kind(n->token.sv, &kind)) {
-        n->type = (Type) {.kind = kind, .is_meta = true};
-        return;
+    if (atom) {
+        Type_Kind kind;
+        if (get_builtin_type_kind(token.sv, &kind)) {
+            n->type = (Type) {.kind = kind, .is_meta = true};
+            return;
+        }
     }
 
-    error_undefined(&n->token, "identifier");
+    error_undefined(&token, "identifier");
 }
 
-static_assert(COUNT_NODES == 23, "");
+static_assert(COUNT_NODES == 24, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1010,7 +1070,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1055,7 +1115,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1112,7 +1172,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 61, "");
+        static_assert(COUNT_TOKENS == 62, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1255,6 +1315,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             } else {
                 error_undefined(&member->field, "field");
             }
+        } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
+            check_ident(c, n, ref);
         } else {
             fprintf(
                 stderr,
@@ -1289,6 +1351,11 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             fprintf(stderr, "\n");
             exit(1);
         }
+    } break;
+
+    case NODE_IMPORT: {
+        Node_Import *import = (Node_Import *) n;
+        n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
     } break;
 
     case NODE_FN: {
@@ -1829,7 +1896,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     if (const_value_eq(sw->preds[i].value, value)) {
                         fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
 
-                        static_assert(COUNT_CONST_VALUES == 5, "");
+                        static_assert(COUNT_CONST_VALUES == 6, "");
                         switch (value.kind) {
                         case CONST_VALUE_INT:
                             if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1847,6 +1914,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                         case CONST_VALUE_TYPE:
                         case CONST_VALUE_STRUCT:
                         case CONST_VALUE_STRING:
+                        case CONST_VALUE_MODULE:
                             unreachable();
 
                         default:
@@ -1929,12 +1997,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-void check_nodes(Compiler *c, Nodes nodes) {
-    for (Node *it = nodes.head; it; it = it->next) {
-        define_orderless_nodes(c, it, 0);
+void check_nodes(Compiler *c, Modules modules) {
+    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
+        const Nodes nodes = modules[i].value->nodes;
+        for (Node *it = nodes.head; it; it = it->next) {
+            define_orderless_nodes(c, it, 0);
+        }
     }
 
-    for (Node *it = nodes.head; it; it = it->next) {
-        check_node(c, it, REF_NONE);
+    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
+        const Nodes nodes = modules[i].value->nodes;
+        for (Node *it = nodes.head; it; it = it->next) {
+            check_node(c, it, REF_NONE);
+        }
     }
 }

@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-void check_nodes(Compiler *c, Nodes nodes);
+void check_nodes(Compiler *c, Modules modules);
 
 #endif // CHECKER_H

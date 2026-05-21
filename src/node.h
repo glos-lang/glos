@@ -2,7 +2,7 @@
 #define NODE_H
 
 #include "token.h"
-#include "llvm-c/Types.h"
+#include <llvm-c/Types.h>
 
 typedef struct Context_Fn Context_Fn;
 
@@ -20,6 +20,22 @@ typedef struct {
 } Nodes;
 
 void nodes_push(Nodes *ns, Node *n);
+
+typedef Dynamic_Array(Node_Atom *) Scope;
+
+typedef struct {
+    const char *name;
+    const char *absolute_path;
+    const char *relative_path;
+
+    Nodes nodes;
+    Scope globals;
+} Module;
+
+typedef struct {
+    const char *key; // Absolute path
+    Module     *value;
+} *Modules;
 
 typedef enum {
     TYPE_UNIT,
@@ -46,6 +62,7 @@ typedef enum {
 
     TYPE_STRING,
 
+    TYPE_MODULE,
     COUNT_TYPES,
 } Type_Kind;
 
@@ -86,6 +103,7 @@ struct Type {
         Type_Fn      fn;
         Type_Slice   slice;
         Type_Struct *structt;
+        Module      *module;
     } spec;
 
     LLVMTypeRef llvm;
@@ -127,8 +145,8 @@ typedef enum {
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
     CONST_VALUE_STRUCT,
-
     CONST_VALUE_STRING,
+    CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
 
@@ -145,6 +163,7 @@ struct Const_Value {
         Node_Fn           *fn;
         Const_Value_Struct structt;
         SV                 string;
+        Module            *module;
     } as;
 };
 
@@ -153,6 +172,7 @@ struct Const_Value {
 #define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+#define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
 bool const_value_eq(Const_Value a, Const_Value b);
 
@@ -169,6 +189,7 @@ typedef enum {
     NODE_BINARY,
     NODE_MEMBER,
     NODE_ASSERT,
+    NODE_IMPORT,
 
     NODE_FN,
     NODE_STRUCT,
@@ -230,6 +251,9 @@ typedef struct {
 struct Node_Atom {
     Node node;
 
+    // The module this atom was parsed in
+    Module *module;
+
     // When this atom is a definition
     Definition_Spec *definition_spec;
 
@@ -258,11 +282,15 @@ typedef struct {
 } Node_Binary;
 
 typedef struct {
-    Node  node;
-    Node *lhs;
-    Token field;
-
+    Node   node;
+    Node  *lhs;
+    Token  field;
     size_t field_index;
+
+    // Foo :: #import "Foo"
+    // Foo.bar
+    //     ^
+    Node_Atom *module_access_definition;
 } Node_Member;
 
 typedef struct {
@@ -274,6 +302,11 @@ typedef struct {
 
     bool is_compile_time;
 } Node_Assert;
+
+typedef struct {
+    Node    node;
+    Module *module;
+} Node_Import;
 
 struct Node_Fn {
     Node node;
@@ -293,6 +326,9 @@ struct Node_Fn {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
+    // The module this function was parsed in
+    Module *module;
+
     LLVMValueRef    llvm;
     LLVMMetadataRef llvm_debug_scope;
 };
@@ -307,6 +343,9 @@ struct Node_Struct {
 
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
+
+    // The module this function was parsed in
+    Module *module;
 
     Node_Fn *defined_in;
 };
@@ -347,7 +386,7 @@ typedef struct {
     // function, the actual argument count will be different from the apparent one, and thus cannot be calculated at
     // parse time.
     //
-    // TODO: Name this such that this commenet is unnecessary
+    // TODO: Name this such that this comment is unnecessary
     size_t args_count;
 
     Pos end;

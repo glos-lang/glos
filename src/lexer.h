@@ -11,7 +11,7 @@ typedef struct {
     bool newline;
 } Lexer;
 
-bool  lexer_open(Lexer *l, const char *path);
+bool  lexer_open(Lexer *l, const char *path, Arena *a);
 Token lexer_iter(Lexer *l);
 
 #endif // LEXER_H

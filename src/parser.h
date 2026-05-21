@@ -4,9 +4,9 @@
 #include "lexer.h"
 #include "node.h"
 
-typedef struct {
-    Arena *arena;
+typedef Dynamic_Array(const char *) Paths;
 
+typedef struct {
     Lexer lexer;
     Token ahead;
     bool  peeked;
@@ -16,10 +16,34 @@ typedef struct {
     bool in_extern;
 
     Node_Fn *fn_current;
+} Parser_State;
 
-    Nodes nodes;
+typedef struct {
+    Arena *arena;
+    Paths  paths;
+
+    // TODO: Should these be SV?
+    const char *cwd;
+    const char *std;
+    const char *root;
+
+    Parser_State state;
+
+    Module *module_current;
+    Modules modules;
 } Parser;
 
-bool parse_file(Parser *p, const char *path);
+Module *module_get(Parser *p, const char *path); // `path` is absolute
+
+typedef enum {
+    PARSE_OK,
+    PARSE_FAILURE,
+    PARSE_EMPTY_DIRECTORY,
+} Parse_Result;
+
+void parser_free(Parser *p);
+
+Parse_Result parse_file(Parser *p, const char *path);
+Parse_Result parse_directory(Parser *p, const char *path);
 
 #endif // PARSER_H

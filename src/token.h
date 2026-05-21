@@ -73,6 +73,7 @@ typedef enum {
     // TODO: TOKEN_HASH_ASSERT should be TOKEN_ASSERT. This will be fixed after modules are implemented
     TOKEN_ASSERT,
     TOKEN_HASH_ASSERT,
+    TOKEN_IMPORT,
     TOKEN_CALLER_LOCATION,
 
     TOKEN_IF,

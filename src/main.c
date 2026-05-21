@@ -1,7 +1,6 @@
 #include "basic.h"
 #include "checker.h"
 #include "compiler.h"
-#include "node.h"
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +9,7 @@ static void usage(FILE *f, const char *program) {
     fprintf(
         f,
         "Usage:\n"
-        "    %s [FLAGS...] FILE\n"
+        "    %s [FLAGS...] [FILE|DIRECTORY]\n"
         "\n"
         "Flags:\n"
         "    -h              Show this message\n"
@@ -31,6 +30,21 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
     return *(*argv)++;
 }
 
+static const char *get_path_last(const char *path) {
+    SV sv = sv_from_cstr(path);
+    if (sv.count && sv.data[sv.count - 1] == '/') {
+        sv.count--;
+    }
+
+    for (size_t i = sv.count; i > 0; i--) {
+        if (sv.data[i - 1] == '/') {
+            return path + i;
+        }
+    }
+
+    return NULL;
+}
+
 static const char *get_temp_file_path(void) {
 #ifdef PLATFORM_X86_64_WINDOWS
     static char dir[MAX_PATH + 1];
@@ -45,6 +59,7 @@ static const char *get_temp_file_path(void) {
         return NULL;
     }
 
+    unixify_path_separators_inplace(path, strlen(path));
     return path;
 #else
     static char path[] = "/tmp/glos_XXXXXX";
@@ -59,8 +74,85 @@ static const char *get_temp_file_path(void) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
+static const char *get_std_dir_path(Arena *a) {
+    const void *checkpoint = temp_alloc(0);
+    const char *result = NULL;
+
+#ifdef PLATFORM_X86_64_LINUX
+    i64   count = 0;
+    char *data = NULL;
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = temp_alloc(capacity);
+        count = readlink("/proc/self/exe", data, capacity);
+
+        if (count == -1) {
+            return_defer(NULL);
+        }
+
+        if ((size_t) count < capacity) {
+            break;
+        }
+
+        temp_reset(checkpoint);
+    }
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    uint32_t count = DA_INIT_CAP;
+    char    *data = temp_alloc(count);
+
+    int _NSGetExecutablePath(char *buffer, uint32_t *size);
+    if (_NSGetExecutablePath(data, &count) == -1) {
+        temp_reset(data);
+        data = temp_alloc(count);
+
+        if (_NSGetExecutablePath(data, &count) == -1) {
+            temp_reset(data);
+            return NULL;
+        }
+    }
+
+    count = strlen(data);
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    i64   count = 0;
+    char *data = temp_alloc(0);
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = temp_alloc(capacity);
+        count = GetModuleFileNameA(NULL, data, capacity);
+
+        if (count == 0) {
+            return_defer(NULL);
+        }
+
+        if (count < capacity - 1) {
+            break;
+        }
+    }
+
+    unixify_path_separators_inplace(data, count);
+#endif // PLATFORM_X86_64_WINDOWS
+
+    SV sv = {.data = data, .count = count};
+    for (size_t i = sv.count; i; i--) {
+        if (sv.data[i - 1] == '/') {
+            sv.count = i;
+            break;
+        }
+    }
+
+    return_defer(arena_sprintf(a, SV_Fmt "std", SV_Arg(sv)));
+
+defer:
+    temp_reset(checkpoint);
+    return result;
+}
+
 int main(int argc, char **argv) {
-    atexit(temp_paths_cleanup);
+    atexit(temporary_files_cleanup);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
     int   result = 0;
@@ -68,7 +160,7 @@ int main(int argc, char **argv) {
     Arena arena = {0};
 
     bool        run = false;
-    const char *input = NULL;
+    const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
     while (argc) {
@@ -113,7 +205,7 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         } else {
-            if (input) {
+            if (input_path) {
                 fprintf(stderr, "ERROR: Multiple input paths provided\n");
                 if (run) {
                     fprintf(stderr, "Hint: When using '-r', pass program arguments after '--'\n");
@@ -121,30 +213,79 @@ int main(int argc, char **argv) {
                 exit(1);
             }
 
-            input = arg;
+            input_path = arg;
         }
     }
 
-    if (!input) {
-        fprintf(stderr, "ERROR: Input path not provided\n\n");
-        usage(stderr, program);
-        exit(1);
-    }
+    Parser parser = {
+        .arena = &arena,
+        .cwd = get_cwd(&arena),
+        .std = get_std_dir_path(&arena),
+    };
 
-    Parser parser = {.arena = &arena};
-    if (!parse_file(&parser, input)) {
-        fprintf(stderr, "ERROR: Could not read file '%s'\n", input);
-        exit(1);
+    if (!input_path) {
+        input_path = ".";
     }
+    input_path = get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
 
     if (!output_path) {
-        output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input), sv_from_cstr(".glos")));
+        if (directory_exists(input_path)) {
+            output_path = get_path_last(input_path);
+            if (!output_path) {
+                fprintf(stderr, "ERROR: Could not infer output path. Provide it manually via '-o'\n");
+                exit(1);
+            }
+        } else {
+            output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
+        }
+
         if (run) {
             const char *temp_path = get_temp_file_path();
             if (temp_path) {
-                temp_paths_push(temp_path);
+                temporary_files_push(temp_path);
                 output_path = temp_path;
             }
+        } else {
+            if (directory_exists(output_path)) {
+                fprintf(stderr, "ERROR: The output path '%s' exists and is a directory\n", output_path);
+                exit(1);
+            }
+        }
+    }
+
+    Module *main_module = module_get(&parser, input_path);
+    main_module->name = "main";
+
+    parser.module_current = main_module;
+    if (directory_exists(input_path)) {
+        parser.root = input_path;
+        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+
+        switch (parse_directory(&parser, input_path)) {
+        case PARSE_OK:
+            // Pass
+            break;
+
+        case PARSE_FAILURE:
+            fprintf(stderr, "ERROR: Could not read directory '%s'\n", input_path);
+            exit(1);
+            break;
+
+        case PARSE_EMPTY_DIRECTORY:
+            fprintf(stderr, "ERROR: Directory '%s' does not contain any glos files\n", input_path);
+            exit(1);
+            break;
+
+        default:
+            unreachable();
+        }
+    } else {
+        parser.root = get_parent_dir_path(input_path, &arena);
+        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+
+        if (parse_file(&parser, input_path) != PARSE_OK) {
+            fprintf(stderr, "ERROR: Could not read file '%s'\n", input_path);
+            exit(1);
         }
     }
 
@@ -155,7 +296,7 @@ int main(int argc, char **argv) {
 #endif // PLATFORM_X86_64_WINDOWS
 
     if (run) {
-        temp_paths_push(output_path);
+        temporary_files_push(output_path);
     }
 
     Compiler compiler = {
@@ -163,9 +304,10 @@ int main(int argc, char **argv) {
         .link_flags = &link_flags,
 
         .arena = &arena,
+        .modules = parser.modules,
     };
-    check_nodes(&compiler, parser.nodes);
-    compiler_build(&compiler, output_path);
+    check_nodes(&compiler, parser.modules);
+    compiler_build(&compiler, main_module, output_path);
 
     if (run) {
         const char *child_name = output_path;
@@ -189,6 +331,7 @@ int main(int argc, char **argv) {
         result = cmd_wait(child_proc);
     }
 
+    parser_free(&parser);
     arena_free(&arena);
     cmd_free(&cmd);
     da_free(&link_flags);
