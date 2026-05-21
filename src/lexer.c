@@ -178,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 64, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -452,6 +452,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_ASSERT;
         } else if (sv_match(token.sv, "#import")) {
             token.kind = TOKEN_DIRECTIVE_IMPORT;
+        } else if (sv_match(token.sv, "#platform")) {
+            token.kind = TOKEN_DIRECTIVE_PLATFORM;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_DIRECTIVE_CALLER_LOCATION;
         } else {

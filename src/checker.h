@@ -3,6 +3,7 @@
 
 #include "compiler.h"
 
+SV   platform_as_sv(void);
 void check_nodes(Compiler *c);
 
 #endif // CHECKER_H

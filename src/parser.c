@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 64, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -434,7 +434,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 64, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -446,6 +446,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_NULL:
     case TOKEN_IDENT:
     case TOKEN_STRING:
+    case TOKEN_DIRECTIVE_PLATFORM:
     case TOKEN_DIRECTIVE_CALLER_LOCATION:
         node = node_alloc(p->arena, NODE_ATOM, token);
         ((Node_Atom *) node)->module = p->module_current;
@@ -953,9 +954,11 @@ static Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true, NULL);
-        if (node->kind != NODE_DEFINE && node->kind != NODE_IMPORT) {
+        if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
-            local_assert(p, true, node->token, "expression");
+            if (node->kind != NODE_IMPORT) {
+                local_assert(p, true, node->token, "expression");
+            }
         }
         break;
     }
