@@ -1,0 +1,22 @@
+FIRST :: 69
+
+#if FIRST == {
+case 69;    SECOND :: 420
+case 420;   SECOND :: 1337
+case 1337;  SECOND :: 80085
+case 80085; SECOND :: 8008135
+case;       #assert(false, "Unhandled value of FIRST")
+}
+
+main :: () {
+    #if SECOND == {
+    case 420;   THIRD :: 1337
+    case 1337;  THIRD :: 80085
+    case 80085; THIRD :: 8008135
+    case;       #assert(false, "Unhandled value of SECOND")
+    }
+
+    print FIRST
+    print SECOND
+    print THIRD
+}

@@ -1147,7 +1147,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1217,7 +1217,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1283,7 +1283,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 62, "");
+            static_assert(COUNT_TOKENS == 63, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1331,7 +1331,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 62, "");
+            static_assert(COUNT_TOKENS == 63, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1362,7 +1362,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 62, "");
+            static_assert(COUNT_TOKENS == 63, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1404,7 +1404,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1944,6 +1944,21 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    compile_stmt(c, iff->compile_time_real_block);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        compile_stmt(c, it);
+                    }
+                } else {
+                    unreachable();
+                }
+            }
+            return;
+        }
 
         LLVMBasicBlockRef consequence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
         LLVMBasicBlockRef antecedence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
@@ -2054,6 +2069,16 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    compile_stmt(c, it);
+                }
+            }
+            return;
+        }
 
         LLVMValueRef      expr = compile_expr(c, sw->expr, false);
         LLVMBasicBlockRef fallback = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
@@ -2192,7 +2217,7 @@ static void compile_stmt(Compiler *c, Node *n) {
     }
 }
 
-static Node_Fn *get_main(Compiler *c, Module *main_module) {
+static Node_Fn *get_main(Module *main_module) {
     Node_Atom *main = scope_find(main_module->globals, sv_from_cstr("main"));
     if (!main) {
         fprintf(
@@ -2269,7 +2294,7 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
     assert(c->cmd);
     assert(c->arena);
     assert(c->modules);
-    Node_Fn *main_fn = get_main(c, main_module);
+    Node_Fn *main_fn = get_main(main_module);
 
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
@@ -2384,10 +2409,9 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
         c->llvm_memcmp_func = LLVMAddFunction(c->llvm_module, "memcmp", c->llvm_memcmp_type);
     }
 
-    for (ptrdiff_t i = 0; i < shlen(c->modules); i++) {
-        Scope *globals = &c->modules[i].value->globals;
-        for (size_t i = 0; i < globals->count; i++) {
-            Node_Atom *it = globals->data[i];
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (size_t i = 0; i < m->globals.count; i++) {
+            Node_Atom *it = m->globals.data[i];
             if (it->definition_spec->llvm) {
                 continue;
             }

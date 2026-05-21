@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "context.h"
 #include "node.h"
+#include "parser.h"
 #include "token.h"
 
 #include "thirdparty/stb_ds.h"
@@ -330,6 +331,9 @@ static bool loop_breaks(Node *n) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            return loop_breaks(iff->compile_time_real_block);
+        }
         return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
     }
 
@@ -340,6 +344,10 @@ static bool loop_breaks(Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            return loop_breaks(sw->compile_time_real_block);
+        }
+
         for (Node *it = sw->cases.head; it; it = it->next) {
             if (!loop_breaks(it)) {
                 return false;
@@ -388,6 +396,10 @@ static bool always_returns(Node *n) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            return always_returns(iff->compile_time_real_block);
+        }
+
         if (is_atom_true(iff->condition)) {
             return always_returns(iff->consequence);
         }
@@ -429,6 +441,10 @@ static bool always_returns(Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            return always_returns(sw->compile_time_real_block);
+        }
+
         for (Node *it = sw->cases.head; it; it = it->next) {
             if (!always_returns(it)) {
                 return false;
@@ -455,7 +471,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -492,7 +508,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -535,7 +551,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -828,6 +844,78 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_ASSIGN,
+} Ref_Kind;
+
+static void check_node(Compiler *c, Node *n, Ref_Kind ref);
+
+static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
+    check_node(c, sw->expr, REF_NONE);
+
+    node_finalize_type_of_untyped(sw->expr);
+    if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected numeric or character value, got %s\n",
+            Pos_Arg(sw->expr->token.pos),
+            type_to_cstr(sw->expr->type));
+        exit(1);
+    }
+
+    if (!sw->preds) {
+        sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
+    }
+}
+
+static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *iota) {
+    check_node(c, pred, REF_NONE);
+    type_assert(c, pred, sw->expr->type);
+
+    const Const_Value value = eval_const_expr(c, pred);
+    for (size_t i = 0; i < *iota; i++) {
+        if (const_value_eq(sw->preds[i].value, value)) {
+            fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
+
+            static_assert(COUNT_CONST_VALUES == 6, "");
+            switch (value.kind) {
+            case CONST_VALUE_INT:
+                if (type_kind_eq(pred->type, TYPE_CHAR)) {
+                    fprintf(stderr, "'");
+                    print_quoted_char(stderr, value.as.integer, '\'');
+                    fprintf(stderr, "'");
+                } else if (type_is_signed(pred->type)) {
+                    fprintf(stderr, "%lld", value.as.integer);
+                } else {
+                    fprintf(stderr, "%llu", value.as.integer);
+                }
+                break;
+
+            case CONST_VALUE_FN:
+            case CONST_VALUE_TYPE:
+            case CONST_VALUE_STRUCT:
+            case CONST_VALUE_STRING:
+            case CONST_VALUE_MODULE:
+                unreachable();
+
+            default:
+                unreachable();
+            }
+
+            fprintf(stderr, "\n");
+            fprintf(stderr, Pos_Fmt "NOTE: Already here\n", Pos_Arg(sw->preds[i].pred->token.pos));
+            exit(1);
+        }
+    }
+
+    sw->preds[*iota].pred = pred;
+    sw->preds[*iota].value = value;
+    (*iota)++;
+    return value;
+}
+
 static_assert(COUNT_NODES == 24, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
@@ -881,22 +969,73 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
         }
     } break;
 
+    case NODE_IF: {
+        Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            check_node(c, iff->condition, REF_NONE);
+            type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+
+            const Const_Value value = eval_const_expr(c, iff->condition);
+            iff->compile_time_real_block = value.as.integer ? iff->consequence : iff->antecedence;
+
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    define_orderless_nodes(c, iff->compile_time_real_block, block_start);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        define_orderless_nodes(c, it, block_start);
+                    }
+                } else {
+                    unreachable();
+                }
+            }
+        }
+    } break;
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            check_switch_expr_and_alloc_preds(c, sw);
+
+            const Const_Value value = eval_const_expr(c, sw->expr);
+
+            size_t iota = 0;
+            for (Node *it = sw->cases.head; it; it = it->next) {
+                Node_Case *case_ = (Node_Case *) it;
+                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                    const Const_Value pred_value = check_switch_pred(c, sw, pred, &iota);
+                    if (const_value_eq(pred_value, value)) {
+                        sw->compile_time_real_block = case_->body;
+                    }
+                }
+            }
+            assert(iota == sw->preds_count);
+
+            if (!sw->compile_time_real_block && sw->fallback) {
+                assert(sw->fallback->kind == NODE_CASE);
+                Node_Case *fallback = (Node_Case *) sw->fallback;
+                sw->compile_time_real_block = fallback->body;
+            }
+
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    define_orderless_nodes(c, it, block_start);
+                }
+            }
+        }
+    } break;
+
     default:
         // Pass
         break;
     }
 }
 
-typedef enum {
-    REF_NONE,
-    REF_ADDR,
-    REF_ASSIGN,
-} Ref_Kind;
-
-static void check_node(Compiler *c, Node *n, Ref_Kind ref);
-
 static bool is_node_caller_location(Node *n) {
-    return n->kind == NODE_ATOM && n->token.kind == TOKEN_CALLER_LOCATION;
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
 static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
@@ -1074,7 +1213,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1101,7 +1240,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
-        case TOKEN_CALLER_LOCATION:
+        case TOKEN_DIRECTIVE_CALLER_LOCATION:
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot use %s here. It can only be used as the default value for a function argument\n",
@@ -1119,7 +1258,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1176,7 +1315,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1359,6 +1498,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
+        if (!import->module) {
+            parser_import(c->parser, import);
+
+            const Context context_save = c->context;
+            memset(&c->context, 0, sizeof(c->context));
+            {
+                for (Node *it = import->module->nodes.head; it; it = it->next) {
+                    define_orderless_nodes(c, it, 0);
+                }
+            }
+            c->context = context_save;
+        }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
     } break;
 
@@ -1845,10 +1996,25 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
-        check_node(c, iff->condition, REF_NONE);
-        type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
-        check_node(c, iff->consequence, REF_NONE);
-        check_node(c, iff->antecedence, REF_NONE);
+        if (iff->is_compile_time) {
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    check_node(c, iff->compile_time_real_block, REF_NONE);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        check_node(c, it, REF_NONE);
+                    }
+                } else {
+                    unreachable();
+                }
+            }
+        } else {
+            check_node(c, iff->condition, REF_NONE);
+            type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+            check_node(c, iff->consequence, REF_NONE);
+            check_node(c, iff->antecedence, REF_NONE);
+        }
     } break;
 
     case NODE_FOR: {
@@ -1872,72 +2038,26 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
-        check_node(c, sw->expr, REF_NONE);
-
-        node_finalize_type_of_untyped(sw->expr);
-        if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Expected numeric or character value, got %s\n",
-                Pos_Arg(sw->expr->token.pos),
-                type_to_cstr(sw->expr->type));
-            exit(1);
-        }
-
-        if (!sw->preds) {
-            sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
-        }
-
-        size_t iota = 0;
-        for (Node *it = sw->cases.head; it; it = it->next) {
-            Node_Case *case_ = (Node_Case *) it;
-            for (Node *pred = case_->preds.head; pred; pred = pred->next) {
-                check_node(c, pred, REF_NONE);
-                type_assert(c, pred, sw->expr->type);
-
-                const Const_Value value = eval_const_expr(c, pred);
-                for (size_t i = 0; i < iota; i++) {
-                    if (const_value_eq(sw->preds[i].value, value)) {
-                        fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
-
-                        static_assert(COUNT_CONST_VALUES == 6, "");
-                        switch (value.kind) {
-                        case CONST_VALUE_INT:
-                            if (type_kind_eq(pred->type, TYPE_CHAR)) {
-                                fprintf(stderr, "'");
-                                print_quoted_char(stderr, value.as.integer, '\'');
-                                fprintf(stderr, "'");
-                            } else if (type_is_signed(pred->type)) {
-                                fprintf(stderr, "%lld", value.as.integer);
-                            } else {
-                                fprintf(stderr, "%llu", value.as.integer);
-                            }
-                            break;
-
-                        case CONST_VALUE_FN:
-                        case CONST_VALUE_TYPE:
-                        case CONST_VALUE_STRUCT:
-                        case CONST_VALUE_STRING:
-                        case CONST_VALUE_MODULE:
-                            unreachable();
-
-                        default:
-                            unreachable();
-                        }
-
-                        fprintf(stderr, "\n");
-                        fprintf(stderr, Pos_Fmt "NOTE: Already here\n", Pos_Arg(sw->preds[i].pred->token.pos));
-                        exit(1);
-                    }
+        check_switch_expr_and_alloc_preds(c, sw);
+        if (sw->is_compile_time) {
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    check_node(c, it, REF_NONE);
                 }
-
-                sw->preds[iota].pred = pred;
-                sw->preds[iota].value = value;
-                iota++;
             }
-            check_node(c, case_->body, REF_NONE);
+        } else {
+            size_t iota = 0;
+            for (Node *it = sw->cases.head; it; it = it->next) {
+                Node_Case *case_ = (Node_Case *) it;
+                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                    check_switch_pred(c, sw, pred, &iota);
+                }
+                check_node(c, case_->body, REF_NONE);
+            }
+            assert(iota == sw->preds_count);
         }
-        assert(iota == sw->preds_count);
     } break;
 
     case NODE_JUMP:
@@ -2001,17 +2121,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-void check_nodes(Compiler *c, Modules modules) {
-    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
-        const Nodes nodes = modules[i].value->nodes;
-        for (Node *it = nodes.head; it; it = it->next) {
+void check_nodes(Compiler *c) {
+    assert(c->parser);
+    assert(c->modules);
+
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (Node *it = m->nodes.head; it; it = it->next) {
             define_orderless_nodes(c, it, 0);
         }
     }
 
-    for (ptrdiff_t i = 0; i < shlen(modules); i++) {
-        const Nodes nodes = modules[i].value->nodes;
-        for (Node *it = nodes.head; it; it = it->next) {
+    for (Module *m = c->modules->head; m; m = m->next) {
+        for (Node *it = m->nodes.head; it; it = it->next) {
             check_node(c, it, REF_NONE);
         }
     }

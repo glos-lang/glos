@@ -24,7 +24,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 62, "");
+static_assert(COUNT_TOKENS == 63, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -81,15 +81,25 @@ static Power token_kind_to_power(Token_Kind kind) {
 }
 
 Module *module_get(Parser *p, const char *path) {
-    const ptrdiff_t index = shgeti(p->modules, path);
+    assert(p->arena);
+    assert(p->modules);
+
+    const ptrdiff_t index = shgeti(p->modules->table, path);
     if (index != -1) {
-        return p->modules[index].value;
+        return p->modules->table[index].value;
     }
 
     Module *module = arena_alloc(p->arena, sizeof(*module));
     module->absolute_path = path;
     module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
-    shput(p->modules, path, module);
+
+    shput(p->modules->table, path, module);
+    if (p->modules->tail) {
+        p->modules->tail->next = module;
+    } else {
+        p->modules->head = module;
+    }
+    p->modules->tail = module;
     return module;
 }
 
@@ -167,11 +177,19 @@ static Node *parse_block(Parser *p, Token token) {
     return (Node *) block;
 }
 
-static Node *parse_if(Parser *p, Token token) {
+static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
+    Node *node = NULL;
+
+    const bool in_compile_time_condition_save = p->state.in_compile_time_condition;
+    if (is_compile_time) {
+        p->state.in_compile_time_condition = true;
+    }
+
     bool  should_be_switch = false;
     Node *expr = parse_expr(p, POWER_SET, false, &should_be_switch);
     if (should_be_switch) {
         Node_Switch *sw = (Node_Switch *) node_alloc(p->arena, NODE_SWITCH, token);
+        sw->is_compile_time = is_compile_time;
         sw->expr = expr;
 
         expect_token(p, TOKEN_LBRACE);
@@ -215,25 +233,34 @@ static Node *parse_if(Parser *p, Token token) {
             }
         }
 
-        return (Node *) sw;
+        node = (Node *) sw;
     } else {
         Node_If *iff = (Node_If *) node_alloc(p->arena, NODE_IF, token);
         iff->condition = expr;
+        iff->is_compile_time = is_compile_time;
 
         token = expect_token(p, TOKEN_LBRACE);
         iff->consequence = parse_block(p, token);
 
         if (read_token(p, TOKEN_ELSE)) {
-            token = expect_token(p, TOKEN_LBRACE, TOKEN_IF);
+            if (is_compile_time) {
+                token = expect_token(p, TOKEN_LBRACE, TOKEN_IF, TOKEN_DIRECTIVE_IF);
+            } else {
+                token = expect_token(p, TOKEN_LBRACE, TOKEN_IF);
+            }
+
             if (token.kind == TOKEN_LBRACE) {
                 iff->antecedence = parse_block(p, token);
             } else {
-                iff->antecedence = parse_if(p, token);
+                iff->antecedence = parse_if(p, token, is_compile_time);
             }
         }
 
-        return (Node *) iff;
+        node = (Node *) iff;
     }
+
+    p->state.in_compile_time_condition = in_compile_time_condition_save;
+    return node;
 }
 
 static Node *parse_for(Parser *p, Token token) {
@@ -310,7 +337,104 @@ static void definition_atom_setup(Parser *p, Node_Define *define) {
     }
 }
 
-static_assert(COUNT_TOKENS == 62, "");
+void parser_import(Parser *p, Node_Import *import) {
+    if (import->module) {
+        return;
+    }
+
+    const char *root = NULL;
+    const char *absolute_path = NULL;
+    if (!absolute_path) {
+        // Directory inside the current module
+        root = p->module_current->absolute_path;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        // Directory inside root
+        root = p->root;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        // Directory inside std
+        root = p->std;
+        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        if (!directory_exists(absolute_path)) {
+            arena_reset(p->arena, absolute_path);
+            root = NULL;
+            absolute_path = NULL;
+        }
+    }
+
+    if (!absolute_path) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n",
+            Pos_Arg(import->path.pos),
+            SV_Arg(import->path.sv));
+        exit(1);
+    }
+
+    Module *module_current_save = p->module_current;
+    {
+        Module *module = module_get(p, absolute_path);
+        if (!module->name) {
+            module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
+            if (!strcmp(module->name, "main")) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
+                    Pos_Arg(import->path.pos));
+                exit(1);
+            }
+
+            p->module_current = module;
+
+            switch (parse_directory(p, module->relative_path)) {
+            case PARSE_OK:
+                // Pass
+                break;
+
+            case PARSE_FAILURE:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Could not read directory '%s'\n",
+                    Pos_Arg(import->path.pos),
+                    module->relative_path);
+                exit(1);
+                break;
+
+            case PARSE_EMPTY_DIRECTORY:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Directory '%s' does not contain any glos files\n",
+                    Pos_Arg(import->path.pos),
+                    module->relative_path);
+                exit(1);
+                break;
+
+            default:
+                unreachable();
+            }
+        }
+
+        import->module = module;
+    }
+    p->module_current = module_current_save;
+}
+
+static_assert(COUNT_TOKENS == 63, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -322,7 +446,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_NULL:
     case TOKEN_IDENT:
     case TOKEN_STRING:
-    case TOKEN_CALLER_LOCATION:
+    case TOKEN_DIRECTIVE_CALLER_LOCATION:
         node = node_alloc(p->arena, NODE_ATOM, token);
         ((Node_Atom *) node)->module = p->module_current;
         break;
@@ -488,102 +612,19 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         expect_token(p, TOKEN_RPAREN);
     } break;
 
-    case TOKEN_IMPORT: {
+    case TOKEN_DIRECTIVE_IMPORT: {
         node = node_alloc(p->arena, NODE_IMPORT, token);
         Node_Import *import = (Node_Import *) node;
-        token = expect_token(p, TOKEN_STRING);
+        import->path = expect_token(p, TOKEN_STRING);
 
-        const char *root = NULL;
-        const char *absolute_path = NULL;
-        if (!absolute_path) {
-            // Directory inside the current module
-            root = p->module_current->absolute_path;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
+        if (!p->state.in_compile_time_condition) {
+            parser_import(p, import);
         }
-
-        if (!absolute_path) {
-            // Directory inside root
-            root = p->root;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
-        }
-
-        if (!absolute_path) {
-            // Directory inside std
-            root = p->std;
-            absolute_path = get_absolute_path(sv_from_cstr(root), token.sv, p->arena);
-            if (!directory_exists(absolute_path)) {
-                arena_reset(p->arena, absolute_path);
-                root = NULL;
-                absolute_path = NULL;
-            }
-        }
-
-        if (!absolute_path) {
-            fprintf(
-                stderr, Pos_Fmt "ERROR: Could not find module '" SV_Fmt "'\n", Pos_Arg(token.pos), SV_Arg(token.sv));
-            exit(1);
-        }
-
-        Module *module_current_save = p->module_current;
-        {
-            Module *module = module_get(p, absolute_path);
-            if (!module->name) {
-                module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
-                if (!strcmp(module->name, "main")) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
-                        Pos_Arg(token.pos));
-                    exit(1);
-                }
-
-                p->module_current = module;
-
-                switch (parse_directory(p, module->relative_path)) {
-                case PARSE_OK:
-                    // Pass
-                    break;
-
-                case PARSE_FAILURE:
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Could not read directory '%s'\n",
-                        Pos_Arg(token.pos),
-                        module->relative_path);
-                    exit(1);
-                    break;
-
-                case PARSE_EMPTY_DIRECTORY:
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Directory '%s' does not contain any glos files\n",
-                        Pos_Arg(token.pos),
-                        module->relative_path);
-                    exit(1);
-                    break;
-
-                default:
-                    unreachable();
-                }
-            }
-
-            import->module = module;
-        }
-        p->module_current = module_current_save;
     } break;
 
     default:
         error_unexpected(token);
+        break;
     }
 
     while (true) {
@@ -781,8 +822,8 @@ static Node *parse_stmt(Parser *p) {
     Token token = next_token(p);
     switch (token.kind) {
     case TOKEN_ASSERT:
-    case TOKEN_HASH_ASSERT: {
-        const bool is_compile_time = token.kind == TOKEN_HASH_ASSERT;
+    case TOKEN_DIRECTIVE_ASSERT: {
+        const bool is_compile_time = token.kind == TOKEN_DIRECTIVE_ASSERT;
         if (!is_compile_time) {
             not_in_extern_assert(p, token);
             local_assert(p, true, token, NULL);
@@ -810,7 +851,11 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_IF:
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        node = parse_if(p, token);
+        node = parse_if(p, token, false);
+        break;
+
+    case TOKEN_DIRECTIVE_IF:
+        node = parse_if(p, token, true);
         break;
 
     case TOKEN_FOR:
@@ -921,18 +966,18 @@ static Node *parse_stmt(Parser *p) {
 
 void parser_free(Parser *p) {
     da_free(&p->paths);
-    shfree(p->modules); // TODO: Should this be the responsibility of the parser?
 }
 
 Parse_Result parse_file(Parser *p, const char *path) {
     assert(p->arena);
-    p->state.lexer.arena = p->arena;
+    assert(p->modules);
+    assert(p->module_current);
 
+    p->state.lexer.arena = p->arena;
     if (!lexer_open(&p->state.lexer, path, p->arena)) {
         return PARSE_FAILURE;
     }
 
-    assert(p->module_current);
     while (true) {
         consume_tokens(p, TOKEN_EOL);
         if (read_token(p, TOKEN_EOF)) {
@@ -1052,6 +1097,8 @@ defer:
 
 Parse_Result parse_directory(Parser *p, const char *path) {
     assert(p->arena);
+    assert(p->modules);
+    assert(p->module_current);
 
     const size_t start = p->paths.count;
     if (!get_source_files(path, &p->paths, p->arena)) {

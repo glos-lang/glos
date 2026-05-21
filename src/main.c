@@ -160,6 +160,7 @@ int main(int argc, char **argv) {
     Arena arena = {0};
 
     bool        run = false;
+    const char *cwd = get_cwd(&arena);
     const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
@@ -217,16 +218,10 @@ int main(int argc, char **argv) {
         }
     }
 
-    Parser parser = {
-        .arena = &arena,
-        .cwd = get_cwd(&arena),
-        .std = get_std_dir_path(&arena),
-    };
-
     if (!input_path) {
         input_path = ".";
     }
-    input_path = get_absolute_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+    input_path = get_absolute_path(sv_from_cstr(cwd), sv_from_cstr(input_path), &arena);
 
     if (!output_path) {
         if (directory_exists(input_path)) {
@@ -252,6 +247,15 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+    Modules modules = {0};
+    Parser  parser = {
+         .arena = &arena,
+         .modules = &modules,
+
+         .cwd = cwd,
+         .std = get_std_dir_path(&arena),
+    };
 
     Module *main_module = module_get(&parser, input_path);
     main_module->name = "main";
@@ -300,13 +304,14 @@ int main(int argc, char **argv) {
     }
 
     Compiler compiler = {
+        .arena = &arena,
+        .modules = &modules,
+        .parser = &parser,
+
         .cmd = &cmd,
         .link_flags = &link_flags,
-
-        .arena = &arena,
-        .modules = parser.modules,
     };
-    check_nodes(&compiler, parser.modules);
+    check_nodes(&compiler);
     compiler_build(&compiler, main_module, output_path);
 
     if (run) {
@@ -331,6 +336,7 @@ int main(int argc, char **argv) {
         result = cmd_wait(child_proc);
     }
 
+    modules_free(&modules);
     parser_free(&parser);
     arena_free(&arena);
     cmd_free(&cmd);
