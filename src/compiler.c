@@ -1945,15 +1945,13 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            if (iff->real) {
-                if (iff->real->kind == NODE_IF) {
-                    compile_stmt(c, iff->real);
-                } else if (iff->real->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->real;
-                    if (iff->real) {
-                        for (Node *it = block->body.head; it; it = it->next) {
-                            compile_stmt(c, it);
-                        }
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    compile_stmt(c, iff->compile_time_real_block);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        compile_stmt(c, it);
                     }
                 } else {
                     unreachable();
@@ -2071,6 +2069,16 @@ static void compile_stmt(Compiler *c, Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    compile_stmt(c, it);
+                }
+            }
+            return;
+        }
 
         LLVMValueRef      expr = compile_expr(c, sw->expr, false);
         LLVMBasicBlockRef fallback = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");

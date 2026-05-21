@@ -178,14 +178,18 @@ static Node *parse_block(Parser *p, Token token) {
 }
 
 static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
+    Node *node = NULL;
+
+    const bool in_compile_time_condition_save = p->state.in_compile_time_condition;
+    if (is_compile_time) {
+        p->state.in_compile_time_condition = true;
+    }
+
     bool  should_be_switch = false;
     Node *expr = parse_expr(p, POWER_SET, false, &should_be_switch);
     if (should_be_switch) {
-        if (is_compile_time) {
-            todo(); // TODO(@compile-time-conditions): Compile time switch
-        }
-
         Node_Switch *sw = (Node_Switch *) node_alloc(p->arena, NODE_SWITCH, token);
+        sw->is_compile_time = is_compile_time;
         sw->expr = expr;
 
         expect_token(p, TOKEN_LBRACE);
@@ -229,13 +233,8 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
             }
         }
 
-        return (Node *) sw;
+        node = (Node *) sw;
     } else {
-        const bool in_compile_time_condition_save = p->state.in_compile_time_condition;
-        if (is_compile_time) {
-            p->state.in_compile_time_condition = true;
-        }
-
         Node_If *iff = (Node_If *) node_alloc(p->arena, NODE_IF, token);
         iff->condition = expr;
         iff->is_compile_time = is_compile_time;
@@ -257,9 +256,11 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
             }
         }
 
-        p->state.in_compile_time_condition = in_compile_time_condition_save;
-        return (Node *) iff;
+        node = (Node *) iff;
     }
+
+    p->state.in_compile_time_condition = in_compile_time_condition_save;
+    return node;
 }
 
 static Node *parse_for(Parser *p, Token token) {

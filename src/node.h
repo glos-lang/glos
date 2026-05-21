@@ -448,9 +448,8 @@ typedef struct {
     Node *consequence;
     Node *antecedence;
 
-    // For compile time '#if'
     bool  is_compile_time;
-    Node *real;
+    Node *compile_time_real_block;
 } Node_If;
 
 typedef struct {
@@ -478,6 +477,9 @@ typedef struct {
         Const_Value value;
     }     *preds;
     size_t preds_count;
+
+    bool  is_compile_time;
+    Node *compile_time_real_block;
 } Node_Switch;
 
 typedef struct {

@@ -1,5 +1,13 @@
 main :: () {
+    MAGIC :: 69
+    #if MAGIC == {
+    case 69;  funny :: #import "module_system/foo"
+    case 420; funny :: #import "module_system/bar"
+    case;     #assert(false, "No funny :(")
+    }
+
     fmt.println("Hello, world!")
+    funny.hello()
 
     #if true {
         fmt :: #import "fmt"

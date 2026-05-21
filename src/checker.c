@@ -332,7 +332,7 @@ static bool loop_breaks(Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            return loop_breaks(iff->real);
+            return loop_breaks(iff->compile_time_real_block);
         }
         return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
     }
@@ -344,6 +344,10 @@ static bool loop_breaks(Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            return loop_breaks(sw->compile_time_real_block);
+        }
+
         for (Node *it = sw->cases.head; it; it = it->next) {
             if (!loop_breaks(it)) {
                 return false;
@@ -393,7 +397,7 @@ static bool always_returns(Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            return always_returns(iff->real);
+            return always_returns(iff->compile_time_real_block);
         }
 
         if (is_atom_true(iff->condition)) {
@@ -437,6 +441,10 @@ static bool always_returns(Node *n) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            return always_returns(sw->compile_time_real_block);
+        }
+
         for (Node *it = sw->cases.head; it; it = it->next) {
             if (!always_returns(it)) {
                 return false;
@@ -844,6 +852,70 @@ typedef enum {
 
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
+static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
+    check_node(c, sw->expr, REF_NONE);
+
+    node_finalize_type_of_untyped(sw->expr);
+    if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected numeric or character value, got %s\n",
+            Pos_Arg(sw->expr->token.pos),
+            type_to_cstr(sw->expr->type));
+        exit(1);
+    }
+
+    if (!sw->preds) {
+        sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
+    }
+}
+
+static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *iota) {
+    check_node(c, pred, REF_NONE);
+    type_assert(c, pred, sw->expr->type);
+
+    const Const_Value value = eval_const_expr(c, pred);
+    for (size_t i = 0; i < *iota; i++) {
+        if (const_value_eq(sw->preds[i].value, value)) {
+            fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
+
+            static_assert(COUNT_CONST_VALUES == 6, "");
+            switch (value.kind) {
+            case CONST_VALUE_INT:
+                if (type_kind_eq(pred->type, TYPE_CHAR)) {
+                    fprintf(stderr, "'");
+                    print_quoted_char(stderr, value.as.integer, '\'');
+                    fprintf(stderr, "'");
+                } else if (type_is_signed(pred->type)) {
+                    fprintf(stderr, "%lld", value.as.integer);
+                } else {
+                    fprintf(stderr, "%llu", value.as.integer);
+                }
+                break;
+
+            case CONST_VALUE_FN:
+            case CONST_VALUE_TYPE:
+            case CONST_VALUE_STRUCT:
+            case CONST_VALUE_STRING:
+            case CONST_VALUE_MODULE:
+                unreachable();
+
+            default:
+                unreachable();
+            }
+
+            fprintf(stderr, "\n");
+            fprintf(stderr, Pos_Fmt "NOTE: Already here\n", Pos_Arg(sw->preds[i].pred->token.pos));
+            exit(1);
+        }
+    }
+
+    sw->preds[*iota].pred = pred;
+    sw->preds[*iota].value = value;
+    (*iota)++;
+    return value;
+}
+
 static_assert(COUNT_NODES == 24, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
@@ -903,19 +975,54 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             check_node(c, iff->condition, REF_NONE);
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
-            Const_Value value = eval_const_expr(c, iff->condition);
-            iff->real = value.as.integer ? iff->consequence : iff->antecedence;
+            const Const_Value value = eval_const_expr(c, iff->condition);
+            iff->compile_time_real_block = value.as.integer ? iff->consequence : iff->antecedence;
 
-            if (iff->real) {
-                if (iff->real->kind == NODE_IF) {
-                    define_orderless_nodes(c, iff->real, block_start);
-                } else if (iff->real->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->real;
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    define_orderless_nodes(c, iff->compile_time_real_block, block_start);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
                     for (Node *it = block->body.head; it; it = it->next) {
                         define_orderless_nodes(c, it, block_start);
                     }
                 } else {
                     unreachable();
+                }
+            }
+        }
+    } break;
+
+    case NODE_SWITCH: {
+        Node_Switch *sw = (Node_Switch *) n;
+        if (sw->is_compile_time) {
+            check_switch_expr_and_alloc_preds(c, sw);
+
+            const Const_Value value = eval_const_expr(c, sw->expr);
+
+            size_t iota = 0;
+            for (Node *it = sw->cases.head; it; it = it->next) {
+                Node_Case *case_ = (Node_Case *) it;
+                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                    const Const_Value pred_value = check_switch_pred(c, sw, pred, &iota);
+                    if (const_value_eq(pred_value, value)) {
+                        sw->compile_time_real_block = case_->body;
+                    }
+                }
+            }
+            assert(iota == sw->preds_count);
+
+            if (!sw->compile_time_real_block && sw->fallback) {
+                assert(sw->fallback->kind == NODE_CASE);
+                Node_Case *fallback = (Node_Case *) sw->fallback;
+                sw->compile_time_real_block = fallback->body;
+            }
+
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    define_orderless_nodes(c, it, block_start);
                 }
             }
         }
@@ -1890,15 +1997,13 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            if (iff->real) {
-                if (iff->real->kind == NODE_IF) {
-                    check_node(c, iff->real, REF_NONE);
-                } else if (iff->real->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->real;
-                    if (iff->real) {
-                        for (Node *it = block->body.head; it; it = it->next) {
-                            check_node(c, it, REF_NONE);
-                        }
+            if (iff->compile_time_real_block) {
+                if (iff->compile_time_real_block->kind == NODE_IF) {
+                    check_node(c, iff->compile_time_real_block, REF_NONE);
+                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        check_node(c, it, REF_NONE);
                     }
                 } else {
                     unreachable();
@@ -1933,72 +2038,26 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
-        check_node(c, sw->expr, REF_NONE);
-
-        node_finalize_type_of_untyped(sw->expr);
-        if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Expected numeric or character value, got %s\n",
-                Pos_Arg(sw->expr->token.pos),
-                type_to_cstr(sw->expr->type));
-            exit(1);
-        }
-
-        if (!sw->preds) {
-            sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
-        }
-
-        size_t iota = 0;
-        for (Node *it = sw->cases.head; it; it = it->next) {
-            Node_Case *case_ = (Node_Case *) it;
-            for (Node *pred = case_->preds.head; pred; pred = pred->next) {
-                check_node(c, pred, REF_NONE);
-                type_assert(c, pred, sw->expr->type);
-
-                const Const_Value value = eval_const_expr(c, pred);
-                for (size_t i = 0; i < iota; i++) {
-                    if (const_value_eq(sw->preds[i].value, value)) {
-                        fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
-
-                        static_assert(COUNT_CONST_VALUES == 6, "");
-                        switch (value.kind) {
-                        case CONST_VALUE_INT:
-                            if (type_kind_eq(pred->type, TYPE_CHAR)) {
-                                fprintf(stderr, "'");
-                                print_quoted_char(stderr, value.as.integer, '\'');
-                                fprintf(stderr, "'");
-                            } else if (type_is_signed(pred->type)) {
-                                fprintf(stderr, "%lld", value.as.integer);
-                            } else {
-                                fprintf(stderr, "%llu", value.as.integer);
-                            }
-                            break;
-
-                        case CONST_VALUE_FN:
-                        case CONST_VALUE_TYPE:
-                        case CONST_VALUE_STRUCT:
-                        case CONST_VALUE_STRING:
-                        case CONST_VALUE_MODULE:
-                            unreachable();
-
-                        default:
-                            unreachable();
-                        }
-
-                        fprintf(stderr, "\n");
-                        fprintf(stderr, Pos_Fmt "NOTE: Already here\n", Pos_Arg(sw->preds[i].pred->token.pos));
-                        exit(1);
-                    }
+        check_switch_expr_and_alloc_preds(c, sw);
+        if (sw->is_compile_time) {
+            if (sw->compile_time_real_block) {
+                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+                for (Node *it = block->body.head; it; it = it->next) {
+                    check_node(c, it, REF_NONE);
                 }
-
-                sw->preds[iota].pred = pred;
-                sw->preds[iota].value = value;
-                iota++;
             }
-            check_node(c, case_->body, REF_NONE);
+        } else {
+            size_t iota = 0;
+            for (Node *it = sw->cases.head; it; it = it->next) {
+                Node_Case *case_ = (Node_Case *) it;
+                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                    check_switch_pred(c, sw, pred, &iota);
+                }
+                check_node(c, case_->body, REF_NONE);
+            }
+            assert(iota == sw->preds_count);
         }
-        assert(iota == sw->preds_count);
     } break;
 
     case NODE_JUMP:
