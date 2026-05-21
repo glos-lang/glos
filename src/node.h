@@ -85,6 +85,7 @@ typedef struct {
     Type_Fn_Arg *args;
     size_t       args_count;
     size_t       args_count_min;
+    bool         is_variadic;
     Type        *returnn;
 } Type_Fn;
 
@@ -256,6 +257,9 @@ typedef struct {
     bool        is_const;
     Const_Value const_value;
 
+    // If this is non-empty, then use this as the linker symbol
+    SV link_as;
+
     LLVMValueRef llvm;
 } Definition_Spec;
 
@@ -307,11 +311,7 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *expr;
-
     Node *message;
-    SV    message_sv;
-
-    bool is_compile_time;
 } Node_Assert;
 
 typedef struct {
@@ -332,6 +332,7 @@ struct Node_Fn {
 
     bool is_type;
     bool is_extern;
+    bool is_variadic;
 
     Node_Fn *outer_fn;
 

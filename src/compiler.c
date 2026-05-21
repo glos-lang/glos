@@ -1,5 +1,7 @@
 #include "compiler.h"
 #include "basic.h"
+#include "checker.h"
+#include "context.h"
 #include "dwarf.h"
 #include "node.h"
 #include "token.h"
@@ -189,49 +191,54 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
 typedef struct {
     ABI_Info *args;
     size_t    args_count;
-    size_t    actual_args_count;
     ABI_Info  returnn;
+
+    LLVMTypeRef *actual_args;
+    size_t       actual_args_count;
+
+    bool   is_variadic;
+    size_t actual_args_variadics_start;
 } ABI;
 
-static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
-    const void *checkpoint = temp_alloc(0);
-
-    assert(!type.ref && type.kind == TYPE_FN);
-    Type_Fn spec = type.spec.fn;
-
-    compile_type(c, spec.returnn);
-    abi->returnn = get_abi_info_for_type(c, spec.returnn);
-
-    abi->actual_args_count = 0;
+static void abi_set_return_type(Compiler *c, ABI *abi, Type *type) {
+    assert(abi->actual_args_count == 0);
+    abi->returnn = get_abi_info_for_type(c, type);
     if (!abi->returnn.direct_types_count) {
         abi->actual_args_count++;
     }
+}
 
-    for (size_t i = 0; i < spec.args_count; i++) {
-        ABI_Info *it = &abi->args[i];
-        *it = get_abi_info_for_type(c, &spec.args[i].type);
-
-        if (it->direct_types_count) {
-            abi->actual_args_count += it->direct_types_count;
-        } else {
-            abi->actual_args_count++;
-        }
+static void abi_set_argument_type(Compiler *c, ABI *abi, size_t index, Type *type) {
+    assert(index < abi->args_count);
+    ABI_Info *it = &abi->args[index];
+    *it = get_abi_info_for_type(c, type);
+    if (it->direct_types_count) {
+        abi->actual_args_count += it->direct_types_count;
+    } else {
+        abi->actual_args_count++;
     }
+}
 
-    size_t       args_iota = 0;
-    LLVMTypeRef *args = temp_alloc(abi->actual_args_count * sizeof(*args));
+static void abi_set_variadic_at(ABI *abi, size_t index) {
+    assert(!abi->is_variadic);
+    abi->is_variadic = true;
+    abi->actual_args_variadics_start = index;
+}
+
+static LLVMTypeRef abi_finalize(Compiler *c, ABI *abi) {
+    size_t args_iota = 0;
     if (!abi->returnn.direct_types_count) {
-        args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+        abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
     }
 
-    for (size_t i = 0; i < spec.args_count; i++) {
+    for (size_t i = 0; i < abi->args_count; i++) {
         const ABI_Info it_abi = abi->args[i];
         if (it_abi.direct_types_count) {
             for (size_t j = 0; j < it_abi.direct_types_count; j++) {
-                args[args_iota++] = it_abi.direct_types[j];
+                abi->actual_args[args_iota++] = it_abi.direct_types[j];
             }
         } else {
-            args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+            abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         }
     }
 
@@ -256,7 +263,30 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
         unreachable();
     }
 
-    LLVMTypeRef fn_type = LLVMFunctionType(return_type, args, abi->actual_args_count, false);
+    return LLVMFunctionType(
+        return_type,
+        abi->actual_args,
+        abi->is_variadic ? abi->actual_args_variadics_start : abi->actual_args_count,
+        abi->is_variadic);
+}
+
+static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
+    const void *checkpoint = temp_alloc(0);
+
+    assert(!type.ref && type.kind == TYPE_FN);
+    Type_Fn spec = type.spec.fn;
+
+    abi_set_return_type(c, abi, spec.returnn);
+    for (size_t i = 0; i < spec.args_count; i++) {
+        abi_set_argument_type(c, abi, i, &spec.args[i].type);
+    }
+
+    if (spec.is_variadic) {
+        abi_set_variadic_at(abi, spec.args_count);
+    }
+
+    abi->actual_args = temp_alloc(abi->actual_args_count * sizeof(*abi->actual_args));
+    LLVMTypeRef fn_type = abi_finalize(c, abi);
     temp_reset(checkpoint);
     return fn_type;
 }
@@ -699,6 +729,12 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
 
     compile_type(c, &it->node.type);
 
+    SV link_as = {0};
+    if (it->definition_spec->link_as.count) {
+        // Guarantee a terminating '\0'
+        link_as = sv_from_cstr(temp_sv_to_cstr(it->definition_spec->link_as));
+    }
+
     SV name = it->node.token.sv;
     if (it->definition_spec->is_extern) {
         // Guarantee a terminating '\0'
@@ -710,7 +746,10 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     if (it->definition_spec->is_local && !it->definition_spec->is_extern) {
         it->definition_spec->llvm = compile_alloca(c, it->node.type.llvm);
     } else {
-        it->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
+        if (!link_as.count) {
+            link_as = name;
+        }
+        it->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, link_as.data);
     }
 
     if (!it->definition_spec->is_extern) {
@@ -733,8 +772,8 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
                 get_debug_file(c, it->node.token.pos.path),
                 name.data,
                 name.count,
-                name.data,
-                name.count,
+                link_as.data,
+                link_as.count,
                 get_debug_file(c, it->node.token.pos.path),
                 it->node.token.pos.row + 1,
                 var_debug_type,
@@ -772,13 +811,18 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     abi.args_count = fn->args_count;
     fn->node.type.llvm = compile_fn_type(c, fn->node.type, &abi);
 
+    SV link_as = {0};
+    if (fn->defined_as && fn->defined_as->definition_spec->link_as.count) {
+        // Guarantee a terminating '\0'
+        link_as = sv_from_cstr(temp_sv_to_cstr(fn->defined_as->definition_spec->link_as));
+    }
+
     if (fn->is_extern) {
         assert(fn->defined_as);
-        fn->llvm = LLVMGetOrInsertFunction(
-            c->llvm_module,
-            fn->defined_as->node.token.sv.data,
-            fn->defined_as->node.token.sv.count,
-            fn->node.type.llvm);
+        if (!link_as.count) {
+            link_as = fn->defined_as->node.token.sv;
+        }
+        fn->llvm = LLVMGetOrInsertFunction(c->llvm_module, link_as.data, link_as.count, fn->node.type.llvm);
     } else {
         const size_t defers_start_save = c->defers_start;
         c->defers_start = c->defers.count;
@@ -790,7 +834,10 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
 
         SV fn_name = sv_from_cstr(temp_emit_nested_fn_name(c, fn, fn->module));
-        fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+        if (!link_as.count) {
+            link_as = fn_name;
+        }
+        fn->llvm = LLVMAddFunction(c->llvm_module, link_as.data, fn->node.type.llvm);
 
         c->llvm_fn = fn->llvm;
         c->llvm_fn_last_alloca = NULL;
@@ -822,8 +869,8 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             get_scope_of_definition(c, (Node *) fn, fn->outer_fn),
             fn_name.data,
             fn_name.count,
-            fn_name.data,
-            fn_name.count,
+            link_as.data,
+            link_as.count,
             get_debug_file(c, fn->node.token.pos.path),
             fn->node.token.pos.row + 1,
             fn_debug_type,
@@ -927,80 +974,33 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     return fn->llvm;
 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-#define STDOUT_FILENO 1
-#define STDERR_FILENO 2
-#endif // PLATFORM_X86_64_WINDOWS
+// TODO: Expand to quering any constant value
+static Node_Fn *get_builtin_func(Compiler *c, SV name) {
+    Node_Atom *atom = scope_find(c->builtin_module->globals, name);
+    assert(atom);
+    assert(atom->definition_spec->is_const);
+    assert(atom->definition_spec->const_value.kind == CONST_VALUE_FN);
 
-// NOTE: Only stdout and stderr are supported
-static LLVMValueRef compile_get_stdio_file(Compiler *c, int fileno) {
-#ifdef PLATFORM_X86_64_WINDOWS
-    LLVMValueRef iob_args[] = {
-        LLVMConstInt(LLVMInt32TypeInContext(c->llvm_context), fileno, 0),
+    Node_Fn *fn = atom->definition_spec->const_value.as.fn;
+    compile_fn(c, fn);
+    return fn;
+}
+
+// TODO: This is very ugly and should be cleaned up later.
+static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3) {
+    Node_Fn *panic_handler = get_builtin_func(c, sv_from_cstr("panic_handler"));
+
+    LLVMValueRef zero = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
+    LLVMValueRef args[] = {
+        LLVMBuildGlobalString(c->llvm_builder, fmt, ""),
+        v1 ? v1 : zero,
+        v2 ? v2 : zero,
+        v3 ? v3 : zero,
     };
-    return LLVMBuildCall2(c->llvm_builder, c->llvm_iob_type, c->llvm_iob_func, iob_args, len(iob_args), "");
-#else
-    LLVMValueRef var = NULL;
-    switch (fileno) {
-    case STDOUT_FILENO:
-        var = c->llvm_stdout_value;
-        break;
 
-    case STDERR_FILENO:
-        var = c->llvm_stderr_value;
-        break;
-
-    default:
-        unreachable();
-    }
-    return LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), var, "");
-#endif // PLATFORM_X86_64_WINDOWS
-}
-
-static void compile_panic(Compiler *c, const char *fmt, ...) {
-    LLVMValueRef llvm_stdout = compile_get_stdio_file(c, STDOUT_FILENO);
-    LLVMValueRef llvm_stderr = compile_get_stdio_file(c, STDERR_FILENO);
-
-    size_t  count = 0;
-    va_list ap;
-    va_start(ap, fmt);
-    while (true) {
-        LLVMValueRef it = va_arg(ap, LLVMValueRef);
-        if (!it) {
-            break;
-        }
-        count++;
-    }
-    va_end(ap);
-
-    LLVMValueRef *args = temp_alloc(2 + count);
-    size_t        iota = 0;
-
-    args[iota++] = llvm_stderr;
-    args[iota++] = LLVMBuildGlobalString(c->llvm_builder, fmt, "");
-
-    va_start(ap, fmt);
-    while (true < count) {
-        LLVMValueRef it = va_arg(ap, LLVMValueRef);
-        if (!it) {
-            break;
-        }
-        args[iota++] = it;
-    }
-    va_end(ap);
-    assert(iota == 2 + count);
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fprintf_type, c->llvm_fprintf_func, args, iota, "");
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stdout, 1, "");
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stderr, 1, "");
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_abort_type, c->llvm_abort_func, NULL, 0, "");
+    LLVMBuildCall2(c->llvm_builder, panic_handler->node.type.llvm, panic_handler->llvm, args, len(args), "");
     LLVMBuildUnreachable(c->llvm_builder);
-    temp_reset(args);
 }
-#define compile_panic(c, fmt, ...)    compile_panic(c, fmt, __VA_ARGS__, NULL)
-#define compile_panic_no_args(c, fmt) compile_panic(c, fmt, NULL)
 
 static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
     LLVMTypeRef from_type = LLVMTypeOf(from);
@@ -1147,7 +1147,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1162,6 +1162,12 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_STRING:
             return compile_string(c, n->token.sv, &n->token.pos, ref);
+
+        case TOKEN_DIRECTIVE_MAIN:
+            return compile_fn(c, c->main_fn);
+
+        case TOKEN_DIRECTIVE_PLATFORM:
+            return LLVMConstInt(n->type.llvm, platform_as_enum(), type_is_signed(n->type));
 
         default:
             unreachable();
@@ -1217,7 +1223,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1283,7 +1289,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 63, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1331,7 +1337,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 63, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1362,7 +1368,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 63, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1404,7 +1410,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1526,12 +1532,27 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         const void *checkpoint = temp_alloc(0);
 
+        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
+
         ABI abi = {0};
         abi.args = temp_alloc(call->args_count * sizeof(*abi.args));
         abi.args_count = call->args_count;
 
-        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
-        LLVMTypeRef  fn_type = compile_fn_type(c, call->fn->type, &abi);
+        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
+        abi_set_return_type(c, &abi, fn_type_spec.returnn);
+        {
+            size_t iota = 0;
+            for (Node *arg = call->args.head; arg; arg = arg->next) {
+                abi_set_argument_type(c, &abi, iota++, &arg->type);
+            }
+
+            if (fn_type_spec.is_variadic) {
+                abi_set_variadic_at(&abi, fn_type_spec.args_count);
+            }
+
+            abi.actual_args = temp_alloc(abi.actual_args_count * sizeof(*abi.actual_args));
+        }
+        LLVMTypeRef fn_type = abi_finalize(c, &abi);
 
         LLVMValueRef *args = temp_alloc(abi.actual_args_count * sizeof(*args));
 
@@ -1568,6 +1589,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                     expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
                 } else {
                     expr = compile_expr(c, arg, false);
+                    // TODO(@variadics): Promotion
                 }
                 args[arg_iota++] = expr;
             } break;
@@ -1630,7 +1652,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
 #ifdef PLATFORM_X86_64_LINUX
         assert(call->fn->type.kind == TYPE_FN);
-        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
 
         for (size_t i = 0; i < abi.args_count; i++) {
             const ABI_Info it_abi = abi.args[i];
@@ -1748,7 +1769,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                         Pos_Fmt "Range (%%lld..%%lld) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos));
 
-                    compile_panic(c, message, a, b);
+                    compile_panic(c, message, a, b, NULL);
                     temp_reset(message);
                 }
 
@@ -1836,7 +1857,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 const char *message = temp_sprintf(
                     Pos_Fmt "Index %%lld is out of bounds in %s of length %%lld\n", Pos_Arg(n->token.pos), label);
 
-                compile_panic(c, message, a, count);
+                compile_panic(c, message, a, count, NULL);
                 temp_reset(message);
             }
 
@@ -1871,37 +1892,9 @@ static void compile_stmt(Compiler *c, Node *n) {
     }
 
     switch (n->kind) {
-    case NODE_ASSERT: {
-        Node_Assert *assertt = (Node_Assert *) n;
-        if (assertt->is_compile_time) {
-            return;
-        }
-
-        LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-        LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-        LLVMValueRef      check = compile_expr(c, assertt->expr, false);
-
-        set_debug_pos(c, n->token.pos);
-        LLVMBuildCondBr(c->llvm_builder, check, success, failure);
-
-        // Failure
-        LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
-        {
-            const char *message = NULL;
-            if (assertt->message) {
-                message = temp_sprintf(
-                    Pos_Fmt "Assertion failed: " SV_Fmt "\n", Pos_Arg(n->token.pos), SV_Arg(assertt->message_sv));
-            } else {
-                message = temp_sprintf(Pos_Fmt "Assertion failed\n", Pos_Arg(n->token.pos));
-            }
-
-            compile_panic_no_args(c, message);
-            temp_reset(message);
-        }
-
-        // Success
-        LLVMPositionBuilderAtEnd(c->llvm_builder, success);
-    } break;
+    case NODE_ASSERT:
+        // Pass
+        break;
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
@@ -2201,53 +2194,22 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_PRINT: {
         Node_Print *print = (Node_Print *) n;
 
+        Node_Fn *print_handler = get_builtin_func(c, sv_from_cstr("print_handler"));
+
         const bool   is_signed = type_is_signed(print->value->type);
         LLVMValueRef args[] = {
-            is_signed ? c->llvm_iprint_str : c->llvm_uprint_str,
+            LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), is_signed, false),
             compile_cast(c, compile_expr(c, print->value, false), LLVMInt64TypeInContext(c->llvm_context), is_signed),
         };
 
         set_debug_pos(c, n->token.pos);
-        LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
+        LLVMBuildCall2(c->llvm_builder, print_handler->node.type.llvm, print_handler->llvm, args, len(args), "");
     } break;
 
     default:
         compile_expr(c, n, false);
         break;
     }
-}
-
-static Node_Fn *get_main(Module *main_module) {
-    Node_Atom *main = scope_find(main_module->globals, sv_from_cstr("main"));
-    if (!main) {
-        fprintf(
-            stderr,
-            "ERROR: Function 'main' is not defined\n"
-            "\n"
-            "```\n"
-            "main :: () {\n"
-            "}\n"
-            "```\n");
-        exit(1);
-    }
-
-    if (!main->definition_spec->is_const || main->definition_spec->const_value.kind != CONST_VALUE_FN) {
-        fprintf(
-            stderr, Pos_Fmt "ERROR: Identifier 'main' must be a constant function\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-
-    const Type_Fn signature = main->node.type.spec.fn;
-    if (signature.args_count) {
-        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-
-    if (signature.returnn->kind != TYPE_UNIT) {
-        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-    return main->definition_spec->const_value.as.fn;
 }
 
 static void compiler_init_llvm_target_data(Compiler *c) {
@@ -2288,13 +2250,13 @@ size_t compile_sizeof(Compiler *c, Type *type) {
     return LLVMABISizeOfType(c->llvm_target_data, type->llvm);
 }
 
-void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
+void compiler_build(Compiler *c, const char *output_path) {
     const void *checkpoint = temp_alloc(0);
 
     assert(c->cmd);
     assert(c->arena);
     assert(c->modules);
-    Node_Fn *main_fn = get_main(main_module);
+    assert(c->main_fn);
 
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
@@ -2309,7 +2271,7 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
     c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
         LLVMDWARFSourceLanguageC,
-        get_debug_file(c, main_fn->node.token.pos.path),
+        get_debug_file(c, c->main_fn->node.token.pos.path),
         "glos",
         4,
         false,
@@ -2326,75 +2288,6 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
         0,
         "",
         0);
-
-    // The 'print' keyword
-    {
-        const char  iprint_str[] = "%lld\n";
-        LLVMTypeRef iprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(iprint_str));
-
-        c->llvm_iprint_str = LLVMAddGlobal(c->llvm_module, iprint_type, "");
-        LLVMSetInitializer(
-            c->llvm_iprint_str, LLVMConstStringInContext(c->llvm_context, iprint_str, strlen(iprint_str), false));
-
-        const char  uprint_str[] = "%zu\n";
-        LLVMTypeRef uprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(uprint_str));
-
-        c->llvm_uprint_str = LLVMAddGlobal(c->llvm_module, uprint_type, "");
-        LLVMSetInitializer(
-            c->llvm_uprint_str, LLVMConstStringInContext(c->llvm_context, uprint_str, strlen(uprint_str), false));
-
-        LLVMTypeRef printf_args[] = {
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-        };
-
-        c->llvm_printf_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), printf_args, len(printf_args), true);
-        c->llvm_printf_func = LLVMAddFunction(c->llvm_module, "printf", c->llvm_printf_type);
-    }
-
-    // Panics
-    {
-        LLVMTypeRef llvm_ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-
-        LLVMTypeRef fprintf_args[] = {
-            llvm_ptr_type,
-            llvm_ptr_type,
-        };
-
-        c->llvm_fprintf_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fprintf_args, len(fprintf_args), true);
-        c->llvm_fprintf_func = LLVMAddFunction(c->llvm_module, "fprintf", c->llvm_fprintf_type);
-
-        LLVMTypeRef fflush_args[] = {
-            llvm_ptr_type,
-        };
-
-        c->llvm_fflush_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fflush_args, len(fflush_args), false);
-        c->llvm_fflush_func = LLVMAddFunction(c->llvm_module, "fflush", c->llvm_fflush_type);
-
-        c->llvm_abort_type = LLVMFunctionType(LLVMVoidTypeInContext(c->llvm_context), NULL, 0, false);
-        c->llvm_abort_func = LLVMAddFunction(c->llvm_module, "abort", c->llvm_abort_type);
-
-#ifdef PLATFORM_X86_64_WINDOWS
-        LLVMTypeRef iob_args[] = {
-            LLVMInt32TypeInContext(c->llvm_context),
-        };
-
-        c->llvm_iob_type = LLVMFunctionType(llvm_ptr_type, iob_args, len(iob_args), false);
-        c->llvm_iob_func = LLVMAddFunction(c->llvm_module, "__acrt_iob_func", c->llvm_iob_type);
-#endif // PLATFORM_X86_64_WINDOWS
-
-#ifdef PLATFORM_X86_64_LINUX
-        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stdout");
-        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stderr");
-#endif // PLATFORM_X86_64_LINUX
-
-#ifdef PLATFORM_ARM64_MACOS
-        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stdoutp");
-        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stderrp");
-#endif // PLATFORM_ARM64_MACOS
-    }
 
     // String comparisons
     {
@@ -2427,13 +2320,6 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
     }
 
     LLVMDIBuilderFinalize(c->llvm_debug_builder);
-
-    LLVMTypeRef  main_type = LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), NULL, 0, 0);
-    LLVMValueRef main_func = LLVMAddFunction(c->llvm_module, "main", main_type);
-    LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, main_func, ""));
-
-    LLVMBuildCall2(c->llvm_builder, main_fn->node.type.llvm, main_fn->llvm, NULL, 0, "");
-    LLVMBuildRet(c->llvm_builder, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)));
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
     temporary_files_push(object_path);

@@ -10,12 +10,19 @@
 typedef Dynamic_Array(const char *) Link_Flags;
 
 typedef struct {
+    // These are used only by the analyzer
+    Type main_fn_type;
+
     // These are used both by the analyzer and the compiler
     Arena  *arena;
     Context context;
 
     Parser  *parser;
     Modules *modules;
+    Node_Fn *main_fn;
+
+    Module *main_module;
+    Module *builtin_module;
 
     // Rest all are only used by compiler
     Cmd        *cmd;
@@ -49,33 +56,9 @@ typedef struct {
         LLVMMetadataRef value;
     } *llvm_debug_files;
 
-    // TODO: Temporary solution to permanent problems
-    LLVMValueRef llvm_iprint_str;
-    LLVMValueRef llvm_uprint_str;
-    LLVMTypeRef  llvm_printf_type;
-    LLVMValueRef llvm_printf_func;
-
-    // For panic messages
-    LLVMTypeRef  llvm_fprintf_type;
-    LLVMValueRef llvm_fprintf_func;
-
-    LLVMTypeRef  llvm_fflush_type;
-    LLVMValueRef llvm_fflush_func;
-
-    LLVMTypeRef  llvm_abort_type;
-    LLVMValueRef llvm_abort_func;
-
     // For string comparisons
     LLVMTypeRef  llvm_memcmp_type;
     LLVMValueRef llvm_memcmp_func;
-
-#ifdef PLATFORM_X86_64_WINDOWS
-    LLVMTypeRef  llvm_iob_type;
-    LLVMValueRef llvm_iob_func;
-#else
-    LLVMValueRef llvm_stdout_value;
-    LLVMValueRef llvm_stderr_value;
-#endif // PLATFORM_X86_64_WINDOWS
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.
@@ -87,6 +70,6 @@ typedef struct {
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);
-void   compiler_build(Compiler *c, Module *main_module, const char *output_path);
+void   compiler_build(Compiler *c, const char *output_path);
 
 #endif // COMPILER_H

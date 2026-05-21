@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "node.h"
 #include "token.h"
+#include <stdbool.h>
 
 #ifndef PLATFORM_X86_64_WINDOWS
 #include <dirent.h>
@@ -24,7 +25,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -397,6 +398,12 @@ void parser_import(Parser *p, Node_Import *import) {
                     Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
                     Pos_Arg(import->path.pos));
                 exit(1);
+            } else if (!strcmp(module->name, "builtin")) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: The module path 'builtin' is reserved for the builtin module\n",
+                    Pos_Arg(import->path.pos));
+                exit(1);
             }
 
             p->module_current = module;
@@ -434,7 +441,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -446,6 +453,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_NULL:
     case TOKEN_IDENT:
     case TOKEN_STRING:
+    case TOKEN_DIRECTIVE_MAIN:
+    case TOKEN_DIRECTIVE_PLATFORM:
     case TOKEN_DIRECTIVE_CALLER_LOCATION:
         node = node_alloc(p->arena, NODE_ATOM, token);
         ((Node_Atom *) node)->module = p->module_current;
@@ -538,6 +547,12 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 }
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                    break;
+                }
+
+                if (read_token(p, TOKEN_SPREAD)) {
+                    fn->is_variadic = true;
+                    expect_token(p, TOKEN_RPAREN);
                     break;
                 }
 
@@ -806,10 +821,10 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
 
         fprintf(
             stderr,
-            Pos_Fmt "ERROR: Unexpected %s %s function\n",
+            Pos_Fmt "ERROR: Unexpected %s in %s scope\n",
             Pos_Arg(token.pos),
             label,
-            p->state.fn_current ? "inside" : "outside");
+            p->state.fn_current ? "local" : "global");
 
         exit(1);
     }
@@ -821,17 +836,9 @@ static Node *parse_stmt(Parser *p) {
 
     Token token = next_token(p);
     switch (token.kind) {
-    case TOKEN_ASSERT:
     case TOKEN_DIRECTIVE_ASSERT: {
-        const bool is_compile_time = token.kind == TOKEN_DIRECTIVE_ASSERT;
-        if (!is_compile_time) {
-            not_in_extern_assert(p, token);
-            local_assert(p, true, token, NULL);
-        }
-
         node = node_alloc(p->arena, NODE_ASSERT, token);
         Node_Assert *assertt = (Node_Assert *) node;
-        assertt->is_compile_time = is_compile_time;
 
         expect_token(p, TOKEN_LPAREN);
         assertt->expr = parse_expr(p, POWER_SET, true, NULL);
@@ -840,6 +847,63 @@ static Node *parse_stmt(Parser *p) {
             assertt->message = parse_expr(p, POWER_SET, true, NULL);
             expect_token(p, TOKEN_RPAREN);
         }
+    } break;
+
+    case TOKEN_DIRECTIVE_LINK: {
+        if (!p->state.in_extern) {
+            local_assert(p, false, token, NULL);
+        }
+
+        const Token name = expect_token(p, TOKEN_STRING);
+        if (!name.sv.count) {
+            fprintf(stderr, Pos_Fmt "ERROR: Link name cannot be empty\n", Pos_Arg(name.pos));
+            exit(1);
+        }
+
+        node = parse_stmt(p);
+        if (node->kind != NODE_DEFINE) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Define *define = (Node_Define *) node;
+        if (define->count != 1) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot apply %s to multiple definitions\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        if (define->is_const) {
+            bool ok = false;
+            if (define->expr && define->expr->kind == NODE_FN) {
+                Node_Fn *fn = (Node_Fn *) define->expr;
+                if (fn->body || p->state.in_extern) {
+                    ok = true;
+                }
+            }
+
+            if (!ok) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot apply %s to constant definitions\n",
+                    Pos_Arg(node->token.pos),
+                    token_kind_to_cstr(token.kind));
+                exit(1);
+            }
+        }
+
+        assert(define->name->kind == NODE_ATOM);
+        Node_Atom *it = (Node_Atom *) define->name;
+
+        assert(it->definition_spec);
+        it->definition_spec->link_as = name.sv;
     } break;
 
     case TOKEN_LBRACE:
@@ -953,9 +1017,11 @@ static Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true, NULL);
-        if (node->kind != NODE_DEFINE && node->kind != NODE_IMPORT) {
+        if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
-            local_assert(p, true, node->token, "expression");
+            if (node->kind != NODE_IMPORT) {
+                local_assert(p, true, node->token, "expression");
+            }
         }
         break;
     }

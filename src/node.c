@@ -101,6 +101,11 @@ const char *type_to_cstr_raw(Type type) {
             type_to_cstr_raw(it.type);
         }
 
+        if (type.spec.fn.is_variadic) {
+            temp_remove_null();
+            temp_sprintf(", ...");
+        }
+
         temp_remove_null();
         temp_sprintf(")");
 
@@ -476,10 +481,6 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
 
     case NODE_ASSERT: {
         Node_Assert *assertt = (Node_Assert *) n;
-        if (assertt->is_compile_time) {
-            fprintf(f, "#");
-        }
-
         fprintf(f, "Assert {\n");
         node_debug_impl(f, assertt->expr, depth + 1, "Expr");
         node_debug_impl(f, assertt->message, depth + 1, "Message");

@@ -178,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 63, "");
+static_assert(COUNT_TOKENS == 66, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -236,8 +236,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_STRUCT;
         } else if (sv_match(token.sv, "sizeof")) {
             token.kind = TOKEN_SIZEOF;
-        } else if (sv_match(token.sv, "assert")) {
-            token.kind = TOKEN_ASSERT;
         } else if (sv_match(token.sv, "if")) {
             token.kind = TOKEN_IF;
         } else if (sv_match(token.sv, "else")) {
@@ -272,7 +270,11 @@ Token lexer_iter(Lexer *l) {
 
     case '.':
         if (match_char(l, '.')) {
-            token.kind = TOKEN_RANGE;
+            if (match_char(l, '.')) {
+                token.kind = TOKEN_SPREAD;
+            } else {
+                token.kind = TOKEN_RANGE;
+            }
         } else {
             token.kind = TOKEN_DOT;
         }
@@ -448,10 +450,16 @@ Token lexer_iter(Lexer *l) {
 
         if (sv_match(token.sv, "#if")) {
             token.kind = TOKEN_DIRECTIVE_IF;
+        } else if (sv_match(token.sv, "#link")) {
+            token.kind = TOKEN_DIRECTIVE_LINK;
+        } else if (sv_match(token.sv, "#main")) {
+            token.kind = TOKEN_DIRECTIVE_MAIN;
         } else if (sv_match(token.sv, "#assert")) {
             token.kind = TOKEN_DIRECTIVE_ASSERT;
         } else if (sv_match(token.sv, "#import")) {
             token.kind = TOKEN_DIRECTIVE_IMPORT;
+        } else if (sv_match(token.sv, "#platform")) {
+            token.kind = TOKEN_DIRECTIVE_PLATFORM;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_DIRECTIVE_CALLER_LOCATION;
         } else {

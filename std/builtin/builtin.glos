@@ -1,0 +1,93 @@
+// TODO: Distinct type aliases
+File :: struct {
+    c: rawptr
+}
+
+// TODO: Move into a separate 'C' module
+extern {
+    fprintf :: (f: File, fmt: &char, ...) -> i32
+    fflush :: (f: File)
+    abort :: ()
+}
+
+Platform_Linux   :: 0
+Platform_macOS   :: 1
+Platform_Windows :: 2
+
+#if #platform == {
+case Platform_Linux
+    extern {
+        stdin: File
+        stdout: File
+        stderr: File
+    }
+
+case Platform_macOS
+    extern {
+        #link "__stdinp"  stdin: File
+        #link "__stdoutp" stdout: File
+        #link "__stderrp" stderr: File
+    }
+
+case Platform_Windows
+    stdin: File
+    stdout: File
+    stderr: File
+}
+
+// TODO: This should use enumerations instead
+// Also, this passes extra arguments to printf. This shouldn't be an issue IN
+// THEORY, but still, it should be cleaned up.
+panic_handler :: (fmt: &char, v1: i64, v2: i64, v3: i64) {
+    fprintf(stderr, fmt, v1, v2, v3)
+    fflush(stdout)
+    fflush(stderr)
+    abort()
+}
+
+// TODO: This should be removed soon
+print_handler :: (signed: bool, x: i64) {
+    if signed {
+        fprintf(stdout, "%lld\n".data, x)
+    } else {
+        fprintf(stdout, "%llu\n".data, x)
+    }
+}
+
+assert :: (cond: bool, message := "", location := #caller_location) {
+    if !cond {
+        if message == "" {
+            fprintf(stderr, "%.*s Assertion failed\n".data, i32(location.count), location.data)
+        } else {
+            fprintf(
+                stderr, "%.*s Assertion failed: %.*s\n".data,
+                i32(location.count), location.data,
+                i32(message.count), message.data,
+            )
+        }
+
+        fflush(stdout)
+        fflush(stderr)
+        abort()
+    }
+}
+
+#link "main"
+main :: () -> i32 {
+    #if #platform == Platform_Windows {
+        extern {
+            __acrt_iob_func :: (fd: i32) -> File
+        }
+
+        stdin  = __acrt_iob_func(0)
+        stdout = __acrt_iob_func(1)
+        stderr = __acrt_iob_func(2)
+    }
+
+    #main()
+    return 0
+}
+
+// NOTE: This is all very messy. That's fine. This is just a temporary stepping
+// stone to get the runtime working without compiler intrinsics. A more elegant
+// solution can be thought of later.

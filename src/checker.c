@@ -461,6 +461,62 @@ static bool always_returns(Node *n) {
     }
 }
 
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_ASSIGN,
+} Ref_Kind;
+
+static void check_node(Compiler *c, Node *n, Ref_Kind ref);
+
+// TODO: Nvm. This should be moved back into 'compiler.c'
+static Node_Fn *get_main(Compiler *c) {
+    if (c->main_fn) {
+        return c->main_fn;
+    }
+
+    Node_Atom *main = scope_find(c->main_module->globals, sv_from_cstr("main"));
+    if (!main) {
+        fprintf(
+            stderr,
+            "ERROR: Function 'main' is not defined\n"
+            "\n"
+            "```\n"
+            "main :: () {\n"
+            "}\n"
+            "```\n");
+        exit(1);
+    }
+
+    if (!main->definition_spec->is_const || main->definition_spec->assignment_node->kind != NODE_FN) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier 'main' must be a function literal\n", Pos_Arg(main->node.token.pos));
+        fprintf(
+            stderr,
+            "\n"
+            "```\n"
+            "main :: () {\n"
+            "}\n"
+            "```\n");
+        exit(1);
+    }
+
+    c->main_fn = (Node_Fn *) main->definition_spec->assignment_node;
+    check_node(c, (Node *) main->definition_spec->definition_node, REF_NONE);
+
+    const Type_Fn signature = main->node.type.spec.fn;
+    if (signature.args_count) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
+
+    if (signature.returnn->kind != TYPE_UNIT) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
+
+    return c->main_fn;
+}
+
 static_assert(COUNT_NODES == 24, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
@@ -471,7 +527,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -498,6 +554,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_STRING:
             return const_value_string(n->token.sv);
 
+        case TOKEN_DIRECTIVE_MAIN:
+            return const_value_fn(get_main(c));
+
+        case TOKEN_DIRECTIVE_PLATFORM:
+            return const_value_int(platform_as_enum());
+
         default:
             unreachable();
             break;
@@ -508,7 +570,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -551,7 +613,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -625,18 +687,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_EQ:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
-            if (lhs.kind == CONST_VALUE_STRING) {
-                return const_value_int(sv_eq(lhs.as.string, rhs.as.string));
-            }
-            return const_value_int(lhs.as.integer == rhs.as.integer);
+            return const_value_int(const_value_eq(lhs, rhs));
 
         case TOKEN_NE:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
-            if (lhs.kind == CONST_VALUE_STRING) {
-                return const_value_int(!sv_eq(lhs.as.string, rhs.as.string));
-            }
-            return const_value_int(lhs.as.integer != rhs.as.integer);
+            return const_value_int(!const_value_eq(lhs, rhs));
 
         default:
             unreachable();
@@ -843,14 +899,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         break;
     }
 }
-
-typedef enum {
-    REF_NONE,
-    REF_ADDR,
-    REF_ASSIGN,
-} Ref_Kind;
-
-static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_node(c, sw->expr, REF_NONE);
@@ -1130,6 +1178,10 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
 
     if (!definition) {
         definition = scope_find(globals, token.sv);
+        if (!definition && atom) {
+            globals = c->builtin_module->globals;
+            definition = scope_find(globals, token.sv);
+        }
     }
 
     if (atom) {
@@ -1213,7 +1265,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1240,6 +1292,15 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
+        case TOKEN_DIRECTIVE_MAIN:
+            n->type = c->main_fn_type;
+            break;
+
+        case TOKEN_DIRECTIVE_PLATFORM:
+            // TODO: This should be an enumeration
+            n->type = (Type) {.kind = TYPE_INT};
+            break;
+
         case TOKEN_DIRECTIVE_CALLER_LOCATION:
             fprintf(
                 stderr,
@@ -1258,7 +1319,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1315,7 +1376,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 63, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1480,16 +1541,13 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
         }
 
-        bool ok = true;
-        if (assertt->is_compile_time) {
-            ok = eval_const_expr(c, assertt->expr).as.integer;
-        }
+        const bool ok = eval_const_expr(c, assertt->expr).as.integer;
 
-        assertt->message_sv = eval_const_expr(c, assertt->message).as.string;
-        if (assertt->is_compile_time && !ok) {
+        if (!ok) {
             fprintf(stderr, Pos_Fmt "Assertion failed", Pos_Arg(n->token.pos));
             if (assertt->message) {
-                fprintf(stderr, ": " SV_Fmt, SV_Arg(assertt->message_sv));
+                const SV message = eval_const_expr(c, assertt->message).as.string;
+                fprintf(stderr, ": " SV_Fmt, SV_Arg(message));
             }
             fprintf(stderr, "\n");
             exit(1);
@@ -1523,6 +1581,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             Type_Fn fn_type_spec = {
                 .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
                 .args_count_min = fn->args_count_min,
+                .is_variadic = fn->is_variadic,
             };
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -1808,10 +1867,21 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             call->args_count = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
                 check_node(c, arg, REF_NONE);
+
+                bool is_variadic_arg = false;
                 if (call->args_count >= fn_type_spec.args_count) {
-                    error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                    if (fn_type_spec.is_variadic) {
+                        is_variadic_arg = true;
+                    } else {
+                        error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                    }
                 }
-                type_assert(c, arg, fn_type_spec.args[call->args_count++].type);
+
+                if (!is_variadic_arg) {
+                    type_assert(c, arg, fn_type_spec.args[call->args_count].type);
+                }
+
+                call->args_count++;
             }
 
             if (call->args_count < fn_type_spec.args_count_min) {
@@ -2121,9 +2191,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
+// TODO: Work on this
+long platform_as_enum(void) {
+#ifdef PLATFORM_X86_64_LINUX
+    return 0;
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    return 1;
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    return 2;
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
 void check_nodes(Compiler *c) {
     assert(c->parser);
     assert(c->modules);
+    assert(c->main_module);
+    assert(c->builtin_module);
+
+    const Type unit = {.kind = TYPE_UNIT};
+    c->main_fn_type = (Type) {
+        .kind = TYPE_FN,
+        .spec.fn.returnn = arena_clone(c->arena, &unit, sizeof(unit)),
+    };
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
@@ -2136,4 +2229,6 @@ void check_nodes(Compiler *c) {
             check_node(c, it, REF_NONE);
         }
     }
+
+    get_main(c);
 }
