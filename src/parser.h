@@ -14,6 +14,7 @@ typedef struct {
     bool in_loop;
     bool in_defer;
     bool in_extern;
+    bool in_compile_time_condition;
 
     Node_Fn *fn_current;
 } Parser_State;

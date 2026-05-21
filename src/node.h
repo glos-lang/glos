@@ -435,6 +435,10 @@ typedef struct {
     Node *condition;
     Node *consequence;
     Node *antecedence;
+
+    // For compile time '#if'
+    bool  is_compile_time;
+    Node *real;
 } Node_If;
 
 typedef struct {

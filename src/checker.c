@@ -330,6 +330,9 @@ static bool loop_breaks(Node *n) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            return loop_breaks(iff->real);
+        }
         return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
     }
 
@@ -388,6 +391,10 @@ static bool always_returns(Node *n) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            return always_returns(iff->real);
+        }
+
         if (is_atom_true(iff->condition)) {
             return always_returns(iff->consequence);
         }
@@ -455,7 +462,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -492,7 +499,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -535,7 +542,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -828,6 +835,14 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_ASSIGN,
+} Ref_Kind;
+
+static void check_node(Compiler *c, Node *n, Ref_Kind ref);
+
 static_assert(COUNT_NODES == 24, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
@@ -881,22 +896,38 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
         }
     } break;
 
+    case NODE_IF: {
+        Node_If *iff = (Node_If *) n;
+        if (iff->is_compile_time) {
+            check_node(c, iff->condition, REF_NONE);
+            type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+
+            Const_Value value = eval_const_expr(c, iff->condition);
+            iff->real = value.as.integer ? iff->consequence : iff->antecedence;
+
+            if (iff->real) {
+                if (iff->real->kind == NODE_IF) {
+                    define_orderless_nodes(c, iff->real, block_start);
+                } else if (iff->real->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->real;
+                    for (Node *it = block->body.head; it; it = it->next) {
+                        define_orderless_nodes(c, it, block_start);
+                    }
+                } else {
+                    unreachable();
+                }
+            }
+        }
+    } break;
+
     default:
         // Pass
         break;
     }
 }
 
-typedef enum {
-    REF_NONE,
-    REF_ADDR,
-    REF_ASSIGN,
-} Ref_Kind;
-
-static void check_node(Compiler *c, Node *n, Ref_Kind ref);
-
 static bool is_node_caller_location(Node *n) {
-    return n->kind == NODE_ATOM && n->token.kind == TOKEN_CALLER_LOCATION;
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
 static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
@@ -1074,7 +1105,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1101,7 +1132,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
-        case TOKEN_CALLER_LOCATION:
+        case TOKEN_DIRECTIVE_CALLER_LOCATION:
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot use %s here. It can only be used as the default value for a function argument\n",
@@ -1119,7 +1150,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1176,7 +1207,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 62, "");
+        static_assert(COUNT_TOKENS == 63, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1845,10 +1876,27 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
-        check_node(c, iff->condition, REF_NONE);
-        type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
-        check_node(c, iff->consequence, REF_NONE);
-        check_node(c, iff->antecedence, REF_NONE);
+        if (iff->is_compile_time) {
+            if (iff->real) {
+                if (iff->real->kind == NODE_IF) {
+                    check_node(c, iff->real, REF_NONE);
+                } else if (iff->real->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->real;
+                    if (iff->real) {
+                        for (Node *it = block->body.head; it; it = it->next) {
+                            check_node(c, it, REF_NONE);
+                        }
+                    }
+                } else {
+                    unreachable();
+                }
+            }
+        } else {
+            check_node(c, iff->condition, REF_NONE);
+            type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+            check_node(c, iff->consequence, REF_NONE);
+            check_node(c, iff->antecedence, REF_NONE);
+        }
     } break;
 
     case NODE_FOR: {

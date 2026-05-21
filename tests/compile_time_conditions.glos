@@ -1,0 +1,43 @@
+#if true {
+    main :: () {
+        #if true {
+            print foo()
+        }
+
+        PRINT_69_AGAIN :: false
+
+        #if PRINT_69_AGAIN {
+            print 69
+        } else {
+            print 420
+        }
+
+        #if PRINT_69_AGAIN {
+            print 69
+        }
+	}
+}
+
+#if false {
+    main :: () {
+		fmt.println("This does not get checked or compiled")
+	}
+} else {
+    foo :: () -> i64 {
+		return bar()
+	}
+}
+
+#if false {
+    bar :: () -> string {
+		return "Urmom"
+	}
+} else if true {
+    bar :: () -> i64 {
+		return 69
+	}
+}
+
+#if false {
+    suckon :: deeznuts
+}
