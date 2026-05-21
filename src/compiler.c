@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "basic.h"
 #include "checker.h"
+#include "context.h"
 #include "dwarf.h"
 #include "node.h"
 #include "token.h"
@@ -978,75 +979,100 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 #define STDERR_FILENO 2
 #endif // PLATFORM_X86_64_WINDOWS
 
+// TODO: Remove
 // NOTE: Only stdout and stderr are supported
-static LLVMValueRef compile_get_stdio_file(Compiler *c, int fileno) {
-#ifdef PLATFORM_X86_64_WINDOWS
-    LLVMValueRef iob_args[] = {
-        LLVMConstInt(LLVMInt32TypeInContext(c->llvm_context), fileno, 0),
+// static LLVMValueRef compile_get_stdio_file(Compiler *c, int fileno) {
+// #ifdef PLATFORM_X86_64_WINDOWS
+//     LLVMValueRef iob_args[] = {
+//         LLVMConstInt(LLVMInt32TypeInContext(c->llvm_context), fileno, 0),
+//     };
+//     return LLVMBuildCall2(c->llvm_builder, c->llvm_iob_type, c->llvm_iob_func, iob_args, len(iob_args), "");
+// #else
+//     LLVMValueRef var = NULL;
+//     switch (fileno) {
+//     case STDOUT_FILENO:
+//         var = c->llvm_stdout_value;
+//         break;
+
+//     case STDERR_FILENO:
+//         var = c->llvm_stderr_value;
+//         break;
+
+//     default:
+//         unreachable();
+//     }
+//     return LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), var, "");
+// #endif // PLATFORM_X86_64_WINDOWS
+// }
+
+static Node_Fn *get_builtin_func(Compiler *c, SV name) {
+    Node_Atom *atom = scope_find(c->builtin_module->globals, name);
+    assert(atom);
+    assert(atom->definition_spec->is_const);
+    assert(atom->definition_spec->const_value.kind == CONST_VALUE_FN);
+
+    Node_Fn *fn = atom->definition_spec->const_value.as.fn;
+    compile_fn(c, fn);
+    return fn;
+}
+
+// TODO: This is very ugly and should be cleaned up later.
+static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3) {
+    Node_Fn *panic_handler = get_builtin_func(c, sv_from_cstr("panic_handler"));
+
+    LLVMValueRef zero = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
+    LLVMValueRef args[] = {
+        LLVMBuildGlobalString(c->llvm_builder, fmt, ""),
+        v1 ? v1 : zero,
+        v2 ? v2 : zero,
+        v3 ? v3 : zero,
     };
-    return LLVMBuildCall2(c->llvm_builder, c->llvm_iob_type, c->llvm_iob_func, iob_args, len(iob_args), "");
-#else
-    LLVMValueRef var = NULL;
-    switch (fileno) {
-    case STDOUT_FILENO:
-        var = c->llvm_stdout_value;
-        break;
 
-    case STDERR_FILENO:
-        var = c->llvm_stderr_value;
-        break;
-
-    default:
-        unreachable();
-    }
-    return LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), var, "");
-#endif // PLATFORM_X86_64_WINDOWS
-}
-
-static void compile_panic(Compiler *c, const char *fmt, ...) {
-    LLVMValueRef llvm_stdout = compile_get_stdio_file(c, STDOUT_FILENO);
-    LLVMValueRef llvm_stderr = compile_get_stdio_file(c, STDERR_FILENO);
-
-    size_t  count = 0;
-    va_list ap;
-    va_start(ap, fmt);
-    while (true) {
-        LLVMValueRef it = va_arg(ap, LLVMValueRef);
-        if (!it) {
-            break;
-        }
-        count++;
-    }
-    va_end(ap);
-
-    LLVMValueRef *args = temp_alloc(2 + count);
-    size_t        iota = 0;
-
-    args[iota++] = llvm_stderr;
-    args[iota++] = LLVMBuildGlobalString(c->llvm_builder, fmt, "");
-
-    va_start(ap, fmt);
-    while (true < count) {
-        LLVMValueRef it = va_arg(ap, LLVMValueRef);
-        if (!it) {
-            break;
-        }
-        args[iota++] = it;
-    }
-    va_end(ap);
-    assert(iota == 2 + count);
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fprintf_type, c->llvm_fprintf_func, args, iota, "");
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stdout, 1, "");
-    LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stderr, 1, "");
-
-    LLVMBuildCall2(c->llvm_builder, c->llvm_abort_type, c->llvm_abort_func, NULL, 0, "");
+    LLVMBuildCall2(c->llvm_builder, panic_handler->node.type.llvm, panic_handler->llvm, args, len(args), "");
     LLVMBuildUnreachable(c->llvm_builder);
-    temp_reset(args);
+
+    // LLVMValueRef llvm_stdout = compile_get_stdio_file(c, STDOUT_FILENO);
+    // LLVMValueRef llvm_stderr = compile_get_stdio_file(c, STDERR_FILENO);
+
+    // size_t  count = 0;
+    // va_list ap;
+    // va_start(ap, fmt);
+    // while (true) {
+    //     LLVMValueRef it = va_arg(ap, LLVMValueRef);
+    //     if (!it) {
+    //         break;
+    //     }
+    //     count++;
+    // }
+    // va_end(ap);
+
+    // LLVMValueRef *args = temp_alloc(2 + count);
+    // size_t        iota = 0;
+
+    // args[iota++] = llvm_stderr;
+    // args[iota++] = LLVMBuildGlobalString(c->llvm_builder, fmt, "");
+
+    // va_start(ap, fmt);
+    // while (true < count) {
+    //     LLVMValueRef it = va_arg(ap, LLVMValueRef);
+    //     if (!it) {
+    //         break;
+    //     }
+    //     args[iota++] = it;
+    // }
+    // va_end(ap);
+    // assert(iota == 2 + count);
+
+    // LLVMBuildCall2(c->llvm_builder, c->llvm_fprintf_type, c->llvm_fprintf_func, args, iota, "");
+
+    // LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stdout, 1, "");
+    // LLVMBuildCall2(c->llvm_builder, c->llvm_fflush_type, c->llvm_fflush_func, &llvm_stderr, 1, "");
+
+    // LLVMBuildCall2(c->llvm_builder, c->llvm_abort_type, c->llvm_abort_func, NULL, 0, "");
+    // temp_reset(args);
 }
-#define compile_panic(c, fmt, ...)    compile_panic(c, fmt, __VA_ARGS__, NULL)
-#define compile_panic_no_args(c, fmt) compile_panic(c, fmt, NULL)
+// #define compile_panic(c, fmt, ...)    compile_panic(c, fmt, __VA_ARGS__, NULL)
+// #define compile_panic_no_args(c, fmt) compile_panic(c, fmt, NULL)
 
 static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
     LLVMTypeRef from_type = LLVMTypeOf(from);
@@ -1213,7 +1239,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             return compile_fn(c, c->main_fn);
 
         case TOKEN_DIRECTIVE_PLATFORM:
-            return compile_string(c, platform_as_sv(), &n->token.pos, ref);
+            return LLVMConstInt(n->type.llvm, platform_as_enum(), type_is_signed(n->type));
 
         default:
             unreachable();
@@ -1815,7 +1841,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                         Pos_Fmt "Range (%%lld..%%lld) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos));
 
-                    compile_panic(c, message, a, b);
+                    compile_panic(c, message, a, b, NULL);
                     temp_reset(message);
                 }
 
@@ -1903,7 +1929,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 const char *message = temp_sprintf(
                     Pos_Fmt "Index %%lld is out of bounds in %s of length %%lld\n", Pos_Arg(n->token.pos), label);
 
-                compile_panic(c, message, a, count);
+                compile_panic(c, message, a, count, NULL);
                 temp_reset(message);
             }
 
@@ -1962,7 +1988,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 message = temp_sprintf(Pos_Fmt "Assertion failed\n", Pos_Arg(n->token.pos));
             }
 
-            compile_panic_no_args(c, message);
+            compile_panic(c, message, NULL, NULL, NULL);
             temp_reset(message);
         }
 
@@ -2268,14 +2294,16 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_PRINT: {
         Node_Print *print = (Node_Print *) n;
 
+        Node_Fn *print_handler = get_builtin_func(c, sv_from_cstr("print_handler"));
+
         const bool   is_signed = type_is_signed(print->value->type);
         LLVMValueRef args[] = {
-            is_signed ? c->llvm_iprint_str : c->llvm_uprint_str,
+            LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), is_signed, false),
             compile_cast(c, compile_expr(c, print->value, false), LLVMInt64TypeInContext(c->llvm_context), is_signed),
         };
 
         set_debug_pos(c, n->token.pos);
-        LLVMBuildCall2(c->llvm_builder, c->llvm_printf_type, c->llvm_printf_func, args, len(args), "");
+        LLVMBuildCall2(c->llvm_builder, print_handler->node.type.llvm, print_handler->llvm, args, len(args), "");
     } break;
 
     default:
@@ -2328,7 +2356,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     assert(c->cmd);
     assert(c->arena);
     assert(c->modules);
-    assert(c->main_module);
     assert(c->main_fn);
 
     if (!c->llvm_context) {
@@ -2364,71 +2391,71 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     // The 'print' keyword
     {
-        const char  iprint_str[] = "%lld\n";
-        LLVMTypeRef iprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(iprint_str));
+        // const char  iprint_str[] = "%lld\n";
+        // LLVMTypeRef iprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(iprint_str));
 
-        c->llvm_iprint_str = LLVMAddGlobal(c->llvm_module, iprint_type, "");
-        LLVMSetInitializer(
-            c->llvm_iprint_str, LLVMConstStringInContext(c->llvm_context, iprint_str, strlen(iprint_str), false));
+        // c->llvm_iprint_str = LLVMAddGlobal(c->llvm_module, iprint_type, "");
+        // LLVMSetInitializer(
+        //     c->llvm_iprint_str, LLVMConstStringInContext(c->llvm_context, iprint_str, strlen(iprint_str), false));
 
-        const char  uprint_str[] = "%zu\n";
-        LLVMTypeRef uprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(uprint_str));
+        // const char  uprint_str[] = "%zu\n";
+        // LLVMTypeRef uprint_type = LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), len(uprint_str));
 
-        c->llvm_uprint_str = LLVMAddGlobal(c->llvm_module, uprint_type, "");
-        LLVMSetInitializer(
-            c->llvm_uprint_str, LLVMConstStringInContext(c->llvm_context, uprint_str, strlen(uprint_str), false));
+        // c->llvm_uprint_str = LLVMAddGlobal(c->llvm_module, uprint_type, "");
+        // LLVMSetInitializer(
+        //     c->llvm_uprint_str, LLVMConstStringInContext(c->llvm_context, uprint_str, strlen(uprint_str), false));
 
-        LLVMTypeRef printf_args[] = {
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-        };
+        // LLVMTypeRef printf_args[] = {
+        //     LLVMPointerTypeInContext(c->llvm_context, 0),
+        // };
 
-        c->llvm_printf_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), printf_args, len(printf_args), true);
-        c->llvm_printf_func = LLVMAddFunction(c->llvm_module, "printf", c->llvm_printf_type);
+        // c->llvm_printf_type =
+        //     LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), printf_args, len(printf_args), true);
+        // c->llvm_printf_func = LLVMAddFunction(c->llvm_module, "printf", c->llvm_printf_type);
     }
 
     // Panics
     {
-        LLVMTypeRef llvm_ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+        // LLVMTypeRef llvm_ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
 
-        LLVMTypeRef fprintf_args[] = {
-            llvm_ptr_type,
-            llvm_ptr_type,
-        };
+        // LLVMTypeRef fprintf_args[] = {
+        //     llvm_ptr_type,
+        //     llvm_ptr_type,
+        // };
 
-        c->llvm_fprintf_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fprintf_args, len(fprintf_args), true);
-        c->llvm_fprintf_func = LLVMAddFunction(c->llvm_module, "fprintf", c->llvm_fprintf_type);
+        // c->llvm_fprintf_type =
+        //     LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fprintf_args, len(fprintf_args), true);
+        // c->llvm_fprintf_func = LLVMAddFunction(c->llvm_module, "fprintf", c->llvm_fprintf_type);
 
-        LLVMTypeRef fflush_args[] = {
-            llvm_ptr_type,
-        };
+        // LLVMTypeRef fflush_args[] = {
+        //     llvm_ptr_type,
+        // };
 
-        c->llvm_fflush_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fflush_args, len(fflush_args), false);
-        c->llvm_fflush_func = LLVMAddFunction(c->llvm_module, "fflush", c->llvm_fflush_type);
+        // c->llvm_fflush_type =
+        //     LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), fflush_args, len(fflush_args), false);
+        // c->llvm_fflush_func = LLVMAddFunction(c->llvm_module, "fflush", c->llvm_fflush_type);
 
-        c->llvm_abort_type = LLVMFunctionType(LLVMVoidTypeInContext(c->llvm_context), NULL, 0, false);
-        c->llvm_abort_func = LLVMAddFunction(c->llvm_module, "abort", c->llvm_abort_type);
+        // c->llvm_abort_type = LLVMFunctionType(LLVMVoidTypeInContext(c->llvm_context), NULL, 0, false);
+        // c->llvm_abort_func = LLVMAddFunction(c->llvm_module, "abort", c->llvm_abort_type);
 
-#ifdef PLATFORM_X86_64_WINDOWS
-        LLVMTypeRef iob_args[] = {
-            LLVMInt32TypeInContext(c->llvm_context),
-        };
+        // #ifdef PLATFORM_X86_64_WINDOWS
+        // LLVMTypeRef iob_args[] = {
+        //     LLVMInt32TypeInContext(c->llvm_context),
+        // };
 
-        c->llvm_iob_type = LLVMFunctionType(llvm_ptr_type, iob_args, len(iob_args), false);
-        c->llvm_iob_func = LLVMAddFunction(c->llvm_module, "__acrt_iob_func", c->llvm_iob_type);
-#endif // PLATFORM_X86_64_WINDOWS
+        // c->llvm_iob_type = LLVMFunctionType(llvm_ptr_type, iob_args, len(iob_args), false);
+        // c->llvm_iob_func = LLVMAddFunction(c->llvm_module, "__acrt_iob_func", c->llvm_iob_type);
+        // #endif // PLATFORM_X86_64_WINDOWS
 
-#ifdef PLATFORM_X86_64_LINUX
-        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stdout");
-        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stderr");
-#endif // PLATFORM_X86_64_LINUX
+        // #ifdef PLATFORM_X86_64_LINUX
+        // c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stdout");
+        // c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "stderr");
+        // #endif // PLATFORM_X86_64_LINUX
 
-#ifdef PLATFORM_ARM64_MACOS
-        c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stdoutp");
-        c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stderrp");
-#endif // PLATFORM_ARM64_MACOS
+        // #ifdef PLATFORM_ARM64_MACOS
+        // c->llvm_stdout_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stdoutp");
+        // c->llvm_stderr_value = LLVMAddGlobal(c->llvm_module, llvm_ptr_type, "__stderrp");
+        // #endif // PLATFORM_ARM64_MACOS
     }
 
     // String comparisons
@@ -2462,13 +2489,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     }
 
     LLVMDIBuilderFinalize(c->llvm_debug_builder);
-
-    LLVMTypeRef  main_type = LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), NULL, 0, 0);
-    LLVMValueRef main_func = LLVMAddFunction(c->llvm_module, "main", main_type);
-    LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, main_func, ""));
-
-    LLVMBuildCall2(c->llvm_builder, c->main_fn->node.type.llvm, c->main_fn->llvm, NULL, 0, "");
-    LLVMBuildRet(c->llvm_builder, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)));
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
     temporary_files_push(object_path);

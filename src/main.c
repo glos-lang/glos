@@ -257,10 +257,56 @@ int main(int argc, char **argv) {
          .std = get_std_dir_path(&arena),
     };
 
-    Module *main_module = module_get(&parser, input_path);
-    main_module->name = "main";
+    Compiler compiler = {
+        .arena = &arena,
+        .parser = &parser,
+        .modules = &modules,
 
-    parser.module_current = main_module;
+        .cmd = &cmd,
+        .link_flags = &link_flags,
+    };
+
+    // Import the builtin module
+    {
+        const char *name = "builtin";
+        const char *root = parser.std;
+        const char *absolute_path = get_absolute_path(sv_from_cstr(root), sv_from_cstr(name), &arena);
+        assert(directory_exists(absolute_path));
+
+        compiler.builtin_module = module_get(&parser, absolute_path);
+        compiler.builtin_module->name = name;
+
+        parser.module_current = compiler.builtin_module;
+
+        switch (parse_directory(&parser, compiler.builtin_module->relative_path)) {
+        case PARSE_OK:
+            // Pass
+            break;
+
+        case PARSE_FAILURE:
+            fprintf(stderr, "ERROR: Could not read directory '%s'\n", compiler.builtin_module->relative_path);
+            exit(1);
+            break;
+
+        case PARSE_EMPTY_DIRECTORY:
+            fprintf(
+                stderr,
+                "ERROR: Directory '%s' does not contain any glos files\n",
+                compiler.builtin_module->relative_path);
+            exit(1);
+            break;
+
+        default:
+            unreachable();
+        }
+
+        parser.module_current = NULL;
+    }
+
+    compiler.main_module = module_get(&parser, input_path);
+    compiler.main_module->name = "main";
+
+    parser.module_current = compiler.main_module;
     if (directory_exists(input_path)) {
         parser.root = input_path;
         input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
@@ -303,15 +349,6 @@ int main(int argc, char **argv) {
         temporary_files_push(output_path);
     }
 
-    Compiler compiler = {
-        .arena = &arena,
-        .parser = &parser,
-        .modules = &modules,
-        .main_module = main_module,
-
-        .cmd = &cmd,
-        .link_flags = &link_flags,
-    };
     check_nodes(&compiler);
     compiler_build(&compiler, output_path);
 

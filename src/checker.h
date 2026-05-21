@@ -3,7 +3,7 @@
 
 #include "compiler.h"
 
-SV   platform_as_sv(void);
+long platform_as_enum(void);
 void check_nodes(Compiler *c);
 
 #endif // CHECKER_H

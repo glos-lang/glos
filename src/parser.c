@@ -398,6 +398,12 @@ void parser_import(Parser *p, Node_Import *import) {
                     Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
                     Pos_Arg(import->path.pos));
                 exit(1);
+            } else if (!strcmp(module->name, "builtin")) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: The module path 'builtin' is reserved for the builtin module\n",
+                    Pos_Arg(import->path.pos));
+                exit(1);
             }
 
             p->module_current = module;

@@ -469,6 +469,7 @@ typedef enum {
 
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
+// TODO: Nvm. This should be moved back into 'compiler.c'
 static Node_Fn *get_main(Compiler *c) {
     if (c->main_fn) {
         return c->main_fn;
@@ -557,7 +558,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             return const_value_fn(get_main(c));
 
         case TOKEN_DIRECTIVE_PLATFORM:
-            return const_value_string(platform_as_sv());
+            return const_value_int(platform_as_enum());
 
         default:
             unreachable();
@@ -1177,6 +1178,10 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
 
     if (!definition) {
         definition = scope_find(globals, token.sv);
+        if (!definition && atom) {
+            globals = c->builtin_module->globals;
+            definition = scope_find(globals, token.sv);
+        }
     }
 
     if (atom) {
@@ -1288,12 +1293,12 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             break;
 
         case TOKEN_DIRECTIVE_MAIN:
-            n->type = get_main(c)->node.type;
+            n->type = c->main_fn_type;
             break;
 
         case TOKEN_DIRECTIVE_PLATFORM:
             // TODO: This should be an enumeration
-            n->type = (Type) {.kind = TYPE_STRING};
+            n->type = (Type) {.kind = TYPE_INT};
             break;
 
         case TOKEN_DIRECTIVE_CALLER_LOCATION:
@@ -2189,24 +2194,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-SV platform_as_sv(void) {
+// TODO: Work on this
+long platform_as_enum(void) {
 #ifdef PLATFORM_X86_64_LINUX
-    return sv_from_cstr("Linux");
+    return 0;
 #endif // PLATFORM_X86_64_LINUX
 
-#ifdef PLATFORM_X86_64_WINDOWS
-    return sv_from_cstr("Windows");
-#endif // PLATFORM_X86_64_WINDOWS
-
 #ifdef PLATFORM_ARM64_MACOS
-    return sv_from_cstr("macOS");
+    return 1;
 #endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    return 2;
+#endif // PLATFORM_X86_64_WINDOWS
 }
 
 void check_nodes(Compiler *c) {
     assert(c->parser);
     assert(c->modules);
     assert(c->main_module);
+    assert(c->builtin_module);
+
+    const Type unit = {.kind = TYPE_UNIT};
+    c->main_fn_type = (Type) {
+        .kind = TYPE_FN,
+        .spec.fn.returnn = arena_clone(c->arena, &unit, sizeof(unit)),
+    };
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
