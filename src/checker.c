@@ -465,7 +465,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_NULL:
             return const_value_int(0); // TODO: Pointers in constant expressions
 
-        case TOKEN_IDENT: {
+        case TOKEN_IDENT:
             if (n->type.is_meta) {
                 return const_value_type(n->type);
             }
@@ -478,7 +478,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             }
 
             return atom->definition->definition_spec->const_value;
-        }
 
         case TOKEN_STRING:
             return const_value_string(n->token.sv);
@@ -647,6 +646,23 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             } else {
                 unreachable();
             }
+
+        case CONST_VALUE_MODULE: {
+            Node_Atom *definition = member->module_access_definition;
+            assert(definition);
+
+            if (n->type.is_meta) {
+                return const_value_type(n->type);
+            }
+
+            if (!definition->definition_spec->is_const) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            return definition->definition_spec->const_value;
+        }
 
         default:
             unreachable();

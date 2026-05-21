@@ -331,6 +331,7 @@ int main(int argc, char **argv) {
         result = cmd_wait(child_proc);
     }
 
+    parser_free(&parser);
     arena_free(&arena);
     cmd_free(&cmd);
     da_free(&link_flags);

@@ -386,7 +386,7 @@ typedef struct {
     // function, the actual argument count will be different from the apparent one, and thus cannot be calculated at
     // parse time.
     //
-    // TODO: Name this such that this commenet is unnecessary
+    // TODO: Name this such that this comment is unnecessary
     size_t args_count;
 
     Pos end;
