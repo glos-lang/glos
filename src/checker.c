@@ -471,7 +471,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -511,7 +511,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -554,7 +554,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1216,7 +1216,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1266,7 +1266,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1323,7 +1323,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1531,6 +1531,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             Type_Fn fn_type_spec = {
                 .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
                 .args_count_min = fn->args_count_min,
+                .is_variadic = fn->is_variadic,
             };
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -1816,10 +1817,21 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             call->args_count = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
                 check_node(c, arg, REF_NONE);
+
+                bool is_variadic_arg = false;
                 if (call->args_count >= fn_type_spec.args_count) {
-                    error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                    if (fn_type_spec.is_variadic) {
+                        is_variadic_arg = true;
+                    } else {
+                        error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                    }
                 }
-                type_assert(c, arg, fn_type_spec.args[call->args_count++].type);
+
+                if (!is_variadic_arg) {
+                    type_assert(c, arg, fn_type_spec.args[call->args_count].type);
+                }
+
+                call->args_count++;
             }
 
             if (call->args_count < fn_type_spec.args_count_min) {

@@ -101,6 +101,11 @@ const char *type_to_cstr_raw(Type type) {
             type_to_cstr_raw(it.type);
         }
 
+        if (type.spec.fn.is_variadic) {
+            temp_remove_null();
+            temp_sprintf(", ...");
+        }
+
         temp_remove_null();
         temp_sprintf(")");
 

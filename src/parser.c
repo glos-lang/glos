@@ -25,7 +25,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -435,7 +435,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -540,6 +540,12 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 }
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                    break;
+                }
+
+                if (read_token(p, TOKEN_SPREAD)) {
+                    fn->is_variadic = true;
+                    expect_token(p, TOKEN_RPAREN);
                     break;
                 }
 

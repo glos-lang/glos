@@ -190,49 +190,54 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
 typedef struct {
     ABI_Info *args;
     size_t    args_count;
-    size_t    actual_args_count;
     ABI_Info  returnn;
+
+    LLVMTypeRef *actual_args;
+    size_t       actual_args_count;
+
+    bool   is_variadic;
+    size_t actual_args_variadics_start;
 } ABI;
 
-static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
-    const void *checkpoint = temp_alloc(0);
-
-    assert(!type.ref && type.kind == TYPE_FN);
-    Type_Fn spec = type.spec.fn;
-
-    compile_type(c, spec.returnn);
-    abi->returnn = get_abi_info_for_type(c, spec.returnn);
-
-    abi->actual_args_count = 0;
+static void abi_set_return_type(Compiler *c, ABI *abi, Type *type) {
+    assert(abi->actual_args_count == 0);
+    abi->returnn = get_abi_info_for_type(c, type);
     if (!abi->returnn.direct_types_count) {
         abi->actual_args_count++;
     }
+}
 
-    for (size_t i = 0; i < spec.args_count; i++) {
-        ABI_Info *it = &abi->args[i];
-        *it = get_abi_info_for_type(c, &spec.args[i].type);
-
-        if (it->direct_types_count) {
-            abi->actual_args_count += it->direct_types_count;
-        } else {
-            abi->actual_args_count++;
-        }
+static void abi_set_argument_type(Compiler *c, ABI *abi, size_t index, Type *type) {
+    assert(index < abi->args_count);
+    ABI_Info *it = &abi->args[index];
+    *it = get_abi_info_for_type(c, type);
+    if (it->direct_types_count) {
+        abi->actual_args_count += it->direct_types_count;
+    } else {
+        abi->actual_args_count++;
     }
+}
 
-    size_t       args_iota = 0;
-    LLVMTypeRef *args = temp_alloc(abi->actual_args_count * sizeof(*args));
+static void abi_set_variadic_at(ABI *abi, size_t index) {
+    assert(!abi->is_variadic);
+    abi->is_variadic = true;
+    abi->actual_args_variadics_start = index;
+}
+
+static LLVMTypeRef abi_finalize(Compiler *c, ABI *abi) {
+    size_t args_iota = 0;
     if (!abi->returnn.direct_types_count) {
-        args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+        abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
     }
 
-    for (size_t i = 0; i < spec.args_count; i++) {
+    for (size_t i = 0; i < abi->args_count; i++) {
         const ABI_Info it_abi = abi->args[i];
         if (it_abi.direct_types_count) {
             for (size_t j = 0; j < it_abi.direct_types_count; j++) {
-                args[args_iota++] = it_abi.direct_types[j];
+                abi->actual_args[args_iota++] = it_abi.direct_types[j];
             }
         } else {
-            args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
+            abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         }
     }
 
@@ -257,7 +262,30 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
         unreachable();
     }
 
-    LLVMTypeRef fn_type = LLVMFunctionType(return_type, args, abi->actual_args_count, false);
+    return LLVMFunctionType(
+        return_type,
+        abi->actual_args,
+        abi->is_variadic ? abi->actual_args_variadics_start : abi->actual_args_count,
+        abi->is_variadic);
+}
+
+static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
+    const void *checkpoint = temp_alloc(0);
+
+    assert(!type.ref && type.kind == TYPE_FN);
+    Type_Fn spec = type.spec.fn;
+
+    abi_set_return_type(c, abi, spec.returnn);
+    for (size_t i = 0; i < spec.args_count; i++) {
+        abi_set_argument_type(c, abi, i, &spec.args[i].type);
+    }
+
+    if (spec.is_variadic) {
+        abi_set_variadic_at(abi, spec.args_count);
+    }
+
+    abi->actual_args = temp_alloc(abi->actual_args_count * sizeof(*abi->actual_args));
+    LLVMTypeRef fn_type = abi_finalize(c, abi);
     temp_reset(checkpoint);
     return fn_type;
 }
@@ -1165,7 +1193,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1238,7 +1266,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1304,7 +1332,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 65, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1352,7 +1380,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 65, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1383,7 +1411,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 65, "");
+            static_assert(COUNT_TOKENS == 66, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1425,7 +1453,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 65, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1547,12 +1575,27 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         const void *checkpoint = temp_alloc(0);
 
+        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
+
         ABI abi = {0};
         abi.args = temp_alloc(call->args_count * sizeof(*abi.args));
         abi.args_count = call->args_count;
 
-        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
-        LLVMTypeRef  fn_type = compile_fn_type(c, call->fn->type, &abi);
+        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
+        abi_set_return_type(c, &abi, fn_type_spec.returnn);
+        {
+            size_t iota = 0;
+            for (Node *arg = call->args.head; arg; arg = arg->next) {
+                abi_set_argument_type(c, &abi, iota++, &arg->type);
+            }
+
+            if (fn_type_spec.is_variadic) {
+                abi_set_variadic_at(&abi, fn_type_spec.args_count);
+            }
+
+            abi.actual_args = temp_alloc(abi.actual_args_count * sizeof(*abi.actual_args));
+        }
+        LLVMTypeRef fn_type = abi_finalize(c, &abi);
 
         LLVMValueRef *args = temp_alloc(abi.actual_args_count * sizeof(*args));
 
@@ -1589,6 +1632,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                     expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
                 } else {
                     expr = compile_expr(c, arg, false);
+                    // TODO(@variadics): Promotion
                 }
                 args[arg_iota++] = expr;
             } break;
@@ -1651,7 +1695,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
 #ifdef PLATFORM_X86_64_LINUX
         assert(call->fn->type.kind == TYPE_FN);
-        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
 
         for (size_t i = 0; i < abi.args_count; i++) {
             const ABI_Info it_abi = abi.args[i];

@@ -1,0 +1,7 @@
+main :: () {
+    printf("(%ld, %ld)\n".data, 69, 420)
+}
+
+extern {
+    printf :: (fmt: &char, ...)
+}

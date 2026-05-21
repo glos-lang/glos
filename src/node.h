@@ -85,6 +85,7 @@ typedef struct {
     Type_Fn_Arg *args;
     size_t       args_count;
     size_t       args_count_min;
+    bool         is_variadic;
     Type        *returnn;
 } Type_Fn;
 
@@ -335,6 +336,7 @@ struct Node_Fn {
 
     bool is_type;
     bool is_extern;
+    bool is_variadic;
 
     Node_Fn *outer_fn;
 

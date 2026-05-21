@@ -178,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 65, "");
+static_assert(COUNT_TOKENS == 66, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -272,7 +272,11 @@ Token lexer_iter(Lexer *l) {
 
     case '.':
         if (match_char(l, '.')) {
-            token.kind = TOKEN_RANGE;
+            if (match_char(l, '.')) {
+                token.kind = TOKEN_SPREAD;
+            } else {
+                token.kind = TOKEN_RANGE;
+            }
         } else {
             token.kind = TOKEN_DOT;
         }
