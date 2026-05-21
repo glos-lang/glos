@@ -128,8 +128,8 @@ static bool type_is_compound(Type type) {
 }
 
 static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
-    ABI_Info     info = {0};
-    const size_t size = compile_sizeof(c, type);
+    ABI_Info info = {0};
+    size_t   size = compile_sizeof(c, type);
 
     if (type->ref) {
         info.direct_types[info.direct_types_count++] = LLVMPointerTypeInContext(c->llvm_context, 0);
@@ -157,6 +157,12 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
     }
 
     if (size <= 8) {
+#ifdef PLATFORM_ARM64_MACOS
+        if (type_is_compound(*type)) {
+            size = 8;
+        }
+#endif // PLATFORM_ARM64_MACOS
+
         info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, size * 8);
         return info;
     }
