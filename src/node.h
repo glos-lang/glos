@@ -311,11 +311,7 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *expr;
-
     Node *message;
-    SV    message_sv;
-
-    bool is_compile_time;
 } Node_Assert;
 
 typedef struct {

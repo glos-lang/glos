@@ -56,33 +56,9 @@ typedef struct {
         LLVMMetadataRef value;
     } *llvm_debug_files;
 
-    // TODO: Clean these up
-    // LLVMValueRef llvm_iprint_str;
-    // LLVMValueRef llvm_uprint_str;
-    // LLVMTypeRef  llvm_printf_type;
-    // LLVMValueRef llvm_printf_func;
-
-    // For panic messages
-    // LLVMTypeRef  llvm_fprintf_type;
-    // LLVMValueRef llvm_fprintf_func;
-
-    // LLVMTypeRef  llvm_fflush_type;
-    // LLVMValueRef llvm_fflush_func;
-
-    // LLVMTypeRef  llvm_abort_type;
-    // LLVMValueRef llvm_abort_func;
-
     // For string comparisons
     LLVMTypeRef  llvm_memcmp_type;
     LLVMValueRef llvm_memcmp_func;
-
-    // #ifdef PLATFORM_X86_64_WINDOWS
-    //     LLVMTypeRef  llvm_iob_type;
-    //     LLVMValueRef llvm_iob_func;
-    // #else
-    //     LLVMValueRef llvm_stdout_value;
-    //     LLVMValueRef llvm_stderr_value;
-    // #endif // PLATFORM_X86_64_WINDOWS
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.

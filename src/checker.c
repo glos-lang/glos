@@ -527,7 +527,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -570,7 +570,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -613,7 +613,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1265,7 +1265,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1319,7 +1319,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1376,7 +1376,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 66, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1541,16 +1541,13 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
         }
 
-        bool ok = true;
-        if (assertt->is_compile_time) {
-            ok = eval_const_expr(c, assertt->expr).as.integer;
-        }
+        const bool ok = eval_const_expr(c, assertt->expr).as.integer;
 
-        assertt->message_sv = eval_const_expr(c, assertt->message).as.string;
-        if (assertt->is_compile_time && !ok) {
+        if (!ok) {
             fprintf(stderr, Pos_Fmt "Assertion failed", Pos_Arg(n->token.pos));
             if (assertt->message) {
-                fprintf(stderr, ": " SV_Fmt, SV_Arg(assertt->message_sv));
+                const SV message = eval_const_expr(c, assertt->message).as.string;
+                fprintf(stderr, ": " SV_Fmt, SV_Arg(message));
             }
             fprintf(stderr, "\n");
             exit(1);

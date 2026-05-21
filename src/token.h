@@ -70,7 +70,6 @@ typedef enum {
 
     TOKEN_STRUCT,
     TOKEN_SIZEOF,
-    TOKEN_ASSERT,
 
     TOKEN_DIRECTIVE_IF,
     TOKEN_DIRECTIVE_LINK,
