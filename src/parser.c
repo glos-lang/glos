@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "node.h"
 #include "token.h"
+#include <stdbool.h>
 
 #ifndef PLATFORM_X86_64_WINDOWS
 #include <dirent.h>
@@ -24,7 +25,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 64, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -434,7 +435,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static_assert(COUNT_TOKENS == 64, "");
+static_assert(COUNT_TOKENS == 65, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -807,10 +808,10 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
 
         fprintf(
             stderr,
-            Pos_Fmt "ERROR: Unexpected %s %s function\n",
+            Pos_Fmt "ERROR: Unexpected %s in %s scope\n",
             Pos_Arg(token.pos),
             label,
-            p->state.fn_current ? "inside" : "outside");
+            p->state.fn_current ? "local" : "global");
 
         exit(1);
     }
@@ -841,6 +842,63 @@ static Node *parse_stmt(Parser *p) {
             assertt->message = parse_expr(p, POWER_SET, true, NULL);
             expect_token(p, TOKEN_RPAREN);
         }
+    } break;
+
+    case TOKEN_DIRECTIVE_LINK: {
+        if (!p->state.in_extern) {
+            local_assert(p, false, token, NULL);
+        }
+
+        const Token name = expect_token(p, TOKEN_STRING);
+        if (!name.sv.count) {
+            fprintf(stderr, Pos_Fmt "ERROR: Link name cannot be empty\n", Pos_Arg(name.pos));
+            exit(1);
+        }
+
+        node = parse_stmt(p);
+        if (node->kind != NODE_DEFINE) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Define *define = (Node_Define *) node;
+        if (define->count != 1) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot apply %s to multiple definitions\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        if (define->is_const) {
+            bool ok = false;
+            if (define->expr && define->expr->kind == NODE_FN) {
+                Node_Fn *fn = (Node_Fn *) define->expr;
+                if (fn->body || p->state.in_extern) {
+                    ok = true;
+                }
+            }
+
+            if (!ok) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot apply %s to constant definitions\n",
+                    Pos_Arg(node->token.pos),
+                    token_kind_to_cstr(token.kind));
+                exit(1);
+            }
+        }
+
+        assert(define->name->kind == NODE_ATOM);
+        Node_Atom *it = (Node_Atom *) define->name;
+
+        assert(it->definition_spec);
+        it->definition_spec->link_as = name.sv;
     } break;
 
     case TOKEN_LBRACE:

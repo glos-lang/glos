@@ -700,6 +700,12 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
 
     compile_type(c, &it->node.type);
 
+    SV link_as = {0};
+    if (it->definition_spec->link_as.count) {
+        // Guarantee a terminating '\0'
+        link_as = sv_from_cstr(temp_sv_to_cstr(it->definition_spec->link_as));
+    }
+
     SV name = it->node.token.sv;
     if (it->definition_spec->is_extern) {
         // Guarantee a terminating '\0'
@@ -711,7 +717,10 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     if (it->definition_spec->is_local && !it->definition_spec->is_extern) {
         it->definition_spec->llvm = compile_alloca(c, it->node.type.llvm);
     } else {
-        it->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, name.data);
+        if (!link_as.count) {
+            link_as = name;
+        }
+        it->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, it->node.type.llvm, link_as.data);
     }
 
     if (!it->definition_spec->is_extern) {
@@ -734,8 +743,8 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
                 get_debug_file(c, it->node.token.pos.path),
                 name.data,
                 name.count,
-                name.data,
-                name.count,
+                link_as.data,
+                link_as.count,
                 get_debug_file(c, it->node.token.pos.path),
                 it->node.token.pos.row + 1,
                 var_debug_type,
@@ -773,13 +782,18 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     abi.args_count = fn->args_count;
     fn->node.type.llvm = compile_fn_type(c, fn->node.type, &abi);
 
+    SV link_as = {0};
+    if (fn->defined_as && fn->defined_as->definition_spec->link_as.count) {
+        // Guarantee a terminating '\0'
+        link_as = sv_from_cstr(temp_sv_to_cstr(fn->defined_as->definition_spec->link_as));
+    }
+
     if (fn->is_extern) {
         assert(fn->defined_as);
-        fn->llvm = LLVMGetOrInsertFunction(
-            c->llvm_module,
-            fn->defined_as->node.token.sv.data,
-            fn->defined_as->node.token.sv.count,
-            fn->node.type.llvm);
+        if (!link_as.count) {
+            link_as = fn->defined_as->node.token.sv;
+        }
+        fn->llvm = LLVMGetOrInsertFunction(c->llvm_module, link_as.data, link_as.count, fn->node.type.llvm);
     } else {
         const size_t defers_start_save = c->defers_start;
         c->defers_start = c->defers.count;
@@ -791,7 +805,10 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
 
         SV fn_name = sv_from_cstr(temp_emit_nested_fn_name(c, fn, fn->module));
-        fn->llvm = LLVMAddFunction(c->llvm_module, fn_name.data, fn->node.type.llvm);
+        if (!link_as.count) {
+            link_as = fn_name;
+        }
+        fn->llvm = LLVMAddFunction(c->llvm_module, link_as.data, fn->node.type.llvm);
 
         c->llvm_fn = fn->llvm;
         c->llvm_fn_last_alloca = NULL;
@@ -823,8 +840,8 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             get_scope_of_definition(c, (Node *) fn, fn->outer_fn),
             fn_name.data,
             fn_name.count,
-            fn_name.data,
-            fn_name.count,
+            link_as.data,
+            link_as.count,
             get_debug_file(c, fn->node.token.pos.path),
             fn->node.token.pos.row + 1,
             fn_debug_type,
@@ -1148,7 +1165,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 64, "");
+        static_assert(COUNT_TOKENS == 65, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1221,7 +1238,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 64, "");
+        static_assert(COUNT_TOKENS == 65, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1287,7 +1304,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 64, "");
+            static_assert(COUNT_TOKENS == 65, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1335,7 +1352,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 64, "");
+            static_assert(COUNT_TOKENS == 65, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1366,7 +1383,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 64, "");
+            static_assert(COUNT_TOKENS == 65, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1408,7 +1425,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 64, "");
+        static_assert(COUNT_TOKENS == 65, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);

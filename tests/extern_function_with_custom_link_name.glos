@@ -1,0 +1,8 @@
+main :: () {
+    println("Hello, world!".data)
+}
+
+extern {
+    #link "puts"
+    println :: (s: &char) -> i32
+}

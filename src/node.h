@@ -256,6 +256,9 @@ typedef struct {
     bool        is_const;
     Const_Value const_value;
 
+    // If this is non-empty, then use this as the linker symbol
+    SV link_as;
+
     LLVMValueRef llvm;
 } Definition_Spec;
 
