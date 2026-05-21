@@ -461,6 +461,61 @@ static bool always_returns(Node *n) {
     }
 }
 
+typedef enum {
+    REF_NONE,
+    REF_ADDR,
+    REF_ASSIGN,
+} Ref_Kind;
+
+static void check_node(Compiler *c, Node *n, Ref_Kind ref);
+
+static Node_Fn *get_main(Compiler *c) {
+    if (c->main_fn) {
+        return c->main_fn;
+    }
+
+    Node_Atom *main = scope_find(c->main_module->globals, sv_from_cstr("main"));
+    if (!main) {
+        fprintf(
+            stderr,
+            "ERROR: Function 'main' is not defined\n"
+            "\n"
+            "```\n"
+            "main :: () {\n"
+            "}\n"
+            "```\n");
+        exit(1);
+    }
+
+    if (!main->definition_spec->is_const || main->definition_spec->assignment_node->kind != NODE_FN) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier 'main' must be a function literal\n", Pos_Arg(main->node.token.pos));
+        fprintf(
+            stderr,
+            "\n"
+            "```\n"
+            "main :: () {\n"
+            "}\n"
+            "```\n");
+        exit(1);
+    }
+
+    c->main_fn = (Node_Fn *) main->definition_spec->assignment_node;
+    check_node(c, (Node *) main->definition_spec->definition_node, REF_NONE);
+
+    const Type_Fn signature = main->node.type.spec.fn;
+    if (signature.args_count) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
+
+    if (signature.returnn->kind != TYPE_UNIT) {
+        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
+        exit(1);
+    }
+
+    return c->main_fn;
+}
+
 static_assert(COUNT_NODES == 24, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
@@ -471,7 +526,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -498,6 +553,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_STRING:
             return const_value_string(n->token.sv);
 
+        case TOKEN_DIRECTIVE_MAIN:
+            return const_value_fn(get_main(c));
+
         case TOKEN_DIRECTIVE_PLATFORM:
             return const_value_string(platform_as_sv());
 
@@ -511,7 +569,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -554,7 +612,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -628,18 +686,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_EQ:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
-            if (lhs.kind == CONST_VALUE_STRING) {
-                return const_value_int(sv_eq(lhs.as.string, rhs.as.string));
-            }
-            return const_value_int(lhs.as.integer == rhs.as.integer);
+            return const_value_int(const_value_eq(lhs, rhs));
 
         case TOKEN_NE:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
-            if (lhs.kind == CONST_VALUE_STRING) {
-                return const_value_int(!sv_eq(lhs.as.string, rhs.as.string));
-            }
-            return const_value_int(lhs.as.integer != rhs.as.integer);
+            return const_value_int(!const_value_eq(lhs, rhs));
 
         default:
             unreachable();
@@ -846,14 +898,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         break;
     }
 }
-
-typedef enum {
-    REF_NONE,
-    REF_ADDR,
-    REF_ASSIGN,
-} Ref_Kind;
-
-static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_node(c, sw->expr, REF_NONE);
@@ -1216,7 +1260,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1243,6 +1287,10 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
+        case TOKEN_DIRECTIVE_MAIN:
+            n->type = get_main(c)->node.type;
+            break;
+
         case TOKEN_DIRECTIVE_PLATFORM:
             // TODO: This should be an enumeration
             n->type = (Type) {.kind = TYPE_STRING};
@@ -1266,7 +1314,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1323,7 +1371,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2158,6 +2206,7 @@ SV platform_as_sv(void) {
 void check_nodes(Compiler *c) {
     assert(c->parser);
     assert(c->modules);
+    assert(c->main_module);
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
@@ -2170,4 +2219,6 @@ void check_nodes(Compiler *c) {
             check_node(c, it, REF_NONE);
         }
     }
+
+    get_main(c);
 }

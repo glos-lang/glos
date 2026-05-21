@@ -16,6 +16,8 @@ typedef struct {
 
     Parser  *parser;
     Modules *modules;
+    Module  *main_module;
+    Node_Fn *main_fn;
 
     // Rest all are only used by compiler
     Cmd        *cmd;
@@ -87,6 +89,6 @@ typedef struct {
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);
-void   compiler_build(Compiler *c, Module *main_module, const char *output_path);
+void   compiler_build(Compiler *c, const char *output_path);
 
 #endif // COMPILER_H

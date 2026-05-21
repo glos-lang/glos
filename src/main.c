@@ -305,14 +305,15 @@ int main(int argc, char **argv) {
 
     Compiler compiler = {
         .arena = &arena,
-        .modules = &modules,
         .parser = &parser,
+        .modules = &modules,
+        .main_module = main_module,
 
         .cmd = &cmd,
         .link_flags = &link_flags,
     };
     check_nodes(&compiler);
-    compiler_build(&compiler, main_module, output_path);
+    compiler_build(&compiler, output_path);
 
     if (run) {
         const char *child_name = output_path;

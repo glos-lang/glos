@@ -1193,7 +1193,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1208,6 +1208,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_STRING:
             return compile_string(c, n->token.sv, &n->token.pos, ref);
+
+        case TOKEN_DIRECTIVE_MAIN:
+            return compile_fn(c, c->main_fn);
 
         case TOKEN_DIRECTIVE_PLATFORM:
             return compile_string(c, platform_as_sv(), &n->token.pos, ref);
@@ -1266,7 +1269,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1332,7 +1335,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1380,7 +1383,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1411,7 +1414,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1453,7 +1456,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -2281,39 +2284,6 @@ static void compile_stmt(Compiler *c, Node *n) {
     }
 }
 
-static Node_Fn *get_main(Module *main_module) {
-    Node_Atom *main = scope_find(main_module->globals, sv_from_cstr("main"));
-    if (!main) {
-        fprintf(
-            stderr,
-            "ERROR: Function 'main' is not defined\n"
-            "\n"
-            "```\n"
-            "main :: () {\n"
-            "}\n"
-            "```\n");
-        exit(1);
-    }
-
-    if (!main->definition_spec->is_const || main->definition_spec->const_value.kind != CONST_VALUE_FN) {
-        fprintf(
-            stderr, Pos_Fmt "ERROR: Identifier 'main' must be a constant function\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-
-    const Type_Fn signature = main->node.type.spec.fn;
-    if (signature.args_count) {
-        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-
-    if (signature.returnn->kind != TYPE_UNIT) {
-        fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
-        exit(1);
-    }
-    return main->definition_spec->const_value.as.fn;
-}
-
 static void compiler_init_llvm_target_data(Compiler *c) {
     if (LLVMInitializeNativeTarget() != 0) {
         fprintf(stderr, "ERROR: Failed to initialize native target\n");
@@ -2352,13 +2322,14 @@ size_t compile_sizeof(Compiler *c, Type *type) {
     return LLVMABISizeOfType(c->llvm_target_data, type->llvm);
 }
 
-void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
+void compiler_build(Compiler *c, const char *output_path) {
     const void *checkpoint = temp_alloc(0);
 
     assert(c->cmd);
     assert(c->arena);
     assert(c->modules);
-    Node_Fn *main_fn = get_main(main_module);
+    assert(c->main_module);
+    assert(c->main_fn);
 
     if (!c->llvm_context) {
         compiler_init_llvm_target_data(c);
@@ -2373,7 +2344,7 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
     c->llvm_debug_compile_unit = LLVMDIBuilderCreateCompileUnit(
         c->llvm_debug_builder,
         LLVMDWARFSourceLanguageC,
-        get_debug_file(c, main_fn->node.token.pos.path),
+        get_debug_file(c, c->main_fn->node.token.pos.path),
         "glos",
         4,
         false,
@@ -2496,7 +2467,7 @@ void compiler_build(Compiler *c, Module *main_module, const char *output_path) {
     LLVMValueRef main_func = LLVMAddFunction(c->llvm_module, "main", main_type);
     LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, main_func, ""));
 
-    LLVMBuildCall2(c->llvm_builder, main_fn->node.type.llvm, main_fn->llvm, NULL, 0, "");
+    LLVMBuildCall2(c->llvm_builder, c->main_fn->node.type.llvm, c->main_fn->llvm, NULL, 0, "");
     LLVMBuildRet(c->llvm_builder, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)));
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);

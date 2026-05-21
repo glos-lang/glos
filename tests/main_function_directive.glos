@@ -1,0 +1,18 @@
+v: i64
+
+main :: () {
+    comptime :: #main
+    runtime := #main
+
+    print v
+
+    if v == {
+    case 0
+        v += 1
+        comptime()
+
+    case 1
+        v += 1
+        runtime()
+    }
+}
