@@ -984,7 +984,11 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         exit(1);
     }
 
-    Node_Atom *definition = context_find_local(&c->context, token.sv);
+    Node_Atom *definition = NULL;
+    if (atom) {
+        definition = context_find_local(&c->context, token.sv);
+    }
+
     if (!definition) {
         definition = scope_find(globals, token.sv);
     }
