@@ -11,7 +11,7 @@ extern {
 }
 
 Platform_Linux   :: 0
-Platform_macOS   :: 1
+Platform_MacOS   :: 1
 Platform_Windows :: 2
 
 #if #platform == {
@@ -22,7 +22,7 @@ case Platform_Linux
         stderr: File
     }
 
-case Platform_macOS
+case Platform_MacOS
     extern {
         #link "__stdinp"  stdin: File
         #link "__stdoutp" stdout: File

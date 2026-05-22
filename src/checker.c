@@ -558,7 +558,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             return const_value_fn(get_main(c));
 
         case TOKEN_DIRECTIVE_PLATFORM:
-            return const_value_int(platform_as_enum());
+            return get_platform(c, NULL);
 
         default:
             unreachable();
@@ -1297,8 +1297,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             break;
 
         case TOKEN_DIRECTIVE_PLATFORM:
-            // TODO: This should be an enumeration
-            n->type = (Type) {.kind = TYPE_INT};
+            get_platform(c, &n->type);
             break;
 
         case TOKEN_DIRECTIVE_CALLER_LOCATION:
@@ -2192,18 +2191,30 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 }
 
 // TODO: Work on this
-long platform_as_enum(void) {
+Const_Value get_platform(Compiler *c, Type *type) {
 #ifdef PLATFORM_X86_64_LINUX
-    return 0;
+    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_Linux"), type);
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    return 1;
+    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_MacOS"), type);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    return 2;
+    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_Windows"), type);
 #endif // PLATFORM_X86_64_WINDOWS
+}
+
+Const_Value get_const_definition_value(Compiler *c, Module *m, SV name, Type *type) {
+    Node_Atom *atom = scope_find(m->globals, name);
+    assert(atom);
+    assert(atom->definition_spec->is_const);
+    check_node(c, (Node *) atom->definition_spec->definition_node, REF_NONE);
+
+    if (type) {
+        *type = atom->node.type;
+    }
+    return atom->definition_spec->const_value;
 }
 
 void check_nodes(Compiler *c) {

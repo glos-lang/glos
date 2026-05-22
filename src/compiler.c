@@ -1,7 +1,6 @@
 #include "compiler.h"
 #include "basic.h"
 #include "checker.h"
-#include "context.h"
 #include "dwarf.h"
 #include "node.h"
 #include "token.h"
@@ -615,16 +614,13 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     return alloca;
 }
 
-static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
-    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
-    LLVMValueRef slice_data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
-    LLVMSetInitializer(slice_data, memory);
-
-    LLVMValueRef slice_count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), sv.count, false);
+static LLVMValueRef compile_string_struct(Compiler *c, LLVMValueRef data, size_t count, const Pos *pos, bool ref) {
     LLVMValueRef slice_struct = compile_alloca(c, c->llvm_slice_type);
-    LLVMBuildStore(c->llvm_builder, slice_data, slice_struct);
+    LLVMBuildStore(c->llvm_builder, data, slice_struct);
     LLVMBuildStore(
-        c->llvm_builder, slice_count, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
+        c->llvm_builder,
+        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), count, false),
+        LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
 
     if (ref) {
         return slice_struct;
@@ -634,6 +630,13 @@ static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref)
         set_debug_pos(c, *pos);
     }
     return LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, slice_struct, "");
+}
+
+static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
+    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+    LLVMValueRef data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
+    LLVMSetInitializer(data, memory);
+    return compile_string_struct(c, data, sv.count, pos, ref);
 }
 
 static_assert(COUNT_CONST_VALUES == 6, "");
@@ -974,21 +977,21 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     return fn->llvm;
 }
 
-// TODO: Expand to quering any constant value
-static Node_Fn *get_builtin_func(Compiler *c, SV name) {
-    Node_Atom *atom = scope_find(c->builtin_module->globals, name);
-    assert(atom);
-    assert(atom->definition_spec->is_const);
-    assert(atom->definition_spec->const_value.kind == CONST_VALUE_FN);
+static LLVMValueRef get_builtin_func(Compiler *c, SV name, LLVMTypeRef *type) {
+    const Const_Value value = get_const_definition_value(c, c->builtin_module, name, NULL);
+    assert(value.kind == CONST_VALUE_FN);
 
-    Node_Fn *fn = atom->definition_spec->const_value.as.fn;
-    compile_fn(c, fn);
+    LLVMValueRef fn = compile_fn(c, value.as.fn);
+    if (type) {
+        *type = value.as.fn->node.type.llvm;
+    }
     return fn;
 }
 
 // TODO: This is very ugly and should be cleaned up later.
 static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3) {
-    Node_Fn *panic_handler = get_builtin_func(c, sv_from_cstr("panic_handler"));
+    LLVMTypeRef  fn_type = NULL;
+    LLVMValueRef fn_value = get_builtin_func(c, sv_from_cstr("panic_handler"), &fn_type);
 
     LLVMValueRef zero = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
     LLVMValueRef args[] = {
@@ -998,7 +1001,7 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
         v3 ? v3 : zero,
     };
 
-    LLVMBuildCall2(c->llvm_builder, panic_handler->node.type.llvm, panic_handler->llvm, args, len(args), "");
+    LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, len(args), "");
     LLVMBuildUnreachable(c->llvm_builder);
 }
 
@@ -1112,11 +1115,21 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
             set_debug_pos(c, token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 
-        case CONST_VALUE_STRING:
-            return compile_string(c, const_value.as.string, &token.pos, ref);
+        case CONST_VALUE_STRING: {
+            const SV sv = const_value.as.string;
+            if (!definition->definition_spec->llvm) {
+                LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+                definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
+                LLVMSetInitializer(definition->definition_spec->llvm, memory);
+            }
+            return compile_string_struct(c, definition->definition_spec->llvm, sv.count, &token.pos, ref);
+        }
 
         default:
-            return compile_const_value(c, const_value, n->type);
+            if (!definition->definition_spec->llvm) {
+                definition->definition_spec->llvm = compile_const_value(c, const_value, n->type);
+            }
+            return definition->definition_spec->llvm;
         }
     }
 
@@ -1167,7 +1180,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             return compile_fn(c, c->main_fn);
 
         case TOKEN_DIRECTIVE_PLATFORM:
-            return LLVMConstInt(n->type.llvm, platform_as_enum(), type_is_signed(n->type));
+            return compile_const_value(c, get_platform(c, NULL), n->type);
 
         default:
             unreachable();
@@ -2194,7 +2207,8 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_PRINT: {
         Node_Print *print = (Node_Print *) n;
 
-        Node_Fn *print_handler = get_builtin_func(c, sv_from_cstr("print_handler"));
+        LLVMTypeRef  fn_type = NULL;
+        LLVMValueRef fn_value = get_builtin_func(c, sv_from_cstr("print_handler"), &fn_type);
 
         const bool   is_signed = type_is_signed(print->value->type);
         LLVMValueRef args[] = {
@@ -2203,7 +2217,7 @@ static void compile_stmt(Compiler *c, Node *n) {
         };
 
         set_debug_pos(c, n->token.pos);
-        LLVMBuildCall2(c->llvm_builder, print_handler->node.type.llvm, print_handler->llvm, args, len(args), "");
+        LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, len(args), "");
     } break;
 
     default:
