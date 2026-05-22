@@ -332,6 +332,7 @@ struct Node_Fn {
 
     bool is_type;
     bool is_extern;
+    bool is_inline;
     bool is_variadic;
 
     Node_Fn *outer_fn;

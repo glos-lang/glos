@@ -15,9 +15,7 @@
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/TargetMachine.h>
-
-// TODO(@inline)
-// #include <llvm-c/Transforms/PassBuilder.h>
+#include <llvm-c/Transforms/PassBuilder.h>
 
 static_assert(COUNT_TYPES == 18, "");
 static void compile_type(Compiler *c, Type *type) {
@@ -845,12 +843,10 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         }
         fn->llvm = LLVMAddFunction(c->llvm_module, link_as.data, fn->node.type.llvm);
 
-        // TODO(@inline)
-        // if (sv_match(fn_name, "builtin.assert")) {
-        //     unsigned         alwaysInlineKind = LLVMGetEnumAttributeKindForName("alwaysinline",
-        //     strlen("alwaysinline")); LLVMAttributeRef attr = LLVMCreateEnumAttribute(c->llvm_context,
-        //     alwaysInlineKind, 0); LLVMAddAttributeAtIndex(fn->llvm, LLVMAttributeFunctionIndex, attr);
-        // }
+        if (fn->is_inline) {
+            LLVMAttributeRef alwaysinline = LLVMCreateEnumAttribute(c->llvm_context, c->llvm_attribute_alwaysinline, 0);
+            LLVMAddAttributeAtIndex(fn->llvm, LLVMAttributeFunctionIndex, alwaysinline);
+        }
 
         c->llvm_fn = fn->llvm;
         c->llvm_fn_last_alloca = NULL;
@@ -1055,45 +1051,6 @@ static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_
     unreachable();
 }
 
-static LLVMValueRef compile_string_eq(Compiler *c, LLVMValueRef lhs, LLVMValueRef rhs) {
-    LLVMValueRef lhs_count = LLVMBuildExtractValue(c->llvm_builder, lhs, 1, "");
-    LLVMValueRef rhs_count = LLVMBuildExtractValue(c->llvm_builder, rhs, 1, "");
-
-    LLVMBasicBlockRef count_equal_block = LLVMGetInsertBlock(c->llvm_builder);
-    LLVMBasicBlockRef data_equal_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-    LLVMBasicBlockRef end_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-
-    LLVMValueRef count_equal = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, lhs_count, rhs_count, "");
-    LLVMBuildCondBr(c->llvm_builder, count_equal, data_equal_block, end_block);
-
-    // Count equal
-    LLVMValueRef data_equal = NULL;
-    {
-        LLVMPositionBuilderAtEnd(c->llvm_builder, data_equal_block);
-
-        LLVMValueRef memcmp_args[] = {
-            LLVMBuildExtractValue(c->llvm_builder, lhs, 0, ""),
-            LLVMBuildExtractValue(c->llvm_builder, rhs, 0, ""),
-            lhs_count,
-        };
-
-        data_equal = LLVMBuildCall2(
-            c->llvm_builder, c->llvm_memcmp_type, c->llvm_memcmp_func, memcmp_args, len(memcmp_args), "");
-        data_equal = LLVMBuildICmp(
-            c->llvm_builder, LLVMIntEQ, data_equal, LLVMConstNull(LLVMInt32TypeInContext(c->llvm_context)), "");
-        LLVMBuildBr(c->llvm_builder, end_block);
-    }
-
-    LLVMPositionBuilderAtEnd(c->llvm_builder, end_block);
-    LLVMTypeRef  llvm_type_i1 = LLVMInt1TypeInContext(c->llvm_context);
-    LLVMValueRef string_equal = LLVMBuildPhi(c->llvm_builder, llvm_type_i1, "");
-
-    LLVMValueRef      phi_values[] = {data_equal, LLVMConstNull(llvm_type_i1)};
-    LLVMBasicBlockRef phi_blocks[] = {data_equal_block, count_equal_block};
-    LLVMAddIncoming(string_equal, phi_values, phi_blocks, len(phi_blocks));
-    return string_equal;
-}
-
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
     Token token = {0};
     if (n->kind == NODE_ATOM) {
@@ -1170,7 +1127,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1246,7 +1203,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1288,11 +1245,16 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         // String comparison
         if (binary->lhs->type.kind == TYPE_STRING) {
-            LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
-            LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+            LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
+            LLVMValueRef rhs = compile_expr(c, binary->rhs, true);
             set_debug_pos(c, n->token.pos);
 
-            LLVMValueRef equal = compile_string_eq(c, lhs, rhs);
+            LLVMTypeRef  fn_type = NULL;
+            LLVMValueRef fn_value = get_builtin_func(c, sv_from_cstr("string_eq"), &fn_type);
+
+            LLVMValueRef args[] = {lhs, rhs};
+            LLVMValueRef equal = LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, len(args), "");
+
             switch (n->token.kind) {
             case TOKEN_EQ:
                 return equal;
@@ -1312,7 +1274,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1360,7 +1322,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1391,7 +1353,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 66, "");
+            static_assert(COUNT_TOKENS == 67, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1433,7 +1395,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 66, "");
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -2289,6 +2251,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     c->llvm_attribute_sret = LLVMGetEnumAttributeKindForName("sret", strlen("sret"));
     c->llvm_attribute_byval = LLVMGetEnumAttributeKindForName("byval", strlen("byval"));
+    c->llvm_attribute_alwaysinline = LLVMGetEnumAttributeKindForName("alwaysinline", strlen("alwaysinline"));
 
     c->llvm_debug_builder = LLVMCreateDIBuilder(c->llvm_module);
 
@@ -2313,19 +2276,6 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
-    // String comparisons
-    {
-        LLVMTypeRef memcmp_args[] = {
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-            LLVMInt64TypeInContext(c->llvm_context),
-        };
-
-        c->llvm_memcmp_type =
-            LLVMFunctionType(LLVMInt32TypeInContext(c->llvm_context), memcmp_args, len(memcmp_args), false);
-        c->llvm_memcmp_func = LLVMAddFunction(c->llvm_module, "memcmp", c->llvm_memcmp_type);
-    }
-
     for (Module *m = c->modules->head; m; m = m->next) {
         for (size_t i = 0; i < m->globals.count; i++) {
             Node_Atom *it = m->globals.data[i];
@@ -2343,12 +2293,9 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
     }
 
-    // TODO(@inline)
-    // {
-    //     LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
-    //     LLVMRunPasses(c->llvm_module, "always-inline", c->llvm_target_machine, options);
-    //     LLVMDisposePassBuilderOptions(options);
-    // }
+    LLVMPassBuilderOptionsRef pass_builder_options = LLVMCreatePassBuilderOptions();
+    LLVMRunPasses(c->llvm_module, "always-inline", c->llvm_target_machine, pass_builder_options);
+    LLVMDisposePassBuilderOptions(pass_builder_options);
 
     LLVMDIBuilderFinalize(c->llvm_debug_builder);
 

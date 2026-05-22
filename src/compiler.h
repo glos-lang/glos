@@ -43,6 +43,7 @@ typedef struct {
 
     unsigned int llvm_attribute_sret;
     unsigned int llvm_attribute_byval;
+    unsigned int llvm_attribute_alwaysinline;
 
     LLVMBasicBlockRef llvm_loop_break;
     LLVMBasicBlockRef llvm_loop_continue;
@@ -55,10 +56,6 @@ typedef struct {
         const char     *key;
         LLVMMetadataRef value;
     } *llvm_debug_files;
-
-    // For string comparisons
-    LLVMTypeRef  llvm_memcmp_type;
-    LLVMValueRef llvm_memcmp_func;
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.

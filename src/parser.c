@@ -25,7 +25,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -441,7 +441,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static_assert(COUNT_TOKENS == 66, "");
+static_assert(COUNT_TOKENS == 67, "");
 static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -635,6 +635,39 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         if (!p->state.in_compile_time_condition) {
             parser_import(p, import);
         }
+    } break;
+
+    case TOKEN_DIRECTIVE_INLINE: {
+        node = parse_expr(p, POWER_DOT, false, NULL);
+        if (node->kind != NODE_FN) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected function literal after %s\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Fn *fn = (Node_Fn *) node;
+        if (p->state.in_extern) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot apply %s to an external function\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        if (fn->is_type) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot apply %s to a type\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        fn->is_inline = true;
     } break;
 
     default:
