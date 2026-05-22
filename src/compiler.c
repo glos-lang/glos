@@ -16,6 +16,9 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/TargetMachine.h>
 
+// TODO(@inline)
+// #include <llvm-c/Transforms/PassBuilder.h>
+
 static_assert(COUNT_TYPES == 18, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
@@ -841,6 +844,13 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             link_as = fn_name;
         }
         fn->llvm = LLVMAddFunction(c->llvm_module, link_as.data, fn->node.type.llvm);
+
+        // TODO(@inline)
+        // if (sv_match(fn_name, "builtin.assert")) {
+        //     unsigned         alwaysInlineKind = LLVMGetEnumAttributeKindForName("alwaysinline",
+        //     strlen("alwaysinline")); LLVMAttributeRef attr = LLVMCreateEnumAttribute(c->llvm_context,
+        //     alwaysInlineKind, 0); LLVMAddAttributeAtIndex(fn->llvm, LLVMAttributeFunctionIndex, attr);
+        // }
 
         c->llvm_fn = fn->llvm;
         c->llvm_fn_last_alloca = NULL;
@@ -2333,6 +2343,13 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
     }
 
+    // TODO(@inline)
+    // {
+    //     LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
+    //     LLVMRunPasses(c->llvm_module, "always-inline", c->llvm_target_machine, options);
+    //     LLVMDisposePassBuilderOptions(options);
+    // }
+
     LLVMDIBuilderFinalize(c->llvm_debug_builder);
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
@@ -2390,4 +2407,34 @@ void compiler_build(Compiler *c, const char *output_path) {
     temp_reset(checkpoint);
 }
 
-// TODO: Should we use '%llu' instead of '%zu' for symmetry?
+// TODO: Add '#inline' attribute
+
+/*
+
+    TODO: Simplify compile_expr(Node_Call)
+
+    # Option A. Erase Load
+    ```
+    LLVMValueRef arg_value = compile_expr(c, arg, REF_NONE);
+    if (type_is_compound(arg->type)) {
+        assert(LLVMGetInstructionOpcode(arg_value) == LLVMLoad);
+        LLVMValueRef ptr = LLVMGetOperand(arg_value, 0);
+
+        assert(LLVMGetFirstUse(arg_value) == NULL);
+        LLVMInstructionEraseFromParent(arg_value);
+        arg_value = ptr;
+    }
+    ```
+
+    # Option B. Use pointers for compound types always (Preferred!!!)
+    ```
+    void compile_store(Compiler *c, LLVMValueRef ptr, LLVMValueRef value, Type type) {
+        if (type_is_compound(type)) {
+            LLVMBuildMemCpy(...);
+        } else {
+            LLVMBuildStore(...);
+        }
+    }
+    ```
+
+ */
