@@ -1673,6 +1673,8 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         LLVMValueRef fn_value = compile_expr(c, call->fn, false);
 
+        const void *checkpoint = temp_alloc(0);
+
         ABI abi = {0};
         abi.args = temp_alloc(call->args_count * sizeof(*abi.args));
         abi.args_count = call->args_count;
@@ -1700,7 +1702,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         set_debug_pos(c, n->token.pos);
-        return abi_call_finalize(c, &abi_call, ref);
+        LLVMValueRef result = abi_call_finalize(c, &abi_call, ref);
+        temp_reset(checkpoint);
+        return result;
     }
 
     case NODE_SLICE:
