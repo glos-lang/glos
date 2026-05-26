@@ -9,8 +9,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#include "thirdparty/stb_ds.h"
-
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
@@ -498,13 +496,17 @@ static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *mo
 }
 
 static LLVMMetadataRef get_debug_file(Compiler *c, const char *path) {
-    ptrdiff_t index = shgeti(c->llvm_debug_files, path);
-    if (index != -1) {
-        return c->llvm_debug_files[index].value;
+    if (!c->llvm_debug_files.hasheq) {
+        c->llvm_debug_files.hasheq = ht_hasheq_cstr;
+    }
+
+    LLVMMetadataRef *metadatap = ht_get(&c->llvm_debug_files, path);
+    if (metadatap) {
+        return *metadatap;
     }
 
     LLVMMetadataRef metadata = LLVMDIBuilderCreateFile(c->llvm_debug_builder, path, strlen(path), ".", strlen("."));
-    shput(c->llvm_debug_files, path, metadata);
+    ht_set(&c->llvm_debug_files, path, metadata);
     return metadata;
 }
 
@@ -2391,6 +2393,6 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
     }
 
-    shfree(c->llvm_debug_files);
+    ht_free(&c->llvm_debug_files);
     temp_reset(checkpoint);
 }

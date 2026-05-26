@@ -1,8 +1,6 @@
 #include "node.h"
 #include "basic.h"
 
-#include "thirdparty/stb_ds.h"
-
 void nodes_push(Nodes *ns, Node *n) {
     if (!n) {
         return;
@@ -18,7 +16,7 @@ void nodes_push(Nodes *ns, Node *n) {
 }
 
 void modules_free(Modules *m) {
-    shfree(m->table);
+    ht_free(&m->table);
 }
 
 static_assert(COUNT_TYPES == 18, "");

@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,6 +95,135 @@ static_assert(sizeof(i64) == 8, "");
     (da_grow(l, (l)->count + c), memcpy((l)->data + (l)->count, (v), (c) * sizeof(*(l)->data)), (l)->count += (c))
 
 void da_resize(void **data, size_t *capacity, size_t size, size_t count);
+
+// Hash Table
+#define HT(K, V)                                                                                                       \
+    struct {                                                                                                           \
+        struct {                                                                                                       \
+            uint8_t state;                                                                                             \
+            K       key;                                                                                               \
+            V       value;                                                                                             \
+        } *data;                                                                                                       \
+                                                                                                                       \
+        size_t    count;                                                                                               \
+        size_t    capacity;                                                                                            \
+        HT_Hasheq hasheq;                                                                                              \
+    }
+
+// For providing custom hashing and equality functionality. The contract is:
+//
+// ```
+// hasheq(&key, NULL, sizeof(key)) => Hash 'key'
+// hasheq(&a, &b, sizeof(a))       => Compare 'a' and 'b' and return non-zero if equal
+// ```
+//
+// By default, the bytes of the key are compared. For having C-strings as the key, the function 'ht_hasheq_cstr' is
+// already provided.
+// ```
+// HT(const char *, int) ht = {.hasheq = ht_hasheq_cstr};
+// ```
+typedef uint64_t (*HT_Hasheq)(const void *a, const void *b, size_t n);
+
+// V *ht_get(HT(K, V) *ht, K key)
+#define ht_get(ht, k)                                                                                                  \
+    ((__typeof__((ht)->data->value) *) ht_get_impl(                                                                    \
+        (ht)->data, (ht)->capacity, HT_LAYOUT(ht), (ht)->hasheq, (__typeof__((ht)->data->key)[]) {k}))
+
+// void ht_get(HT(K, V) *ht, K key, V value)
+#define ht_set(ht, k, v)                                                                                               \
+    (ht_set_impl(                                                                                                      \
+        (void **) &(ht)->data,                                                                                         \
+        &(ht)->count,                                                                                                  \
+        &(ht)->capacity,                                                                                               \
+        HT_LAYOUT(ht),                                                                                                 \
+        (ht)->hasheq,                                                                                                  \
+        (__typeof__((ht)->data->key)[]) {k},                                                                           \
+        (__typeof__((ht)->data->value)[]) {v}))
+
+// void ht_delete(HT(K, V) *ht, K key)
+#define ht_delete(ht, k)                                                                                               \
+    (ht_delete_impl(                                                                                                   \
+        (ht)->data, &(ht)->count, (ht)->capacity, HT_LAYOUT(ht), (ht)->hasheq, (__typeof__((ht)->data->key)[]) {k}))
+
+// void ht_clear(HT(K, V) *ht)
+#define ht_clear(ht) ((ht)->data ? memset((ht)->data, 0, (ht)->capacity * sizeof(*(ht)->data)) : NULL, (ht)->count = 0)
+
+// void ht_free(HT(K, V) *ht)
+#define ht_free(ht) (free((ht)->data), memset((ht), 0, sizeof(*(ht))))
+
+// HT(const char *, int) xs = {0};
+// ...
+// ht_foreach(x, &xs) {
+//     printf("%s => %d\n", *x.key, *x.value);
+// }
+#define ht_foreach(it, ht)                                                                                             \
+    MSVC_SUPPRESS_4116                                                                                                 \
+    for (HT_Iter(__typeof__((ht)->data->key), __typeof__((ht)->data->value)) it = {0}; ht_iter(ht, it);)
+
+#define HT_Iter(K, V)                                                                                                  \
+    struct {                                                                                                           \
+        const K *key;                                                                                                  \
+        V       *value;                                                                                                \
+                                                                                                                       \
+        bool   started;                                                                                                \
+        size_t index;                                                                                                  \
+    }
+
+// bool ht_iter(HT(K, V) *ht, HT_Iter(K, V) *it)
+#define ht_iter(ht, it)                                                                                                \
+    ht_iter_impl(                                                                                                      \
+        (ht)->data,                                                                                                    \
+        (ht)->capacity,                                                                                                \
+        HT_LAYOUT(ht),                                                                                                 \
+        &(it.started),                                                                                                 \
+        &(it).index,                                                                                                   \
+        (void *) &(it).key,                                                                                            \
+        (void *) &(it).value)
+
+typedef struct {
+    size_t key_offset;
+    size_t key_size;
+
+    size_t value_offset;
+    size_t value_size;
+
+    size_t entry_size;
+} HT_Layout;
+
+#define HT_LAYOUT(ht)                                                                                                  \
+    ((HT_Layout) {                                                                                                     \
+        .key_offset = offsetof(__typeof__(*(ht)->data), key),                                                          \
+        .key_size = sizeof((ht)->data->key), /* NOLINT(bugprone-sizeof-expression) */                                  \
+                                                                                                                       \
+        .value_offset = offsetof(__typeof__(*(ht)->data), value),                                                      \
+        .value_size = sizeof((ht)->data->value), /* NOLINT(bugprone-sizeof-expression) */                              \
+                                                                                                                       \
+        .entry_size = sizeof(*(ht)->data),                                                                             \
+    })
+
+uint64_t ht_hasheq_bytes(const void *a, const void *b, size_t n);
+uint64_t ht_hasheq_cstr(const void *a, const void *b, size_t n);
+
+void *ht_find_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
+void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
+void  ht_set_impl(
+     void      **ht_data,
+     size_t     *ht_count,
+     size_t     *ht_capacity,
+     HT_Layout   layout,
+     HT_Hasheq   hasheq,
+     const void *key,
+     const void *value);
+void ht_delete_impl(void *data, size_t *count, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
+
+bool ht_iter_impl(
+    void *data, size_t capacity, HT_Layout layout, bool *started, size_t *index, void **key, void **value);
+
+#ifdef _MSC_VER
+#define MSVC_SUPPRESS_4116 __pragma(warning(suppress : 4116))
+#else
+#define MSVC_SUPPRESS_4116
+#endif // _MSC_VER
 
 // String View
 typedef struct {

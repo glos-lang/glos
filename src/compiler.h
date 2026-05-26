@@ -52,10 +52,7 @@ typedef struct {
     LLVMMetadataRef  llvm_debug_compile_unit;
     LLVMMetadataRef  llvm_debug_scope;
 
-    struct {
-        const char     *key;
-        LLVMMetadataRef value;
-    } *llvm_debug_files;
+    HT(const char *, LLVMMetadataRef) llvm_debug_files;
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.

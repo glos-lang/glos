@@ -9,8 +9,6 @@
 #include <errno.h>
 #endif //  PLATFORM_X86_64_WINDOWS
 
-#include "thirdparty/stb_ds.h"
-
 typedef enum {
     POWER_NIL,
     POWER_SET,
@@ -85,16 +83,20 @@ Module *module_get(Parser *p, const char *path) {
     assert(p->arena);
     assert(p->modules);
 
-    const ptrdiff_t index = shgeti(p->modules->table, path);
-    if (index != -1) {
-        return p->modules->table[index].value;
+    if (!p->modules->table.hasheq) {
+        p->modules->table.hasheq = ht_hasheq_cstr;
+    }
+
+    Module **modulep = ht_get(&p->modules->table, path);
+    if (modulep) {
+        return *modulep;
     }
 
     Module *module = arena_alloc(p->arena, sizeof(*module));
     module->absolute_path = path;
     module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
 
-    shput(p->modules->table, path, module);
+    ht_set(&p->modules->table, path, module);
     if (p->modules->tail) {
         p->modules->tail->next = module;
     } else {

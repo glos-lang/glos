@@ -5,8 +5,6 @@
 #include "parser.h"
 #include "token.h"
 
-#include "thirdparty/stb_ds.h"
-
 static void error_undefined(const Token *t, const char *label) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
     exit(1);

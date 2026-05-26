@@ -37,11 +37,7 @@ struct Module {
 };
 
 typedef struct {
-    struct {
-        const char *key; // Absolute path
-        Module     *value;
-    } *table;
-
+    HT(const char *, Module *) table;
     Module *head;
     Module *tail;
 } Modules;
