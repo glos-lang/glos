@@ -503,7 +503,7 @@ typedef struct {
     Test_Info expected;
 } Test;
 
-typedef Dynamic_Array(Test) Tests;
+typedef DA(Test) Tests;
 
 static void test_prepare_cmd(Test test, Cmd *cmd) {
     cmd_push(cmd, "./glos" EXE_FILE_EXTENSION);

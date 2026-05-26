@@ -21,7 +21,8 @@ typedef struct {
 
 void nodes_push(Nodes *ns, Node *n);
 
-typedef Dynamic_Array(Node_Atom *) Scope;
+typedef DA(Node_Atom *) Local_Scope;
+typedef HT(SV, Node_Atom *) Global_Scope;
 
 typedef struct Module Module;
 
@@ -30,8 +31,8 @@ struct Module {
     const char *absolute_path;
     const char *relative_path;
 
-    Nodes nodes;
-    Scope globals;
+    Nodes        nodes;
+    Global_Scope globals;
 
     Module *next;
 };

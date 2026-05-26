@@ -2,11 +2,11 @@
 #include "basic.h"
 #include "token.h"
 
-void scope_push(Scope *scope, Node_Atom *node) {
-    da_push(scope, node);
+void local_scope_push(Local_Scope *scope, Node_Atom *atom) {
+    da_push(scope, atom);
 }
 
-Node_Atom *scope_find(Scope scope, SV name) {
+Node_Atom *local_scope_find(Local_Scope scope, SV name) {
     for (size_t i = scope.count; i > 0; i--) {
         Node_Atom *it = scope.data[i - 1];
         if (sv_eq(it->node.token.sv, name)) {
@@ -17,7 +17,20 @@ Node_Atom *scope_find(Scope scope, SV name) {
     return NULL;
 }
 
-Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts) {
+void global_scope_push(Global_Scope *scope, Node_Atom *atom) {
+    ht_set(scope, atom->node.token.sv, atom);
+}
+
+Node_Atom *global_scope_find(Global_Scope *scope, SV name) {
+    if (!scope->hasheq) {
+        scope->hasheq = ht_hasheq_sv;
+    }
+
+    Node_Atom **p = ht_get(scope, name);
+    return p ? *p : NULL;
+}
+
+Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name, bool only_consts) {
     if (!fn) {
         return NULL;
     }

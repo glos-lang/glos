@@ -101,6 +101,17 @@ void *ht_find_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hash
     return tombstone;
 }
 
+uint64_t ht_hasheq_sv(const void *va, const void *vb, size_t n) {
+    unused(n);
+
+    const SV a = *(const SV *) va;
+    if (vb) {
+        return sv_eq(a, *(const SV *) vb);
+    }
+
+    return ht_hasheq_bytes(a.data, NULL, a.count);
+}
+
 void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key) {
     uint8_t *entry = (uint8_t *) ht_find_impl(data, capacity, layout, hasheq, key);
     return (entry && *entry == HT_OCCUPIED) ? entry + layout.value_offset : NULL;
@@ -636,7 +647,7 @@ const char *temp_replace_suffix(const char *path, const char *old, const char *n
     return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
 }
 
-Dynamic_Array(const char *) temporary_files;
+DA(const char *) temporary_files;
 
 void temporary_files_push(const char *path) {
     da_push(&temporary_files, path);

@@ -81,7 +81,7 @@ static_assert(sizeof(i64) == 8, "");
 // Dynamic Array
 #define DA_INIT_CAP 128
 
-#define Dynamic_Array(T)                                                                                               \
+#define DA(T)                                                                                                          \
     struct {                                                                                                           \
         T     *data;                                                                                                   \
         size_t count;                                                                                                  \
@@ -203,6 +203,7 @@ typedef struct {
 
 uint64_t ht_hasheq_bytes(const void *a, const void *b, size_t n);
 uint64_t ht_hasheq_cstr(const void *a, const void *b, size_t n);
+uint64_t ht_hasheq_sv(const void *va, const void *vb, size_t n);
 
 void *ht_find_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
 void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
@@ -251,7 +252,7 @@ SV sv_split_by(SV s, bool (*f)(char ch));
 SV sv_split_by_mut(SV *s, bool (*f)(char ch));
 
 // String Builder
-typedef Dynamic_Array(char) SB;
+typedef DA(char) SB;
 
 #define sb_free      da_free
 #define sb_grow      da_grow
@@ -320,7 +321,7 @@ void unixify_path_separators_inplace(char *data, size_t count);
 #endif // PLATFORM_X86_64_WINDOWS
 
 // Processes
-typedef Dynamic_Array(const char *) Cmd;
+typedef DA(const char *) Cmd;
 
 #define cmd_free da_free
 #define cmd_grow da_grow

@@ -3,8 +3,11 @@
 
 #include "node.h"
 
-void       scope_push(Scope *scope, Node_Atom *node);
-Node_Atom *scope_find(Scope scope, SV name);
+void       local_scope_push(Local_Scope *scope, Node_Atom *node);
+Node_Atom *local_scope_find(Local_Scope scope, SV name);
+
+void       global_scope_push(Global_Scope *scope, Node_Atom *node);
+Node_Atom *global_scope_find(Global_Scope *scope, SV name);
 
 struct Context_Fn {
     Node_Fn *fn;
@@ -15,10 +18,10 @@ struct Context_Fn {
     Context_Fn *outer;
 };
 
-Node_Atom *context_fn_find(const Context_Fn *fn, const Scope *locals, SV name, bool only_consts);
+Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name, bool only_consts);
 
 typedef struct {
-    Scope       locals;
+    Local_Scope locals;
     Context_Fn *current;
 } Context;
 

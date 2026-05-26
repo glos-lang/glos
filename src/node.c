@@ -15,8 +15,11 @@ void nodes_push(Nodes *ns, Node *n) {
     ns->tail = n;
 }
 
-void modules_free(Modules *m) {
-    ht_free(&m->table);
+void modules_free(Modules *ms) {
+    for (Module *m = ms->head; m; m = m->next) {
+        ht_free(&m->globals);
+    }
+    ht_free(&ms->table);
 }
 
 static_assert(COUNT_TYPES == 18, "");

@@ -2265,6 +2265,8 @@ static void compiler_init_llvm_target_data(Compiler *c) {
     c->llvm_target_machine = LLVMCreateTargetMachine(
         target, triple, "generic", "", LLVMCodeGenLevelDefault, LLVMRelocPIC, LLVMCodeModelDefault);
     c->llvm_target_data = LLVMCreateTargetDataLayout(c->llvm_target_machine);
+
+    free(triple);
 }
 
 size_t compile_sizeof(Compiler *c, Type *type) {
@@ -2320,8 +2322,8 @@ void compiler_build(Compiler *c, const char *output_path) {
         0);
 
     for (Module *m = c->modules->head; m; m = m->next) {
-        for (size_t i = 0; i < m->globals.count; i++) {
-            Node_Atom *it = m->globals.data[i];
+        ht_foreach(g, &m->globals) {
+            Node_Atom *it = *g.value;
             if (it->definition_spec->llvm) {
                 continue;
             }
@@ -2341,6 +2343,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     LLVMDisposePassBuilderOptions(pass_builder_options);
 
     LLVMDIBuilderFinalize(c->llvm_debug_builder);
+    LLVMDisposeDIBuilder(c->llvm_debug_builder);
 
     const char *object_path = temp_replace_suffix(output_path, EXE_FILE_EXTENSION, OBJ_FILE_EXTENSION);
     temporary_files_push(object_path);
@@ -2358,6 +2361,13 @@ void compiler_build(Compiler *c, const char *output_path) {
             fprintf(stderr, "ERROR: %s\n", error);
             exit(1);
         }
+
+        LLVMDisposeTargetData(c->llvm_target_data);
+        LLVMDisposeTargetMachine(c->llvm_target_machine);
+
+        LLVMDisposeBuilder(c->llvm_builder);
+        LLVMDisposeModule(c->llvm_module);
+        LLVMContextDispose(c->llvm_context);
 
 #ifdef PLATFORM_X86_64_WINDOWS
         if (is_lld_available_in_path()) {
@@ -2394,5 +2404,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     }
 
     ht_free(&c->llvm_debug_files);
+    da_free(&c->context.locals);
     temp_reset(checkpoint);
 }

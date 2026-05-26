@@ -4,7 +4,7 @@
 #include "lexer.h"
 #include "node.h"
 
-typedef Dynamic_Array(const char *) Paths;
+typedef DA(const char *) Paths;
 
 typedef struct {
     Lexer lexer;

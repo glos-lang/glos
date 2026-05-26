@@ -473,7 +473,7 @@ static Node_Fn *get_main(Compiler *c) {
         return c->main_fn;
     }
 
-    Node_Atom *main = scope_find(c->main_module->globals, sv_from_cstr("main"));
+    Node_Atom *main = global_scope_find(&c->main_module->globals, sv_from_cstr("main"));
     if (!main) {
         fprintf(
             stderr,
@@ -998,12 +998,12 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     error_redefinition(it, NULL);
                 }
 
-                Node_Atom *previous = scope_find(it->module->globals, it->node.token.sv);
+                Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
                 if (previous) {
                     error_redefinition(it, &previous->node.token.pos);
                 }
 
-                da_push(&it->module->globals, it);
+                global_scope_push(&it->module->globals, it);
             }
         }
     } break;
@@ -1148,8 +1148,8 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom   *atom = NULL;
     Node_Member *member = NULL;
 
-    Token token = {0};
-    Scope globals = {0};
+    Token        token = {0};
+    Global_Scope globals = {0};
     if (n->kind == NODE_ATOM) {
         atom = (Node_Atom *) n;
         token = n->token;
@@ -1175,10 +1175,10 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 
     if (!definition) {
-        definition = scope_find(globals, token.sv);
+        definition = global_scope_find(&globals, token.sv);
         if (!definition && atom) {
             globals = c->builtin_module->globals;
-            definition = scope_find(globals, token.sv);
+            definition = global_scope_find(&globals, token.sv);
         }
     }
 
@@ -2204,7 +2204,7 @@ Const_Value get_platform(Compiler *c, Type *type) {
 }
 
 Const_Value get_const_definition_value(Compiler *c, Module *m, SV name, Type *type) {
-    Node_Atom *atom = scope_find(m->globals, name);
+    Node_Atom *atom = global_scope_find(&m->globals, name);
     assert(atom);
     assert(atom->definition_spec->is_const);
     check_node(c, (Node *) atom->definition_spec->definition_node, REF_NONE);

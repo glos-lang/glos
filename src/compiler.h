@@ -7,7 +7,7 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
-typedef Dynamic_Array(const char *) Link_Flags;
+typedef DA(const char *) Link_Flags;
 
 typedef struct {
     // These are used only by the analyzer
@@ -28,7 +28,7 @@ typedef struct {
     Cmd        *cmd;
     Link_Flags *link_flags;
 
-    Dynamic_Array(Node *) defers;
+    DA(Node *) defers;
     size_t defers_start;
     size_t loop_defers_start;
 
