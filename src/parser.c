@@ -315,10 +315,7 @@ static void not_in_extern_assert(Parser *p, Token token) {
 }
 
 static void definition_lhs_atom_setup(Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned) {
-    if (!it->definition_spec) {
-        it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
-    }
-
+    assert(it->definition_spec);
     it->definition_spec->is_const = define->is_const;
     it->definition_spec->is_local = p->state.fn_current != NULL;
     it->definition_spec->is_extern = p->state.in_extern;
@@ -757,13 +754,22 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 Node *illegal = NULL;
                 if (node->kind == NODE_ATOM && node->token.kind == TOKEN_IDENT) {
                     define->count = 1;
+
+                    Node_Atom *atom = (Node_Atom *) node;
+                    atom->definition_spec = arena_alloc(p->arena, sizeof(*atom->definition_spec));
                 } else if (node->kind == NODE_GROUP) {
                     Node_Group *group = (Node_Group *) node;
+
+                    size_t iota = 0;
                     ll_foreach(it, &group->nodes) {
                         if (it->kind != NODE_ATOM || it->token.kind != TOKEN_IDENT) {
                             illegal = it;
                             break;
                         }
+
+                        Node_Atom *atom = (Node_Atom *) it;
+                        atom->definition_spec = arena_alloc(p->arena, sizeof(*atom->definition_spec));
+                        atom->definition_spec->group_index = iota++;
                     }
                     define->count = group->count;
                 } else {
@@ -786,6 +792,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             if (read_token(p, TOKEN_SET)) {
+                assert(p->state.ahead.kind == TOKEN_SET);
+                define->assignment_pos = p->state.ahead.pos;
+
                 if (p->state.in_extern) {
                     assert(p->state.ahead.kind == TOKEN_SET);
                     fprintf(
@@ -1002,7 +1011,7 @@ static Node *parse_stmt(Parser *p) {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot apply %s to multiple definitions\n",
-                Pos_Arg(node->token.pos),
+                Pos_Arg(token.pos),
                 token_kind_to_cstr(token.kind));
             exit(1);
         }
