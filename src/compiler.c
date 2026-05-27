@@ -15,7 +15,7 @@
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 18, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
         return;
@@ -73,7 +73,7 @@ static void compile_type(Compiler *c, Type *type) {
 
             LLVMTypeRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
-                Type_Struct_Field *it = &spec->fields[i];
+                Type_Struct_Field *it = (Type_Struct_Field *) &spec->fields[i];
                 compile_type(c, &it->type);
                 fields[i] = it->type.llvm;
             }
@@ -96,20 +96,6 @@ static void compile_type(Compiler *c, Type *type) {
 
         type->llvm = c->llvm_slice_type;
         break;
-
-    case TYPE_GROUP: {
-        // TODO(@group): Should this be cached?
-        Type_Group  *spec = &type->spec.group;
-        LLVMTypeRef *fields = temp_alloc(spec->count * sizeof(*fields));
-        for (size_t i = 0; i < spec->count; i++) {
-            Type *it = &spec->data[i];
-            compile_type(c, it);
-            fields[i] = it->llvm;
-        }
-
-        type->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->count, false);
-        temp_reset(fields);
-    } break;
 
     default:
         unreachable();
@@ -152,7 +138,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 18, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -162,7 +148,6 @@ static bool type_is_compound(Type type) {
     case TYPE_STRUCT:
     case TYPE_SLICE:
     case TYPE_STRING:
-    case TYPE_GROUP:
         return true;
 
     default:
@@ -180,7 +165,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 18, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -592,7 +577,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return metadata;
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 18, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -775,9 +760,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         fields[1].type = (Type) {.kind = TYPE_I64};
         return get_debug_for_builtin_compound_type(c, sv_from_cstr("string"), fields, len(fields));
     }
-
-    case TYPE_GROUP:
-        todo(); // TODO(@group)
 
     default:
         unreachable();
@@ -1288,17 +1270,6 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static LLVMValueRef get_value_from_multi(Compiler *c, LLVMValueRef value, Type type, size_t index) {
-    if (type.kind != TYPE_GROUP) {
-        return value;
-    }
-
-    assert(type.llvm);
-    assert(type.spec.group.data[index].llvm);
-    LLVMValueRef field = LLVMBuildStructGEP2(c->llvm_builder, type.llvm, value, index, "");
-    return LLVMBuildLoad2(c->llvm_builder, type.spec.group.data[index].llvm, field, "");
-}
-
 static_assert(COUNT_NODES == 25, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -1342,31 +1313,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 
     case NODE_GROUP: {
-        Node_Group *group = (Node_Group *) n;
-
-        LLVMValueRef result = compile_alloca(c, n->type.llvm);
-        size_t       iota = 0;
-        ll_foreach(it, &group->nodes) {
-            LLVMValueRef value = NULL;
-            size_t       count = 1;
-            if (it->type.kind == TYPE_GROUP) {
-                count = it->type.spec.group.count;
-                value = compile_expr(c, it, true);
-            } else {
-                value = compile_expr(c, it, false);
-            }
-
-            for (size_t i = 0; i < count; i++) {
-                LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, result, iota++, "");
-                LLVMBuildStore(c->llvm_builder, get_value_from_multi(c, value, it->type, i), ptr);
-            }
-        }
-
-        if (ref) {
-            return result;
-        }
-
-        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, result, "");
+        todo(); // TODO(@group)
     }
 
     case NODE_GHOST: {
@@ -1774,7 +1721,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         const char *label = "slice";
         if (!index->lhs->type.ref) {
-            static_assert(COUNT_TYPES == 19, "");
+            static_assert(COUNT_TYPES == 18, "");
             switch (index->lhs->type.kind) {
             case TYPE_SLICE:
                 // Pass
@@ -1997,23 +1944,15 @@ static void compile_stmt(Compiler *c, Node *n) {
                 }
             }
         } else {
-            Node_Atom *lhs = NULL;
+            assert(define->name->kind == NODE_ATOM);
+            Node_Atom *it = (Node_Atom *) define->name;
+            Node      *it_expr = define->expr;
 
-            LLVMValueRef assignment = NULL;
-            if (define->expr && !define->is_value_known_at_compile_time) {
-                assignment = compile_expr(c, define->expr, define->expr->type.kind == TYPE_GROUP);
-            }
-
-            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
-                if (!lhs->definition_spec->llvm) {
-                    compile_var_def(c, lhs);
-                    if (define->expr && lhs->definition_spec->is_local) {
-                        LLVMValueRef value =
-                            get_value_from_multi(c, assignment, define->expr->type, lhs->definition_spec->group_index);
-
-                        set_debug_pos(c, n->token.pos);
-                        LLVMBuildStore(c->llvm_builder, value, lhs->definition_spec->llvm);
-                    }
+            if (!it->definition_spec->llvm) {
+                compile_var_def(c, it);
+                if (it_expr && it->definition_spec->is_local) {
+                    set_debug_pos(c, n->token.pos);
+                    LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->definition_spec->llvm);
                 }
             }
         }
@@ -2483,5 +2422,3 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->context.locals);
     temp_reset(checkpoint);
 }
-
-// Make compile_expr() return some sort of abstraction over LLVMValueRef, since multiple values have been introduced

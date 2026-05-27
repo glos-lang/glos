@@ -79,7 +79,7 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
 }
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 18, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -277,7 +277,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 18, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -1137,106 +1137,16 @@ static void check_definition(
                 }
             }
 
-            Node_Define *define = it->definition_spec->definition_node;
-            if (!define->is_value_known_at_compile_time &&
-                (type_kind_eq(it_expr->type, TYPE_GROUP) || define->count != 1)) //
-            {
-                size_t lhs_count = 1;
-                size_t rhs_count = 1;
-
-                if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
-                    rhs_count = it_expr->type.spec.group.count;
-                }
-
-                if (define->name->kind == NODE_GROUP) {
-                    lhs_count = ((Node_Group *) define->name)->count;
-                }
-
-                if (lhs_count != rhs_count) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Unequal number of values. There %s %zu on the left hand side, and %zu on the "
-                                "right hand side\n",
-                        Pos_Arg(define->assignment_pos),
-                        lhs_count > 1 ? "are" : "is",
-                        lhs_count,
-                        rhs_count);
-                    exit(1);
-                }
-            }
-
             *is_expr_checked = true;
         }
 
-        if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
-            Type_Group *spec = &it_expr->type.spec.group;
-            assert(it->definition_spec->group_index < spec->count);
-
-            Type *it_type = &spec->data[it->definition_spec->group_index];
-            if (type_expr) {
-                bool ok = type_eq(*it_type, type_expr->type);
-                if (!ok) {
-                    Node *actual = NULL;
-                    if (it_expr->kind == NODE_GROUP) {
-                        Node_Group *rhs = (Node_Group *) it_expr;
-
-                        size_t iota = 0;
-                        ll_foreach(rhs_it, &rhs->nodes) {
-                            const bool is_multi = type_kind_eq(rhs_it->type, TYPE_GROUP);
-                            if (is_multi) {
-                                iota += rhs_it->type.spec.group.count;
-                            } else {
-                                iota++;
-                            }
-
-                            if (!is_multi && iota == it->definition_spec->group_index + 1) {
-                                actual = rhs_it;
-                                break;
-                            }
-
-                            if (iota > it->definition_spec->group_index) {
-                                // There is no specific expression
-                                break;
-                            }
-                        }
-                    }
-
-                    if (actual) {
-                        if (try_auto_cast_untyped(c, actual, type_expr->type)) {
-                            *it_type = actual->type;
-                            ok = true;
-                        } else {
-                            if (actual->kind == NODE_ATOM && actual->token.kind == TOKEN_NULL && type_expr->type.ref) {
-                                ok = true;
-                                actual->type = type_expr->type;
-                            }
-                        }
-                    }
-                }
-
-                if (!ok) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Expected %s, got %s\n",
-                        Pos_Arg(it->node.token.pos), // TODO: Make this consistent
-                        type_to_cstr(type_expr->type),
-                        type_to_cstr(*it_type));
-                    exit(1);
-                }
-            } else {
-                assert(!it->definition_spec->is_const);
-                node_finalize_type_of_untyped(it_expr); // TODO:
-                it->node.type = *it_type;
-            }
+        if (type_expr) {
+            type_assert(c, it_expr, it->node.type);
         } else {
-            if (type_expr) {
-                type_assert(c, it_expr, it->node.type);
-            } else {
-                if (!it->definition_spec->is_const) {
-                    node_finalize_type_of_untyped(it_expr);
-                }
-                it->node.type = it_expr->type;
+            if (!it->definition_spec->is_const) {
+                node_finalize_type_of_untyped(it_expr);
             }
+            it->node.type = it_expr->type;
         }
     }
 
@@ -1428,22 +1338,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     } break;
 
     case NODE_GROUP: {
-        Node_Group *group = (Node_Group *) n;
-
-        Type_Group spec = {0};
-        ll_foreach(it, &group->nodes) {
-            check_node(c, it, REF_NONE);
-            spec.count++;
-        }
-
-        spec.data = arena_alloc(c->arena, spec.count * sizeof(*spec.data));
-
-        size_t iota = 0;
-        ll_foreach(it, &group->nodes) {
-            spec.data[iota++] = it->type;
-        }
-
-        n->type = (Type) {.kind = TYPE_GROUP, .spec.group = spec};
+        todo(); // TODO(@group)
     } break;
 
     case NODE_GHOST:
@@ -2193,11 +2088,10 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     &define->is_type_expr_checked);
             }
         } else {
-            Node_Atom *lhs = NULL;
-            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
-                check_definition(
-                    c, lhs, define->expr, &define->is_expr_checked, define->type, &define->is_type_expr_checked);
-            }
+            assert(define->name->kind == NODE_ATOM); // TODO(@group)
+            bool placeholder = false;
+            check_definition(
+                c, (Node_Atom *) define->name, define->expr, &placeholder, define->type, &define->is_type_expr_checked);
         }
     } break;
 

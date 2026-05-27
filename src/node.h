@@ -67,9 +67,9 @@ typedef enum {
     TYPE_STRUCT,
 
     TYPE_SLICE,
+
     TYPE_STRING,
 
-    TYPE_GROUP,
     TYPE_MODULE,
     COUNT_TYPES,
 } Type_Kind;
@@ -100,11 +100,6 @@ typedef struct {
     Type *element;
 } Type_Slice;
 
-typedef struct {
-    Type  *data;
-    size_t count;
-} Type_Group;
-
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -117,7 +112,6 @@ struct Type {
         Type_Fn      fn;
         Type_Slice   slice;
         Type_Struct *structt;
-        Type_Group   group;
         Module      *module;
     } spec;
 
@@ -251,8 +245,6 @@ typedef struct {
 
     // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
-
-    size_t group_index;
 
     Node_Define *definition_node;
     Node        *assignment_node;
@@ -421,8 +413,6 @@ typedef struct {
 
     bool      is_type_cast;
     Type_Cast type_cast;
-
-    // TODO: Note whether this is a statement or not
 } Node_Call;
 
 // This *will* represent the following types:
@@ -449,9 +439,6 @@ struct Node_Define {
     Node *name; // TODO: Rename to 'lhs'
 
     Node *expr;
-    // For variables whose values are not known at compile time
-    bool is_expr_checked;
-    Pos  assignment_pos;
 
     Node *type; // TODO: Rename to 'type_expr'
     // Whether the type expression was checked. This does NOT refer to the type check status of the definition
