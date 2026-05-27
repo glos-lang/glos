@@ -1,9 +1,12 @@
 A, B :: 69, 420
 c, d := 1337, 80085
+e, f: i64
 
 main :: () {
-    print A
-    print B
-    print c
-    print d
+    assert(A == 69)
+    assert(B == 420)
+    assert(c == 1337)
+    assert(d == 80085)
+    assert(e == 0)
+    assert(f == 0)
 }

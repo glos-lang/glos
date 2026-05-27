@@ -248,7 +248,6 @@ typedef struct {
 
     Node_Define *definition_node;
     Node        *assignment_node;
-    bool         is_assignment_node_checked;
 
     Context_Fn  *context;
     Check_Status check_status;
@@ -441,10 +440,7 @@ struct Node_Define {
     Node *name; // TODO: Rename to 'lhs'
 
     Node *expr;
-
-    Node *type; // TODO: Rename to 'type_expr'
-    // Whether the type expression was checked. This does NOT refer to the type check status of the definition
-    bool is_type_expr_checked;
+    Node *type;
 
     bool   is_const;
     bool   is_value_known_at_compile_time;

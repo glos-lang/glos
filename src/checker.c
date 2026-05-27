@@ -1094,27 +1094,24 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
-static void check_definition(
-    Compiler *c, Node_Atom *it, Node *it_expr, bool *is_expr_checked, Node *type_expr, bool *is_type_expr_checked) {
+static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
         return;
     }
     it->definition_spec->check_status = CHECKING;
 
-    if (type_expr) {
-        if (!*is_type_expr_checked) {
-            check_node(c, type_expr, REF_NONE);
-            *is_type_expr_checked = true;
-
-            type_assert_type(type_expr);
-            type_expr->type.is_meta = false;
+    if (type) {
+        if (type_kind_eq(type->type, TYPE_UNIT)) {
+            check_node(c, type, REF_NONE);
+            type_assert_type(type);
+            type->type.is_meta = false;
         }
-        it->node.type = type_expr->type;
+        it->node.type = type->type;
     }
 
     if (it_expr) {
-        if (!*is_expr_checked) {
+        if (type_kind_eq(it_expr->type, TYPE_UNIT)) {
             if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
                 // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location`
                 // maybe?
@@ -1135,11 +1132,9 @@ static void check_definition(
                     exit(1);
                 }
             }
-
-            *is_expr_checked = true;
         }
 
-        if (type_expr) {
+        if (type) {
             type_assert(c, it_expr, it->node.type);
         } else {
             if (!it->definition_spec->is_const) {
@@ -1222,9 +1217,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 c,
                 definition,
                 definition->definition_spec->assignment_node,
-                &definition->definition_spec->is_assignment_node_checked,
-                definition->definition_spec->definition_node->type,
-                &definition->definition_spec->definition_node->is_type_expr_checked);
+                definition->definition_spec->definition_node->type);
             context_restore_fn(&c->context, context_fn_save);
         } break;
 
@@ -2085,19 +2078,17 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
                 rhs = node_iter(rhs, define->expr);
                 assert(rhs);
-                check_definition(
-                    c,
-                    lhs,
-                    rhs,
-                    &lhs->definition_spec->is_assignment_node_checked,
-                    define->type,
-                    &define->is_type_expr_checked);
+                check_definition(c, lhs, rhs, define->type);
             }
         } else {
-            assert(define->name->kind == NODE_ATOM); // TODO(@group)
-            bool placeholder = false;
-            check_definition(
-                c, (Node_Atom *) define->name, define->expr, &placeholder, define->type, &define->is_type_expr_checked);
+            if (define->name->kind != NODE_ATOM) {
+                assert(!define->expr || define->is_value_known_at_compile_time); // TODO(@group)
+            }
+
+            Node_Atom *lhs = NULL;
+            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
+                check_definition(c, lhs, define->expr, define->type);
+            }
         }
     } break;
 

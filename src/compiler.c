@@ -1934,11 +1934,9 @@ static void compile_stmt(Compiler *c, Node *n) {
             return;
         }
 
-        if (define->expr && define->is_value_known_at_compile_time) {
+        if (define->is_value_known_at_compile_time) {
             Node_Atom *lhs = NULL;
-            Node      *rhs = NULL;
             while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
-                rhs = node_iter(rhs, define->expr);
                 if (!lhs->definition_spec->llvm) {
                     compile_var_def(c, lhs);
                 }
