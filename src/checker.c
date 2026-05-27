@@ -1174,7 +1174,8 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 assert(it->definition_spec->group_index < it_expr->type.spec.group.count);
 
                 if (type) {
-                    todo(); // TODO(@group)
+                    Node *n = get_node_from_group(it_expr, it->definition_spec->group_index);
+                    type_assert(c, n, it->node.type);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
                     node_finalize_type_of_untyped(&it->node.type);
