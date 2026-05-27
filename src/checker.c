@@ -1122,10 +1122,9 @@ static void check_definition(
             } else {
                 check_node(c, it_expr, REF_NONE);
 
-                const bool is_it_unit = type_kind_eq(it_expr->type, TYPE_UNIT);
                 const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
                 const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
-                if (is_it_unit || is_it_a_module || is_it_a_type) {
+                if (is_it_a_module || is_it_a_type) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot store %s in a %s\n",
@@ -1926,6 +1925,13 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             n->type = *fn_type.spec.fn.returnn;
+            if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: This call cannot be used as a value as it does not return anything\n",
+                    Pos_Arg(n->token.pos));
+                exit(1);
+            }
         }
     } break;
 

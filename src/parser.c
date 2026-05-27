@@ -1150,7 +1150,10 @@ static Node *parse_stmt(Parser *p) {
                 local_assert(p, true, node->token, "expression");
             }
         }
-        // TODO(@group): Don't allow naked groups
+
+        if (node->kind == NODE_CALL) {
+            ((Node_Call *) node)->is_stmt = true;
+        }
         break;
     }
 

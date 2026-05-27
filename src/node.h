@@ -413,6 +413,8 @@ typedef struct {
 
     bool      is_type_cast;
     Type_Cast type_cast;
+
+    bool is_stmt;
 } Node_Call;
 
 // This *will* represent the following types:
