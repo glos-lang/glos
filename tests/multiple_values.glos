@@ -1,0 +1,6 @@
+A, B :: 69, 420
+
+main :: () {
+    print A
+    print B
+}

@@ -4,6 +4,7 @@
 #include "node.h"
 #include "parser.h"
 #include "token.h"
+#include <assert.h>
 
 static void error_undefined(const Token *t, const char *label) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -104,10 +105,11 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
-    case NODE_ATOM:
+    case NODE_ATOM: {
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -125,7 +127,11 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         default:
             unreachable();
         }
-        break;
+    } break;
+
+    case NODE_GROUP: {
+        unreachable(); // TODO(@group): Find out more
+    } break;
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
@@ -310,7 +316,7 @@ static void node_finalize_type_of_untyped(Node *n) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -370,7 +376,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -515,7 +521,7 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -560,9 +566,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         default:
             unreachable();
-            break;
         }
-    } break;
+    }
+
+    case NODE_GROUP: {
+        todo(); // TODO(@group): What should be done here?
+    }
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
@@ -962,48 +971,65 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     return value;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static Node *node_iter(Node *it, Node *ll) {
+    if (it) {
+        if (ll->kind == NODE_GROUP) {
+            return it->next;
+        } else {
+            return NULL;
+        }
+    } else {
+        if (ll->kind == NODE_GROUP) {
+            return ((Node_Group *) ll)->nodes.head;
+        } else {
+            return ll;
+        }
+    }
+}
+
+static_assert(COUNT_NODES == 25, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
 
-        Node_Atom *it = (Node_Atom *) define->name;
-        if (!sv_match(it->node.token.sv, "_")) {
-            if (it->definition_spec->is_local) {
-                if (it->definition_spec->is_const) {
-                    const Context_Fn *fn = c->context.current;
+        Node_Atom *it = NULL;
+        while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+            if (!sv_match(it->node.token.sv, "_")) {
+                if (it->definition_spec->is_local) {
+                    if (it->definition_spec->is_const) {
+                        const Context_Fn *fn = c->context.current;
 
-                    assert(fn->end <= c->context.locals.count);
-                    assert(block_start <= c->context.locals.count);
-                    assert(block_start <= fn->end);
-                    for (size_t i = fn->end; i > block_start; i--) {
-                        Node_Atom *previous = c->context.locals.data[i - 1];
-                        if (!previous->definition_spec->is_const) {
-                            continue;
+                        assert(fn->end <= c->context.locals.count);
+                        assert(block_start <= c->context.locals.count);
+                        assert(block_start <= fn->end);
+                        for (size_t i = fn->end; i > block_start; i--) {
+                            Node_Atom *previous = c->context.locals.data[i - 1];
+                            if (!previous->definition_spec->is_const) {
+                                continue;
+                            }
+
+                            if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
+                                error_redefinition(it, &previous->node.token.pos);
+                                break;
+                            }
                         }
 
-                        if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
-                            error_redefinition(it, &previous->node.token.pos);
-                            break;
-                        }
+                        it->definition_spec->context = c->context.current;
+                        context_push_local(&c->context, it);
+                    }
+                } else {
+                    if (get_builtin_type_kind(it->node.token.sv, NULL)) {
+                        error_redefinition(it, NULL);
                     }
 
-                    it->definition_spec->context = c->context.current;
-                    context_push_local(&c->context, it);
-                }
-            } else {
-                if (get_builtin_type_kind(it->node.token.sv, NULL)) {
-                    error_redefinition(it, NULL);
-                }
+                    Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
+                    if (previous) {
+                        error_redefinition(it, &previous->node.token.pos);
+                    }
 
-                Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
-                if (previous) {
-                    error_redefinition(it, &previous->node.token.pos);
+                    global_scope_push(&it->module->globals, it);
                 }
-
-                global_scope_push(&it->module->globals, it);
             }
         }
     } break;
@@ -1084,17 +1110,22 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
-static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
+static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type_expr, bool *type_was_checked) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
         return;
     }
     it->definition_spec->check_status = CHECKING;
 
-    if (type) {
-        check_node(c, type, REF_NONE);
-        it->node.type = type_assert_type(type);
-        it->node.type.is_meta = false;
+    if (type_expr) {
+        if (!*type_was_checked) {
+            check_node(c, type_expr, REF_NONE);
+            *type_was_checked = true;
+
+            type_assert_type(type_expr);
+            type_expr->type.is_meta = false;
+        }
+        it->node.type = type_expr->type;
     }
 
     if (it_expr) {
@@ -1119,7 +1150,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
             }
         }
 
-        if (type) {
+        if (type_expr) {
             type_assert(c, it_expr, it->node.type);
         } else {
             if (!it->definition_spec->is_const) {
@@ -1198,8 +1229,9 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
             check_definition(
                 c,
                 definition,
+                definition->definition_spec->assignment_node,
                 definition->definition_spec->definition_node->type,
-                definition->definition_spec->assignment_node);
+                &definition->definition_spec->definition_node->type_was_checked);
             context_restore_fn(&c->context, context_fn_save);
         } break;
 
@@ -1254,7 +1286,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&token, "identifier");
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1309,6 +1341,10 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         default:
             unreachable();
         }
+    } break;
+
+    case NODE_GROUP: {
+        todo(); // TODO(@group)
     } break;
 
     case NODE_GHOST:
@@ -1673,7 +1709,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             assert(field->kind == NODE_DEFINE);
             Node_Define *define = (Node_Define *) field;
 
-            assert(define->name->kind == NODE_ATOM);
+            assert(define->name->kind == NODE_ATOM); // TODO(@group)
             Node_Atom *it = (Node_Atom *) define->name;
             if (!sv_match(it->node.token.sv, "_")) {
                 for (size_t i = 0; i < iota; i++) {
@@ -2043,8 +2079,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-        check_definition(c, (Node_Atom *) define->name, define->type, define->expr);
+        if (define->is_const) {
+            Node_Atom *lhs = NULL;
+            Node      *rhs = NULL;
+            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
+                rhs = node_iter(rhs, define->expr);
+                assert(rhs);
+                check_definition(c, lhs, rhs, define->type, &define->type_was_checked);
+            }
+        } else {
+            assert(define->name->kind == NODE_ATOM); // TODO(@group)
+            check_definition(c, (Node_Atom *) define->name, define->expr, define->type, &define->type_was_checked);
+        }
     } break;
 
     case NODE_BLOCK: {

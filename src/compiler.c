@@ -1270,7 +1270,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1310,6 +1310,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         default:
             unreachable();
         }
+    }
+
+    case NODE_GROUP: {
+        todo(); // TODO(@group)
     }
 
     case NODE_GHOST: {
@@ -1913,7 +1917,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

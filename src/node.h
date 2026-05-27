@@ -193,6 +193,7 @@ typedef enum {
 
 typedef enum {
     NODE_ATOM,
+    NODE_GROUP,
     NODE_GHOST,
     NODE_UNARY,
     NODE_BINARY,
@@ -246,7 +247,6 @@ typedef struct {
 
     Node_Define *definition_node;
     Node        *assignment_node;
-    bool         is_assignment_const;
 
     Context_Fn  *context;
     Check_Status check_status;
@@ -272,6 +272,12 @@ struct Node_Atom {
     // When this atom is a reference to another defining atom
     Node_Atom *definition;
 };
+
+typedef struct {
+    Node   node;
+    Nodes  nodes;
+    size_t count;
+} Node_Group;
 
 // TODO: This is the solution I came up with so far for default arguments.
 // This feels like a bad solution, but better than a non-existent perfect one.
@@ -427,9 +433,13 @@ typedef struct {
 
 struct Node_Define {
     Node  node;
-    Node *name;
-    Node *type;
+    Node *name; // TODO: Rename to 'lhs'
     Node *expr;
+
+    Node *type; // TODO: Rename to 'type_expr'
+
+    // Whether the type expression was checked. This does NOT refer to the type check status of the definition
+    bool type_was_checked;
 
     bool   is_const;
     size_t count;
