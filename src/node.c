@@ -412,6 +412,22 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     return node;
 }
 
+Node *node_iter(Node *it, Node *ll) {
+    if (it) {
+        if (ll->kind == NODE_GROUP) {
+            return it->next;
+        } else {
+            return NULL;
+        }
+    } else {
+        if (ll->kind == NODE_GROUP) {
+            return ((Node_Group *) ll)->nodes.head;
+        } else {
+            return ll;
+        }
+    }
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 

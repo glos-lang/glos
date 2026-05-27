@@ -971,22 +971,6 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     return value;
 }
 
-static Node *node_iter(Node *it, Node *ll) {
-    if (it) {
-        if (ll->kind == NODE_GROUP) {
-            return it->next;
-        } else {
-            return NULL;
-        }
-    } else {
-        if (ll->kind == NODE_GROUP) {
-            return ((Node_Group *) ll)->nodes.head;
-        } else {
-            return ll;
-        }
-    }
-}
-
 static_assert(COUNT_NODES == 25, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
@@ -1110,7 +1094,8 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
-static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type_expr, bool *type_was_checked) {
+static void check_definition(
+    Compiler *c, Node_Atom *it, Node *it_expr, bool *is_expr_checked, Node *type_expr, bool *is_type_expr_checked) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
         return;
@@ -1118,9 +1103,9 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
     it->definition_spec->check_status = CHECKING;
 
     if (type_expr) {
-        if (!*type_was_checked) {
+        if (!*is_type_expr_checked) {
             check_node(c, type_expr, REF_NONE);
-            *type_was_checked = true;
+            *is_type_expr_checked = true;
 
             type_assert_type(type_expr);
             type_expr->type.is_meta = false;
@@ -1129,25 +1114,30 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
     }
 
     if (it_expr) {
-        if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
-            // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location` maybe?
-            it_expr->type = (Type) {.kind = TYPE_STRING};
-        } else {
-            check_node(c, it_expr, REF_NONE);
+        if (!*is_expr_checked) {
+            if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
+                // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location`
+                // maybe?
+                it_expr->type = (Type) {.kind = TYPE_STRING};
+            } else {
+                check_node(c, it_expr, REF_NONE);
 
-            const bool is_it_unit = type_kind_eq(it_expr->type, TYPE_UNIT);
-            const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
-            const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
-            if (is_it_unit || is_it_a_module || is_it_a_type) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot store %s in a %s\n",
-                    Pos_Arg(it_expr->token.pos),
-                    type_to_cstr(it_expr->type),
-                    it->definition_spec->is_const ? "constant" : "variable");
+                const bool is_it_unit = type_kind_eq(it_expr->type, TYPE_UNIT);
+                const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
+                const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
+                if (is_it_unit || is_it_a_module || is_it_a_type) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot store %s in a %s\n",
+                        Pos_Arg(it_expr->token.pos),
+                        type_to_cstr(it_expr->type),
+                        it->definition_spec->is_const ? "constant" : "variable");
 
-                exit(1);
+                    exit(1);
+                }
             }
+
+            *is_expr_checked = true;
         }
 
         if (type_expr) {
@@ -1160,10 +1150,11 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
         }
     }
 
-    if (it->definition_spec->is_const) {
-        it->definition_spec->const_value = eval_const_expr(c, it_expr);
-    } else if (!it->definition_spec->is_local && it_expr) {
-        it->definition_spec->const_value = eval_const_expr(c, it_expr);
+    if (it_expr && it->definition_spec->definition_node->is_value_known_at_compile_time) {
+        if (!it->definition_spec->is_const_value_evaluated) {
+            it->definition_spec->const_value = eval_const_expr(c, it_expr);
+            it->definition_spec->is_const_value_evaluated = true;
+        }
     }
 
     if (it->definition_spec->is_local) {
@@ -1226,12 +1217,15 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
             c->context.current = definition->definition_spec->context;
 
             // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
+            assert(definition->definition_spec->definition_node->is_value_known_at_compile_time);
+
             check_definition(
                 c,
                 definition,
                 definition->definition_spec->assignment_node,
+                &definition->definition_spec->is_assignment_node_checked,
                 definition->definition_spec->definition_node->type,
-                &definition->definition_spec->definition_node->type_was_checked);
+                &definition->definition_spec->definition_node->is_type_expr_checked);
             context_restore_fn(&c->context, context_fn_save);
         } break;
 
@@ -2079,17 +2073,25 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        if (define->is_const) {
+        if (define->expr && define->is_value_known_at_compile_time) {
             Node_Atom *lhs = NULL;
             Node      *rhs = NULL;
             while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
                 rhs = node_iter(rhs, define->expr);
                 assert(rhs);
-                check_definition(c, lhs, rhs, define->type, &define->type_was_checked);
+                check_definition(
+                    c,
+                    lhs,
+                    rhs,
+                    &lhs->definition_spec->is_assignment_node_checked,
+                    define->type,
+                    &define->is_type_expr_checked);
             }
         } else {
             assert(define->name->kind == NODE_ATOM); // TODO(@group)
-            check_definition(c, (Node_Atom *) define->name, define->expr, define->type, &define->type_was_checked);
+            bool placeholder = false;
+            check_definition(
+                c, (Node_Atom *) define->name, define->expr, &placeholder, define->type, &define->is_type_expr_checked);
         }
     } break;
 

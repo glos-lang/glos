@@ -337,10 +337,12 @@ static void definition_lhs_atom_setup(Parser *p, Node_Define *define, Node_Atom 
 }
 
 static void definition_lhs_setup(Parser *p, Node_Define *define) {
+    const bool is_assigned = define->expr != NULL;
+    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current; // TODO(@static)
+
     size_t lhs_count = 1;
     size_t rhs_count = 1;
 
-    const bool is_assigned = define->expr != NULL;
     if (define->name->kind == NODE_ATOM) {
         if (define->expr && define->expr->kind == NODE_GROUP) {
             rhs_count = ((Node_Group *) define->expr)->count;
@@ -352,7 +354,7 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
         Node_Group *lhs = (Node_Group *) define->name;
         lhs_count = lhs->count;
 
-        if (define->is_const) {
+        if (is_assigned && define->is_value_known_at_compile_time) {
             if (define->expr->kind != NODE_GROUP) {
                 goto mismatch;
             }

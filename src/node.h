@@ -236,6 +236,7 @@ struct Node {
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
+Node *node_iter(Node *it, Node *ll);
 
 typedef struct {
     bool is_local;
@@ -247,11 +248,13 @@ typedef struct {
 
     Node_Define *definition_node;
     Node        *assignment_node;
+    bool         is_assignment_node_checked;
 
     Context_Fn  *context;
     Check_Status check_status;
 
     bool        is_const;
+    bool        is_const_value_evaluated;
     Const_Value const_value;
 
     // If this is non-empty, then use this as the linker symbol
@@ -434,14 +437,15 @@ typedef struct {
 struct Node_Define {
     Node  node;
     Node *name; // TODO: Rename to 'lhs'
+
     Node *expr;
 
     Node *type; // TODO: Rename to 'type_expr'
-
     // Whether the type expression was checked. This does NOT refer to the type check status of the definition
-    bool type_was_checked;
+    bool is_type_expr_checked;
 
     bool   is_const;
+    bool   is_value_known_at_compile_time;
     size_t count;
 };
 

@@ -1934,15 +1934,26 @@ static void compile_stmt(Compiler *c, Node *n) {
             return;
         }
 
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-        Node_Atom *it = (Node_Atom *) define->name;
-        Node      *it_expr = define->expr;
+        if (define->expr && define->is_value_known_at_compile_time) {
+            Node_Atom *lhs = NULL;
+            Node      *rhs = NULL;
+            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
+                rhs = node_iter(rhs, define->expr);
+                if (!lhs->definition_spec->llvm) {
+                    compile_var_def(c, lhs);
+                }
+            }
+        } else {
+            assert(define->name->kind == NODE_ATOM);
+            Node_Atom *it = (Node_Atom *) define->name;
+            Node      *it_expr = define->expr;
 
-        if (!it->definition_spec->llvm) {
-            compile_var_def(c, it);
-            if (it_expr && it->definition_spec->is_local) {
-                set_debug_pos(c, n->token.pos);
-                LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->definition_spec->llvm);
+            if (!it->definition_spec->llvm) {
+                compile_var_def(c, it);
+                if (it_expr && it->definition_spec->is_local) {
+                    set_debug_pos(c, n->token.pos);
+                    LLVMBuildStore(c->llvm_builder, compile_expr(c, it_expr, false), it->definition_spec->llvm);
+                }
             }
         }
     } break;
