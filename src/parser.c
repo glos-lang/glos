@@ -11,6 +11,17 @@
 #include <errno.h>
 #endif //  PLATFORM_X86_64_WINDOWS
 
+void error_number_of_values_mismatch(Pos pos, size_t lhs_count, size_t rhs_count) {
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Unequal number of values. There %s %zu on the left hand side, and %zu on the right hand side\n",
+        Pos_Arg(pos),
+        lhs_count > 1 ? "are" : "is",
+        lhs_count,
+        rhs_count);
+    exit(1);
+}
+
 typedef enum {
     POWER_NIL,
     POWER_SET,
@@ -314,11 +325,13 @@ static void not_in_extern_assert(Parser *p, Token token) {
     }
 }
 
-static void definition_lhs_atom_setup(Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned) {
+static void definition_lhs_atom_setup(
+    Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned, size_t group_index) {
     if (!it->definition_spec) {
         it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
     }
 
+    it->definition_spec->group_index = group_index;
     it->definition_spec->is_const = define->is_const;
     it->definition_spec->is_local = p->state.fn_current != NULL;
     it->definition_spec->is_extern = p->state.in_extern;
@@ -346,47 +359,40 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
     if (define->name->kind == NODE_ATOM) {
         if (define->expr && define->expr->kind == NODE_GROUP) {
             rhs_count = ((Node_Group *) define->expr)->count;
-            goto mismatch;
+            error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+            exit(1);
         }
 
-        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_assigned);
+        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_assigned, 0);
     } else {
         Node_Group *lhs = (Node_Group *) define->name;
         lhs_count = lhs->count;
 
         if (is_assigned && define->is_value_known_at_compile_time) {
             if (define->expr->kind != NODE_GROUP) {
-                goto mismatch;
+                error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+                exit(1);
             }
 
             Node_Group *rhs = (Node_Group *) define->expr;
             rhs_count = rhs->count;
             if (lhs_count != rhs_count) {
-                goto mismatch;
+                error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+                exit(1);
             }
 
+            size_t iota = 0;
             ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
                 assert(lhs_iota->kind == NODE_ATOM);
-                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned, iota++);
             }
         } else {
+            size_t iota = 0;
             ll_foreach(it, &lhs->nodes) {
-                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned, iota++);
             }
         }
     }
-
-    return;
-
-mismatch:
-    fprintf(
-        stderr,
-        Pos_Fmt "ERROR: Unequal number of values. There %s %zu on the left hand side, and %zu on the right hand side\n",
-        Pos_Arg(define->node.token.pos),
-        lhs_count > 1 ? "are" : "is",
-        lhs_count,
-        rhs_count);
-    exit(1);
 }
 
 void parser_import(Parser *p, Node_Import *import) {
@@ -785,7 +791,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 define->type = parse_expr(p, POWER_PRE, false, true, NULL);
             }
 
-            if (read_token(p, TOKEN_SET)) {
+            token = peek_token(p);
+            if (token.kind == TOKEN_SET) {
+                p->state.peeked = false;
+                define->assignment_pos = token.pos;
+
                 if (p->state.in_extern) {
                     assert(p->state.ahead.kind == TOKEN_SET);
                     fprintf(
@@ -796,7 +806,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
-            } else if (read_token(p, TOKEN_COLON)) {
+            } else if (token.kind == TOKEN_COLON) {
+                p->state.peeked = false;
+                define->assignment_pos = token.pos;
+
                 define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
                 define->is_const = true;
 

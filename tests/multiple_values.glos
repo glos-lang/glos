@@ -9,4 +9,12 @@ main :: () {
     assert(d == 80085)
     assert(e == 0)
     assert(f == 0)
+
+    g, h := 69, 420
+    assert(g == 69)
+    assert(h == 420)
+
+    g, h = h, g
+    assert(g == 420)
+    assert(h == 69)
 }

@@ -79,7 +79,7 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
 }
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 18, "");
+    static_assert(COUNT_TYPES == 19, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -277,7 +277,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 18, "");
+    static_assert(COUNT_TYPES == 19, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -310,9 +310,9 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static void node_finalize_type_of_untyped(Node *n) {
-    if (type_kind_eq(n->type, TYPE_INT)) {
-        n->type.kind = TYPE_I64;
+static void node_finalize_type_of_untyped(Type *t) {
+    if (type_kind_eq(*t, TYPE_INT)) {
+        t->kind = TYPE_I64;
     }
 }
 
@@ -910,7 +910,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_node(c, sw->expr, REF_NONE);
 
-    node_finalize_type_of_untyped(sw->expr);
+    node_finalize_type_of_untyped(&sw->expr->type);
     if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
         fprintf(
             stderr,
@@ -1094,6 +1094,28 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
+static Node *get_node_from_group(Node *n, size_t index) {
+    assert(type_kind_eq(n->type, TYPE_GROUP));
+    if (n->kind == NODE_GROUP) {
+        Node_Group *group = (Node_Group *) n;
+        size_t      iota = 0;
+        ll_foreach(it, &group->nodes) {
+            size_t count = 1;
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                count = it->type.spec.group.count;
+            }
+
+            iota += count;
+            if (iota > index) {
+                return it;
+            }
+        }
+        unreachable();
+    }
+
+    return n; // Nothing else is there
+}
+
 static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
@@ -1134,13 +1156,43 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
             }
         }
 
-        if (type) {
-            type_assert(c, it_expr, it->node.type);
-        } else {
-            if (!it->definition_spec->is_const) {
-                node_finalize_type_of_untyped(it_expr);
+        Node_Define *definition = it->definition_spec->definition_node;
+
+        bool type_determined = false;
+        if (!definition->is_value_known_at_compile_time) {
+            size_t lhs_count = definition->count;
+            size_t rhs_count = 1;
+            if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
+                rhs_count = ((Node_Group *) it_expr)->count;
             }
-            it->node.type = it_expr->type;
+
+            if (lhs_count != rhs_count) {
+                error_number_of_values_mismatch(definition->assignment_pos, lhs_count, rhs_count);
+            }
+
+            if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
+                assert(it->definition_spec->group_index < it_expr->type.spec.group.count);
+
+                if (type) {
+                    todo(); // TODO(@group)
+                } else {
+                    it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
+                    node_finalize_type_of_untyped(&it->node.type);
+                }
+
+                type_determined = true;
+            }
+        }
+
+        if (!type_determined) {
+            if (type) {
+                type_assert(c, it_expr, it->node.type);
+            } else {
+                if (!it->definition_spec->is_const) {
+                    node_finalize_type_of_untyped(&it_expr->type);
+                }
+                it->node.type = it_expr->type;
+            }
         }
     }
 
@@ -1272,6 +1324,61 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&token, "identifier");
 }
 
+static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
+    switch (op) {
+    case TOKEN_ADD_SET:
+    case TOKEN_SUB_SET:
+        type_assert_numeric(n, true);
+        break;
+
+    case TOKEN_MUL_SET:
+    case TOKEN_DIV_SET:
+    case TOKEN_MOD_SET:
+        type_assert_numeric(n, false);
+        break;
+
+    case TOKEN_SHL_SET:
+    case TOKEN_SHR_SET:
+    case TOKEN_BOR_SET:
+    case TOKEN_BAND_SET:
+        type_assert_numeric(n, false);
+        break;
+
+    default:
+        // Pass
+        break;
+    }
+}
+
+static void check_assignment(Compiler *c, Node_Binary *binary) {
+    check_node(c, binary->lhs, REF_ASSIGN);
+    check_node(c, binary->rhs, REF_NONE);
+
+    const bool is_lhs_group = type_kind_eq(binary->lhs->type, TYPE_GROUP);
+    const bool is_rhs_group = type_kind_eq(binary->rhs->type, TYPE_GROUP);
+
+    const size_t lhs_count = is_lhs_group ? binary->lhs->type.spec.group.count : 1;
+    const size_t rhs_count = is_rhs_group ? binary->rhs->type.spec.group.count : 1;
+    if (lhs_count != rhs_count) {
+        error_number_of_values_mismatch(binary->node.token.pos, lhs_count, rhs_count);
+    }
+
+    if (is_lhs_group) {
+        assert(is_rhs_group);
+        for (size_t i = 0; i < lhs_count; i++) {
+            Node *lhs = get_node_from_group(binary->lhs, i);
+            Node *rhs = get_node_from_group(binary->rhs, i);
+            check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
+            type_assert(c, rhs, lhs->type);
+        }
+    } else {
+        check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
+        type_assert(c, binary->rhs, binary->lhs->type);
+    }
+
+    binary->node.type = (Type) {.kind = TYPE_UNIT};
+}
+
 static_assert(COUNT_NODES == 25, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
@@ -1330,7 +1437,33 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     } break;
 
     case NODE_GROUP: {
-        todo(); // TODO(@group)
+        Node_Group *group = (Node_Group *) n;
+
+        Type_Group spec = {0};
+        ll_foreach(it, &group->nodes) {
+            check_node(c, it, ref);
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                spec.count += it->type.spec.group.count;
+            } else {
+                spec.count++;
+            }
+        }
+
+        spec.data = arena_alloc(c->arena, spec.count * sizeof(*spec.data));
+
+        size_t iota = 0;
+        ll_foreach(it, &group->nodes) {
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                for (size_t i = 0; i < it->type.spec.group.count; i++) {
+                    spec.data[iota++] = it->type.spec.group.data[i];
+                }
+            } else {
+                spec.data[iota++] = it->type;
+            }
+        }
+
+        n->type = (Type) {.kind = TYPE_GROUP, .spec.group = spec};
+        is_ref_valid = true;
     } break;
 
     case NODE_GHOST:
@@ -1452,40 +1585,16 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             break;
 
         case TOKEN_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_ADD_SET:
         case TOKEN_SUB_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, true);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_MUL_SET:
         case TOKEN_DIV_SET:
         case TOKEN_MOD_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_SHL_SET:
         case TOKEN_SHR_SET:
         case TOKEN_BOR_SET:
         case TOKEN_BAND_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
+            check_assignment(c, binary);
             break;
 
         default:
@@ -2081,10 +2190,6 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 check_definition(c, lhs, rhs, define->type);
             }
         } else {
-            if (define->name->kind != NODE_ATOM) {
-                assert(!define->expr || define->is_value_known_at_compile_time); // TODO(@group)
-            }
-
             Node_Atom *lhs = NULL;
             while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
                 check_definition(c, lhs, define->expr, define->type);

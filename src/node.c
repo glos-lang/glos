@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -157,6 +157,21 @@ const char *type_to_cstr_raw(Type type) {
         temp_sprintf("string");
         break;
 
+    case TYPE_GROUP:
+        temp_sprintf("(");
+        for (size_t i = 0; i < type.spec.group.count; i++) {
+            if (i) {
+                temp_remove_null();
+                temp_sprintf(", ");
+            }
+
+            temp_remove_null();
+            type_to_cstr_raw(type.spec.group.data[i]);
+        }
+        temp_remove_null();
+        temp_sprintf(")");
+        break;
+
     case TYPE_MODULE:
         unreachable();
 
@@ -202,7 +217,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -217,7 +232,7 @@ bool type_eq(Type a, Type b) {
     }
 
     switch (a.kind) {
-    case TYPE_FN: {
+    case TYPE_FN:
         if (a.spec.fn.args_count != b.spec.fn.args_count) {
             return false;
         }
@@ -233,7 +248,6 @@ bool type_eq(Type a, Type b) {
         }
 
         return type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
-    }
 
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);
@@ -241,12 +255,25 @@ bool type_eq(Type a, Type b) {
     case TYPE_SLICE:
         return type_eq(*a.spec.slice.element, *b.spec.slice.element);
 
+    case TYPE_GROUP:
+        if (a.spec.group.count != b.spec.group.count) {
+            return false;
+        }
+
+        for (size_t i = 0; i < a.spec.group.count; i++) {
+            if (!type_eq(a.spec.group.data[i], b.spec.group.data[i])) {
+                return false;
+            }
+        }
+
+        return true;
+
     default:
         return true;
     }
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -259,7 +286,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -307,7 +334,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;

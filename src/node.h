@@ -67,9 +67,9 @@ typedef enum {
     TYPE_STRUCT,
 
     TYPE_SLICE,
-
     TYPE_STRING,
 
+    TYPE_GROUP,
     TYPE_MODULE,
     COUNT_TYPES,
 } Type_Kind;
@@ -100,6 +100,11 @@ typedef struct {
     Type *element;
 } Type_Slice;
 
+typedef struct {
+    Type  *data;
+    size_t count;
+} Type_Group;
+
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -112,6 +117,7 @@ struct Type {
         Type_Fn      fn;
         Type_Slice   slice;
         Type_Struct *structt;
+        Type_Group   group;
         Module      *module;
     } spec;
 
@@ -245,6 +251,9 @@ typedef struct {
 
     // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
+
+    // For multiple definition
+    size_t group_index;
 
     Node_Define *definition_node;
     Node        *assignment_node;
@@ -441,6 +450,7 @@ struct Node_Define {
 
     Node *expr;
     Node *type;
+    Pos   assignment_pos; // The '='
 
     bool   is_const;
     bool   is_value_known_at_compile_time;
