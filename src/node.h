@@ -67,9 +67,9 @@ typedef enum {
     TYPE_STRUCT,
 
     TYPE_SLICE,
-
     TYPE_STRING,
 
+    TYPE_GROUP,
     TYPE_MODULE,
     COUNT_TYPES,
 } Type_Kind;
@@ -83,7 +83,11 @@ typedef struct {
     size_t       args_count;
     size_t       args_count_min;
     bool         is_variadic;
-    Type        *returnn;
+
+    Type  *returns;
+    size_t returns_count;
+
+    Type *return_type;
 } Type_Fn;
 
 typedef struct {
@@ -100,6 +104,14 @@ typedef struct {
     Type *element;
 } Type_Slice;
 
+typedef struct {
+    Type  *data;
+    size_t count;
+
+    LLVMTypeRef     llvm;
+    LLVMMetadataRef debug;
+} Type_Group;
+
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -112,6 +124,7 @@ struct Type {
         Type_Fn      fn;
         Type_Slice   slice;
         Type_Struct *structt;
+        Type_Group   group;
         Module      *module;
     } spec;
 
@@ -193,6 +206,7 @@ typedef enum {
 
 typedef enum {
     NODE_ATOM,
+    NODE_GROUP,
     NODE_GHOST,
     NODE_UNARY,
     NODE_BINARY,
@@ -235,6 +249,7 @@ struct Node {
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
+Node *node_iter(Node *it, Node *ll);
 
 typedef struct {
     bool is_local;
@@ -244,14 +259,17 @@ typedef struct {
     // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
 
+    // For multiple definition
+    size_t group_index;
+
     Node_Define *definition_node;
     Node        *assignment_node;
-    bool         is_assignment_const;
 
     Context_Fn  *context;
     Check_Status check_status;
 
     bool        is_const;
+    bool        is_const_value_evaluated;
     Const_Value const_value;
 
     // If this is non-empty, then use this as the linker symbol
@@ -273,10 +291,14 @@ struct Node_Atom {
     Node_Atom *definition;
 };
 
+typedef struct {
+    Node   node;
+    Nodes  nodes;
+    size_t count;
+} Node_Group;
+
 // TODO: This is the solution I came up with so far for default arguments.
 // This feels like a bad solution, but better than a non-existent perfect one.
-//
-// This WILL be replaced later, so it need not be pretty now.
 typedef struct {
     Node         node;
     Type_Fn_Arg *arg;
@@ -324,7 +346,9 @@ struct Node_Fn {
     size_t args_count;     // Actual
     size_t args_count_min; // Minimum
 
-    Node *returnn;
+    Nodes  returns;
+    size_t returns_count;
+
     Node *body;
 
     bool is_type;
@@ -396,14 +420,14 @@ typedef struct {
     // multiple return values will be implemented. In such a case, when one of the elements of a call is another
     // call to such a function, the actual argument count will be different from the apparent one, and thus cannot
     // be calculated at parse time.
-    //
-    // TODO: Name this such that this comment is unnecessary
     size_t args_count;
 
     Pos end;
 
     bool      is_type_cast;
     Type_Cast type_cast;
+
+    bool is_stmt;
 } Node_Call;
 
 // This *will* represent the following types:
@@ -427,11 +451,13 @@ typedef struct {
 
 struct Node_Define {
     Node  node;
-    Node *name;
-    Node *type;
+    Node *name; // TODO: Rename to 'lhs'
+
     Node *expr;
+    Node *type;
 
     bool   is_const;
+    bool   is_value_known_at_compile_time;
     size_t count;
 };
 

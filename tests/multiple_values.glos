@@ -1,0 +1,77 @@
+A, B :: 69, 420
+c, d := 1337, 80085
+e, f: i64
+
+main :: () {
+    // Compile time assignment
+    {
+        assert(A == 69)
+        assert(B == 420)
+        assert(c == 1337)
+        assert(d == 80085)
+        assert(e == 0)
+        assert(f == 0)
+    }
+
+    // Runtime assignment (normal + arithmetic)
+    {
+        g, h := 69, 420
+        assert(g == 69)
+        assert(h == 420)
+
+        g, h = h, g
+        assert(g == 420)
+        assert(h == 69)
+
+        g, h += h, g
+        assert(g == 489)
+        assert(h == 489)
+    }
+
+    // Assignment with typed definition
+    {
+        foo :: () -> i32 { return 69 }
+        bar :: () -> i32 { return 420 }
+
+        a, b: i32 = 69, 420
+        a, b += bar(), foo()
+        assert(a == 489)
+        assert(b == 489)
+    }
+
+    // Multiple returns
+    {
+        foo :: () -> (i64, i64) {
+            return 69, 420
+        }
+
+        a, b := foo()
+        assert(a == 69)
+        assert(b == 420)
+    }
+
+    // A function with multiple returns as an argument to another function
+    {
+        foo :: () -> (i64, i64) {
+            return 69, 420
+        }
+
+        bar :: (a: i64, b: i64) {
+            assert(a == 69)
+            assert(b == 420)
+        }
+
+        bar(foo())
+    }
+
+    // A structure type definition with multiple fields in the same statement
+    {
+        Vec2 :: struct {
+            x, y: i64
+        }
+
+        v := Vec2 {y = 420, x = 69}
+        assert(v.x == 69)
+        assert(v.y == 420)
+    }
+}

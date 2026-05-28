@@ -326,7 +326,7 @@ void *temp_alloc(size_t n) {
     assert(temp_count + n <= len(temp_data));
     char *result = &temp_data[temp_count];
     temp_count += n;
-    return result;
+    return memset(result, 0, n);
 }
 
 char *temp_sprintf(const char *fmt, ...) {
@@ -346,9 +346,7 @@ char *temp_sprintf(const char *fmt, ...) {
 }
 
 char *temp_sv_to_cstr(SV sv) {
-    char *p = memcpy(temp_alloc(sv.count + 1), sv.data, sv.count);
-    p[sv.count] = '\0';
-    return p;
+    return memcpy(temp_alloc(sv.count + 1), sv.data, sv.count);
 }
 
 void temp_remove_null(void) {

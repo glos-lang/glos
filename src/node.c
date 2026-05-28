@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -110,12 +110,12 @@ const char *type_to_cstr_raw(Type type) {
         temp_remove_null();
         temp_sprintf(")");
 
-        if (type.spec.fn.returnn->kind != TYPE_UNIT) {
+        if (type.spec.fn.returns_count) {
             temp_remove_null();
             temp_sprintf(" -> ");
 
             temp_remove_null();
-            type_to_cstr_raw(*type.spec.fn.returnn);
+            type_to_cstr_raw(*type.spec.fn.return_type);
         }
         break;
 
@@ -155,6 +155,21 @@ const char *type_to_cstr_raw(Type type) {
 
     case TYPE_STRING:
         temp_sprintf("string");
+        break;
+
+    case TYPE_GROUP:
+        temp_sprintf("(");
+        for (size_t i = 0; i < type.spec.group.count; i++) {
+            if (i) {
+                temp_remove_null();
+                temp_sprintf(", ");
+            }
+
+            temp_remove_null();
+            type_to_cstr_raw(type.spec.group.data[i]);
+        }
+        temp_remove_null();
+        temp_sprintf(")");
         break;
 
     case TYPE_MODULE:
@@ -202,7 +217,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -218,21 +233,23 @@ bool type_eq(Type a, Type b) {
 
     switch (a.kind) {
     case TYPE_FN: {
-        if (a.spec.fn.args_count != b.spec.fn.args_count) {
-            return false;
-        }
-
-        if (a.spec.fn.args == b.spec.fn.args && a.spec.fn.returnn == b.spec.fn.returnn) {
+        const Type_Fn as = a.spec.fn;
+        const Type_Fn bs = b.spec.fn;
+        if (as.args == bs.args && as.return_type == bs.return_type) {
             return true;
         }
 
-        for (size_t i = 0; i < a.spec.fn.args_count; i++) {
-            if (!type_eq(a.spec.fn.args[i].type, b.spec.fn.args[i].type)) {
+        if (as.args_count != bs.args_count || as.returns_count != bs.returns_count) {
+            return false;
+        }
+
+        for (size_t i = 0; i < as.args_count; i++) {
+            if (!type_eq(as.args[i].type, bs.args[i].type)) {
                 return false;
             }
         }
 
-        return type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
+        return type_eq(*as.return_type, *bs.return_type);
     }
 
     case TYPE_STRUCT:
@@ -241,12 +258,25 @@ bool type_eq(Type a, Type b) {
     case TYPE_SLICE:
         return type_eq(*a.spec.slice.element, *b.spec.slice.element);
 
+    case TYPE_GROUP:
+        if (a.spec.group.count != b.spec.group.count) {
+            return false;
+        }
+
+        for (size_t i = 0; i < a.spec.group.count; i++) {
+            if (!type_eq(a.spec.group.data[i], b.spec.group.data[i])) {
+                return false;
+            }
+        }
+
+        return true;
+
     default:
         return true;
     }
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -259,7 +289,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type);
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -307,7 +337,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 18, "");
+static_assert(COUNT_TYPES == 19, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -367,10 +397,11 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
+        [NODE_GROUP] = sizeof(Node_Group),
         [NODE_GHOST] = sizeof(Node_Ghost),
         [NODE_UNARY] = sizeof(Node_Unary),
         [NODE_BINARY] = sizeof(Node_Binary),
@@ -411,6 +442,22 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     return node;
 }
 
+Node *node_iter(Node *it, Node *ll) {
+    if (it) {
+        if (ll->kind == NODE_GROUP) {
+            return it->next;
+        } else {
+            return NULL;
+        }
+    } else {
+        if (ll->kind == NODE_GROUP) {
+            return ((Node_Group *) ll)->nodes.head;
+        } else {
+            return ll;
+        }
+    }
+}
+
 #define Indent_Fmt    "%*s"
 #define Indent_Arg(d) (d) * 4, ""
 
@@ -438,7 +485,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -453,6 +500,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     case NODE_ATOM:
         fprintf(f, "Atom " SV_Fmt "\n", SV_Arg(n->token.sv));
         break;
+
+    case NODE_GROUP: {
+        Node_Group *group = (Node_Group *) n;
+        fprintf(f, "Group {\n");
+        nodes_debug_impl(f, group->nodes, depth + 1, "Nodes");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
 
     case NODE_GHOST:
         fprintf(f, "Ghost\n");
@@ -497,7 +551,7 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         Node_Fn *fn = (Node_Fn *) n;
         fprintf(f, "Function {\n");
         nodes_debug_impl(f, fn->args, depth + 1, "Args");
-        node_debug_impl(f, fn->returnn, depth + 1, "Return");
+        nodes_debug_impl(f, fn->returns, depth + 1, "Returns");
         node_debug_impl(f, fn->body, depth + 1, "Body");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;

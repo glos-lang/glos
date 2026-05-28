@@ -4,6 +4,7 @@
 #include "node.h"
 #include "parser.h"
 #include "token.h"
+#include <assert.h>
 
 static void error_undefined(const Token *t, const char *label) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -19,13 +20,14 @@ static void error_redefinition(const Node_Atom *n, const Pos *previous) {
     exit(1);
 }
 
-static void error_too_few_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected at least %zu\n", Pos_Arg(pos), expected);
-    exit(1);
-}
-
-static void error_too_many_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected at most %zu\n", Pos_Arg(pos), expected);
+static void error_number_of_return_values_mismatch(Pos pos, size_t expected, size_t actual) {
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Too %s return values: Expected %zu, got %zu\n",
+        Pos_Arg(pos),
+        actual < expected ? "few" : "many",
+        expected,
+        actual);
     exit(1);
 }
 
@@ -78,7 +80,7 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
 }
 
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 18, "");
+    static_assert(COUNT_TYPES == 19, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -104,10 +106,11 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
-    case NODE_ATOM:
+    case NODE_ATOM: {
+        static_assert(COUNT_TOKENS == 67, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -125,7 +128,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         default:
             unreachable();
         }
-        break;
+    } break;
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
@@ -166,10 +169,18 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     }
 }
 
+static Const_Value eval_const_expr(Compiler *c, Node *n);
+
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     if (type_is_integer(expected) && type_kind_eq(n->type, TYPE_INT)) {
         if (!type_kind_eq(expected, TYPE_INT)) {
             cast_untyped(c, n, expected);
+
+            // Only constant expressions can be untyped integers
+            const Const_Value value = eval_const_expr(c, n);
+            assert(value.kind == CONST_VALUE_INT);
+
+            check_int_limit(n, value.as.integer);
         }
         return true;
     }
@@ -179,7 +190,7 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
-        return n->type;
+        return expected;
     }
 
     if (try_auto_cast_untyped(c, n, expected)) {
@@ -197,6 +208,68 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         Pos_Arg(n->token.pos),
         type_to_cstr(expected),
         type_to_cstr(n->type));
+
+    exit(1);
+}
+
+static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Pos *requirement) {
+    Type actual = n->type;
+
+    const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
+    if (is_group) {
+        actual = n->type.spec.group.data[group_index];
+    }
+
+    if (type_eq(actual, expected)) {
+        return expected;
+    }
+
+    if (!is_group) {
+        if (try_auto_cast_untyped(c, n, expected)) {
+            return expected;
+        }
+
+        if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && expected.ref) {
+            n->type = expected;
+            return expected;
+        }
+
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected %s, got %s\n",
+            Pos_Arg(n->token.pos),
+            type_to_cstr(expected),
+            type_to_cstr(actual));
+    } else {
+        const char *postfix = "th";
+        switch ((group_index + 1) % 10) {
+        case 1:
+            postfix = "st";
+            break;
+
+        case 2:
+            postfix = "nd";
+            break;
+
+        case 3:
+            postfix = "rd";
+            break;
+        }
+
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected %lld%s value of this to be %s, got %s. The type of this entire expression is %s\n",
+            Pos_Arg(n->token.pos),
+            group_index + 1,
+            postfix,
+            type_to_cstr(expected),
+            type_to_cstr(actual),
+            type_to_cstr(n->type));
+
+        if (requirement) {
+            fprintf(stderr, Pos_Fmt "NOTE: Required here\n", Pos_Arg(*requirement));
+        }
+    }
 
     exit(1);
 }
@@ -271,7 +344,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 18, "");
+    static_assert(COUNT_TYPES == 19, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -304,13 +377,13 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static void node_finalize_type_of_untyped(Node *n) {
-    if (type_kind_eq(n->type, TYPE_INT)) {
-        n->type.kind = TYPE_I64;
+static void node_finalize_type_of_untyped(Type *t) {
+    if (type_kind_eq(*t, TYPE_INT)) {
+        t->kind = TYPE_I64;
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -370,7 +443,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -467,7 +540,7 @@ typedef enum {
 
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
-// TODO: Nvm. This should be moved back into 'compiler.c'
+// TODO: Should this be moved back into 'compiler.c'?
 static Node_Fn *get_main(Compiler *c) {
     if (c->main_fn) {
         return c->main_fn;
@@ -507,7 +580,7 @@ static Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (signature.returnn->kind != TYPE_UNIT) {
+    if (signature.returns_count) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
@@ -515,7 +588,7 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -560,9 +633,8 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         default:
             unreachable();
-            break;
         }
-    } break;
+    }
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
@@ -901,7 +973,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_node(c, sw->expr, REF_NONE);
 
-    node_finalize_type_of_untyped(sw->expr);
+    node_finalize_type_of_untyped(&sw->expr->type);
     if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
         fprintf(
             stderr,
@@ -962,48 +1034,49 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     return value;
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
 
-        Node_Atom *it = (Node_Atom *) define->name;
-        if (!sv_match(it->node.token.sv, "_")) {
-            if (it->definition_spec->is_local) {
-                if (it->definition_spec->is_const) {
-                    const Context_Fn *fn = c->context.current;
+        Node_Atom *it = NULL;
+        while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+            if (!sv_match(it->node.token.sv, "_")) {
+                if (it->definition_spec->is_local) {
+                    if (it->definition_spec->is_const) {
+                        const Context_Fn *fn = c->context.current;
 
-                    assert(fn->end <= c->context.locals.count);
-                    assert(block_start <= c->context.locals.count);
-                    assert(block_start <= fn->end);
-                    for (size_t i = fn->end; i > block_start; i--) {
-                        Node_Atom *previous = c->context.locals.data[i - 1];
-                        if (!previous->definition_spec->is_const) {
-                            continue;
+                        assert(fn->end <= c->context.locals.count);
+                        assert(block_start <= c->context.locals.count);
+                        assert(block_start <= fn->end);
+                        for (size_t i = fn->end; i > block_start; i--) {
+                            Node_Atom *previous = c->context.locals.data[i - 1];
+                            if (!previous->definition_spec->is_const) {
+                                continue;
+                            }
+
+                            if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
+                                error_redefinition(it, &previous->node.token.pos);
+                                break;
+                            }
                         }
 
-                        if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
-                            error_redefinition(it, &previous->node.token.pos);
-                            break;
-                        }
+                        it->definition_spec->context = c->context.current;
+                        context_push_local(&c->context, it);
+                    }
+                } else {
+                    if (get_builtin_type_kind(it->node.token.sv, NULL)) {
+                        error_redefinition(it, NULL);
                     }
 
-                    it->definition_spec->context = c->context.current;
-                    context_push_local(&c->context, it);
-                }
-            } else {
-                if (get_builtin_type_kind(it->node.token.sv, NULL)) {
-                    error_redefinition(it, NULL);
-                }
+                    Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
+                    if (previous) {
+                        error_redefinition(it, &previous->node.token.pos);
+                    }
 
-                Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
-                if (previous) {
-                    error_redefinition(it, &previous->node.token.pos);
+                    global_scope_push(&it->module->globals, it);
                 }
-
-                global_scope_push(&it->module->globals, it);
             }
         }
     } break;
@@ -1084,7 +1157,44 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
-static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_expr) {
+static Node *get_node_from_group(Node *n, size_t index, i64 *group_index) {
+    if (!type_kind_eq(n->type, TYPE_GROUP)) {
+        if (group_index) {
+            *group_index = 0;
+        }
+        return n;
+    }
+
+    if (n->kind == NODE_GROUP) {
+        Node_Group *group = (Node_Group *) n;
+        size_t      iota = 0;
+        ll_foreach(it, &group->nodes) {
+            size_t count = 1;
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                count = it->type.spec.group.count;
+            }
+
+            const size_t start = iota;
+            iota += count;
+            if (iota > index) {
+                if (group_index) {
+                    *group_index = (i64) (index - start);
+                }
+                return it;
+            }
+        }
+        unreachable();
+    }
+
+    if (n->kind == NODE_CALL) {
+        assert(index < n->type.spec.group.count);
+        *group_index = index;
+    }
+
+    return n;
+}
+
+static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type) {
     assert(it->definition_spec->check_status != CHECKING); // It is already checked
     if (it->definition_spec->check_status == CHECKED) {
         return;
@@ -1092,47 +1202,90 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *type, Node *it_ex
     it->definition_spec->check_status = CHECKING;
 
     if (type) {
-        check_node(c, type, REF_NONE);
-        it->node.type = type_assert_type(type);
-        it->node.type.is_meta = false;
+        if (type_kind_eq(type->type, TYPE_UNIT)) {
+            check_node(c, type, REF_NONE);
+            type_assert_type(type);
+            type->type.is_meta = false;
+        }
+        it->node.type = type->type;
     }
 
     if (it_expr) {
-        if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
-            // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location` maybe?
-            it_expr->type = (Type) {.kind = TYPE_STRING};
-        } else {
-            check_node(c, it_expr, REF_NONE);
+        if (type_kind_eq(it_expr->type, TYPE_UNIT)) {
+            if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
+                // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location`
+                // maybe?
+                it_expr->type = (Type) {.kind = TYPE_STRING};
+            } else {
+                check_node(c, it_expr, REF_NONE);
 
-            const bool is_it_unit = type_kind_eq(it_expr->type, TYPE_UNIT);
-            const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
-            const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
-            if (is_it_unit || is_it_a_module || is_it_a_type) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot store %s in a %s\n",
-                    Pos_Arg(it_expr->token.pos),
-                    type_to_cstr(it_expr->type),
-                    it->definition_spec->is_const ? "constant" : "variable");
+                const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
+                const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
+                if (is_it_a_module || is_it_a_type) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot store %s in a %s\n",
+                        Pos_Arg(it_expr->token.pos),
+                        type_to_cstr(it_expr->type),
+                        it->definition_spec->is_const ? "constant" : "variable");
 
-                exit(1);
+                    exit(1);
+                }
             }
         }
 
-        if (type) {
-            type_assert(c, it_expr, it->node.type);
-        } else {
-            if (!it->definition_spec->is_const) {
-                node_finalize_type_of_untyped(it_expr);
+        Node_Define *definition = it->definition_spec->definition_node;
+
+        bool type_determined = false;
+        if (!definition->is_value_known_at_compile_time) {
+            size_t lhs_count = definition->count;
+            size_t rhs_count = 1;
+            if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
+                rhs_count = it_expr->type.spec.group.count;
             }
-            it->node.type = it_expr->type;
+
+            if (lhs_count != rhs_count) {
+                error_number_of_values_mismatch(
+                    definition->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
+            }
+
+            if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
+                assert(it->definition_spec->group_index < it_expr->type.spec.group.count);
+
+                if (type) {
+                    i64   group_index = -1;
+                    Node *n = get_node_from_group(it_expr, it->definition_spec->group_index, &group_index);
+                    type_assert_grouped(c, n, it->node.type, group_index, &it->node.token.pos);
+                } else {
+                    it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
+                    node_finalize_type_of_untyped(&it->node.type);
+                }
+
+                type_determined = true;
+            }
+        }
+
+        if (!type_determined) {
+            if (type) {
+                type_assert(c, it_expr, it->node.type);
+            } else {
+                if (!it->definition_spec->is_const) {
+                    node_finalize_type_of_untyped(&it_expr->type);
+                }
+                it->node.type = it_expr->type;
+            }
         }
     }
 
-    if (it->definition_spec->is_const) {
-        it->definition_spec->const_value = eval_const_expr(c, it_expr);
-    } else if (!it->definition_spec->is_local && it_expr) {
-        it->definition_spec->const_value = eval_const_expr(c, it_expr);
+    if (it_expr && it->definition_spec->definition_node->is_value_known_at_compile_time) {
+        if (!it->definition_spec->is_const_value_evaluated) {
+            it->definition_spec->const_value = eval_const_expr(c, it_expr);
+            it->definition_spec->is_const_value_evaluated = true;
+        }
     }
 
     if (it->definition_spec->is_local) {
@@ -1195,11 +1348,13 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
             c->context.current = definition->definition_spec->context;
 
             // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
+            assert(definition->definition_spec->definition_node->is_value_known_at_compile_time);
+
             check_definition(
                 c,
                 definition,
-                definition->definition_spec->definition_node->type,
-                definition->definition_spec->assignment_node);
+                definition->definition_spec->assignment_node,
+                definition->definition_spec->definition_node->type);
             context_restore_fn(&c->context, context_fn_save);
         } break;
 
@@ -1254,7 +1409,124 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     error_undefined(&token, "identifier");
 }
 
-static_assert(COUNT_NODES == 24, "");
+static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
+    switch (op) {
+    case TOKEN_ADD_SET:
+    case TOKEN_SUB_SET:
+        type_assert_numeric(n, true);
+        break;
+
+    case TOKEN_MUL_SET:
+    case TOKEN_DIV_SET:
+    case TOKEN_MOD_SET:
+        type_assert_numeric(n, false);
+        break;
+
+    case TOKEN_SHL_SET:
+    case TOKEN_SHR_SET:
+    case TOKEN_BOR_SET:
+    case TOKEN_BAND_SET:
+        type_assert_numeric(n, false);
+        break;
+
+    default:
+        // Pass
+        break;
+    }
+}
+
+static void check_assignment(Compiler *c, Node_Binary *binary) {
+    check_node(c, binary->lhs, REF_ASSIGN);
+    check_node(c, binary->rhs, REF_NONE);
+
+    const bool is_lhs_group = type_kind_eq(binary->lhs->type, TYPE_GROUP);
+    const bool is_rhs_group = type_kind_eq(binary->rhs->type, TYPE_GROUP);
+
+    const size_t lhs_count = is_lhs_group ? binary->lhs->type.spec.group.count : 1;
+    const size_t rhs_count = is_rhs_group ? binary->rhs->type.spec.group.count : 1;
+    if (lhs_count != rhs_count) {
+        error_number_of_values_mismatch(binary->node.token.pos, lhs_count, rhs_count, NULL, NULL);
+    }
+
+    if (is_lhs_group) {
+        assert(is_rhs_group);
+        for (size_t i = 0; i < lhs_count; i++) {
+            i64   lhs_group_index = -1;
+            Node *lhs = get_node_from_group(binary->lhs, i, &lhs_group_index);
+            i64   rhs_group_index = -1;
+            Node *rhs = get_node_from_group(binary->rhs, i, &rhs_group_index);
+            check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
+            type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
+        }
+    } else {
+        check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
+        type_assert(c, binary->rhs, binary->lhs->type);
+    }
+
+    binary->node.type = (Type) {.kind = TYPE_UNIT};
+}
+
+// The minimum number of arguments required MUST be provided
+// The maximum number of arguments can optionally be provided, or set to -1 for variadic functions
+static void check_call_arguments(Compiler *c, Node_Call *call, size_t args_count_min, size_t args_count_max) {
+    ll_foreach(it, &call->args) {
+        check_node(c, it, REF_NONE);
+        call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+    }
+
+    bool   has_minimum = true;
+    bool   has_maximum = true;
+    size_t expected = 0;
+
+    const char *situation = "";
+    const char *extra = "";
+
+    if (call->args_count < args_count_min) {
+        has_minimum = false;
+        expected = args_count_min;
+        situation = "Not enough";
+        extra = " atleast";
+    }
+
+    if (call->args_count > args_count_max) {
+        has_maximum = false;
+        expected = args_count_max;
+        situation = "Too many";
+        // Not setting the extra here, since that situation does not exist
+    }
+
+    if (has_minimum && has_maximum) {
+        return;
+    }
+
+    if (args_count_min == args_count_max) {
+        extra = "";
+    }
+
+    Pos pos = call->end;
+    if (!has_maximum) {
+        size_t iota = 0;
+        ll_foreach(it, &call->args) {
+            iota += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+            if (iota > args_count_max) {
+                pos = it->token.pos;
+                break;
+            }
+        }
+    }
+
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: %s arguments: Expected%s %zu, got %zu\n",
+        Pos_Arg(pos),
+        situation,
+        extra,
+        expected,
+        call->args_count);
+    exit(1);
+}
+
+static_assert(COUNT_NODES == 25, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1309,6 +1581,36 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         default:
             unreachable();
         }
+    } break;
+
+    case NODE_GROUP: {
+        Node_Group *group = (Node_Group *) n;
+
+        Type_Group spec = {0};
+        ll_foreach(it, &group->nodes) {
+            check_node(c, it, ref);
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                spec.count += it->type.spec.group.count;
+            } else {
+                spec.count++;
+            }
+        }
+
+        spec.data = arena_alloc(c->arena, spec.count * sizeof(*spec.data));
+
+        size_t iota = 0;
+        ll_foreach(it, &group->nodes) {
+            if (type_kind_eq(it->type, TYPE_GROUP)) {
+                for (size_t i = 0; i < it->type.spec.group.count; i++) {
+                    spec.data[iota++] = it->type.spec.group.data[i];
+                }
+            } else {
+                spec.data[iota++] = it->type;
+            }
+        }
+
+        n->type = (Type) {.kind = TYPE_GROUP, .spec.group = spec};
+        is_ref_valid = true;
     } break;
 
     case NODE_GHOST:
@@ -1420,7 +1722,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             if (!type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Expected scalar or string value, got %s",
+                    Pos_Fmt "ERROR: Expected scalar or string value, got %s\n",
                     Pos_Arg(binary->lhs->token.pos),
                     type_to_cstr(binary->lhs->type));
                 exit(1);
@@ -1430,40 +1732,16 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             break;
 
         case TOKEN_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_ADD_SET:
         case TOKEN_SUB_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, true);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_MUL_SET:
         case TOKEN_DIV_SET:
         case TOKEN_MOD_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
-            break;
-
         case TOKEN_SHL_SET:
         case TOKEN_SHR_SET:
         case TOKEN_BOR_SET:
         case TOKEN_BAND_SET:
-            check_node(c, binary->lhs, REF_ASSIGN);
-            check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            type_assert_node(c, binary->rhs, binary->lhs);
-            n->type = (Type) {.kind = TYPE_UNIT};
+            check_assignment(c, binary);
             break;
 
         default:
@@ -1614,15 +1892,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 fn_type_spec.args_count += define->count;
             }
 
-            if (fn->returnn) {
-                check_node(c, fn->returnn, REF_NONE);
-                type_assert_type(fn->returnn);
-                fn_type_spec.returnn = arena_clone(c->arena, &fn->returnn->type, sizeof(Type));
-                fn_type_spec.returnn->is_meta = false;
-            } else {
-                fn_type_spec.returnn = arena_alloc(c->arena, sizeof(Type));
-                fn_type_spec.returnn->kind = TYPE_UNIT;
+            if (fn->returns.head) {
+                fn_type_spec.returns = arena_alloc(c->arena, fn->returns_count * sizeof(*fn_type_spec.returns));
+
+                size_t iota = 0;
+                ll_foreach(it, &fn->returns) {
+                    check_node(c, it, REF_NONE);
+                    type_assert_type(it);
+
+                    fn_type_spec.returns[iota] = it->type;
+                    fn_type_spec.returns[iota].is_meta = false;
+                    iota++;
+                }
             }
+            fn_type_spec.returns_count = fn->returns_count;
+
+            Type return_type = {0};
+            if (fn_type_spec.returns_count == 0) {
+                return_type.kind = TYPE_UNIT;
+            } else if (fn_type_spec.returns_count == 1) {
+                return_type = *fn_type_spec.returns;
+            } else {
+                return_type.kind = TYPE_GROUP;
+                return_type.spec.group.data = fn_type_spec.returns;
+                return_type.spec.group.count = fn_type_spec.returns_count;
+            }
+            fn_type_spec.return_type = arena_clone(c->arena, &return_type, sizeof(return_type));
 
             n->type = (Type) {.kind = TYPE_FN, .spec.fn = fn_type_spec};
 
@@ -1637,7 +1932,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 is_ref_valid = ref == REF_ADDR;
             } else if (fn->body) {
                 check_node(c, fn->body, REF_NONE);
-                if (fn->returnn && !always_returns(fn->body)) {
+                if (fn_type_spec.returns_count && !always_returns(fn->body)) {
                     assert(fn->body->kind == NODE_BLOCK);
                     const Pos end = ((Node_Block *) fn->body)->end;
                     fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
@@ -1670,30 +1965,36 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
         size_t iota = 0;
         for (Node *field = structt->fields.head; field; field = field->next) {
+            const size_t start = iota;
+
             assert(field->kind == NODE_DEFINE);
             Node_Define *define = (Node_Define *) field;
 
-            assert(define->name->kind == NODE_ATOM);
-            Node_Atom *it = (Node_Atom *) define->name;
-            if (!sv_match(it->node.token.sv, "_")) {
-                for (size_t i = 0; i < iota; i++) {
-                    Type_Struct_Field previous = structt_type_spec.fields[i];
-                    if (sv_eq(previous.name, it->node.token.sv)) {
-                        error_redefinition(it, &previous.pos);
+            Node_Atom *it = NULL;
+            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                if (!sv_match(it->node.token.sv, "_")) {
+                    for (size_t i = 0; i < iota; i++) {
+                        Type_Struct_Field previous = structt_type_spec.fields[i];
+                        if (sv_eq(previous.name, it->node.token.sv)) {
+                            error_redefinition(it, &previous.pos);
+                        }
                     }
                 }
+
+                Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
+                it_spec->name = it->node.token.sv;
+                it_spec->pos = it->node.token.pos;
             }
-
-            Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
-            *it_spec = (Type_Struct_Field) {
-                .name = it->node.token.sv,
-                .pos = it->node.token.pos,
-            };
-
+            assert(iota == start + define->count);
             check_node(c, define->type, REF_NONE);
-            it->node.type = type_assert_type(define->type);
-            it->node.type.is_meta = false;
-            it_spec->type = it->node.type;
+
+            iota = start;
+            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                it->node.type = type_assert_type(define->type);
+                it->node.type.is_meta = false;
+                structt_type_spec.fields[iota++].type = it->node.type;
+            }
+            assert(iota == start + define->count);
         }
 
         is_ref_valid = ref == REF_ADDR;
@@ -1789,18 +2090,9 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     stderr, Pos_Fmt "ERROR: Cannot cast to %s\n", Pos_Arg(call->fn->token.pos), type_to_cstr(n->type));
                 exit(1);
             }
+            check_call_arguments(c, call, 1, 1);
 
-            if (!call->args.head) {
-                error_too_few_arguments(call->end, 1);
-                exit(1);
-            } else if (call->args.head->next) {
-                error_too_many_arguments(call->args.head->next->token.pos, 1);
-                exit(1);
-            }
-
-            check_node(c, call->args.head, REF_NONE);
             const Type from_type = call->args.head->type;
-
             if (type_is_scalar(n->type)) {
                 type_assert_scalar(call->args.head);
 
@@ -1861,28 +2153,26 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             }
             const Type_Fn fn_type_spec = fn_type.spec.fn;
 
-            call->args_count = 0;
+            check_call_arguments(
+                c, call, fn_type_spec.args_count_min, fn_type_spec.is_variadic ? UINT64_MAX : fn_type_spec.args_count);
+
+            size_t iota = 0;
+            bool   check_args = true;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
-                check_node(c, arg, REF_NONE);
+                const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
+                const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 
-                bool is_variadic_arg = false;
-                if (call->args_count >= fn_type_spec.args_count) {
-                    if (fn_type_spec.is_variadic) {
-                        is_variadic_arg = true;
-                    } else {
-                        error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                for (size_t i = 0; i < arg_parts; i++) {
+                    if (iota >= fn_type_spec.args_count) {
+                        check_args = false;
                     }
+
+                    if (check_args) {
+                        type_assert_grouped(c, arg, fn_type_spec.args[iota].type, i, NULL);
+                    }
+
+                    iota++;
                 }
-
-                if (!is_variadic_arg) {
-                    type_assert(c, arg, fn_type_spec.args[call->args_count].type);
-                }
-
-                call->args_count++;
-            }
-
-            if (call->args_count < fn_type_spec.args_count_min) {
-                error_too_few_arguments(call->end, fn_type_spec.args_count_min);
             }
 
             for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
@@ -1895,7 +2185,14 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 call->args_count++;
             }
 
-            n->type = *fn_type.spec.fn.returnn;
+            n->type = *fn_type_spec.return_type;
+            if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: This call cannot be used as a value as it does not return anything\n",
+                    Pos_Arg(n->token.pos));
+                exit(1);
+            }
         }
     } break;
 
@@ -2043,8 +2340,20 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-        check_definition(c, (Node_Atom *) define->name, define->type, define->expr);
+        if (define->expr && define->is_value_known_at_compile_time) {
+            Node_Atom *lhs = NULL;
+            Node      *rhs = NULL;
+            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
+                rhs = node_iter(rhs, define->expr);
+                assert(rhs);
+                check_definition(c, lhs, rhs, define->type);
+            }
+        } else {
+            Node_Atom *lhs = NULL;
+            while ((lhs = (Node_Atom *) node_iter((Node *) lhs, define->name))) {
+                check_definition(c, lhs, define->expr, define->type);
+            }
+        }
     } break;
 
     case NODE_BLOCK: {
@@ -2137,16 +2446,31 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     } break;
 
     case NODE_RETURN: {
-        Node_Return *returnn = (Node_Return *) n;
-        const Type   expected = *c->context.current->fn->node.type.spec.fn.returnn;
-
-        n->type.kind = TYPE_UNIT;
+        Node_Return  *returnn = (Node_Return *) n;
+        const Type_Fn fn_type = c->context.current->fn->node.type.spec.fn;
         if (returnn->value) {
             check_node(c, returnn->value, REF_NONE);
-            type_assert(c, returnn->value, expected);
+
+            const bool   is_group = type_kind_eq(returnn->value->type, TYPE_GROUP);
+            const size_t actual_count = is_group ? returnn->value->type.spec.group.count : 1;
+
+            if (actual_count != fn_type.returns_count) {
+                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, actual_count);
+            }
+
+            assert(actual_count == fn_type.returns_count);
+            for (size_t i = 0; i < fn_type.returns_count; i++) {
+                i64   group_index = -1;
+                Node *n = get_node_from_group(returnn->value, i, &group_index);
+                type_assert_grouped(c, n, fn_type.returns[i], group_index, NULL);
+            }
+
             n->type = returnn->value->type;
         } else {
-            type_assert(c, n, expected);
+            if (fn_type.returns_count) {
+                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, 0);
+            }
+            n->type.kind = TYPE_UNIT;
         }
     } break;
 
@@ -2224,7 +2548,7 @@ void check_nodes(Compiler *c) {
     const Type unit = {.kind = TYPE_UNIT};
     c->main_fn_type = (Type) {
         .kind = TYPE_FN,
-        .spec.fn.returnn = arena_clone(c->arena, &unit, sizeof(unit)),
+        .spec.fn.return_type = arena_clone(c->arena, &unit, sizeof(unit)),
     };
 
     for (Module *m = c->modules->head; m; m = m->next) {

@@ -3,15 +3,39 @@
 #include "node.h"
 #include "token.h"
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifndef PLATFORM_X86_64_WINDOWS
 #include <dirent.h>
 #include <errno.h>
 #endif //  PLATFORM_X86_64_WINDOWS
 
+void error_number_of_values_mismatch(
+    Pos pos, size_t lhs_count, size_t rhs_count, const char *lhs_label, const char *rhs_label) {
+    if (!lhs_label) {
+        lhs_label = "on the left hand side";
+    }
+
+    if (!rhs_label) {
+        rhs_label = "on the right hand side";
+    }
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Unequal number of values. There %s %zu %s, and %zu %s\n",
+        Pos_Arg(pos),
+        lhs_count == 1 ? "is" : "are",
+        lhs_count,
+        lhs_label,
+        rhs_count,
+        rhs_label);
+    exit(1);
+}
+
 typedef enum {
     POWER_NIL,
     POWER_SET,
+    POWER_TUP,
     POWER_CMP,
     POWER_SHL,
     POWER_ADD,
@@ -33,6 +57,9 @@ static Power token_kind_to_power(Token_Kind kind) {
 
     case TOKEN_COLON:
         return POWER_SET;
+
+    case TOKEN_COMMA:
+        return POWER_TUP;
 
     case TOKEN_LPAREN:
         return POWER_CALL;
@@ -166,7 +193,7 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
-static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch);
+static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
 static Node *parse_block(Parser *p, Token token) {
@@ -189,7 +216,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
     }
 
     bool  should_be_switch = false;
-    Node *expr = parse_expr(p, POWER_SET, false, &should_be_switch);
+    Node *expr = parse_expr(p, POWER_SET, false, false, &should_be_switch);
     if (should_be_switch) {
         Node_Switch *sw = (Node_Switch *) node_alloc(p->arena, NODE_SWITCH, token);
         sw->is_compile_time = is_compile_time;
@@ -214,7 +241,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
             Node_Case *case_ = (Node_Case *) node_alloc(p->arena, NODE_CASE, token);
             if (!fallback) {
                 do {
-                    nodes_push(&case_->preds, parse_expr(p, POWER_SET, false, NULL));
+                    nodes_push(&case_->preds, parse_expr(p, POWER_SET, false, false, NULL));
                     sw->preds_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }
@@ -270,7 +297,7 @@ static Node *parse_for(Parser *p, Token token) {
     Node_For *forr = (Node_For *) node_alloc(p->arena, NODE_FOR, token);
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
-        forr->condition = parse_expr(p, POWER_NIL, false, NULL);
+        forr->condition = parse_expr(p, POWER_NIL, false, false, NULL);
         if (forr->condition->kind == NODE_DEFINE ||
             (forr->condition->kind == NODE_BINARY && token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
             buffer_token(p, expect_token(p, TOKEN_EOL));
@@ -279,11 +306,11 @@ static Node *parse_for(Parser *p, Token token) {
         if (read_token(p, TOKEN_EOL)) {
             consume_tokens(p, TOKEN_EOL);
             forr->init = forr->condition;
-            forr->condition = parse_expr(p, POWER_SET, false, NULL);
+            forr->condition = parse_expr(p, POWER_SET, false, false, NULL);
 
             if (read_token(p, TOKEN_EOL)) {
                 consume_tokens(p, TOKEN_EOL);
-                forr->update = parse_expr(p, POWER_NIL, false, NULL);
+                forr->update = parse_expr(p, POWER_NIL, false, false, NULL);
             }
         }
     }
@@ -308,35 +335,90 @@ static void not_in_extern_assert(Parser *p, Token token) {
     }
 }
 
-static void definition_atom_setup(Parser *p, Node_Define *define) {
-    const bool is_assignment_const = define->expr && (define->is_const || p->state.fn_current == NULL);
+static void definition_lhs_atom_setup(
+    Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned, size_t group_index) {
+    if (!it->definition_spec) {
+        it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
+    }
 
-    if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
-        Node_Atom *it = (Node_Atom *) define->name;
-        Node      *it_expr = define->expr;
+    it->definition_spec->group_index = group_index;
+    it->definition_spec->is_const = define->is_const;
+    it->definition_spec->is_local = p->state.fn_current != NULL;
+    it->definition_spec->is_extern = p->state.in_extern;
+    it->definition_spec->is_assigned = is_assigned;
+    it->definition_spec->definition_node = define;
+    it->definition_spec->assignment_node = it_expr;
 
-        if (!it->definition_spec) {
-            it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
+    if (it->definition_spec->is_const) {
+        assert(it_expr);
+        if (it_expr->kind == NODE_FN) {
+            ((Node_Fn *) it_expr)->defined_as = it;
+        } else if (it_expr->kind == NODE_STRUCT) {
+            ((Node_Struct *) it_expr)->defined_as = it;
+        }
+    }
+}
+
+static void definition_lhs_setup(Parser *p, Node_Define *define) {
+    const bool is_assigned = define->expr != NULL;
+    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current; // TODO(@static)
+
+    size_t lhs_count = 1;
+    size_t rhs_count = 1;
+
+    if (define->name->kind == NODE_ATOM) {
+        if (define->expr && define->expr->kind == NODE_GROUP) {
+            rhs_count = ((Node_Group *) define->expr)->count;
+            error_number_of_values_mismatch(
+                define->node.token.pos,
+                lhs_count,
+                rhs_count,
+                add_trailing_s_if_plural("definition", lhs_count),
+                add_trailing_s_if_plural("assignment", rhs_count));
+            exit(1);
         }
 
-        it->definition_spec->is_const = define->is_const;
-        it->definition_spec->is_local = p->state.fn_current != NULL;
-        it->definition_spec->is_extern = p->state.in_extern;
-        it->definition_spec->is_assigned = define->expr != NULL;
-        it->definition_spec->definition_node = define;
-        it->definition_spec->assignment_node = define->expr;
-        it->definition_spec->is_assignment_const = is_assignment_const;
+        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_assigned, 0);
+    } else {
+        Node_Group *lhs = (Node_Group *) define->name;
+        lhs_count = lhs->count;
 
-        if (it->definition_spec->is_const) {
-            assert(it_expr);
-            if (it_expr->kind == NODE_FN) {
-                ((Node_Fn *) it_expr)->defined_as = it;
-            } else if (it_expr->kind == NODE_STRUCT) {
-                ((Node_Struct *) it_expr)->defined_as = it;
+        if (is_assigned && define->is_value_known_at_compile_time) {
+            if (define->expr->kind != NODE_GROUP) {
+                error_number_of_values_mismatch(
+                    define->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
+                exit(1);
+            }
+
+            Node_Group *rhs = (Node_Group *) define->expr;
+            rhs_count = rhs->count;
+            if (lhs_count != rhs_count) {
+                error_number_of_values_mismatch(
+                    define->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
+                exit(1);
+            }
+
+            size_t iota = 0;
+            ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
+                assert(lhs_iota->kind == NODE_ATOM);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned, iota++);
+            }
+        } else {
+            size_t iota = 0;
+            ll_foreach(it, &lhs->nodes) {
+                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned, iota++);
             }
         }
-    } else {
-        unreachable();
     }
 }
 
@@ -443,8 +525,77 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
+static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed) {
+    Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
+    {
+        Node *illegal = NULL;
+        if (name->kind == NODE_ATOM && name->token.kind == TOKEN_IDENT) {
+            define->count = 1;
+        } else if (name->kind == NODE_GROUP) {
+            Node_Group *group = (Node_Group *) name;
+            ll_foreach(it, &group->nodes) {
+                if (it->kind != NODE_ATOM || it->token.kind != TOKEN_IDENT) {
+                    illegal = it;
+                    break;
+                }
+            }
+            define->count = group->count;
+        } else {
+            illegal = name;
+        }
+
+        if (illegal) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition name to be an identifier, got expression\n",
+                Pos_Arg(illegal->token.pos));
+            exit(1);
+        }
+    }
+    define->name = name;
+
+    token = peek_token(p);
+    if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
+        define->type = parse_expr(p, POWER_PRE, false, true, NULL);
+    }
+
+    token = peek_token(p);
+    if (token.kind == TOKEN_SET) {
+        p->state.peeked = false;
+        if (p->state.in_extern) {
+            assert(p->state.ahead.kind == TOKEN_SET);
+            fprintf(stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->state.ahead.pos));
+            exit(1);
+        }
+
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
+    } else if (token.kind == TOKEN_COLON) {
+        p->state.peeked = false;
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
+        define->is_const = true;
+
+        if (p->state.in_extern) {
+            if (define->expr->kind != NODE_FN) {
+                not_in_extern_assert(p, define->expr->token);
+            }
+
+            Node_Fn *fn = (Node_Fn *) define->expr;
+            if (fn->body) {
+                fprintf(stderr, Pos_Fmt "ERROR: External function cannot have body\n", Pos_Arg(fn->body->token.pos));
+                exit(1);
+            }
+
+            fn->is_type = false;
+            fn->is_extern = true;
+        }
+    }
+
+    definition_lhs_setup(p, define);
+    return (Node *) define;
+}
+
 static_assert(COUNT_TOKENS == 67, "");
-static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *should_be_switch) {
+static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
 
@@ -468,13 +619,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     case TOKEN_LNOT: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
-        unary->value = parse_expr(p, POWER_PRE, are_compounds_allowed, NULL);
+        unary->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
-        unary->value = parse_expr(p, POWER_REF, are_compounds_allowed, NULL);
+        unary->value = parse_expr(p, POWER_REF, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_LPAREN: {
@@ -482,11 +633,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
         } else {
-            node = parse_expr(p, POWER_NIL, true, NULL);
-            if (node->kind == NODE_DEFINE) {
+            node = parse_expr(p, POWER_SET, false, true, NULL);
+            if (peek_token(p).kind == TOKEN_COLON) {
                 is_fn = true;
-            } else if (node->kind == NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
-                error_unexpected(node->token);
+                node = parse_define(p, node, next_token(p), false);
             } else {
                 expect_token(p, TOKEN_RPAREN);
             }
@@ -504,7 +654,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             p->state.fn_current = fn;
 
             if (arg) {
-                definition_atom_setup(p, (Node_Define *) arg);
+                definition_lhs_setup(p, (Node_Define *) arg);
             }
 
             bool has_default_args = false;
@@ -514,7 +664,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                 Node_Define *define = (Node_Define *) arg;
                 if (define->is_const) {
                     fprintf(
-                        stderr, Pos_Fmt "ERROR: Expected argument, got constant definition\n", Pos_Arg(arg->token.pos));
+                        stderr, Pos_Fmt "ERROR: Expected argument definition, got constant\n", Pos_Arg(arg->token.pos));
                     exit(1);
                 }
 
@@ -558,15 +708,29 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
                     break;
                 }
 
-                arg = parse_expr(p, POWER_NIL, true, NULL);
+                arg = parse_expr(p, POWER_NIL, false, true, NULL);
                 if (arg->kind != NODE_DEFINE) {
-                    fprintf(stderr, Pos_Fmt "ERROR: Expected argument, got expression\n", Pos_Arg(arg->token.pos));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Expected argument definition, got expression\n",
+                        Pos_Arg(arg->token.pos));
                     exit(1);
                 }
             }
 
             if (read_token(p, TOKEN_ARROW)) {
-                fn->returnn = parse_expr(p, POWER_PRE, false, NULL);
+                if (read_token(p, TOKEN_LPAREN)) {
+                    while (!read_token(p, TOKEN_RPAREN)) {
+                        nodes_push(&fn->returns, parse_expr(p, POWER_PRE, false, false, NULL));
+                        fn->returns_count++;
+                        if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                            break;
+                        }
+                    }
+                } else {
+                    nodes_push(&fn->returns, parse_expr(p, POWER_PRE, false, false, NULL));
+                    fn->returns_count++;
+                }
             }
 
             if (peek_token(p).kind == TOKEN_LBRACE) {
@@ -584,7 +748,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         Node_Slice *slice = (Node_Slice *) node;
 
         expect_token(p, TOKEN_RBRACKET);
-        slice->element = parse_expr(p, POWER_SET, false, NULL);
+        slice->element = parse_expr(p, POWER_SET, false, false, NULL);
     } break;
 
     case TOKEN_STRUCT: {
@@ -595,7 +759,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            Node *field = parse_expr(p, POWER_NIL, true, NULL);
+            Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
             if (field->kind != NODE_DEFINE) {
                 fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
                 exit(1);
@@ -615,9 +779,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             nodes_push(&structt->fields, field);
             structt->fields_count += define->count;
 
-            if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
-                break;
-            }
+            consume_tokens(p, TOKEN_EOL);
         }
     } break;
 
@@ -625,7 +787,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
-        unary->value = parse_expr(p, POWER_SET, true, NULL);
+        unary->value = parse_expr(p, POWER_SET, false, true, NULL);
         expect_token(p, TOKEN_RPAREN);
     } break;
 
@@ -640,7 +802,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     } break;
 
     case TOKEN_DIRECTIVE_INLINE: {
-        node = parse_expr(p, POWER_DOT, false, NULL);
+        node = parse_expr(p, POWER_DOT, false, false, NULL);
         if (node->kind != NODE_FN) {
             fprintf(
                 stderr,
@@ -680,7 +842,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
     while (true) {
         token = peek_token(p);
         if (token.newline) {
-            break;
+            break; // TODO: Don't do this for '.'
         }
 
         const Power lbp = token_kind_to_power(token.kind);
@@ -697,56 +859,25 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             node = (Node *) member;
         } break;
 
-        case TOKEN_COLON: {
-            Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
-            if (node->kind == NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                define->count = 1;
-            } else {
-                error_unexpected(token);
-            }
-            define->name = node;
+        case TOKEN_COLON:
+            return parse_define(p, node, token, groups_allowed);
 
-            token = peek_token(p);
-            if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
-                define->type = parse_expr(p, POWER_PRE, true, NULL);
+        case TOKEN_COMMA: {
+            if (!groups_allowed) {
+                buffer_token(p, token);
+                return node;
             }
 
-            if (read_token(p, TOKEN_SET)) {
-                if (p->state.in_extern) {
-                    assert(p->state.ahead.kind == TOKEN_SET);
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: External variable cannot have assignment\n",
-                        Pos_Arg(p->state.ahead.pos));
-                    exit(1);
-                }
+            Node_Group *group = (Node_Group *) node_alloc(p->arena, NODE_GROUP, token);
+            nodes_push(&group->nodes, node);
+            group->count++;
 
-                define->expr = parse_expr(p, POWER_SET, true, NULL);
-            } else if (read_token(p, TOKEN_COLON)) {
-                define->expr = parse_expr(p, POWER_SET, true, NULL);
-                define->is_const = true;
+            do {
+                nodes_push(&group->nodes, parse_expr(p, lbp, false, compounds_allowed, NULL));
+                group->count++;
+            } while (read_token(p, TOKEN_COMMA));
 
-                if (p->state.in_extern) {
-                    if (define->expr->kind != NODE_FN) {
-                        not_in_extern_assert(p, define->expr->token);
-                    }
-
-                    Node_Fn *fn = (Node_Fn *) define->expr;
-                    if (fn->body) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: External function cannot have body\n",
-                            Pos_Arg(fn->body->token.pos));
-                        exit(1);
-                    }
-
-                    fn->is_type = false;
-                    fn->is_extern = true;
-                }
-            }
-
-            definition_atom_setup(p, define);
-            return (Node *) define;
+            node = (Node *) group;
         } break;
 
         case TOKEN_LPAREN: {
@@ -754,7 +885,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             call->fn = node;
 
             while (!read_token(p, TOKEN_RPAREN)) {
-                nodes_push(&call->args, parse_expr(p, POWER_SET, true, NULL));
+                nodes_push(&call->args, parse_expr(p, POWER_SET, false, true, NULL));
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
                 }
@@ -766,7 +897,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
         } break;
 
         case TOKEN_LBRACE: {
-            if (!are_compounds_allowed) {
+            if (!compounds_allowed) {
                 buffer_token(p, token);
                 return node;
             }
@@ -775,14 +906,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             compound->lhs = node;
             compound->is_designated = false;
             while (!read_token(p, TOKEN_RBRACE)) {
-                Node *child = parse_expr(p, POWER_SET, true, NULL);
+                Node *child = parse_expr(p, POWER_SET, false, true, NULL);
 
                 bool child_is_designated = false;
                 if (read_token(p, TOKEN_SET)) {
                     assert(p->state.ahead.kind == TOKEN_SET);
                     Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->state.ahead);
                     binary->lhs = child;
-                    binary->rhs = parse_expr(p, POWER_SET, true, NULL);
+                    binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
                     child = (Node *) binary;
                     child_is_designated = true;
                 }
@@ -813,14 +944,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             index->lhs = node;
 
             if (peek_token(p).kind != TOKEN_RANGE) {
-                index->a = parse_expr(p, POWER_SET, true, NULL);
+                index->a = parse_expr(p, POWER_SET, false, true, NULL);
             }
 
             token = expect_token(p, TOKEN_RANGE, TOKEN_RBRACKET);
             if (token.kind == TOKEN_RANGE) {
                 index->is_ranged = true;
                 if (peek_token(p).kind != TOKEN_RBRACKET) {
-                    index->b = parse_expr(p, POWER_SET, true, NULL);
+                    index->b = parse_expr(p, POWER_SET, false, true, NULL);
                 }
                 expect_token(p, TOKEN_RBRACKET);
             }
@@ -835,7 +966,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool are_compounds_allowed, bool *
             } else {
                 Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, token);
                 binary->lhs = node;
-                binary->rhs = parse_expr(p, lbp, are_compounds_allowed, NULL);
+                binary->rhs = parse_expr(p, lbp, groups_allowed, compounds_allowed, NULL);
                 node = (Node *) binary;
                 if (lbp == POWER_SET) {
                     return node;
@@ -865,7 +996,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 24, "");
+static_assert(COUNT_NODES == 25, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -876,10 +1007,10 @@ static Node *parse_stmt(Parser *p) {
         Node_Assert *assertt = (Node_Assert *) node;
 
         expect_token(p, TOKEN_LPAREN);
-        assertt->expr = parse_expr(p, POWER_SET, true, NULL);
+        assertt->expr = parse_expr(p, POWER_SET, false, true, NULL);
 
         if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind == TOKEN_COMMA) {
-            assertt->message = parse_expr(p, POWER_SET, true, NULL);
+            assertt->message = parse_expr(p, POWER_SET, false, true, NULL);
             expect_token(p, TOKEN_RPAREN);
         }
     } break;
@@ -1019,7 +1150,7 @@ static Node *parse_stmt(Parser *p) {
 
         Node_Return *returnn = (Node_Return *) node;
         if (!peek_token(p).newline) {
-            returnn->value = parse_expr(p, POWER_SET, true, NULL);
+            returnn->value = parse_expr(p, POWER_SET, true, true, NULL);
         }
     } break;
 
@@ -1044,19 +1175,23 @@ static Node *parse_stmt(Parser *p) {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
         Node_Print *print = (Node_Print *) node_alloc(p->arena, NODE_PRINT, token);
-        print->value = parse_expr(p, POWER_SET, true, NULL);
+        print->value = parse_expr(p, POWER_SET, false, true, NULL);
         node = (Node *) print;
         break;
     }
 
     default:
         buffer_token(p, token);
-        node = parse_expr(p, POWER_NIL, true, NULL);
+        node = parse_expr(p, POWER_NIL, true, true, NULL);
         if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
             if (node->kind != NODE_IMPORT) {
                 local_assert(p, true, node->token, "expression");
             }
+        }
+
+        if (node->kind == NODE_CALL) {
+            ((Node_Call *) node)->is_stmt = true;
         }
         break;
     }

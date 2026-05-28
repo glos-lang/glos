@@ -7,7 +7,7 @@ main :: () {
     print sizeof(rawptr)
     print sizeof(&&bool)
 
-    print sizeof(foo())
+    print sizeof(struct {})
     print sizeof(69)
     print sizeof(420 == 1337)
     print sizeof(rawptr(0))

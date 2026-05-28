@@ -4,6 +4,9 @@
 #include "lexer.h"
 #include "node.h"
 
+void error_number_of_values_mismatch(
+    Pos pos, size_t lhs_count, size_t rhs_count, const char *lhs_label, const char *rhs_label);
+
 typedef DA(const char *) Paths;
 
 typedef struct {
