@@ -1048,7 +1048,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
                 get_debug_file(c, it->node.token.pos.path),
                 it->node.token.pos.row + 1,
                 var_debug_type,
-                false, // TODO: Gather more information on what even is this...
+                true,
                 LLVMDIBuilderCreateExpression(c->llvm_debug_builder, NULL, 0),
                 NULL,
                 0);
@@ -1261,7 +1261,6 @@ static LLVMValueRef get_builtin_func(Compiler *c, SV name, LLVMTypeRef *type) {
     return fn;
 }
 
-// TODO: This is very ugly and should be cleaned up later.
 static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3) {
     LLVMTypeRef  fn_type = NULL;
     LLVMValueRef fn_value = get_builtin_func(c, sv_from_cstr("panic_handler"), &fn_type);
@@ -1390,7 +1389,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 
     if (n->type.kind != TYPE_GROUP) {
-        compile_type(c, &n->type); // TODO(@group): This might be necessary later on
+        compile_type(c, &n->type);
     }
 
     switch (n->kind) {
@@ -2192,7 +2191,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 const size_t group_values_count_save = c->group_values.count;
 
                 LLVMValueRef value = compile_expr(c, define->expr, false);
-                set_debug_pos(c, define->assignment_pos);
+                set_debug_pos(c, define->node.token.pos);
                 if (define->count == 1) {
                     LLVMBuildStore(c->llvm_builder, value, vars[0]);
                 } else {

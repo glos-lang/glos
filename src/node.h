@@ -299,8 +299,6 @@ typedef struct {
 
 // TODO: This is the solution I came up with so far for default arguments.
 // This feels like a bad solution, but better than a non-existent perfect one.
-//
-// This WILL be replaced later, so it need not be pretty now.
 typedef struct {
     Node         node;
     Type_Fn_Arg *arg;
@@ -422,8 +420,6 @@ typedef struct {
     // multiple return values will be implemented. In such a case, when one of the elements of a call is another
     // call to such a function, the actual argument count will be different from the apparent one, and thus cannot
     // be calculated at parse time.
-    //
-    // TODO: Name this such that this comment is unnecessary
     size_t args_count;
 
     Pos end;
@@ -459,7 +455,6 @@ struct Node_Define {
 
     Node *expr;
     Node *type;
-    Pos   assignment_pos; // The '='
 
     bool   is_const;
     bool   is_value_known_at_compile_time;

@@ -20,25 +20,14 @@ static void error_redefinition(const Node_Atom *n, const Pos *previous) {
     exit(1);
 }
 
-// TODO: Print the actual as well
-static void error_too_few_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected at least %zu\n", Pos_Arg(pos), expected);
-    exit(1);
-}
-
-// TODO: Print the actual as well
-static void error_too_many_arguments(Pos pos, size_t expected) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected at most %zu\n", Pos_Arg(pos), expected);
-    exit(1);
-}
-
-static void error_too_few_return_values(Pos pos, size_t expected, size_t actual) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too few return values: Expected %zu, got %zu\n", Pos_Arg(pos), expected, actual);
-    exit(1);
-}
-
-static void error_too_many_return_values(Pos pos, size_t expected, size_t actual) {
-    fprintf(stderr, Pos_Fmt "ERROR: Too many return values: Expected %zu, got %zu\n", Pos_Arg(pos), expected, actual);
+static void error_number_of_return_values_mismatch(Pos pos, size_t expected, size_t actual) {
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Too %s return values: Expected %zu, got %zu\n",
+        Pos_Arg(pos),
+        actual < expected ? "few" : "many",
+        expected,
+        actual);
     exit(1);
 }
 
@@ -141,10 +130,6 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         }
     } break;
 
-    case NODE_GROUP: {
-        unreachable(); // TODO(@group): Find out more
-    } break;
-
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
         n->type = expected;
@@ -184,10 +169,18 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     }
 }
 
+static Const_Value eval_const_expr(Compiler *c, Node *n);
+
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     if (type_is_integer(expected) && type_kind_eq(n->type, TYPE_INT)) {
         if (!type_kind_eq(expected, TYPE_INT)) {
             cast_untyped(c, n, expected);
+
+            // Only constant expressions can be untyped integers
+            const Const_Value value = eval_const_expr(c, n);
+            assert(value.kind == CONST_VALUE_INT);
+
+            check_int_limit(n, value.as.integer);
         }
         return true;
     }
@@ -547,7 +540,7 @@ typedef enum {
 
 static void check_node(Compiler *c, Node *n, Ref_Kind ref);
 
-// TODO: Nvm. This should be moved back into 'compiler.c'
+// TODO: Should this be moved back into 'compiler.c'?
 static Node_Fn *get_main(Compiler *c) {
     if (c->main_fn) {
         return c->main_fn;
@@ -641,10 +634,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         default:
             unreachable();
         }
-    }
-
-    case NODE_GROUP: {
-        todo(); // TODO(@group): What should be done here?
     }
 
     case NODE_UNARY: {
@@ -1256,7 +1245,12 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
             }
 
             if (lhs_count != rhs_count) {
-                error_number_of_values_mismatch(definition->assignment_pos, lhs_count, rhs_count);
+                error_number_of_values_mismatch(
+                    definition->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
             }
 
             if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
@@ -1451,7 +1445,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     const size_t lhs_count = is_lhs_group ? binary->lhs->type.spec.group.count : 1;
     const size_t rhs_count = is_rhs_group ? binary->rhs->type.spec.group.count : 1;
     if (lhs_count != rhs_count) {
-        error_number_of_values_mismatch(binary->node.token.pos, lhs_count, rhs_count);
+        error_number_of_values_mismatch(binary->node.token.pos, lhs_count, rhs_count, NULL, NULL);
     }
 
     if (is_lhs_group) {
@@ -1470,6 +1464,66 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     }
 
     binary->node.type = (Type) {.kind = TYPE_UNIT};
+}
+
+// The minimum number of arguments required MUST be provided
+// The maximum number of arguments can optionally be provided, or set to -1 for variadic functions
+static void check_call_arguments(Compiler *c, Node_Call *call, size_t args_count_min, size_t args_count_max) {
+    ll_foreach(it, &call->args) {
+        check_node(c, it, REF_NONE);
+        call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+    }
+
+    bool   has_minimum = true;
+    bool   has_maximum = true;
+    size_t expected = 0;
+
+    const char *situation = "";
+    const char *extra = "";
+
+    if (call->args_count < args_count_min) {
+        has_minimum = false;
+        expected = args_count_min;
+        situation = "Not enough";
+        extra = " atleast";
+    }
+
+    if (call->args_count > args_count_max) {
+        has_maximum = false;
+        expected = args_count_max;
+        situation = "Too many";
+        // Not setting the extra here, since that situation does not exist
+    }
+
+    if (has_minimum && has_maximum) {
+        return;
+    }
+
+    if (args_count_min == args_count_max) {
+        extra = "";
+    }
+
+    Pos pos = call->end;
+    if (!has_maximum) {
+        size_t iota = 0;
+        ll_foreach(it, &call->args) {
+            iota += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+            if (iota > args_count_max) {
+                pos = it->token.pos;
+                break;
+            }
+        }
+    }
+
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: %s arguments: Expected%s %zu, got %zu\n",
+        Pos_Arg(pos),
+        situation,
+        extra,
+        expected,
+        call->args_count);
+    exit(1);
 }
 
 static_assert(COUNT_NODES == 25, "");
@@ -1668,7 +1722,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             if (!type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Expected scalar or string value, got %s",
+                    Pos_Fmt "ERROR: Expected scalar or string value, got %s\n",
                     Pos_Arg(binary->lhs->token.pos),
                     type_to_cstr(binary->lhs->type));
                 exit(1);
@@ -2036,18 +2090,9 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     stderr, Pos_Fmt "ERROR: Cannot cast to %s\n", Pos_Arg(call->fn->token.pos), type_to_cstr(n->type));
                 exit(1);
             }
+            check_call_arguments(c, call, 1, 1);
 
-            if (!call->args.head) {
-                error_too_few_arguments(call->end, 1);
-                exit(1);
-            } else if (call->args.head->next) {
-                error_too_many_arguments(call->args.head->next->token.pos, 1);
-                exit(1);
-            }
-
-            check_node(c, call->args.head, REF_NONE);
             const Type from_type = call->args.head->type;
-
             if (type_is_scalar(n->type)) {
                 type_assert_scalar(call->args.head);
 
@@ -2108,33 +2153,26 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             }
             const Type_Fn fn_type_spec = fn_type.spec.fn;
 
-            call->args_count = 0;
-            for (Node *arg = call->args.head; arg; arg = arg->next) {
-                check_node(c, arg, REF_NONE);
+            check_call_arguments(
+                c, call, fn_type_spec.args_count_min, fn_type_spec.is_variadic ? UINT64_MAX : fn_type_spec.args_count);
 
+            size_t iota = 0;
+            bool   check_args = true;
+            for (Node *arg = call->args.head; arg; arg = arg->next) {
                 const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
                 const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 
                 for (size_t i = 0; i < arg_parts; i++) {
-                    bool is_variadic_arg = false;
-                    if (call->args_count >= fn_type_spec.args_count) {
-                        if (fn_type_spec.is_variadic) {
-                            is_variadic_arg = true;
-                        } else {
-                            error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
-                        }
+                    if (iota >= fn_type_spec.args_count) {
+                        check_args = false;
                     }
 
-                    if (!is_variadic_arg) {
-                        type_assert_grouped(c, arg, fn_type_spec.args[call->args_count].type, i, NULL);
+                    if (check_args) {
+                        type_assert_grouped(c, arg, fn_type_spec.args[iota].type, i, NULL);
                     }
 
-                    call->args_count++;
+                    iota++;
                 }
-            }
-
-            if (call->args_count < fn_type_spec.args_count_min) {
-                error_too_few_arguments(call->end, fn_type_spec.args_count_min);
             }
 
             for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
@@ -2416,12 +2454,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             const bool   is_group = type_kind_eq(returnn->value->type, TYPE_GROUP);
             const size_t actual_count = is_group ? returnn->value->type.spec.group.count : 1;
 
-            if (actual_count < fn_type.returns_count) {
-                error_too_few_return_values(n->token.pos, fn_type.returns_count, actual_count);
-            }
-
-            if (actual_count > fn_type.returns_count) {
-                error_too_many_return_values(n->token.pos, fn_type.returns_count, actual_count);
+            if (actual_count != fn_type.returns_count) {
+                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, actual_count);
             }
 
             assert(actual_count == fn_type.returns_count);
@@ -2434,7 +2468,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = returnn->value->type;
         } else {
             if (fn_type.returns_count) {
-                error_too_few_return_values(n->token.pos, fn_type.returns_count, 0);
+                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, 0);
             }
             n->type.kind = TYPE_UNIT;
         }
@@ -2531,6 +2565,3 @@ void check_nodes(Compiler *c) {
 
     get_main(c);
 }
-
-// TODO: Store the actual return type of the function, so as to not create it over and over again and again
-// This will also eliminate the repeated compilation of types in the LLVM generator

@@ -82,6 +82,8 @@ static_assert(sizeof(i64) == 8, "");
 #define ll_foreach2(a, b, ll1, ll2)                                                                                    \
     for (__typeof__((ll1)->head) a = (ll1)->head, b = (ll2)->head; a && b; a = a->next, b = b->next)
 
+#define add_trailing_s_if_plural(s, n) ((n) == 1 ? (s) : temp_sprintf("%ss", (s)))
+
 // Dynamic Array
 #define DA_INIT_CAP 128
 

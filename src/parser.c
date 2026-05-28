@@ -11,14 +11,24 @@
 #include <errno.h>
 #endif //  PLATFORM_X86_64_WINDOWS
 
-void error_number_of_values_mismatch(Pos pos, size_t lhs_count, size_t rhs_count) {
+void error_number_of_values_mismatch(
+    Pos pos, size_t lhs_count, size_t rhs_count, const char *lhs_label, const char *rhs_label) {
+    if (!lhs_label) {
+        lhs_label = "on the left hand side";
+    }
+
+    if (!rhs_label) {
+        rhs_label = "on the right hand side";
+    }
     fprintf(
         stderr,
-        Pos_Fmt "ERROR: Unequal number of values. There %s %zu on the left hand side, and %zu on the right hand side\n",
+        Pos_Fmt "ERROR: Unequal number of values. There %s %zu %s, and %zu %s\n",
         Pos_Arg(pos),
-        lhs_count > 1 ? "are" : "is",
+        lhs_count == 1 ? "is" : "are",
         lhs_count,
-        rhs_count);
+        lhs_label,
+        rhs_count,
+        rhs_label);
     exit(1);
 }
 
@@ -359,7 +369,12 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
     if (define->name->kind == NODE_ATOM) {
         if (define->expr && define->expr->kind == NODE_GROUP) {
             rhs_count = ((Node_Group *) define->expr)->count;
-            error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+            error_number_of_values_mismatch(
+                define->node.token.pos,
+                lhs_count,
+                rhs_count,
+                add_trailing_s_if_plural("definition", lhs_count),
+                add_trailing_s_if_plural("assignment", rhs_count));
             exit(1);
         }
 
@@ -370,14 +385,26 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
 
         if (is_assigned && define->is_value_known_at_compile_time) {
             if (define->expr->kind != NODE_GROUP) {
-                error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+                error_number_of_values_mismatch(
+                    define->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
                 exit(1);
             }
 
             Node_Group *rhs = (Node_Group *) define->expr;
             rhs_count = rhs->count;
             if (lhs_count != rhs_count) {
-                error_number_of_values_mismatch(define->assignment_pos, lhs_count, rhs_count);
+                error_number_of_values_mismatch(
+                    define->node.token.pos,
+                    lhs_count,
+                    rhs_count,
+
+                    add_trailing_s_if_plural("definition", lhs_count),
+                    add_trailing_s_if_plural("assignment", rhs_count));
                 exit(1);
             }
 
@@ -535,8 +562,6 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
     token = peek_token(p);
     if (token.kind == TOKEN_SET) {
         p->state.peeked = false;
-        define->assignment_pos = token.pos;
-
         if (p->state.in_extern) {
             assert(p->state.ahead.kind == TOKEN_SET);
             fprintf(stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->state.ahead.pos));
@@ -546,8 +571,6 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
         define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
     } else if (token.kind == TOKEN_COLON) {
         p->state.peeked = false;
-        define->assignment_pos = token.pos;
-
         define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
         define->is_const = true;
 

@@ -1,6 +1,6 @@
 EXIT 1
 STDOUT 0
 
-STDERR 87
-tests/error_too_many_arguments.glos:3:9: ERROR: Too many arguments, expected at most 0
+STDERR 86
+tests/error_too_many_arguments.glos:3:9: ERROR: Too many arguments: Expected 0, got 1
 
