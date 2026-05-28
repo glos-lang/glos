@@ -1852,6 +1852,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             }
             fn_type_spec.returns_count = fn->returns_count;
 
+            Type return_type = {0};
+            if (fn_type_spec.returns_count == 0) {
+                return_type.kind = TYPE_UNIT;
+            } else if (fn_type_spec.returns_count == 1) {
+                return_type = *fn_type_spec.returns;
+            } else {
+                return_type.kind = TYPE_GROUP;
+                return_type.spec.group.data = fn_type_spec.returns;
+                return_type.spec.group.count = fn_type_spec.returns_count;
+            }
+            fn_type_spec.return_type = arena_clone(c->arena, &return_type, sizeof(return_type));
+
             n->type = (Type) {.kind = TYPE_FN, .spec.fn = fn_type_spec};
 
             if (fn->defined_as) {
@@ -2123,16 +2135,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 call->args_count++;
             }
 
-            if (fn_type_spec.returns_count == 1) {
-                n->type = *fn_type_spec.returns;
-            } else if (fn_type_spec.returns_count) {
-                n->type.kind = TYPE_GROUP;
-                n->type.spec.group.data = fn_type_spec.returns;
-                n->type.spec.group.count = fn_type_spec.returns_count;
-            } else {
-                n->type = (Type) {.kind = TYPE_UNIT};
-            }
-
+            n->type = *fn_type_spec.return_type;
             if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
                 fprintf(
                     stderr,
@@ -2496,7 +2499,11 @@ void check_nodes(Compiler *c) {
     assert(c->main_module);
     assert(c->builtin_module);
 
-    c->main_fn_type = (Type) {.kind = TYPE_FN};
+    const Type unit = {.kind = TYPE_UNIT};
+    c->main_fn_type = (Type) {
+        .kind = TYPE_FN,
+        .spec.fn.return_type = arena_clone(c->arena, &unit, sizeof(unit)),
+    };
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {

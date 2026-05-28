@@ -114,26 +114,8 @@ const char *type_to_cstr_raw(Type type) {
             temp_remove_null();
             temp_sprintf(" -> ");
 
-            if (type.spec.fn.returns_count == 1) {
-                temp_remove_null();
-                type_to_cstr_raw(*type.spec.fn.returns);
-            } else {
-                temp_remove_null();
-                temp_sprintf("(");
-
-                for (size_t i = 0; i < type.spec.fn.returns_count; i++) {
-                    if (i) {
-                        temp_remove_null();
-                        temp_sprintf(", ");
-                    }
-
-                    temp_remove_null();
-                    type_to_cstr_raw(type.spec.fn.returns[i]);
-                }
-
-                temp_remove_null();
-                temp_sprintf(")");
-            }
+            temp_remove_null();
+            type_to_cstr_raw(*type.spec.fn.return_type);
         }
         break;
 
@@ -250,28 +232,25 @@ bool type_eq(Type a, Type b) {
     }
 
     switch (a.kind) {
-    case TYPE_FN:
-        if (a.spec.fn.args_count != b.spec.fn.args_count || a.spec.fn.returns_count != b.spec.fn.returns_count) {
-            return false;
-        }
-
-        if (a.spec.fn.args == b.spec.fn.args && a.spec.fn.returns == b.spec.fn.returns) {
+    case TYPE_FN: {
+        const Type_Fn as = a.spec.fn;
+        const Type_Fn bs = b.spec.fn;
+        if (as.args == bs.args && as.return_type == bs.return_type) {
             return true;
         }
 
-        for (size_t i = 0; i < a.spec.fn.args_count; i++) {
-            if (!type_eq(a.spec.fn.args[i].type, b.spec.fn.args[i].type)) {
+        if (as.args_count != bs.args_count || as.returns_count != bs.returns_count) {
+            return false;
+        }
+
+        for (size_t i = 0; i < as.args_count; i++) {
+            if (!type_eq(as.args[i].type, bs.args[i].type)) {
                 return false;
             }
         }
 
-        for (size_t i = 0; i < a.spec.fn.returns_count; i++) {
-            if (!type_eq(a.spec.fn.returns[i], b.spec.fn.returns[i])) {
-                return false;
-            }
-        }
-
-        return true;
+        return type_eq(*as.return_type, *bs.return_type);
+    }
 
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);

@@ -86,6 +86,8 @@ typedef struct {
 
     Type  *returns;
     size_t returns_count;
+
+    Type *return_type;
 } Type_Fn;
 
 typedef struct {
