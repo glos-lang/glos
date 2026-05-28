@@ -49,4 +49,18 @@ main :: () {
         assert(a == 69)
         assert(b == 420)
     }
+
+    // A function with multiple returns as an argument to another function
+    {
+        foo :: () -> (i64, i64) {
+            return 69, 420
+        }
+
+        bar :: (a: i64, b: i64) {
+            assert(a == 69)
+            assert(b == 420)
+        }
+
+        bar(foo())
+    }
 }

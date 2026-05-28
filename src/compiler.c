@@ -1887,10 +1887,16 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         const Type_Fn fn_type_spec = call->fn->type.spec.fn;
         abi_set_return_type(c, &abi, fn_type_spec.return_type);
         {
-            // TODO: Groups
             size_t iota = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
-                abi_set_argument_type(c, &abi, iota++, &arg->type);
+                if (arg->type.kind == TYPE_GROUP) {
+                    Type_Group *group = &arg->type.spec.group;
+                    for (size_t i = 0; i < group->count; i++) {
+                        abi_set_argument_type(c, &abi, iota++, &group->data[i]);
+                    }
+                } else {
+                    abi_set_argument_type(c, &abi, iota++, &arg->type);
+                }
             }
 
             if (fn_type_spec.is_variadic) {
@@ -1903,9 +1909,20 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         ABI_Call abi_call = abi_call_create(c, abi, fn_value, fn_type);
         for (Node *arg = call->args.head; arg; arg = arg->next) {
-            // TODO: Groups
+            const size_t group_values_count_save = c->group_values.count;
+
             LLVMValueRef expr = compile_expr(c, arg, false);
-            abi_call_add_arg(c, &abi_call, expr, arg->type);
+            if (arg->type.kind == TYPE_GROUP) {
+                Type_Group *group = &arg->type.spec.group;
+                assert(c->group_values.count == group_values_count_save + group->count);
+                for (size_t i = 0; i < group->count; i++) {
+                    abi_call_add_arg(c, &abi_call, c->group_values.data[group_values_count_save + i], group->data[i]);
+                }
+            } else {
+                abi_call_add_arg(c, &abi_call, expr, arg->type);
+            }
+
+            c->group_values.count = group_values_count_save;
         }
 
         set_debug_pos(c, n->token.pos);

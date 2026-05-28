@@ -221,7 +221,8 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
 
 static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Pos *requirement) {
     Type actual = n->type;
-    bool is_group = group_index != -1 && type_kind_eq(n->type, TYPE_GROUP);
+
+    const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
     if (is_group) {
         actual = n->type.spec.group.data[group_index];
     }
@@ -2105,20 +2106,25 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             for (Node *arg = call->args.head; arg; arg = arg->next) {
                 check_node(c, arg, REF_NONE);
 
-                bool is_variadic_arg = false;
-                if (call->args_count >= fn_type_spec.args_count) {
-                    if (fn_type_spec.is_variadic) {
-                        is_variadic_arg = true;
-                    } else {
-                        error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
+                const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
+
+                for (size_t i = 0; i < arg_parts; i++) {
+                    bool is_variadic_arg = false;
+                    if (call->args_count >= fn_type_spec.args_count) {
+                        if (fn_type_spec.is_variadic) {
+                            is_variadic_arg = true;
+                        } else {
+                            error_too_many_arguments(arg->token.pos, fn_type_spec.args_count);
+                        }
                     }
-                }
 
-                if (!is_variadic_arg) {
-                    type_assert(c, arg, fn_type_spec.args[call->args_count].type);
-                }
+                    if (!is_variadic_arg) {
+                        type_assert_grouped(c, arg, fn_type_spec.args[call->args_count].type, i, NULL);
+                    }
 
-                call->args_count++;
+                    call->args_count++;
+                }
             }
 
             if (call->args_count < fn_type_spec.args_count_min) {
