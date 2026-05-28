@@ -83,7 +83,9 @@ typedef struct {
     size_t       args_count;
     size_t       args_count_min;
     bool         is_variadic;
-    Type        *returnn;
+
+    Type  *returns;
+    size_t returns_count;
 } Type_Fn;
 
 typedef struct {
@@ -103,6 +105,9 @@ typedef struct {
 typedef struct {
     Type  *data;
     size_t count;
+
+    LLVMTypeRef     llvm;
+    LLVMMetadataRef debug;
 } Type_Group;
 
 struct Type {
@@ -341,7 +346,9 @@ struct Node_Fn {
     size_t args_count;     // Actual
     size_t args_count_min; // Minimum
 
-    Node *returnn;
+    Nodes  returns;
+    size_t returns_count;
+
     Node *body;
 
     bool is_type;

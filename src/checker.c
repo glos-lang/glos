@@ -20,13 +20,25 @@ static void error_redefinition(const Node_Atom *n, const Pos *previous) {
     exit(1);
 }
 
+// TODO: Print the actual as well
 static void error_too_few_arguments(Pos pos, size_t expected) {
     fprintf(stderr, Pos_Fmt "ERROR: Too few arguments, expected at least %zu\n", Pos_Arg(pos), expected);
     exit(1);
 }
 
+// TODO: Print the actual as well
 static void error_too_many_arguments(Pos pos, size_t expected) {
     fprintf(stderr, Pos_Fmt "ERROR: Too many arguments, expected at most %zu\n", Pos_Arg(pos), expected);
+    exit(1);
+}
+
+static void error_too_few_return_values(Pos pos, size_t expected, size_t actual) {
+    fprintf(stderr, Pos_Fmt "ERROR: Too few return values: Expected %zu, got %zu\n", Pos_Arg(pos), expected, actual);
+    exit(1);
+}
+
+static void error_too_many_return_values(Pos pos, size_t expected, size_t actual) {
+    fprintf(stderr, Pos_Fmt "ERROR: Too many return values: Expected %zu, got %zu\n", Pos_Arg(pos), expected, actual);
     exit(1);
 }
 
@@ -185,7 +197,7 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
-        return n->type;
+        return expected;
     }
 
     if (try_auto_cast_untyped(c, n, expected)) {
@@ -203,6 +215,67 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         Pos_Arg(n->token.pos),
         type_to_cstr(expected),
         type_to_cstr(n->type));
+
+    exit(1);
+}
+
+static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Pos *requirement) {
+    Type actual = n->type;
+    bool is_group = group_index != -1 && type_kind_eq(n->type, TYPE_GROUP);
+    if (is_group) {
+        actual = n->type.spec.group.data[group_index];
+    }
+
+    if (type_eq(actual, expected)) {
+        return expected;
+    }
+
+    if (!is_group) {
+        if (try_auto_cast_untyped(c, n, expected)) {
+            return expected;
+        }
+
+        if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && expected.ref) {
+            n->type = expected;
+            return expected;
+        }
+
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected %s, got %s\n",
+            Pos_Arg(n->token.pos),
+            type_to_cstr(expected),
+            type_to_cstr(actual));
+    } else {
+        const char *postfix = "th";
+        switch ((group_index + 1) % 10) {
+        case 1:
+            postfix = "st";
+            break;
+
+        case 2:
+            postfix = "nd";
+            break;
+
+        case 3:
+            postfix = "rd";
+            break;
+        }
+
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Expected %lld%s value of this to be %s, got %s. The type of this entire expression is %s\n",
+            Pos_Arg(n->token.pos),
+            group_index + 1,
+            postfix,
+            type_to_cstr(expected),
+            type_to_cstr(actual),
+            type_to_cstr(n->type));
+
+        if (requirement) {
+            fprintf(stderr, Pos_Fmt "NOTE: Required here\n", Pos_Arg(*requirement));
+        }
+    }
 
     exit(1);
 }
@@ -513,7 +586,7 @@ static Node_Fn *get_main(Compiler *c) {
         exit(1);
     }
 
-    if (signature.returnn->kind != TYPE_UNIT) {
+    if (signature.returns_count) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
@@ -1094,8 +1167,14 @@ static bool is_node_caller_location(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_DIRECTIVE_CALLER_LOCATION;
 }
 
-static Node *get_node_from_group(Node *n, size_t index) {
-    assert(type_kind_eq(n->type, TYPE_GROUP));
+static Node *get_node_from_group(Node *n, size_t index, i64 *group_index) {
+    if (!type_kind_eq(n->type, TYPE_GROUP)) {
+        if (group_index) {
+            *group_index = 0;
+        }
+        return n;
+    }
+
     if (n->kind == NODE_GROUP) {
         Node_Group *group = (Node_Group *) n;
         size_t      iota = 0;
@@ -1105,15 +1184,24 @@ static Node *get_node_from_group(Node *n, size_t index) {
                 count = it->type.spec.group.count;
             }
 
+            const size_t start = iota;
             iota += count;
             if (iota > index) {
+                if (group_index) {
+                    *group_index = (i64) (index - start);
+                }
                 return it;
             }
         }
         unreachable();
     }
 
-    return n; // Nothing else is there
+    if (n->kind == NODE_CALL) {
+        assert(index < n->type.spec.group.count);
+        *group_index = index;
+    }
+
+    return n;
 }
 
 static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type) {
@@ -1163,7 +1251,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
             size_t lhs_count = definition->count;
             size_t rhs_count = 1;
             if (type_kind_eq(it_expr->type, TYPE_GROUP)) {
-                rhs_count = ((Node_Group *) it_expr)->count;
+                rhs_count = it_expr->type.spec.group.count;
             }
 
             if (lhs_count != rhs_count) {
@@ -1174,8 +1262,9 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 assert(it->definition_spec->group_index < it_expr->type.spec.group.count);
 
                 if (type) {
-                    Node *n = get_node_from_group(it_expr, it->definition_spec->group_index);
-                    type_assert(c, n, it->node.type);
+                    i64   group_index = -1;
+                    Node *n = get_node_from_group(it_expr, it->definition_spec->group_index, &group_index);
+                    type_assert_grouped(c, n, it->node.type, group_index, &it->node.token.pos);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
                     node_finalize_type_of_untyped(&it->node.type);
@@ -1367,10 +1456,12 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     if (is_lhs_group) {
         assert(is_rhs_group);
         for (size_t i = 0; i < lhs_count; i++) {
-            Node *lhs = get_node_from_group(binary->lhs, i);
-            Node *rhs = get_node_from_group(binary->rhs, i);
+            i64   lhs_group_index = -1;
+            Node *lhs = get_node_from_group(binary->lhs, i, &lhs_group_index);
+            i64   rhs_group_index = -1;
+            Node *rhs = get_node_from_group(binary->rhs, i, &rhs_group_index);
             check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
-            type_assert(c, rhs, lhs->type);
+            type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
         }
     } else {
         check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
@@ -1746,15 +1837,20 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 fn_type_spec.args_count += define->count;
             }
 
-            if (fn->returnn) {
-                check_node(c, fn->returnn, REF_NONE);
-                type_assert_type(fn->returnn);
-                fn_type_spec.returnn = arena_clone(c->arena, &fn->returnn->type, sizeof(Type));
-                fn_type_spec.returnn->is_meta = false;
-            } else {
-                fn_type_spec.returnn = arena_alloc(c->arena, sizeof(Type));
-                fn_type_spec.returnn->kind = TYPE_UNIT;
+            if (fn->returns.head) {
+                fn_type_spec.returns = arena_alloc(c->arena, fn->returns_count * sizeof(*fn_type_spec.returns));
+
+                size_t iota = 0;
+                ll_foreach(it, &fn->returns) {
+                    check_node(c, it, REF_NONE);
+                    type_assert_type(it);
+
+                    fn_type_spec.returns[iota] = it->type;
+                    fn_type_spec.returns[iota].is_meta = false;
+                    iota++;
+                }
             }
+            fn_type_spec.returns_count = fn->returns_count;
 
             n->type = (Type) {.kind = TYPE_FN, .spec.fn = fn_type_spec};
 
@@ -1769,7 +1865,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 is_ref_valid = ref == REF_ADDR;
             } else if (fn->body) {
                 check_node(c, fn->body, REF_NONE);
-                if (fn->returnn && !always_returns(fn->body)) {
+                if (fn_type_spec.returns_count && !always_returns(fn->body)) {
                     assert(fn->body->kind == NODE_BLOCK);
                     const Pos end = ((Node_Block *) fn->body)->end;
                     fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
@@ -2027,7 +2123,16 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 call->args_count++;
             }
 
-            n->type = *fn_type.spec.fn.returnn;
+            if (fn_type_spec.returns_count == 1) {
+                n->type = *fn_type_spec.returns;
+            } else if (fn_type_spec.returns_count) {
+                n->type.kind = TYPE_GROUP;
+                n->type.spec.group.data = fn_type_spec.returns;
+                n->type.spec.group.count = fn_type_spec.returns_count;
+            } else {
+                n->type = (Type) {.kind = TYPE_UNIT};
+            }
+
             if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
                 fprintf(
                     stderr,
@@ -2288,16 +2393,35 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     } break;
 
     case NODE_RETURN: {
-        Node_Return *returnn = (Node_Return *) n;
-        const Type   expected = *c->context.current->fn->node.type.spec.fn.returnn;
-
-        n->type.kind = TYPE_UNIT;
+        Node_Return  *returnn = (Node_Return *) n;
+        const Type_Fn fn_type = c->context.current->fn->node.type.spec.fn;
         if (returnn->value) {
             check_node(c, returnn->value, REF_NONE);
-            type_assert(c, returnn->value, expected);
+
+            const bool   is_group = type_kind_eq(returnn->value->type, TYPE_GROUP);
+            const size_t actual_count = is_group ? returnn->value->type.spec.group.count : 1;
+
+            if (actual_count < fn_type.returns_count) {
+                error_too_few_return_values(n->token.pos, fn_type.returns_count, actual_count);
+            }
+
+            if (actual_count > fn_type.returns_count) {
+                error_too_many_return_values(n->token.pos, fn_type.returns_count, actual_count);
+            }
+
+            assert(actual_count == fn_type.returns_count);
+            for (size_t i = 0; i < fn_type.returns_count; i++) {
+                i64   group_index = -1;
+                Node *n = get_node_from_group(returnn->value, i, &group_index);
+                type_assert_grouped(c, n, fn_type.returns[i], group_index, NULL);
+            }
+
             n->type = returnn->value->type;
         } else {
-            type_assert(c, n, expected);
+            if (fn_type.returns_count) {
+                error_too_few_return_values(n->token.pos, fn_type.returns_count, 0);
+            }
+            n->type.kind = TYPE_UNIT;
         }
     } break;
 
@@ -2372,11 +2496,7 @@ void check_nodes(Compiler *c) {
     assert(c->main_module);
     assert(c->builtin_module);
 
-    const Type unit = {.kind = TYPE_UNIT};
-    c->main_fn_type = (Type) {
-        .kind = TYPE_FN,
-        .spec.fn.returnn = arena_clone(c->arena, &unit, sizeof(unit)),
-    };
+    c->main_fn_type = (Type) {.kind = TYPE_FN};
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
@@ -2392,3 +2512,6 @@ void check_nodes(Compiler *c) {
 
     get_main(c);
 }
+
+// TODO: Store the actual return type of the function, so as to not create it over and over again and again
+// This will also eliminate the repeated compilation of types in the LLVM generator

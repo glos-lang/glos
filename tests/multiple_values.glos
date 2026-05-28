@@ -38,4 +38,15 @@ main :: () {
         assert(a == 489)
         assert(b == 489)
     }
+
+    // Multiple returns
+    {
+        foo :: () -> (i64, i64) {
+            return 69, 420
+        }
+
+        a, b := foo()
+        assert(a == 69)
+        assert(b == 420)
+    }
 }

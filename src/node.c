@@ -110,12 +110,30 @@ const char *type_to_cstr_raw(Type type) {
         temp_remove_null();
         temp_sprintf(")");
 
-        if (type.spec.fn.returnn->kind != TYPE_UNIT) {
+        if (type.spec.fn.returns_count) {
             temp_remove_null();
             temp_sprintf(" -> ");
 
-            temp_remove_null();
-            type_to_cstr_raw(*type.spec.fn.returnn);
+            if (type.spec.fn.returns_count == 1) {
+                temp_remove_null();
+                type_to_cstr_raw(*type.spec.fn.returns);
+            } else {
+                temp_remove_null();
+                temp_sprintf("(");
+
+                for (size_t i = 0; i < type.spec.fn.returns_count; i++) {
+                    if (i) {
+                        temp_remove_null();
+                        temp_sprintf(", ");
+                    }
+
+                    temp_remove_null();
+                    type_to_cstr_raw(type.spec.fn.returns[i]);
+                }
+
+                temp_remove_null();
+                temp_sprintf(")");
+            }
         }
         break;
 
@@ -233,11 +251,11 @@ bool type_eq(Type a, Type b) {
 
     switch (a.kind) {
     case TYPE_FN:
-        if (a.spec.fn.args_count != b.spec.fn.args_count) {
+        if (a.spec.fn.args_count != b.spec.fn.args_count || a.spec.fn.returns_count != b.spec.fn.returns_count) {
             return false;
         }
 
-        if (a.spec.fn.args == b.spec.fn.args && a.spec.fn.returnn == b.spec.fn.returnn) {
+        if (a.spec.fn.args == b.spec.fn.args && a.spec.fn.returns == b.spec.fn.returns) {
             return true;
         }
 
@@ -247,7 +265,13 @@ bool type_eq(Type a, Type b) {
             }
         }
 
-        return type_eq(*a.spec.fn.returnn, *b.spec.fn.returnn);
+        for (size_t i = 0; i < a.spec.fn.returns_count; i++) {
+            if (!type_eq(a.spec.fn.returns[i], b.spec.fn.returns[i])) {
+                return false;
+            }
+        }
+
+        return true;
 
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);
@@ -548,7 +572,7 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         Node_Fn *fn = (Node_Fn *) n;
         fprintf(f, "Function {\n");
         nodes_debug_impl(f, fn->args, depth + 1, "Args");
-        node_debug_impl(f, fn->returnn, depth + 1, "Return");
+        nodes_debug_impl(f, fn->returns, depth + 1, "Returns");
         node_debug_impl(f, fn->body, depth + 1, "Body");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
