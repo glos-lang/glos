@@ -1,6 +1,6 @@
 test_self_ptr :: () {
     Foo :: struct {
-        v: i32,
+        v: i32
         next: &Foo
     }
 
@@ -20,7 +20,7 @@ test_self_ptr :: () {
 
 test_self_slice :: () {
     Foo :: struct {
-        v: i32,
+        v: i32
         children: []Foo
     }
 

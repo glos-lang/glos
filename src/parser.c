@@ -498,6 +498,79 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
+static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed) {
+    Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
+    {
+        Node *illegal = NULL;
+        if (name->kind == NODE_ATOM && name->token.kind == TOKEN_IDENT) {
+            define->count = 1;
+        } else if (name->kind == NODE_GROUP) {
+            Node_Group *group = (Node_Group *) name;
+            ll_foreach(it, &group->nodes) {
+                if (it->kind != NODE_ATOM || it->token.kind != TOKEN_IDENT) {
+                    illegal = it;
+                    break;
+                }
+            }
+            define->count = group->count;
+        } else {
+            illegal = name;
+        }
+
+        if (illegal) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition name to be an identifier, got expression\n",
+                Pos_Arg(illegal->token.pos));
+            exit(1);
+        }
+    }
+    define->name = name;
+
+    token = peek_token(p);
+    if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
+        define->type = parse_expr(p, POWER_PRE, false, true, NULL);
+    }
+
+    token = peek_token(p);
+    if (token.kind == TOKEN_SET) {
+        p->state.peeked = false;
+        define->assignment_pos = token.pos;
+
+        if (p->state.in_extern) {
+            assert(p->state.ahead.kind == TOKEN_SET);
+            fprintf(stderr, Pos_Fmt "ERROR: External variable cannot have assignment\n", Pos_Arg(p->state.ahead.pos));
+            exit(1);
+        }
+
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
+    } else if (token.kind == TOKEN_COLON) {
+        p->state.peeked = false;
+        define->assignment_pos = token.pos;
+
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
+        define->is_const = true;
+
+        if (p->state.in_extern) {
+            if (define->expr->kind != NODE_FN) {
+                not_in_extern_assert(p, define->expr->token);
+            }
+
+            Node_Fn *fn = (Node_Fn *) define->expr;
+            if (fn->body) {
+                fprintf(stderr, Pos_Fmt "ERROR: External function cannot have body\n", Pos_Arg(fn->body->token.pos));
+                exit(1);
+            }
+
+            fn->is_type = false;
+            fn->is_extern = true;
+        }
+    }
+
+    definition_lhs_setup(p, define);
+    return (Node *) define;
+}
+
 static_assert(COUNT_TOKENS == 67, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
@@ -537,16 +610,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
         } else {
-            node = parse_expr(p, POWER_NIL, false, true, NULL);
-            if (node->kind == NODE_DEFINE) {
+            node = parse_expr(p, POWER_SET, false, true, NULL);
+            if (peek_token(p).kind == TOKEN_COLON) {
                 is_fn = true;
-            } else if (node->kind == NODE_BINARY && token_kind_to_power(node->token.kind) == POWER_SET) {
-                error_unexpected(node->token);
+                node = parse_define(p, node, next_token(p), false);
             } else {
                 expect_token(p, TOKEN_RPAREN);
             }
-
-            // TODO: Parse definition here instead of parse_expr(POWER_NIL)
         }
 
         if (is_fn) {
@@ -686,9 +756,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             nodes_push(&structt->fields, field);
             structt->fields_count += define->count;
 
-            if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
-                break;
-            }
+            consume_tokens(p, TOKEN_EOL);
         }
     } break;
 
@@ -768,84 +836,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = (Node *) member;
         } break;
 
-        case TOKEN_COLON: {
-            Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
-            {
-                Node *illegal = NULL;
-                if (node->kind == NODE_ATOM && node->token.kind == TOKEN_IDENT) {
-                    define->count = 1;
-                } else if (node->kind == NODE_GROUP) {
-                    Node_Group *group = (Node_Group *) node;
-                    ll_foreach(it, &group->nodes) {
-                        if (it->kind != NODE_ATOM || it->token.kind != TOKEN_IDENT) {
-                            illegal = it;
-                            break;
-                        }
-                    }
-                    define->count = group->count;
-                } else {
-                    illegal = node;
-                }
-
-                if (illegal) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Expected definition name to be an identifier, got expression\n",
-                        Pos_Arg(illegal->token.pos));
-                    exit(1);
-                }
-            }
-            define->name = node;
-
-            token = peek_token(p);
-            if (token.kind != TOKEN_SET && token.kind != TOKEN_COLON) {
-                define->type = parse_expr(p, POWER_PRE, false, true, NULL);
-            }
-
-            token = peek_token(p);
-            if (token.kind == TOKEN_SET) {
-                p->state.peeked = false;
-                define->assignment_pos = token.pos;
-
-                if (p->state.in_extern) {
-                    assert(p->state.ahead.kind == TOKEN_SET);
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: External variable cannot have assignment\n",
-                        Pos_Arg(p->state.ahead.pos));
-                    exit(1);
-                }
-
-                define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
-            } else if (token.kind == TOKEN_COLON) {
-                p->state.peeked = false;
-                define->assignment_pos = token.pos;
-
-                define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
-                define->is_const = true;
-
-                if (p->state.in_extern) {
-                    if (define->expr->kind != NODE_FN) {
-                        not_in_extern_assert(p, define->expr->token);
-                    }
-
-                    Node_Fn *fn = (Node_Fn *) define->expr;
-                    if (fn->body) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: External function cannot have body\n",
-                            Pos_Arg(fn->body->token.pos));
-                        exit(1);
-                    }
-
-                    fn->is_type = false;
-                    fn->is_extern = true;
-                }
-            }
-
-            definition_lhs_setup(p, define);
-            return (Node *) define;
-        }
+        case TOKEN_COLON:
+            return parse_define(p, node, token, groups_allowed);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {

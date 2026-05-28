@@ -564,7 +564,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
                     }
 
                     fprintf(stderr, "Replaying '%s'\n", it->name);
-                    test_prepare_cmd(*it, cmd);
+                    test_prepare_cmd(*it, cmd); // TODO: Extra arguments
                     it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, .err = &it->perr});
                     continue;
                 } else if (choice == 'q') {

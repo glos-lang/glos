@@ -1,5 +1,5 @@
 Vec2 :: struct {
-    x: i64,
+    x: i64
     y: i64
 }
 
@@ -11,7 +11,7 @@ make_vec2 :: (x: i64, y: i64) -> Vec2 {
 }
 
 Mat4 :: struct {
-    v1: Vec2,
+    v1: Vec2
     v2: Vec2
 }
 
