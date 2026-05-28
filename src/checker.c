@@ -1911,30 +1911,36 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
         size_t iota = 0;
         for (Node *field = structt->fields.head; field; field = field->next) {
+            const size_t start = iota;
+
             assert(field->kind == NODE_DEFINE);
             Node_Define *define = (Node_Define *) field;
 
-            assert(define->name->kind == NODE_ATOM); // TODO(@group)
-            Node_Atom *it = (Node_Atom *) define->name;
-            if (!sv_match(it->node.token.sv, "_")) {
-                for (size_t i = 0; i < iota; i++) {
-                    Type_Struct_Field previous = structt_type_spec.fields[i];
-                    if (sv_eq(previous.name, it->node.token.sv)) {
-                        error_redefinition(it, &previous.pos);
+            Node_Atom *it = NULL;
+            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                if (!sv_match(it->node.token.sv, "_")) {
+                    for (size_t i = 0; i < iota; i++) {
+                        Type_Struct_Field previous = structt_type_spec.fields[i];
+                        if (sv_eq(previous.name, it->node.token.sv)) {
+                            error_redefinition(it, &previous.pos);
+                        }
                     }
                 }
+
+                Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
+                it_spec->name = it->node.token.sv;
+                it_spec->pos = it->node.token.pos;
             }
-
-            Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
-            *it_spec = (Type_Struct_Field) {
-                .name = it->node.token.sv,
-                .pos = it->node.token.pos,
-            };
-
+            assert(iota == start + define->count);
             check_node(c, define->type, REF_NONE);
-            it->node.type = type_assert_type(define->type);
-            it->node.type.is_meta = false;
-            it_spec->type = it->node.type;
+
+            iota = start;
+            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                it->node.type = type_assert_type(define->type);
+                it->node.type.is_meta = false;
+                structt_type_spec.fields[iota++].type = it->node.type;
+            }
+            assert(iota == start + define->count);
         }
 
         is_ref_valid = ref == REF_ADDR;

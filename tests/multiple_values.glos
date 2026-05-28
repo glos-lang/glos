@@ -63,4 +63,15 @@ main :: () {
 
         bar(foo())
     }
+
+    // A structure type definition with multiple fields in the same statement
+    {
+        Vec2 :: struct {
+            x, y: i64
+        }
+
+        v := Vec2 {y = 420, x = 69}
+        assert(v.x == 69)
+        assert(v.y == 420)
+    }
 }

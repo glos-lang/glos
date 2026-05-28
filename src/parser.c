@@ -736,7 +736,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            Node *field = parse_expr(p, POWER_NIL, false, true, NULL);
+            Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
             if (field->kind != NODE_DEFINE) {
                 fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
                 exit(1);
