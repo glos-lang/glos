@@ -802,7 +802,11 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     } break;
 
     case NODE_MEMBER: {
-        Node_Member      *member = (Node_Member *) n;
+        Node_Member *member = (Node_Member *) n;
+        if (member->is_enum) {
+            return const_value_int(member->enum_value);
+        }
+
         const Const_Value lhs = eval_const_expr(c, member->lhs);
 
         // TODO(@slice)
@@ -2669,19 +2673,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-// TODO: Work on this
 Const_Value get_platform(Compiler *c, Type *type) {
+    Const_Value platform = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform"), NULL);
+    assert(platform.kind == CONST_VALUE_TYPE);
+
+    Type platform_type = platform.as.type;
+    assert(platform_type.is_meta);
+    platform_type.is_meta = false;
+    assert(platform_type.kind == TYPE_ENUM);
+
+    if (type) {
+        *type = platform_type;
+    }
+
 #ifdef PLATFORM_X86_64_LINUX
-    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_Linux"), type);
+    return const_value_int(0);
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_MacOS"), type);
+    return const_value_int(1);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    return get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform_Windows"), type);
+    return const_value_int(2);
 #endif // PLATFORM_X86_64_WINDOWS
+
+    unreachable();
 }
 
 Const_Value get_const_definition_value(Compiler *c, Module *m, SV name, Type *type) {
