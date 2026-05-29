@@ -1008,6 +1008,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_node(c, sw->expr, REF_NONE);
+    if (type_kind_eq(sw->expr->type, TYPE_ENUM)) {
+        sw->enumeration = sw->expr->type.spec.enumm.definition;
+    }
 
     node_finalize_type_of_untyped(&sw->expr->type);
     if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
@@ -1025,10 +1028,29 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
 }
 
 static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *iota) {
-    check_node(c, pred, REF_NONE);
-    type_assert(c, pred, sw->expr->type);
+    bool        checked = false;
+    Const_Value value = {0};
 
-    const Const_Value value = eval_const_expr(c, pred);
+    // Addition context for enumeration value
+    if (sw->enumeration) {
+        if (pred->kind == NODE_ATOM && pred->token.kind == TOKEN_IDENT) {
+            ll_foreach(it, &sw->enumeration->values) {
+                if (sv_eq(it->token.sv, pred->token.sv)) {
+                    value = const_value_int(it->token.as.integer);
+                    checked = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!checked) {
+        check_node(c, pred, REF_NONE);
+        type_assert(c, pred, sw->expr->type);
+        value = eval_const_expr(c, pred);
+        checked = true;
+    }
+
     for (size_t i = 0; i < *iota; i++) {
         if (const_value_eq(sw->preds[i].value, value)) {
             fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
@@ -1068,6 +1090,36 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     sw->preds[*iota].value = value;
     (*iota)++;
     return value;
+}
+
+static void check_switch_exhaustive(Node_Switch *sw) {
+    if (sw->enumeration) {
+        if (sw->preds_count < sw->enumeration->values_count && !sw->fallback) {
+            fprintf(stderr, Pos_Fmt "ERROR: This switch statement is not complete\n", Pos_Arg(sw->node.token.pos));
+
+            fprintf(stderr, "\n");
+            fprintf(stderr, "The following enumeration values are not handled:\n");
+            ll_foreach(it, &sw->enumeration->values) {
+                bool handled = false;
+                for (size_t i = 0; i < sw->preds_count; i++) {
+                    const Const_Value *pred_value = &sw->preds[i].value;
+                    assert(pred_value->kind == CONST_VALUE_INT);
+                    if (pred_value->as.integer == it->token.as.integer) {
+                        handled = true;
+                        break;
+                    }
+                }
+
+                if (!handled) {
+                    fprintf(stderr, "    - " SV_Fmt "\n", SV_Arg(it->token.sv));
+                }
+            }
+            fprintf(stderr, "\n");
+
+            fprintf(stderr, Pos_Fmt "NOTE: Enumeration defined here\n", Pos_Arg(sw->enumeration->node.token.pos));
+            exit(1);
+        }
+    }
 }
 
 static_assert(COUNT_NODES == 26, "");
@@ -1180,6 +1232,8 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     define_orderless_nodes(c, it, block_start);
                 }
             }
+
+            check_switch_exhaustive(sw);
         }
     } break;
 
@@ -2594,6 +2648,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 check_node(c, case_->body, REF_NONE);
             }
             assert(iota == sw->preds_count);
+
+            check_switch_exhaustive(sw);
         }
     } break;
 

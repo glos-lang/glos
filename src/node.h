@@ -546,6 +546,8 @@ typedef struct {
     }     *preds;
     size_t preds_count;
 
+    Node_Enum *enumeration;
+
     bool  is_compile_time;
     Node *compile_time_real_block;
 } Node_Switch;
