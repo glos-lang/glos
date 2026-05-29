@@ -6,14 +6,15 @@
 #include "token.h"
 #include <assert.h>
 
-static void error_undefined(const Token *t, const char *label) {
+static void error_undefined(const Token *t, const char *label, bool no_exit) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
-    exit(1);
+    if (!no_exit) {
+        exit(1);
+    }
 }
 
-static void error_redefinition(const Node_Atom *n, const Pos *previous) {
-    fprintf(
-        stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->node.token.pos), SV_Arg(n->node.token.sv));
+static void error_redefinition(const Node *n, const Pos *previous) {
+    fprintf(stderr, Pos_Fmt "ERROR: Redefinition of '" SV_Fmt "'\n", Pos_Arg(n->token.pos), SV_Arg(n->token.sv));
     if (previous) {
         fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(*previous));
     }
@@ -79,8 +80,9 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
     }
 }
 
+// TODO(!!!): This should take the sign into account
 static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 20, "");
     const size_t int_limits[COUNT_TYPES] = {
         [TYPE_I8] = INT8_MAX,
         [TYPE_I16] = INT16_MAX,
@@ -106,11 +108,11 @@ static void check_int_limit(Node *n, size_t value) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -369,7 +371,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 20, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -408,7 +410,7 @@ static void node_finalize_type_of_untyped(Type *t) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -468,7 +470,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -613,7 +615,7 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -623,7 +625,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -665,7 +667,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -708,7 +710,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -853,6 +855,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         }
     }
 
+    case NODE_ENUM:
     case NODE_STRUCT:
         return const_value_type(n->type);
 
@@ -1063,7 +1066,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     return value;
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -1086,7 +1089,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                             }
 
                             if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
-                                error_redefinition(it, &previous->node.token.pos);
+                                error_redefinition((Node *) it, &previous->node.token.pos);
                                 break;
                             }
                         }
@@ -1096,12 +1099,12 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     }
                 } else {
                     if (get_builtin_type_kind(it->node.token.sv, NULL)) {
-                        error_redefinition(it, NULL);
+                        error_redefinition((Node *) it, NULL);
                     }
 
                     Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
                     if (previous) {
-                        error_redefinition(it, &previous->node.token.pos);
+                        error_redefinition((Node *) it, &previous->node.token.pos);
                     }
 
                     global_scope_push(&it->module->globals, it);
@@ -1443,7 +1446,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         }
     }
 
-    error_undefined(&token, "identifier");
+    error_undefined(&token, "identifier", false);
 }
 
 static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
@@ -1563,7 +1566,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, size_t args_count
     exit(1);
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1572,7 +1575,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1655,7 +1658,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1716,7 +1719,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1813,7 +1816,31 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         check_node(c, member->lhs, ref);
         is_ref_valid = true; // check_node() has already determined that the reference is valid
 
-        if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
+        if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
+            Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
+
+            bool found = false;
+            i64  value = 0;
+
+            ll_foreach(it, &enumm->values) {
+                if (sv_eq(it->token.sv, member->field.sv)) {
+                    found = true;
+                    value = it->token.as.integer;
+                    break;
+                }
+            }
+
+            if (!found) {
+                error_undefined(&member->field, "enumeration value", true);
+                fprintf(stderr, Pos_Fmt "NOTE: Enumeration defined here\n", Pos_Arg(enumm->node.token.pos));
+                exit(1);
+            }
+
+            member->enum_value = value;
+            member->is_enum = true;
+            n->type = member->lhs->type;
+            n->type.is_meta = false;
+        } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
             Type_Struct_Field *definition = NULL;
 
             Type_Struct *spec = member->lhs->type.spec.structt;
@@ -1827,7 +1854,9 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             if (!definition) {
-                error_undefined(&member->field, "field");
+                error_undefined(&member->field, "field", true);
+                fprintf(stderr, Pos_Fmt "NOTE: Structure defined here\n", Pos_Arg(spec->definition->node.token.pos));
+                exit(1);
             }
 
             n->type = definition->type;
@@ -1840,7 +1869,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 n->type = (Type) {.kind = TYPE_I64};
                 member->field_index = 1;
             } else {
-                error_undefined(&member->field, "field");
+                error_undefined(&member->field, "field", false);
             }
         } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
             if (sv_match(member->field.sv, "data")) {
@@ -1850,7 +1879,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                 n->type = (Type) {.kind = TYPE_I64};
                 member->field_index = 1;
             } else {
-                error_undefined(&member->field, "field");
+                error_undefined(&member->field, "field", false);
             }
         } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
             check_ident(c, n, ref);
@@ -1927,7 +1956,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     for (size_t i = 0; i < fn_type_spec.args_count; i++) {
                         Type_Fn_Arg previous = fn_type_spec.args[i];
                         if (sv_eq(previous.name, it->node.token.sv)) {
-                            error_redefinition(it, &previous.pos);
+                            error_redefinition((Node *) it, &previous.pos);
                         }
                     }
                 }
@@ -2002,6 +2031,64 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         context_pop_fn(&c->context);
     } break;
 
+    case NODE_ENUM: {
+        Node_Enum *enumm = (Node_Enum *) n;
+
+        Type_Enum spec = {.underlying = TYPE_INT, .definition = enumm};
+        Type      underlying = {.kind = spec.underlying};
+        if (enumm->underlying) {
+            check_node(c, enumm->underlying, REF_NONE);
+            type_assert_type(enumm->underlying);
+
+            underlying = enumm->underlying->type;
+            underlying.is_meta = false;
+            if (!type_is_integer(underlying)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Expected underlying type of the enumeration to be an integer, got %s\n",
+                    Pos_Arg(enumm->underlying->token.pos),
+                    type_to_cstr(underlying));
+                exit(1);
+            }
+
+            spec.underlying = underlying.kind;
+        }
+
+        i64 iota = 0;
+        i64 iota_max = 0;
+        ll_foreach(it, &enumm->values) {
+            ll_foreach(prev, &enumm->values) {
+                if (prev == it) {
+                    break;
+                }
+
+                if (sv_eq(it->token.sv, prev->token.sv)) {
+                    error_redefinition(it, &prev->token.pos);
+                }
+            }
+
+            assert(it->kind == NODE_UNARY);
+            Node_Unary *unary = (Node_Unary *) it;
+            if (unary->value) {
+                check_node(c, unary->value, REF_NONE);
+                type_assert(c, unary->value, underlying);
+
+                const Const_Value value = eval_const_expr(c, unary->value);
+                assert(value.kind == CONST_VALUE_INT);
+                iota = value.as.integer;
+            }
+            iota_max = max(iota_max, iota);
+
+            it->type.kind = underlying.kind;
+            check_int_limit(it, iota);
+            it->type.kind = TYPE_UNIT;
+            it->token.as.integer = iota++;
+        }
+
+        // TODO: Should the type be shortened to the minimum integer to fit this?
+        n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
+    } break;
+
     case NODE_STRUCT: {
         Node_Struct *structt = (Node_Struct *) n;
 
@@ -2034,7 +2121,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     for (size_t i = 0; i < iota; i++) {
                         Type_Struct_Field previous = structt_type_spec.fields[i];
                         if (sv_eq(previous.name, it->node.token.sv)) {
-                            error_redefinition(it, &previous.pos);
+                            error_redefinition((Node *) it, &previous.pos);
                         }
                     }
                 }
@@ -2113,7 +2200,12 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     }
 
                     if (!ok) {
-                        error_undefined(&it_field_name->node.token, "field");
+                        error_undefined(&it_field_name->node.token, "field", true);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "NOTE: Structure defined here\n",
+                            Pos_Arg(struct_spec->definition->node.token.pos));
+                        exit(1);
                     }
 
                     it_iota = it->token.as.integer;

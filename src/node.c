@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -132,6 +132,18 @@ const char *type_to_cstr_raw(Type type) {
         }
         break;
 
+    case TYPE_ENUM: {
+        assert(type.spec.enumm.definition);
+        const Node_Atom *defined_as = type.spec.enumm.definition->defined_as;
+        if (defined_as) {
+            temp_sv_to_cstr(defined_as->node.token.sv);
+        } else {
+            temp_sprintf("enum ");
+            temp_remove_null();
+            type_to_cstr_raw((Type) {.kind = type.spec.enumm.underlying});
+        }
+    } break;
+
     case TYPE_STRUCT: {
         assert(type.spec.structt);
         assert(type.spec.structt->definition);
@@ -234,7 +246,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -273,6 +285,9 @@ bool type_eq(Type a, Type b) {
         return type_eq(*as.return_type, *bs.return_type);
     }
 
+    case TYPE_ENUM:
+        return a.spec.enumm.definition == b.spec.enumm.definition;
+
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);
 
@@ -297,7 +312,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -307,10 +322,10 @@ bool type_kind_eq(Type type, Type_Kind kind) {
 }
 
 bool type_is_numeric(Type type) {
-    return type_is_integer(type);
+    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM);
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -358,13 +373,18 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
     }
 
-    switch (type.kind) {
+    Type_Kind kind = type.kind;
+    if (kind == TYPE_ENUM) {
+        kind = type.spec.enumm.underlying;
+    }
+
+    switch (kind) {
     case TYPE_I8:
     case TYPE_I16:
     case TYPE_I32:
@@ -418,7 +438,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -430,7 +450,9 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_ASSERT] = sizeof(Node_Assert),
         [NODE_IMPORT] = sizeof(Node_Import),
 
+        // This comment is here to prevent clang-format from messing this up
         [NODE_FN] = sizeof(Node_Fn),
+        [NODE_ENUM] = sizeof(Node_Enum),
         [NODE_STRUCT] = sizeof(Node_Struct),
         [NODE_COMPOUND] = sizeof(Node_Compound),
 
@@ -506,7 +528,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -574,6 +596,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         nodes_debug_impl(f, fn->args, depth + 1, "Args");
         nodes_debug_impl(f, fn->returns, depth + 1, "Returns");
         node_debug_impl(f, fn->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_ENUM: {
+        Node_Enum *enumm = (Node_Enum *) n;
+        fprintf(f, "Enumeration {\n");
+        nodes_debug_impl(f, enumm->values, depth + 1, "Values");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

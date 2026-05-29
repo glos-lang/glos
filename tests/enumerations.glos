@@ -1,0 +1,30 @@
+main :: () {
+    // Untyped enumeration
+    {
+        Foo :: enum {
+            A
+            B
+            C = 69
+            D
+        }
+
+        print Foo.A
+        print Foo.B
+        print Foo.C
+        print Foo.D
+    }
+
+    // Typed enumeration
+    {
+        Foo :: enum u8 {
+            A
+            B
+            C = 42
+        }
+        #assert(sizeof(Foo) == sizeof(u8))
+
+        print Foo.A
+        print Foo.B
+        print Foo.C
+    }
+}

@@ -15,7 +15,7 @@
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
         return;
@@ -64,6 +64,16 @@ static void compile_type(Compiler *c, Type *type) {
     case TYPE_RAWPTR:
         unreachable();
         break;
+
+    case TYPE_ENUM: {
+        Node_Enum *definition = type->spec.enumm.definition;
+        if (!definition->llvm) {
+            Type stub = {.kind = type->spec.enumm.underlying};
+            compile_type(c, &stub);
+            definition->llvm = stub.llvm;
+        }
+        type->llvm = definition->llvm;
+    } break;
 
     case TYPE_STRUCT: {
         assert(type->spec.structt);
@@ -154,7 +164,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -182,7 +192,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 19, "");
+    static_assert(COUNT_TYPES == 20, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -604,7 +614,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 19, "");
+static_assert(COUNT_TYPES == 20, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -668,6 +678,26 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         temp_reset(args);
         return LLVMDIBuilderCreatePointerType(
             c->llvm_debug_builder, fn_debug_type, sizeof(void *), sizeof(void *), 0, "", 0);
+    }
+
+    case TYPE_ENUM: {
+        Node_Enum *definition = type->spec.enumm.definition;
+        if (!definition->debug) {
+            const void *checkpoint = temp_alloc(0);
+
+            const size_t size = compile_sizeof(c, type);
+            const SV     name = sv_from_cstr(type_to_cstr(*type));
+            definition->debug = LLVMDIBuilderCreateBasicType(
+                c->llvm_debug_builder,
+                name.data,
+                name.count,
+                size * 8,
+                type_is_signed(*type) ? DW_ATE_signed : DW_ATE_unsigned,
+                0);
+
+            temp_reset(checkpoint);
+        }
+        return definition->debug;
     }
 
     case TYPE_STRUCT: {
@@ -1378,7 +1408,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1396,7 +1426,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1483,7 +1513,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1554,7 +1584,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 68, "");
+            static_assert(COUNT_TOKENS == 69, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1602,7 +1632,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 68, "");
+            static_assert(COUNT_TOKENS == 69, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1633,7 +1663,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 68, "");
+            static_assert(COUNT_TOKENS == 69, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1739,7 +1769,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 68, "");
+        static_assert(COUNT_TOKENS == 69, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -1771,6 +1801,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
+        if (member->is_enum) {
+            return LLVMConstInt(n->type.llvm, member->enum_value, type_is_signed(n->type));
+        }
+
         if (member->lhs->type.kind == TYPE_MODULE) {
             return compile_ident(c, n, member->module_access_definition, ref);
         }
@@ -1812,6 +1846,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_FN:
         return compile_fn(c, (Node_Fn *) n);
 
+    case NODE_ENUM:
     case NODE_STRUCT:
         unreachable();
 
@@ -1950,7 +1985,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         const char *label = "slice";
         if (!index->lhs->type.ref) {
-            static_assert(COUNT_TYPES == 19, "");
+            static_assert(COUNT_TYPES == 20, "");
             switch (index->lhs->type.kind) {
             case TYPE_SLICE:
                 // Pass
@@ -2146,7 +2181,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

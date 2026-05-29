@@ -68,6 +68,7 @@ typedef enum {
     TOKEN_EQ,
     TOKEN_NE,
 
+    TOKEN_ENUM,
     TOKEN_STRUCT,
     TOKEN_SIZEOF,
 

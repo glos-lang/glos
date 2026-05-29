@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 68, "");
+static_assert(COUNT_TOKENS == 69, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -353,6 +353,8 @@ static void definition_lhs_atom_setup(
         assert(it_expr);
         if (it_expr->kind == NODE_FN) {
             ((Node_Fn *) it_expr)->defined_as = it;
+        } else if (it_expr->kind == NODE_ENUM) {
+            ((Node_Enum *) it_expr)->defined_as = it;
         } else if (it_expr->kind == NODE_STRUCT) {
             ((Node_Struct *) it_expr)->defined_as = it;
         }
@@ -594,7 +596,7 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
     return (Node *) define;
 }
 
-static_assert(COUNT_TOKENS == 68, "");
+static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -756,6 +758,31 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_RBRACKET);
         slice->element = parse_expr(p, POWER_REF, false, false, NULL);
+    } break;
+
+    case TOKEN_ENUM: {
+        node = node_alloc(p->arena, NODE_ENUM, token);
+        Node_Enum *enumm = (Node_Enum *) node;
+        enumm->defined_in = p->state.fn_current;
+        enumm->module = p->module_current;
+
+        token = peek_token(p);
+        if (token.kind != TOKEN_LBRACE) {
+            enumm->underlying = parse_expr(p, POWER_REF, false, false, NULL);
+        }
+
+        expect_token(p, TOKEN_LBRACE);
+        while (!read_token(p, TOKEN_RBRACE)) {
+            Node *it = node_alloc(p->arena, NODE_UNARY, expect_token(p, TOKEN_IDENT));
+            if (read_token(p, TOKEN_SET)) {
+                Node_Unary *unary = (Node_Unary *) it;
+                unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+            }
+
+            nodes_push(&enumm->values, it);
+            enumm->values_count++;
+            consume_tokens(p, TOKEN_EOL);
+        }
     } break;
 
     case TOKEN_STRUCT: {
@@ -1003,7 +1030,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 25, "");
+static_assert(COUNT_NODES == 26, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
