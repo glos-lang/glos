@@ -1,0 +1,12 @@
+EXIT 1
+STDOUT 0
+
+STDERR 244
+tests/error_switch_on_enum_not_complete.glos:9:5: ERROR: This switch statement is not complete
+
+The following enumeration values are not handled:
+    - C
+    - D
+
+tests/error_switch_on_enum_not_complete.glos:1:8: NOTE: Enumeration defined here
+

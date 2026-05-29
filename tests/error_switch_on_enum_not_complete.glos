@@ -1,0 +1,17 @@
+Foo :: enum {
+    A
+    B
+    C
+    D
+}
+
+main :: () {
+    if Foo.D == {
+    case A
+        fmt.println("Foo.A")
+    case B
+        fmt.println("Foo.B")
+    }
+}
+
+fmt :: #import "fmt"

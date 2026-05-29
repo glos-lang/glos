@@ -12,6 +12,7 @@ typedef struct Node_Atom   Node_Atom;
 typedef struct Node_Define Node_Define;
 
 typedef struct Node_Fn     Node_Fn;
+typedef struct Node_Enum   Node_Enum;
 typedef struct Node_Struct Node_Struct;
 
 typedef struct {
@@ -64,6 +65,7 @@ typedef enum {
     TYPE_RAWPTR,
 
     TYPE_FN,
+    TYPE_ENUM,
     TYPE_STRUCT,
 
     TYPE_SLICE,
@@ -89,6 +91,11 @@ typedef struct {
 
     Type *return_type;
 } Type_Fn;
+
+typedef struct {
+    Type_Kind  underlying;
+    Node_Enum *definition;
+} Type_Enum;
 
 typedef struct {
     Type_Struct_Field *fields;
@@ -125,6 +132,7 @@ struct Type {
     union {
         Type_Fn      fn;
         Type_Slice   slice;
+        Type_Enum    enumm;
         Type_Struct *structt;
         Type_Group   group;
         Module      *module;
@@ -217,6 +225,7 @@ typedef enum {
     NODE_IMPORT,
 
     NODE_FN,
+    NODE_ENUM,
     NODE_STRUCT,
     NODE_COMPOUND,
 
@@ -318,15 +327,21 @@ typedef struct {
 } Node_Binary;
 
 typedef struct {
-    Node   node;
-    Node  *lhs;
-    Token  field;
-    size_t field_index;
+    Node  node;
+    Node *lhs;
+    Token field;
+
+    union {
+        size_t field_index;
+        size_t enum_value;
+    };
 
     // Foo :: #import "Foo"
     // Foo.bar
     //     ^
     Node_Atom *module_access_definition;
+
+    bool is_enum;
 } Node_Member;
 
 typedef struct {
@@ -371,7 +386,33 @@ struct Node_Fn {
 };
 
 // This represents a type
-// TODO: Rename it in a manner such that this comment becomes unnecessary
+struct Node_Enum {
+    Node  node;
+    Node *underlying;
+
+    // Each node of values is as follows:
+    //
+    // Node_Unary(<name>) {
+    //     token.as.integer = <value>
+    //     value = Maybe(<constant expression which evaluates to the value of this>)
+    // }
+    //
+    // TODO: Consider adding a new node, so comments like this are not necessary
+    Nodes  values;
+    size_t values_count;
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    // The module this was parsed in
+    Module  *module;
+    Node_Fn *defined_in;
+
+    LLVMTypeRef     llvm;
+    LLVMMetadataRef debug;
+};
+
+// This represents a type
 struct Node_Struct {
     Node node;
 
@@ -381,7 +422,7 @@ struct Node_Struct {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
-    // The module this function was parsed in
+    // The module this was parsed in
     Module *module;
 
     Node_Fn *defined_in;
@@ -504,6 +545,8 @@ typedef struct {
         Const_Value value;
     }     *preds;
     size_t preds_count;
+
+    Node_Enum *enumeration;
 
     bool  is_compile_time;
     Node *compile_time_real_block;

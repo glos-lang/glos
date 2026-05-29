@@ -8,26 +8,30 @@ extern {
     memcmp :: (a: rawptr, b: rawptr, n: i64) -> i32
 }
 
-Platform_Linux   :: 0
-Platform_MacOS   :: 1
-Platform_Windows :: 2
+// This is a contract between the compiler and the source code. This must NOT be edited
+// TODO: Add a check in the compiler which detects if this is malformed
+Platform :: enum {
+    Linux
+    MacOS
+    Windows
+}
 
 #if #platform == {
-case Platform_Linux
+case Platform.Linux
     extern {
         stdin: File
         stdout: File
         stderr: File
     }
 
-case Platform_MacOS
+case Platform.MacOS
     extern {
         #link "__stdinp"  stdin: File
         #link "__stdoutp" stdout: File
         #link "__stderrp" stderr: File
     }
 
-case Platform_Windows
+case Platform.Windows
     stdin: File
     stdout: File
     stderr: File
@@ -83,7 +87,7 @@ assert :: (cond: bool, message := "", location := #caller_location) {
 
 #link "main"
 main :: () -> i32 {
-    #if #platform == Platform_Windows {
+    #if #platform == Platform.Windows {
         extern {
             __acrt_iob_func :: (fd: i32) -> File
         }

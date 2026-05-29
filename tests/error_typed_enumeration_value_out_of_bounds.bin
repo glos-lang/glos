@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 102
+tests/error_typed_enumeration_value_out_of_bounds.glos:3:9: ERROR: Number '420' is too large for 'i8'
+
