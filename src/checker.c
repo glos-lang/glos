@@ -80,31 +80,55 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
     }
 }
 
-// TODO(!!!): This should take the sign into account
-static void check_int_limit(Node *n, size_t value) {
-    static_assert(COUNT_TYPES == 20, "");
-    const size_t int_limits[COUNT_TYPES] = {
-        [TYPE_I8] = INT8_MAX,
-        [TYPE_I16] = INT16_MAX,
-        [TYPE_I32] = INT32_MAX,
-        [TYPE_I64] = INT64_MAX,
+static_assert(COUNT_TYPES == 20, "");
+static void check_int_limit(Node *n, const void *ptr) {
+    if (type_is_signed(n->type)) {
+        typedef struct {
+            i64 min;
+            i64 max;
+        } Limit;
 
-        [TYPE_U8] = UINT8_MAX,
-        [TYPE_U16] = UINT16_MAX,
-        [TYPE_U32] = UINT32_MAX,
-        [TYPE_U64] = UINT64_MAX,
+        const Limit limits[COUNT_TYPES] = {
+            [TYPE_I8] = {.min = INT8_MIN, .max = INT8_MAX},
+            [TYPE_I16] = {.min = INT16_MIN, .max = INT16_MAX},
+            [TYPE_I32] = {.min = INT32_MIN, .max = INT32_MAX},
+            [TYPE_I64] = {.min = INT64_MIN, .max = INT64_MAX},
+            [TYPE_INT] = {.min = INT64_MIN, .max = INT64_MAX},
+        };
 
-        [TYPE_INT] = INT64_MAX,
-    };
+        const i64   value = *(const i64 *) ptr;
+        const Limit limit = limits[n->type.kind];
+        if (value < limit.min || value > limit.max) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Number '%lld' is invalid for %s, which must be in range [%lld, %lld]\n",
+                Pos_Arg(n->token.pos),
+                value,
+                type_to_cstr(n->type),
+                limit.min,
+                limit.max);
+            exit(1);
+        }
+    } else {
+        const size_t limits[COUNT_TYPES] = {
+            [TYPE_U8] = UINT8_MAX,
+            [TYPE_U16] = UINT16_MAX,
+            [TYPE_U32] = UINT32_MAX,
+            [TYPE_U64] = UINT64_MAX,
+        };
 
-    if (value > int_limits[n->type.kind]) {
-        fprintf(
-            stderr,
-            Pos_Fmt "ERROR: Number '%zu' is too large for %s\n",
-            Pos_Arg(n->token.pos),
-            value,
-            type_to_cstr(n->type));
-        exit(1);
+        const size_t value = *(const size_t *) ptr;
+        const size_t limit = limits[n->type.kind];
+        if (value > limit) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Number '%zu' is invalid for %s, which must be in range [0, %zu]\n",
+                Pos_Arg(n->token.pos),
+                value,
+                type_to_cstr(n->type),
+                limit);
+            exit(1);
+        }
     }
 }
 
@@ -116,7 +140,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
-            check_int_limit(n, n->token.as.integer);
+            check_int_limit(n, &n->token.as.integer);
             break;
 
         case TOKEN_IDENT: {
@@ -124,7 +148,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             assert(atom->definition->definition_spec->is_const); // Only constants can be defined as untyped int
 
             n->type = expected;
-            check_int_limit(n, atom->definition->definition_spec->const_value.as.integer);
+            check_int_limit(n, &atom->definition->definition_spec->const_value.as.integer);
         } break;
 
         default:
@@ -136,8 +160,13 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         Node_Unary *unary = (Node_Unary *) n;
         n->type = expected;
         if (n->token.kind == TOKEN_SIZEOF) {
-            check_int_limit(n, compile_sizeof(c, &unary->value->type));
+            const size_t value = compile_sizeof(c, &unary->value->type);
+            check_int_limit(n, &value);
         } else {
+            if (!type_is_signed(expected) && n->token.kind == TOKEN_SUB) {
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot negate unsigned constant value\n", Pos_Arg(n->token.pos));
+                exit(1);
+            }
             cast_untyped(c, unary->value, expected);
         }
     } break;
@@ -157,7 +186,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         assert(definition_spec->is_const); // Only constants can be defined as untyped int
 
         n->type = expected;
-        check_int_limit(n, definition_spec->const_value.as.integer);
+        check_int_limit(n, &definition_spec->const_value.as.integer);
     } break;
 
     case NODE_RETURN: {
@@ -182,7 +211,7 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             const Const_Value value = eval_const_expr(c, n);
             assert(value.kind == CONST_VALUE_INT);
 
-            check_int_limit(n, value.as.integer);
+            check_int_limit(n, &value.as.integer);
         }
         return true;
     }
@@ -615,6 +644,7 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
+// Is this valid for signedness?
 static_assert(COUNT_NODES == 26, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
@@ -2138,7 +2168,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             iota_max = max(iota_max, iota);
 
             it->type.kind = underlying.kind;
-            check_int_limit(it, iota);
+            check_int_limit(it, &iota);
             it->type.kind = TYPE_UNIT;
             it->token.as.integer = iota++;
         }

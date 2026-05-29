@@ -18,5 +18,5 @@ main :: () {
 
     // Comparisons
     print u64(1) > 0
-    print u64(1) > -1
+    print u64(1) > u64(-1)
 }
