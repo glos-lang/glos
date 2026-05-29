@@ -27,6 +27,19 @@ const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
     const char *s = temp_alloc(0);
+    if (type.distinct) {
+        const Type distinct_type = type.distinct->node.type;
+        if (distinct_type.ref <= type.ref) {
+            for (size_t i = distinct_type.ref; i < type.ref; i++) {
+                temp_sprintf("&");
+                temp_remove_null();
+            }
+
+            temp_sv_to_cstr(type.distinct->node.token.sv);
+            return s;
+        }
+    }
+
     for (size_t i = 0; i < type.ref; i++) {
         temp_sprintf("&");
         temp_remove_null();
@@ -200,6 +213,10 @@ const char *type_to_cstr(Type type) {
 }
 
 static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
+    if (a->definition->defined_as || b->definition->defined_as) {
+        return a->definition->defined_as == b->definition->defined_as;
+    }
+
     if (a->fields_count != b->fields_count) {
         return false;
     }
@@ -229,6 +246,10 @@ bool type_eq(Type a, Type b) {
 
     if (b.is_meta) {
         return a.is_meta;
+    }
+
+    if (a.distinct || b.distinct) {
+        return a.distinct == b.distinct;
     }
 
     switch (a.kind) {

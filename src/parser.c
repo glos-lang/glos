@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 68, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -594,7 +594,7 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
     return (Node *) define;
 }
 
-static_assert(COUNT_TOKENS == 67, "");
+static_assert(COUNT_TOKENS == 68, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -620,6 +620,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+    } break;
+
+    case TOKEN_DIRECTIVE_DISTINCT: {
+        // TODO(@distinct): Should we use a dedicated node for this?
+        node = node_alloc(p->arena, NODE_BINARY, token);
+        Node_Binary *binary = (Node_Binary *) node;
+        binary->rhs = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {

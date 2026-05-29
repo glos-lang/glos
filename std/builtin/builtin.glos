@@ -1,7 +1,4 @@
-// TODO: Distinct type aliases
-File :: struct {
-    c: rawptr
-}
+File :: #distinct rawptr
 
 // TODO: Move into a separate 'C' module
 extern {

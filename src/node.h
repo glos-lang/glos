@@ -120,6 +120,8 @@ struct Type {
     // B :: i64 // typeof(B) => Type { kind = TYPE_I64, is_meta = true  }
     bool is_meta;
 
+    Node_Atom *distinct;
+
     union {
         Type_Fn      fn;
         Type_Slice   slice;

@@ -110,7 +110,7 @@ static_assert(COUNT_NODES == 25, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -188,6 +188,11 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
+static bool can_auto_cast_null_literal(Node *n, Type expected) {
+    // Check for rawptr because distinct types exist
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR));
+}
+
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return expected;
@@ -197,7 +202,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
-    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && expected.ref) {
+    if (can_auto_cast_null_literal(n, expected)) {
         n->type = expected;
         return expected;
     }
@@ -229,7 +234,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
             return expected;
         }
 
-        if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && expected.ref) {
+        if (can_auto_cast_null_literal(n, expected)) {
             n->type = expected;
             return expected;
         }
@@ -287,12 +292,12 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return b->type;
     }
 
-    if (a->kind == NODE_ATOM && a->token.kind == TOKEN_NULL && b->type.ref) {
+    if (can_auto_cast_null_literal(a, b->type)) {
         a->type = b->type;
         return a->type;
     }
 
-    if (b->kind == NODE_ATOM && b->token.kind == TOKEN_NULL && a->type.ref) {
+    if (can_auto_cast_null_literal(b, a->type)) {
         b->type = a->type;
         return b->type;
     }
@@ -598,7 +603,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -640,7 +645,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -683,7 +688,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -763,6 +768,10 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(!const_value_eq(lhs, rhs));
+
+        case TOKEN_DIRECTIVE_DISTINCT:
+            assert(n->type.is_meta);
+            return const_value_type(n->type);
 
         default:
             unreachable();
@@ -1211,12 +1220,22 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
     }
 
     if (it_expr) {
+        Node_Define *definition = it->definition_spec->definition_node;
+
         if (type_kind_eq(it_expr->type, TYPE_UNIT)) {
             if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
                 // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location`
                 // maybe?
                 it_expr->type = (Type) {.kind = TYPE_STRING};
             } else {
+                if (it->definition_spec->is_const) {
+                    assert(it_expr);
+                    if (it_expr->kind == NODE_BINARY && it_expr->token.kind == TOKEN_DIRECTIVE_DISTINCT) {
+                        Node_Binary *binary = (Node_Binary *) it_expr;
+                        binary->lhs = (Node *) it;
+                    }
+                }
+
                 check_node(c, it_expr, REF_NONE);
 
                 const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
@@ -1233,8 +1252,6 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 }
             }
         }
-
-        Node_Define *definition = it->definition_spec->definition_node;
 
         bool type_determined = false;
         if (!definition->is_value_known_at_compile_time) {
@@ -1535,7 +1552,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1618,7 +1635,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_node(c, unary->value, REF_NONE);
@@ -1644,6 +1661,10 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
             n->type = unary->value->type;
             n->type.ref--;
+            if (n->type.distinct && n->type.distinct->node.type.ref > n->type.ref) {
+                n->type.distinct = NULL;
+            }
+
             is_ref_valid = true;
             break;
 
@@ -1675,7 +1696,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 67, "");
+        static_assert(COUNT_TOKENS == 68, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1742,6 +1763,23 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_BOR_SET:
         case TOKEN_BAND_SET:
             check_assignment(c, binary);
+            break;
+
+        case TOKEN_DIRECTIVE_DISTINCT:
+            if (!binary->lhs) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: A distinct type must be defined as a constant before it can be used\n",
+                    Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            check_node(c, binary->rhs, REF_NONE);
+            type_assert_type(binary->rhs);
+            n->type = binary->rhs->type;
+
+            assert(binary->lhs->kind == NODE_ATOM);
+            n->type.distinct = (Node_Atom *) binary->lhs;
             break;
 
         default:

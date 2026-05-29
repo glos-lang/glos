@@ -1,0 +1,11 @@
+A :: #distinct &i64
+B :: #distinct &i64
+
+main :: () {
+    a: A = A(&a_memory)
+    b: B = B(&b_memory)
+    print *a + *b
+}
+
+a_memory := 34
+b_memory := 35
