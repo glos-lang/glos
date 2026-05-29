@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 274
+tests/error_distinct_type_mismatch_with_note_about_same_underlying_type.glos:7:9: ERROR: Expected 'A', got 'B'
+tests/error_distinct_type_mismatch_with_note_about_same_underlying_type.glos:7:9: NOTE: The underlying types seem to be equal, but distinct. Try an explicit cast.
+

@@ -1,4 +1,4 @@
-A :: #distinct i64
+A :: #distinct bool
 B :: #distinct &i64
 
 main :: () {

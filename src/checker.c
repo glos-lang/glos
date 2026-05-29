@@ -193,6 +193,22 @@ static bool can_auto_cast_null_literal(Node *n, Type expected) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR));
 }
 
+static bool type_eq_without_distinct(Type a, Type b) {
+    a.distinct = NULL;
+    b.distinct = NULL;
+    return type_eq(a, b);
+}
+
+// Nice name
+static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(Node *n, Type expected) {
+    if (type_eq_without_distinct(n->type, expected)) {
+        fprintf(
+            stderr,
+            Pos_Fmt "NOTE: The underlying types seem to be equal, but distinct. Try an explicit cast.\n",
+            Pos_Arg(n->token.pos));
+    }
+}
+
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return expected;
@@ -214,6 +230,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         type_to_cstr(expected),
         type_to_cstr(n->type));
 
+    maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(n, expected);
     exit(1);
 }
 
@@ -245,6 +262,8 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
             Pos_Arg(n->token.pos),
             type_to_cstr(expected),
             type_to_cstr(actual));
+
+        maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(n, expected);
     } else {
         const char *postfix = "th";
         switch ((group_index + 1) % 10) {
@@ -309,6 +328,7 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         type_to_cstr(b->type),
         type_to_cstr(a->type));
 
+    maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(a, b->type);
     exit(1);
 }
 
@@ -2123,54 +2143,61 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = fn_type;
             n->type.is_meta = false;
 
-            if (!type_is_scalar(n->type)) {
+            check_call_arguments(c, call, 1, 1);
+            const Type from_type = call->args.head->type;
+            const Type to_type = n->type;
+
+            bool same = false;
+            if (type_eq_without_distinct(to_type, from_type)) {
+                same = true;
+            } else if (!type_is_scalar(to_type)) {
                 fprintf(
-                    stderr, Pos_Fmt "ERROR: Cannot cast to %s\n", Pos_Arg(call->fn->token.pos), type_to_cstr(n->type));
+                    stderr, Pos_Fmt "ERROR: Cannot cast to %s\n", Pos_Arg(call->fn->token.pos), type_to_cstr(to_type));
                 exit(1);
             }
-            check_call_arguments(c, call, 1, 1);
 
-            const Type from_type = call->args.head->type;
-            if (type_is_scalar(n->type)) {
-                type_assert_scalar(call->args.head);
+            if (!same) {
+                if (type_is_scalar(to_type)) {
+                    type_assert_scalar(call->args.head);
 
-                bool ok = true;
-                if (type_kind_eq(from_type, TYPE_FN) && !from_type.ref) {
-                    // fn -> rawptr
-                    ok = type_eq(n->type, (Type) {.kind = TYPE_RAWPTR});
-                } else if (type_kind_eq(n->type, TYPE_FN) && !n->type.ref) {
-                    // rawptr -> fn
-                    ok = type_eq(from_type, (Type) {.kind = TYPE_RAWPTR});
-                } else if (!type_is_pointer(from_type) && type_is_pointer(n->type)) {
-                    // i64/u64 -> ptr
-                    if (!type_kind_eq(from_type, TYPE_I64) && !type_kind_eq(from_type, TYPE_U64) &&
-                        !type_kind_eq(from_type, TYPE_INT)) {
-                        ok = false;
+                    bool ok = true;
+                    if (type_kind_eq(from_type, TYPE_FN) && !from_type.ref) {
+                        // fn -> rawptr
+                        ok = type_eq(to_type, (Type) {.kind = TYPE_RAWPTR});
+                    } else if (type_kind_eq(to_type, TYPE_FN) && !to_type.ref) {
+                        // rawptr -> fn
+                        ok = type_eq(from_type, (Type) {.kind = TYPE_RAWPTR});
+                    } else if (!type_is_pointer(from_type) && type_is_pointer(to_type)) {
+                        // i64/u64 -> ptr
+                        if (!type_kind_eq(from_type, TYPE_I64) && !type_kind_eq(from_type, TYPE_U64) &&
+                            !type_kind_eq(from_type, TYPE_INT)) {
+                            ok = false;
+                        }
+                    } else if (type_is_pointer(from_type) && !type_is_pointer(to_type)) {
+                        // ptr -> i64/u64
+                        if (!type_kind_eq(to_type, TYPE_I64) && !type_kind_eq(to_type, TYPE_U64) &&
+                            !type_kind_eq(to_type, TYPE_INT)) {
+                            ok = false;
+                        }
                     }
-                } else if (type_is_pointer(from_type) && !type_is_pointer(n->type)) {
-                    // ptr -> i64/u64
-                    if (!type_kind_eq(n->type, TYPE_I64) && !type_kind_eq(n->type, TYPE_U64) &&
-                        !type_kind_eq(n->type, TYPE_INT)) {
-                        ok = false;
-                    }
-                }
 
-                if (!ok) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Cannot cast %s to %s\n",
-                        Pos_Arg(call->fn->token.pos),
-                        type_to_cstr(from_type),
-                        type_to_cstr(n->type));
-                    exit(1);
+                    if (!ok) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Cannot cast %s to %s\n",
+                            Pos_Arg(call->fn->token.pos),
+                            type_to_cstr(from_type),
+                            type_to_cstr(to_type));
+                        exit(1);
+                    }
+                } else {
+                    unreachable();
                 }
-            } else {
-                unreachable();
             }
 
-            if (type_eq(n->type, from_type)) {
+            if (same) {
                 call->type_cast = TYPE_CAST_NOP;
-            } else if (type_eq(n->type, (Type) {.kind = TYPE_BOOL})) {
+            } else if (type_eq(to_type, (Type) {.kind = TYPE_BOOL})) {
                 call->type_cast = TYPE_CAST_TO_BOOL;
             } else {
                 call->type_cast = TYPE_CAST_NORMAL;

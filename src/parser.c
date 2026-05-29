@@ -755,7 +755,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         Node_Slice *slice = (Node_Slice *) node;
 
         expect_token(p, TOKEN_RBRACKET);
-        slice->element = parse_expr(p, POWER_SET, false, false, NULL);
+        slice->element = parse_expr(p, POWER_REF, false, false, NULL);
     } break;
 
     case TOKEN_STRUCT: {

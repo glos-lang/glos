@@ -1,8 +1,8 @@
 A :: #distinct i64
-B :: #distinct bool
+B :: #distinct i64
 
 main :: () {
     a: A
     b: B
-    a = b
+    a + b
 }

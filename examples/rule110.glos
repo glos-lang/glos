@@ -3,21 +3,21 @@ main :: () {
     defer board_free(&b)
 
     b[b.count - 2] = 1
-    for i := 0; i < b.count - 2; i = i + 1 {
+    for i := 0; i < b.count - 2; i += 1 {
         board_show(b)
 
         pattern := (b[0] << 1) | b[1]
-        for j := 1; j < b.count - 1; j = j + 1 {
+        for j := 1; j < b.count - 1; j += 1 {
             pattern = ((pattern << 1) & 7) | b[j + 1]
             b[j] = (110 >> pattern) & 1
         }
     }
 }
 
-Board :: []i32
+Board :: #distinct []i32
 
 board_new :: (n: i64) -> Board {
-    return (&i32(calloc(n, sizeof(i32))))[..n]
+    return Board((&i32(calloc(n, sizeof(i32))))[..n])
 }
 
 board_free :: (b: &Board) {
@@ -27,7 +27,7 @@ board_free :: (b: &Board) {
 }
 
 board_show :: (b: Board) {
-    for i := 0; i < b.count; i = i + 1 {
+    for i := 0; i < b.count; i += 1 {
         if bool(b[i]) {
             putchar(i32('*'))
         } else {
