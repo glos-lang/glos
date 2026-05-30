@@ -87,7 +87,7 @@ assert :: (cond: bool, message := "", location := #caller_location) {
 
 #link "main"
 main :: () -> i32 {
-    #if #platform == Platform.Windows {
+    #if #platform == .Windows {
         extern {
             __acrt_iob_func :: (fd: i32) -> File
         }

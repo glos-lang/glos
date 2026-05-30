@@ -157,7 +157,7 @@ const char *type_to_cstr_raw(Type type) {
                 Type_Struct_Field it = type.spec.structt->fields[i];
                 if (i) {
                     temp_remove_null();
-                    temp_sprintf(", ");
+                    temp_sprintf("; ");
                 }
 
                 temp_remove_null();
