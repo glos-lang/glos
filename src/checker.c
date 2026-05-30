@@ -286,6 +286,8 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
+    check_that_type_is_known(n);
+
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -319,6 +321,8 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
             return expected;
         }
 
+        check_that_type_is_known(n);
+
         fprintf(
             stderr,
             Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -328,6 +332,8 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
 
         maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(n, expected);
     } else {
+        check_that_type_is_known(n);
+
         const char *postfix = "th";
         switch ((group_index + 1) % 10) {
         case 1:
@@ -384,6 +390,9 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return b->type;
     }
 
+    check_that_type_is_known(a);
+    check_that_type_is_known(b);
+
     fprintf(
         stderr,
         Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -404,6 +413,8 @@ static Type type_assert_numeric(const Node *n, bool pointers_allowed) {
         return n->type;
     }
 
+    check_that_type_is_known(n);
+
     const char *label = "arithmetic";
     if (!pointers_allowed) {
         label = "numeric";
@@ -414,11 +425,11 @@ static Type type_assert_numeric(const Node *n, bool pointers_allowed) {
 }
 
 static Type type_assert_scalar(const Node *n) {
-    check_that_type_is_known(n);
     if (type_is_scalar(n->type)) {
         return n->type;
     }
 
+    check_that_type_is_known(n);
     fprintf(stderr, Pos_Fmt "ERROR: Expected scalar value, got %s\n", Pos_Arg(n->token.pos), type_to_cstr(n->type));
     exit(1);
 }
