@@ -74,8 +74,8 @@ typedef enum {
     TYPE_GROUP,
     TYPE_MODULE,
 
-    // For things like `.Enum_Value` or `{Foo, Bar}`
-    TYPE_UNKNOWN_ENUM,
+    TYPE_UNKNOWN_ENUM,     // .Enum_Value
+    TYPE_UNKNOWN_COMPOUND, // {Foo, bar}
     COUNT_TYPES,
 } Type_Kind;
 
@@ -122,6 +122,11 @@ typedef struct {
     LLVMMetadataRef debug;
 } Type_Group;
 
+typedef struct {
+    Type  *children;
+    size_t count;
+} Type_Unknown_Compound;
+
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -139,6 +144,8 @@ struct Type {
         Type_Struct *structt;
         Type_Group   group;
         Module      *module;
+
+        Type_Unknown_Compound unknown_compound;
     } spec;
 
     LLVMTypeRef llvm;
@@ -436,7 +443,8 @@ typedef struct {
     Node  node;
     Node *lhs;
 
-    Nodes children;
+    Nodes  children;
+    size_t children_count;
 
     // For designated initializers, each node of children is as follows:
     //

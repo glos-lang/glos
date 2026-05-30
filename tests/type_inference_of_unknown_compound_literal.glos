@@ -1,0 +1,13 @@
+Vec2 :: struct {
+    x: i64
+    y: i64
+}
+
+print_vec2 :: (v: Vec2) {
+    print v.x
+    print v.y
+}
+
+main :: () {
+    print_vec2({69, 420})
+}

@@ -87,7 +87,7 @@ static void check_that_type_is_known(const Node *n) {
     }
 }
 
-static_assert(COUNT_TYPES == 21, "");
+static_assert(COUNT_TYPES == 22, "");
 static void check_int_limit(Node *n, const void *ptr) {
     if (type_is_signed(n->type)) {
         typedef struct {
@@ -445,7 +445,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 21, "");
+    static_assert(COUNT_TYPES == 22, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -1818,13 +1818,18 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             n->type = type_assert_numeric(unary->value, false);
             break;
 
-        case TOKEN_MUL:
+        case TOKEN_MUL: {
+            bool checked = false;
             if (expected_type) {
                 Type expected_type_referenced = *expected_type;
-                assert(!expected_type_referenced.is_meta);
-                expected_type_referenced.ref++;
-                check_node(c, unary->value, REF_NONE, &expected_type_referenced);
-            } else {
+                if (!expected_type_referenced.is_meta) {
+                    expected_type_referenced.ref++;
+                    check_node(c, unary->value, REF_NONE, &expected_type_referenced);
+                    checked = true;
+                }
+            }
+
+            if (!checked) {
                 check_node(c, unary->value, REF_NONE, NULL);
             }
 
@@ -1850,22 +1855,26 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
 
             is_ref_valid = true;
-            break;
+        } break;
 
-        case TOKEN_BAND:
+        case TOKEN_BAND: {
+            bool checked = false;
             if (expected_type) {
                 Type expected_type_referenced = *expected_type;
-                assert(!expected_type_referenced.is_meta);
-                assert(expected_type_referenced.ref);
-                expected_type_referenced.ref--;
-                check_node(c, unary->value, REF_ADDR, &expected_type_referenced);
-            } else {
+                if (!expected_type_referenced.is_meta && expected_type_referenced.ref) {
+                    expected_type_referenced.ref--;
+                    check_node(c, unary->value, REF_ADDR, &expected_type_referenced);
+                    checked = true;
+                }
+            }
+
+            if (!checked) {
                 check_node(c, unary->value, REF_ADDR, NULL);
             }
 
             n->type = unary->value->type;
             n->type.ref++;
-            break;
+        } break;
 
         case TOKEN_BNOT:
             check_node(c, unary->value, REF_NONE, expected_type);
@@ -2311,19 +2320,32 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
-        check_node(c, compound->lhs, REF_NONE, NULL);
-        type_assert_type(compound->lhs);
+        if (compound->lhs) {
+            check_node(c, compound->lhs, REF_NONE, NULL);
+            type_assert_type(compound->lhs);
 
-        n->type = compound->lhs->type;
-        n->type.is_meta = false;
-        if (n->type.ref || (n->type.kind != TYPE_STRUCT)) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Expected structure type, got %s\n",
-                Pos_Arg(compound->lhs->token.pos),
-                type_to_cstr(n->type));
-            exit(1);
+            n->type = compound->lhs->type;
+            n->type.is_meta = false;
+            if (n->type.ref || (n->type.kind != TYPE_STRUCT)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                    Pos_Arg(compound->lhs->token.pos),
+                    type_to_cstr(n->type));
+                exit(1);
+            }
+        } else {
+            n->type = (Type) {.kind = TYPE_UNKNOWN_COMPOUND};
+            if (expected_type && type_kind_eq(*expected_type, TYPE_STRUCT)) {
+                n->type = *expected_type;
+            }
         }
+
+        // TODO: This should not error out immediately
+        //
+        // Currently there is no mechanism which can allow us to test implicit compounds, since expected type context
+        // exists. After custom operators are implemented, only then can this be tested
+        check_that_type_is_known(n);
 
         // For structure literal
         Type_Struct *struct_spec = NULL;
@@ -2340,6 +2362,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             Node *it = iter;
             if (n->type.kind == TYPE_STRUCT) {
+                // TODO(@group)
                 if (compound->is_designated) {
                     assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
                     Node_Binary *it_binary = (Node_Binary *) it;
@@ -2382,6 +2405,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 const Type *it_type = &struct_spec->fields[it_iota].type;
                 check_node(c, it, REF_NONE, it_type);
                 type_assert(c, it, *it_type);
+            } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
+                todo();
             } else {
                 unreachable();
             }
