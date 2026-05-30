@@ -157,6 +157,46 @@ static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
     return alloca;
 }
 
+static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
+    LLVMTypeRef from_type = LLVMTypeOf(from);
+    if (from_type == to_type) {
+        return from;
+    }
+
+    LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
+    LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
+
+    // Pointer -> Integer
+    if (from_kind == LLVMPointerTypeKind && to_kind == LLVMIntegerTypeKind) {
+        return LLVMBuildPtrToInt(c->llvm_builder, from, to_type, "");
+    }
+
+    // Integer -> Pointer
+    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMPointerTypeKind) {
+        return LLVMBuildIntToPtr(c->llvm_builder, from, to_type, "");
+    }
+
+    // Integer -> Integer
+    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMIntegerTypeKind) {
+        const size_t from_width = LLVMGetIntTypeWidth(from_type);
+        const size_t to_width = LLVMGetIntTypeWidth(to_type);
+        if (from_width > to_width) {
+            return LLVMBuildTrunc(c->llvm_builder, from, to_type, "");
+        } else if (from_width < to_width) {
+            // Smaller -> Bigger
+            if (is_signed) {
+                return LLVMBuildSExt(c->llvm_builder, from, to_type, "");
+            }
+            return LLVMBuildZExt(c->llvm_builder, from, to_type, "");
+        } else {
+            // Bigger -> Smaller
+            return LLVMBuildBitCast(c->llvm_builder, from, to_type, "");
+        }
+    }
+
+    unreachable();
+}
+
 #define ABI_DIRECT_TYPES_MAX 2
 
 typedef struct {
@@ -386,7 +426,13 @@ static void abi_call_add_arg(Compiler *c, ABI_Call *call, LLVMValueRef expr, Typ
             expr = undo_load(expr);
             expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
         } else {
-            // TODO(@variadics): Promotion
+            if (call->abi.is_variadic) {
+                const size_t size = compile_sizeof(c, &type);
+                if (size < 4) {
+                    // Promote values smaller than i32 into i32
+                    expr = compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), type_is_signed(type));
+                }
+            }
         }
         call->args[call->args_iota++] = expr;
     } break;
@@ -1316,46 +1362,6 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
 
     LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, len(args), "");
     LLVMBuildUnreachable(c->llvm_builder);
-}
-
-static LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, bool is_signed) {
-    LLVMTypeRef from_type = LLVMTypeOf(from);
-    if (from_type == to_type) {
-        return from;
-    }
-
-    LLVMTypeKind from_kind = LLVMGetTypeKind(from_type);
-    LLVMTypeKind to_kind = LLVMGetTypeKind(to_type);
-
-    // Pointer -> Integer
-    if (from_kind == LLVMPointerTypeKind && to_kind == LLVMIntegerTypeKind) {
-        return LLVMBuildPtrToInt(c->llvm_builder, from, to_type, "");
-    }
-
-    // Integer -> Pointer
-    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMPointerTypeKind) {
-        return LLVMBuildIntToPtr(c->llvm_builder, from, to_type, "");
-    }
-
-    // Integer -> Integer
-    if (from_kind == LLVMIntegerTypeKind && to_kind == LLVMIntegerTypeKind) {
-        const size_t from_width = LLVMGetIntTypeWidth(from_type);
-        const size_t to_width = LLVMGetIntTypeWidth(to_type);
-        if (from_width > to_width) {
-            return LLVMBuildTrunc(c->llvm_builder, from, to_type, "");
-        } else if (from_width < to_width) {
-            // Smaller -> Bigger
-            if (is_signed) {
-                return LLVMBuildSExt(c->llvm_builder, from, to_type, "");
-            }
-            return LLVMBuildZExt(c->llvm_builder, from, to_type, "");
-        } else {
-            // Bigger -> Smaller
-            return LLVMBuildBitCast(c->llvm_builder, from, to_type, "");
-        }
-    }
-
-    unreachable();
 }
 
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
