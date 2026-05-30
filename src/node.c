@@ -334,6 +334,8 @@ bool type_eq(Type a, Type b) {
         return true;
 
     case TYPE_UNKNOWN_ENUM:
+        return true;
+
     case TYPE_UNKNOWN_COMPOUND:
         return false;
 
@@ -352,7 +354,7 @@ bool type_kind_eq(Type type, Type_Kind kind) {
 }
 
 bool type_is_numeric(Type type) {
-    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM);
+    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
 }
 
 static_assert(COUNT_TYPES == 22, "");
