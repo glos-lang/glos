@@ -15,13 +15,15 @@
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
         return;
     }
 
     assert(type->kind != TYPE_MODULE);
+    assert(type->kind != TYPE_UNKNOWN_ENUM);
+    assert(type->kind != TYPE_UNKNOWN_COMPOUND);
 
     // NOTE: Do not use `type*` functions because this function should not care whether a type is a metatype or not.
     if (type->ref || type->kind == TYPE_RAWPTR || type->kind == TYPE_FN) {
@@ -164,7 +166,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -192,7 +194,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 20, "");
+    static_assert(COUNT_TYPES == 22, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -614,7 +616,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -899,6 +901,15 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
         return spec->debug;
     }
+
+    case TYPE_MODULE:
+        unreachable();
+
+    case TYPE_UNKNOWN_ENUM:
+        unreachable();
+
+    case TYPE_UNKNOWN_COMPOUND:
+        unreachable();
 
     default:
         unreachable();
@@ -1985,7 +1996,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
         const char *label = "slice";
         if (!index->lhs->type.ref) {
-            static_assert(COUNT_TYPES == 20, "");
+            static_assert(COUNT_TYPES == 22, "");
             switch (index->lhs->type.kind) {
             case TYPE_SLICE:
                 // Pass

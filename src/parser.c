@@ -596,6 +596,45 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
     return (Node *) define;
 }
 
+static Node *parse_compound(Parser *p, Node *lhs, Token token) {
+    Node_Compound *compound = (Node_Compound *) node_alloc(p->arena, NODE_COMPOUND, token);
+    compound->lhs = lhs;
+    compound->is_designated = false;
+    while (!read_token(p, TOKEN_RBRACE)) {
+        Node *child = parse_expr(p, POWER_SET, false, true, NULL);
+
+        bool child_is_designated = false;
+        if (read_token(p, TOKEN_SET)) {
+            assert(p->state.ahead.kind == TOKEN_SET);
+            Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->state.ahead);
+            binary->lhs = child;
+            binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+            child = (Node *) binary;
+            child_is_designated = true;
+        }
+
+        if (compound->children.head) {
+            if (compound->is_designated != child_is_designated) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot mix ordered and designated initializers\n",
+                    Pos_Arg(child->token.pos));
+                exit(1);
+            }
+        } else {
+            compound->is_designated = child_is_designated;
+        }
+
+        nodes_push(&compound->children, child);
+        compound->children_count++;
+        if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
+            break;
+        }
+    }
+
+    return (Node *) compound;
+}
+
 static_assert(COUNT_TOKENS == 69, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
@@ -614,6 +653,12 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_ATOM, token);
         ((Node_Atom *) node)->module = p->module_current;
         break;
+
+    case TOKEN_DOT: {
+        node = node_alloc(p->arena, NODE_MEMBER, token);
+        Node_Member *member = (Node_Member *) node;
+        member->field = expect_token(p, TOKEN_IDENT);
+    } break;
 
     case TOKEN_SUB:
     case TOKEN_MUL:
@@ -751,6 +796,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.fn_current = fn_current_save;
         }
     } break;
+
+    case TOKEN_LBRACE:
+        if (!compounds_allowed) {
+            error_unexpected(token);
+        }
+        node = parse_compound(p, NULL, token);
+        break;
 
     case TOKEN_LBRACKET: {
         node = node_alloc(p->arena, NODE_SLICE, token);
@@ -930,48 +982,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = (Node *) call;
         } break;
 
-        case TOKEN_LBRACE: {
+        case TOKEN_LBRACE:
             if (!compounds_allowed) {
                 buffer_token(p, token);
                 return node;
             }
-
-            Node_Compound *compound = (Node_Compound *) node_alloc(p->arena, NODE_COMPOUND, token);
-            compound->lhs = node;
-            compound->is_designated = false;
-            while (!read_token(p, TOKEN_RBRACE)) {
-                Node *child = parse_expr(p, POWER_SET, false, true, NULL);
-
-                bool child_is_designated = false;
-                if (read_token(p, TOKEN_SET)) {
-                    assert(p->state.ahead.kind == TOKEN_SET);
-                    Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->state.ahead);
-                    binary->lhs = child;
-                    binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
-                    child = (Node *) binary;
-                    child_is_designated = true;
-                }
-
-                if (compound->children.head) {
-                    if (compound->is_designated != child_is_designated) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Cannot mix ordered and designated initializers\n",
-                            Pos_Arg(child->token.pos));
-                        exit(1);
-                    }
-                } else {
-                    compound->is_designated = child_is_designated;
-                }
-
-                nodes_push(&compound->children, child);
-                if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
-                    break;
-                }
-            }
-
-            node = (Node *) compound;
-        } break;
+            node = parse_compound(p, node, token);
+            break;
 
         case TOKEN_LBRACKET: {
             Node_Index *index = (Node_Index *) node_alloc(p->arena, NODE_INDEX, token);

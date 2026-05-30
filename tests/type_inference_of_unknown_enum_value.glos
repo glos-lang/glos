@@ -1,0 +1,22 @@
+Foo :: enum {
+    x = 34
+    y = 35
+    z = 420
+    w = 1757
+}
+
+foo :: () -> (Foo, Foo) {
+    return .x + .y, .z
+}
+
+bar :: (a: Foo) {
+    print a
+}
+
+main :: () {
+    a, b := foo()
+    print a
+    print b
+    bar(.w - .z)
+    assert(a == .x + .y)
+}

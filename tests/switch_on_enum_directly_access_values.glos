@@ -7,13 +7,13 @@ Foo :: enum {
 
 main :: () {
     if Foo.D == {
-    case A
+    case .A
         fmt.println("Foo.A")
-    case B
+    case .B
         fmt.println("Foo.B")
-    case C
+    case .C
         fmt.println("Foo.C")
-    case D
+    case .D
         fmt.println("Foo.D")
     }
 }

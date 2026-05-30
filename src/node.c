@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -157,7 +157,7 @@ const char *type_to_cstr_raw(Type type) {
                 Type_Struct_Field it = type.spec.structt->fields[i];
                 if (i) {
                     temp_remove_null();
-                    temp_sprintf(", ");
+                    temp_sprintf("; ");
                 }
 
                 temp_remove_null();
@@ -200,6 +200,28 @@ const char *type_to_cstr_raw(Type type) {
     case TYPE_MODULE:
         unreachable();
 
+    case TYPE_UNKNOWN_ENUM:
+        temp_sprintf("unknown enum");
+        break;
+
+    case TYPE_UNKNOWN_COMPOUND: {
+        const Type_Unknown_Compound spec = type.spec.unknown_compound;
+        temp_sprintf("{");
+
+        for (size_t i = 0; i < spec.count; i++) {
+            if (i) {
+                temp_remove_null();
+                temp_sprintf(", ");
+            }
+
+            temp_remove_null();
+            type_to_cstr_raw(spec.children[i]);
+        }
+
+        temp_remove_null();
+        temp_sprintf("}");
+    } break;
+
     default:
         unreachable();
     }
@@ -214,6 +236,10 @@ const char *type_to_cstr(Type type) {
 
     if (type.kind == TYPE_MODULE) {
         return temp_sprintf("a module");
+    }
+
+    if (type.kind == TYPE_UNKNOWN_ENUM) {
+        return temp_sprintf("unknown enum");
     }
 
     const char *s = temp_sprintf("'");
@@ -246,7 +272,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -307,12 +333,18 @@ bool type_eq(Type a, Type b) {
 
         return true;
 
+    case TYPE_UNKNOWN_ENUM:
+        return true;
+
+    case TYPE_UNKNOWN_COMPOUND:
+        return false;
+
     default:
         return true;
     }
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -322,10 +354,10 @@ bool type_kind_eq(Type type, Type_Kind kind) {
 }
 
 bool type_is_numeric(Type type) {
-    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM);
+    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -373,7 +405,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static_assert(COUNT_TYPES == 22, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -395,6 +427,15 @@ bool type_is_signed(Type type) {
     default:
         return false;
     }
+}
+
+static_assert(COUNT_TYPES == 22, "");
+bool type_is_unknown(Type type) {
+    if (type.is_meta) {
+        return false;
+    }
+
+    return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
 static_assert(COUNT_CONST_VALUES == 6, "");
