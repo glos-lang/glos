@@ -1,0 +1,9 @@
+Foo :: enum {
+    x
+    y = 69
+}
+
+main :: () {
+    f: Foo = .y
+    print f
+}

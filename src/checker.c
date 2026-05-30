@@ -80,7 +80,14 @@ static void print_quoted_char(FILE *f, char ch, char quote) {
     }
 }
 
-static_assert(COUNT_TYPES == 20, "");
+static void check_that_type_is_known(const Node *n) {
+    if (type_is_unknown(n->type)) {
+        fprintf(stderr, Pos_Fmt "ERROR: Cannot infer type of this expression\n", Pos_Arg(n->token.pos));
+        exit(1);
+    }
+}
+
+static_assert(COUNT_TYPES == 21, "");
 static void check_int_limit(Node *n, const void *ptr) {
     if (type_is_signed(n->type)) {
         typedef struct {
@@ -132,6 +139,19 @@ static void check_int_limit(Node *n, const void *ptr) {
     }
 }
 
+// TODO: What about sign?
+static i64 enum_get_value(Node_Enum *enumm, SV name, const Token *t) {
+    ll_foreach(it, &enumm->values) {
+        if (sv_eq(it->token.sv, name)) {
+            return it->token.as.integer;
+        }
+    }
+
+    error_undefined(t, "enumeration value", true);
+    fprintf(stderr, Pos_Fmt "NOTE: Enumeration defined here\n", Pos_Arg(enumm->node.token.pos));
+    exit(1);
+}
+
 static_assert(COUNT_NODES == 26, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
@@ -180,13 +200,20 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
-        assert(member->module_access_definition); // Must be a module access
+        if (member->is_enum) {
+            assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
+            assert(type_kind_eq(expected, TYPE_ENUM));
+            member->enum_value = enum_get_value(expected.spec.enumm.definition, member->field.sv, &member->field);
+            n->type = expected;
+        } else {
+            assert(member->module_access_definition); // Must be a module access
 
-        const Definition_Spec *definition_spec = member->module_access_definition->definition_spec;
-        assert(definition_spec->is_const); // Only constants can be defined as untyped int
+            const Definition_Spec *definition_spec = member->module_access_definition->definition_spec;
+            assert(definition_spec->is_const); // Only constants can be defined as untyped int
 
-        n->type = expected;
-        check_int_limit(n, &definition_spec->const_value.as.integer);
+            n->type = expected;
+            check_int_limit(n, &definition_spec->const_value.as.integer);
+        }
     } break;
 
     case NODE_RETURN: {
@@ -216,6 +243,11 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
         return true;
     }
 
+    if (type_kind_eq(expected, TYPE_ENUM) && type_kind_eq(n->type, TYPE_UNKNOWN_ENUM)) {
+        cast_untyped(c, n, expected);
+        return true;
+    }
+
     return false;
 }
 
@@ -241,6 +273,10 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
 }
 
 static Type type_assert(Compiler *c, Node *n, Type expected) {
+    if (type_is_unknown(n->type) && type_is_unknown(expected)) {
+        check_that_type_is_known(n);
+    }
+
     if (type_eq(n->type, expected)) {
         return expected;
     }
@@ -271,6 +307,11 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
     const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
     if (is_group) {
         actual = n->type.spec.group.data[group_index];
+    }
+
+    if (type_is_unknown(actual) && type_is_unknown(expected)) {
+        todo();
+        check_that_type_is_known(n);
     }
 
     if (type_eq(actual, expected)) {
@@ -330,6 +371,10 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
 }
 
 static Type type_assert_node(Compiler *c, Node *a, Node *b) {
+    if (type_is_unknown(a->type) && type_is_unknown(b->type)) {
+        check_that_type_is_known(b);
+    }
+
     if (type_eq(a->type, b->type)) {
         return a->type;
     }
@@ -400,7 +445,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 20, "");
+    static_assert(COUNT_TYPES == 21, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -433,7 +478,7 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static void node_finalize_type_of_untyped(Type *t) {
+static void node_finalize_type_of_unknown(Type *t) {
     if (type_kind_eq(*t, TYPE_INT)) {
         t->kind = TYPE_I64;
     }
@@ -1042,7 +1087,9 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
         sw->enumeration = sw->expr->type.spec.enumm.definition;
     }
 
-    node_finalize_type_of_untyped(&sw->expr->type);
+    node_finalize_type_of_unknown(&sw->expr->type);
+    check_that_type_is_known(sw->expr);
+
     if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
         fprintf(
             stderr,
@@ -1060,19 +1107,6 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
 static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *iota) {
     bool        checked = false;
     Const_Value value = {0};
-
-    // Addition context for enumeration value
-    if (sw->enumeration) {
-        if (pred->kind == NODE_ATOM && pred->token.kind == TOKEN_IDENT) {
-            ll_foreach(it, &sw->enumeration->values) {
-                if (sv_eq(it->token.sv, pred->token.sv)) {
-                    value = const_value_int(it->token.as.integer);
-                    checked = true;
-                    break;
-                }
-            }
-        }
-    }
 
     if (!checked) {
         check_node(c, pred, REF_NONE);
@@ -1348,6 +1382,16 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 }
 
                 check_node(c, it_expr, REF_NONE);
+                if (!type) {
+                    if (it_expr->kind == NODE_GROUP) {
+                        Node_Group *group = (Node_Group *) it_expr;
+                        ll_foreach(it, &group->nodes) {
+                            check_that_type_is_known(it);
+                        }
+                    } else {
+                        check_that_type_is_known(it_expr);
+                    }
+                }
 
                 const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
                 const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
@@ -1390,7 +1434,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                     type_assert_grouped(c, n, it->node.type, group_index, &it->node.token.pos);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
-                    node_finalize_type_of_untyped(&it->node.type);
+                    node_finalize_type_of_unknown(&it->node.type);
                 }
 
                 type_determined = true;
@@ -1402,7 +1446,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 type_assert(c, it_expr, it->node.type);
             } else {
                 if (!it->definition_spec->is_const) {
-                    node_finalize_type_of_untyped(&it_expr->type);
+                    node_finalize_type_of_unknown(&it_expr->type);
                 }
                 it->node.type = it_expr->type;
             }
@@ -1583,12 +1627,12 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
             Node *lhs = get_node_from_group(binary->lhs, i, &lhs_group_index);
             i64   rhs_group_index = -1;
             Node *rhs = get_node_from_group(binary->rhs, i, &rhs_group_index);
-            check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
             type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
+            check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
         }
     } else {
-        check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
         type_assert(c, binary->rhs, binary->lhs->type);
+        check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
     }
 
     binary->node.type = (Type) {.kind = TYPE_UNIT};
@@ -1813,8 +1857,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_SUB:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, true);
-            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = type_assert_numeric(binary->lhs, true);
             break;
 
         case TOKEN_MUL:
@@ -1822,8 +1866,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_MOD:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = type_assert_numeric(binary->lhs, false);
             break;
 
         case TOKEN_SHL:
@@ -1832,8 +1876,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_BAND:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, false);
-            n->type = type_assert_node(c, binary->rhs, binary->lhs);
+            type_assert_node(c, binary->rhs, binary->lhs);
+            n->type = type_assert_numeric(binary->lhs, false);
             break;
 
         case TOKEN_GT:
@@ -1842,8 +1886,8 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_LE:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
-            type_assert_numeric(binary->lhs, true);
             type_assert_node(c, binary->rhs, binary->lhs);
+            type_assert_numeric(binary->lhs, true);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
@@ -1851,6 +1895,7 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_NE:
             check_node(c, binary->lhs, REF_NONE);
             check_node(c, binary->rhs, REF_NONE);
+            type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
                 fprintf(
                     stderr,
@@ -1859,7 +1904,6 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
                     type_to_cstr(binary->lhs->type));
                 exit(1);
             }
-            type_assert_node(c, binary->rhs, binary->lhs);
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
 
@@ -1901,83 +1945,71 @@ static void check_node(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
 
-        check_node(c, member->lhs, ref);
-        is_ref_valid = true; // check_node() has already determined that the reference is valid
+        if (member->lhs) {
+            check_node(c, member->lhs, ref);
+            is_ref_valid = true; // check_node() has already determined that the reference is valid
 
-        if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
-            Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
+            if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
+                Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
+                member->enum_value = enum_get_value(enumm, member->field.sv, &member->field);
+                member->is_enum = true;
+                n->type = member->lhs->type;
+                n->type.is_meta = false;
+            } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
+                Type_Struct_Field *definition = NULL;
 
-            bool found = false;
-            i64  value = 0;
-
-            ll_foreach(it, &enumm->values) {
-                if (sv_eq(it->token.sv, member->field.sv)) {
-                    found = true;
-                    value = it->token.as.integer;
-                    break;
+                Type_Struct *spec = member->lhs->type.spec.structt;
+                for (size_t i = 0; i < spec->fields_count; i++) {
+                    Type_Struct_Field *it = &spec->fields[i];
+                    if (sv_eq(it->name, member->field.sv)) {
+                        definition = it;
+                        member->field_index = i;
+                        break;
+                    }
                 }
-            }
 
-            if (!found) {
-                error_undefined(&member->field, "enumeration value", true);
-                fprintf(stderr, Pos_Fmt "NOTE: Enumeration defined here\n", Pos_Arg(enumm->node.token.pos));
+                if (!definition) {
+                    error_undefined(&member->field, "field", true);
+                    fprintf(
+                        stderr, Pos_Fmt "NOTE: Structure defined here\n", Pos_Arg(spec->definition->node.token.pos));
+                    exit(1);
+                }
+
+                n->type = definition->type;
+            } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
+                if (sv_match(member->field.sv, "data")) {
+                    n->type = *member->lhs->type.spec.slice.element;
+                    n->type.ref++;
+                    member->field_index = 0;
+                } else if (sv_match(member->field.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    member->field_index = 1;
+                } else {
+                    error_undefined(&member->field, "field", false);
+                }
+            } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
+                if (sv_match(member->field.sv, "data")) {
+                    n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
+                    member->field_index = 0;
+                } else if (sv_match(member->field.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    member->field_index = 1;
+                } else {
+                    error_undefined(&member->field, "field", false);
+                }
+            } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
+                check_ident(c, n, ref);
+            } else {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access field of %s\n",
+                    Pos_Arg(n->token.pos),
+                    type_to_cstr(member->lhs->type));
                 exit(1);
             }
-
-            member->enum_value = value;
-            member->is_enum = true;
-            n->type = member->lhs->type;
-            n->type.is_meta = false;
-        } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
-            Type_Struct_Field *definition = NULL;
-
-            Type_Struct *spec = member->lhs->type.spec.structt;
-            for (size_t i = 0; i < spec->fields_count; i++) {
-                Type_Struct_Field *it = &spec->fields[i];
-                if (sv_eq(it->name, member->field.sv)) {
-                    definition = it;
-                    member->field_index = i;
-                    break;
-                }
-            }
-
-            if (!definition) {
-                error_undefined(&member->field, "field", true);
-                fprintf(stderr, Pos_Fmt "NOTE: Structure defined here\n", Pos_Arg(spec->definition->node.token.pos));
-                exit(1);
-            }
-
-            n->type = definition->type;
-        } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
-            if (sv_match(member->field.sv, "data")) {
-                n->type = *member->lhs->type.spec.slice.element;
-                n->type.ref++;
-                member->field_index = 0;
-            } else if (sv_match(member->field.sv, "count")) {
-                n->type = (Type) {.kind = TYPE_I64};
-                member->field_index = 1;
-            } else {
-                error_undefined(&member->field, "field", false);
-            }
-        } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
-            if (sv_match(member->field.sv, "data")) {
-                n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
-                member->field_index = 0;
-            } else if (sv_match(member->field.sv, "count")) {
-                n->type = (Type) {.kind = TYPE_I64};
-                member->field_index = 1;
-            } else {
-                error_undefined(&member->field, "field", false);
-            }
-        } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
-            check_ident(c, n, ref);
         } else {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot access field of %s\n",
-                Pos_Arg(n->token.pos),
-                type_to_cstr(member->lhs->type));
-            exit(1);
+            n->type = (Type) {.kind = TYPE_UNKNOWN_ENUM};
+            member->is_enum = true;
         }
     } break;
 

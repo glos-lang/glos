@@ -73,6 +73,9 @@ typedef enum {
 
     TYPE_GROUP,
     TYPE_MODULE,
+
+    // For things like `.Enum_Value` or `{Foo, Bar}`
+    TYPE_UNKNOWN_ENUM,
     COUNT_TYPES,
 } Type_Kind;
 
@@ -171,6 +174,7 @@ bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
 bool type_is_scalar(Type type);
 bool type_is_signed(Type type);
+bool type_is_unknown(Type type);
 
 typedef enum {
     CONST_VALUE_INT,

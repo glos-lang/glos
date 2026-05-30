@@ -615,6 +615,12 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         ((Node_Atom *) node)->module = p->module_current;
         break;
 
+    case TOKEN_DOT: {
+        node = node_alloc(p->arena, NODE_MEMBER, token);
+        Node_Member *member = (Node_Member *) node;
+        member->field = expect_token(p, TOKEN_IDENT);
+    } break;
+
     case TOKEN_SUB:
     case TOKEN_MUL:
     case TOKEN_BNOT:

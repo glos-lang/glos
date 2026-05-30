@@ -17,21 +17,21 @@ Platform :: enum {
 }
 
 #if #platform == {
-case Platform.Linux
+case .Linux
     extern {
         stdin: File
         stdout: File
         stderr: File
     }
 
-case Platform.MacOS
+case .MacOS
     extern {
         #link "__stdinp"  stdin: File
         #link "__stdoutp" stdout: File
         #link "__stderrp" stderr: File
     }
 
-case Platform.Windows
+case .Windows
     stdin: File
     stdout: File
     stderr: File
