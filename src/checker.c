@@ -101,7 +101,7 @@ static void check_int_limit(Node *n, const void *ptr) {
         if (value < limit.min || value > limit.max) {
             fprintf(
                 stderr,
-                Pos_Fmt "ERROR: Number '%lld' is invalid for %s, which must be in range [%lld, %lld]\n",
+                Pos_Fmt "ERROR: Number '%zd' is invalid for %s, which must be in range [%zd, %zd]\n",
                 Pos_Arg(n->token.pos),
                 value,
                 type_to_cstr(n->type),
@@ -313,7 +313,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
 
         fprintf(
             stderr,
-            Pos_Fmt "ERROR: Expected %lld%s value of this to be %s, got %s. The type of this entire expression is %s\n",
+            Pos_Fmt "ERROR: Expected %zd%s value of this to be %s, got %s. The type of this entire expression is %s\n",
             Pos_Arg(n->token.pos),
             group_index + 1,
             postfix,
@@ -979,7 +979,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 if (begin > end) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Range (%lld..%lld) is invalid: Beginning of range is more than end\n",
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos),
                         begin,
                         end);
@@ -989,7 +989,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 if (begin < 0 || end < 0 || (size_t) begin > sv.count || (size_t) end > sv.count) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Range (%lld..%lld) is out of bounds in string of length %zu\n",
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is out of bounds in string of length %zu\n",
                         Pos_Arg(n->token.pos),
                         begin,
                         end,
@@ -1014,7 +1014,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 if (at < 0 || (size_t) at >= lhs.as.string.count) {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Index %lld is out of bounds in string of length %zu\n",
+                        Pos_Fmt "ERROR: Index %zd is out of bounds in string of length %zu\n",
                         Pos_Arg(n->token.pos),
                         at,
                         lhs.as.string.count);
@@ -1093,9 +1093,9 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                     print_quoted_char(stderr, value.as.integer, '\'');
                     fprintf(stderr, "'");
                 } else if (type_is_signed(pred->type)) {
-                    fprintf(stderr, "%lld", value.as.integer);
+                    fprintf(stderr, "%zd", value.as.integer);
                 } else {
-                    fprintf(stderr, "%llu", value.as.integer);
+                    fprintf(stderr, "%zu", value.as.integer);
                 }
                 break;
 

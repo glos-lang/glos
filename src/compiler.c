@@ -2062,7 +2062,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
                 {
                     const char *message = temp_sprintf(
-                        Pos_Fmt "Range (%%lld..%%lld) is invalid: Beginning of range is more than end\n",
+                        Pos_Fmt "Range (%%zd..%%zd) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos));
 
                     compile_panic(c, message, a, b, NULL);
@@ -2096,7 +2096,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                     LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
                     {
                         const char *message = temp_sprintf(
-                            Pos_Fmt "Range (%%lld..%%lld) is out of bounds in %s of length %%lld\n",
+                            Pos_Fmt "Range (%%zd..%%zd) is out of bounds in %s of length %%zd\n",
                             Pos_Arg(n->token.pos),
                             label);
 
@@ -2151,7 +2151,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
             {
                 const char *message = temp_sprintf(
-                    Pos_Fmt "Index %%lld is out of bounds in %s of length %%lld\n", Pos_Arg(n->token.pos), label);
+                    Pos_Fmt "Index %%zd is out of bounds in %s of length %%zd\n", Pos_Arg(n->token.pos), label);
 
                 compile_panic(c, message, a, count, NULL);
                 temp_reset(message);

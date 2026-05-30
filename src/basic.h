@@ -50,8 +50,10 @@
 // And the solution is to use those goofy ahh PRI*N macros.
 //
 // Thank you K&R. Very cool...
-typedef long long i64;
+typedef ptrdiff_t i64;
+typedef size_t    u64;
 static_assert(sizeof(i64) == 8, "");
+static_assert(sizeof(u64) == 8, "");
 
 // Helper Macros
 #define len(a)    (sizeof(a) / sizeof(*(a)))
