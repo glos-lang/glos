@@ -433,6 +433,8 @@ static void abi_call_add_arg(Compiler *c, ABI_Call *call, LLVMValueRef expr, Typ
                     expr = compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), type_is_signed(type));
                 }
             }
+
+            // TODO: In macOS, compound types < 8 bytes are passed as 8 bytes anyway. It needs to be truncated/extended
         }
         call->args[call->args_iota++] = expr;
     } break;
@@ -2736,6 +2738,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     ht_free(&c->llvm_debug_files);
     da_free(&c->context.locals);
+    da_free(&c->struct_fields);
     da_free(&c->group_values);
     da_free(&c->defers);
     temp_reset(checkpoint);

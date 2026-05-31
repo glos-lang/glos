@@ -8,14 +8,6 @@ extern {
     memcmp :: (a: rawptr, b: rawptr, n: i64) -> i32
 }
 
-// This is a contract between the compiler and the source code. This must NOT be edited
-// TODO: Add a check in the compiler which detects if this is malformed
-Platform :: enum {
-    Linux
-    MacOS
-    Windows
-}
-
 #if #platform == {
 case .Linux
     extern {

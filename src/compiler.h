@@ -12,6 +12,7 @@ typedef DA(const char *) Link_Flags;
 typedef struct {
     // These are used only by the analyzer
     Type main_fn_type;
+    DA(Type_Struct_Field) struct_fields;
 
     // These are used both by the analyzer and the compiler
     Arena  *arena;

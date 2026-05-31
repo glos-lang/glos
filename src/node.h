@@ -425,10 +425,8 @@ struct Node_Enum {
 
 // This represents a type
 struct Node_Struct {
-    Node node;
-
-    Nodes  fields;
-    size_t fields_count;
+    Node  node;
+    Nodes fields;
 
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;

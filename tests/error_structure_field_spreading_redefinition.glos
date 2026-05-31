@@ -1,0 +1,9 @@
+Vec2 :: struct {
+    x: i32
+    y: i32
+}
+
+Vec3 :: struct {
+    x: i32
+    ...Vec2
+}

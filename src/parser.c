@@ -845,6 +845,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
+            token = peek_token(p);
+            if (token.kind == TOKEN_SPREAD) {
+                Node_Unary *spread = (Node_Unary *) node_alloc(p->arena, NODE_UNARY, next_token(p));
+                spread->value = parse_expr(p, POWER_PRE, false, false, NULL);
+
+                nodes_push(&structt->fields, (Node *) spread);
+                continue;
+            }
+
             Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
             if (field->kind != NODE_DEFINE) {
                 fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
@@ -863,8 +872,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             nodes_push(&structt->fields, field);
-            structt->fields_count += define->count;
-
             consume_tokens(p, TOKEN_EOL);
         }
     } break;

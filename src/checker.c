@@ -2249,56 +2249,116 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_STRUCT: {
         Node_Struct *structt = (Node_Struct *) n;
 
-        const Type_Struct structt_type_spec = {
-            .fields = arena_alloc(c->arena, structt->fields_count * sizeof(*structt_type_spec.fields)),
-            .fields_count = structt->fields_count,
-            .definition = structt,
-        };
+        Type_Struct *spec = arena_alloc(c->arena, sizeof(*spec));
+        spec->definition = structt;
 
         n->type = (Type) {
             .kind = TYPE_STRUCT,
             .is_meta = true,
-            .spec.structt = arena_clone(c->arena, &structt_type_spec, sizeof(structt_type_spec)),
+            .spec.structt = spec,
         };
 
         if (structt->defined_as) {
             structt->defined_as->node.type = n->type;
         }
 
-        size_t iota = 0;
-        for (Node *field = structt->fields.head; field; field = field->next) {
-            const size_t start = iota;
+        const size_t fields_start = c->struct_fields.count;
 
-            assert(field->kind == NODE_DEFINE);
-            Node_Define *define = (Node_Define *) field;
+        size_t fields_count = 0;
+        ll_foreach(field, &structt->fields) {
+            if (field->kind == NODE_DEFINE) {
+                Node_Define *define = (Node_Define *) field;
 
-            Node_Atom *it = NULL;
-            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
-                if (!sv_match(it->node.token.sv, "_")) {
-                    for (size_t i = 0; i < iota; i++) {
-                        Type_Struct_Field previous = structt_type_spec.fields[i];
-                        if (sv_eq(previous.name, it->node.token.sv)) {
-                            error_redefinition((Node *) it, &previous.pos);
+                Node_Atom *it = NULL;
+                while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                    if (!sv_match(it->node.token.sv, "_")) {
+                        for (size_t i = 0; i < fields_count; i++) {
+                            Type_Struct_Field previous = c->struct_fields.data[fields_start + i];
+                            if (sv_eq(previous.name, it->node.token.sv)) {
+                                error_redefinition((Node *) it, &previous.pos);
+                            }
                         }
                     }
+
+                    Type_Struct_Field it_field = {.name = it->node.token.sv, .pos = it->node.token.pos};
+                    da_push(&c->struct_fields, it_field);
+                    fields_count++;
                 }
 
-                Type_Struct_Field *it_spec = &structt_type_spec.fields[iota++];
-                it_spec->name = it->node.token.sv;
-                it_spec->pos = it->node.token.pos;
-            }
-            assert(iota == start + define->count);
-            check_expr(c, define->type, REF_NONE, NULL);
+                check_expr(c, define->type, REF_NONE, NULL);
+                type_assert_type(define->type);
+                while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                    it->node.type = define->type->type;
+                    it->node.type.is_meta = false;
+                }
+            } else if (field->kind == NODE_UNARY && field->token.kind == TOKEN_SPREAD) {
+                Node_Unary *unary = (Node_Unary *) field;
+                check_expr(c, unary->value, REF_NONE, NULL);
+                type_assert_type(unary->value);
 
-            iota = start;
-            while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
-                it->node.type = type_assert_type(define->type);
-                it->node.type.is_meta = false;
-                structt_type_spec.fields[iota++].type = it->node.type;
+                Type from = unary->value->type;
+                from.is_meta = false;
+                if (!type_kind_eq(from, TYPE_STRUCT)) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                        Pos_Arg(unary->value->token.pos),
+                        type_to_cstr(from));
+                    exit(1);
+                }
+
+                for (size_t i = 0; i < from.spec.structt->fields_count; i++) {
+                    Type_Struct_Field it = from.spec.structt->fields[i];
+                    if (!sv_match(it.name, "_")) {
+                        for (size_t i = 0; i < fields_count; i++) {
+                            Type_Struct_Field previous = c->struct_fields.data[fields_start + i];
+                            if (sv_eq(previous.name, it.name)) {
+                                fprintf(
+                                    stderr,
+                                    Pos_Fmt "ERROR: While spreading this structure, we encountered a field '" SV_Fmt
+                                            "' that is already defined\n",
+                                    Pos_Arg(unary->value->token.pos),
+                                    SV_Arg(it.name));
+                                fprintf(stderr, Pos_Fmt "NOTE: Defined here\n", Pos_Arg(previous.pos));
+                                exit(1);
+                            }
+                        }
+                    }
+
+                    it.pos = unary->value->token.pos;
+                    da_push(&c->struct_fields, it);
+                    fields_count++;
+                }
+            } else {
+                unreachable();
             }
-            assert(iota == start + define->count);
         }
 
+        if (fields_count) {
+            spec->fields = arena_clone(
+                c->arena, &c->struct_fields.data[fields_start], fields_count * sizeof(*c->struct_fields.data));
+            spec->fields_count = fields_count;
+
+            size_t iota = 0;
+            ll_foreach(field, &structt->fields) {
+                if (field->kind == NODE_DEFINE) {
+                    Node_Define *define = (Node_Define *) field;
+
+                    Node_Atom *it = NULL;
+                    while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                        spec->fields[iota++].type = it->node.type;
+                    }
+                } else if (field->kind == NODE_UNARY && field->token.kind == TOKEN_SPREAD) {
+                    Node_Unary *unary = (Node_Unary *) field;
+                    assert(unary->value->type.kind == TYPE_STRUCT);
+                    iota += unary->value->type.spec.structt->fields_count;
+                } else {
+                    unreachable();
+                }
+            }
+        }
+
+        c->struct_fields.count = fields_start;
         is_ref_valid = ref == REF_ADDR;
     } break;
 

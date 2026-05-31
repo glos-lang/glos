@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 231
+tests/error_structure_field_spreading_redefinition.glos:8:8: ERROR: While spreading this structure, we encountered a field 'x' that is already defined
+tests/error_structure_field_spreading_redefinition.glos:7:5: NOTE: Defined here
+
