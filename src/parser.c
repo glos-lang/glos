@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -635,7 +635,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -1128,6 +1128,21 @@ static Node *parse_stmt(Parser *p) {
 
         assert(it->definition_spec);
         it->definition_spec->link_as = name.sv;
+    } break;
+
+    case TOKEN_DIRECTIVE_LIBRARY: {
+        node = node_alloc(p->arena, NODE_IMPORT, token);
+        Node_Import *import = (Node_Import *) node;
+        if (read_token(p, TOKEN_LBRACE)) {
+            while (!read_token(p, TOKEN_RBRACE)) {
+                Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
+                nodes_push(&import->libraries, library);
+                consume_tokens(p, TOKEN_EOL);
+            }
+        } else {
+            Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
+            nodes_push(&import->libraries, library);
+        }
     } break;
 
     case TOKEN_LBRACE:

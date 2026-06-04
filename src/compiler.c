@@ -15,6 +15,22 @@
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
+void link_flags_add_libpath(Link_Flags *ls, SV path) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    da_push(ls, arena_sprintf(ls->arena, "/libpath:" SV_Fmt, SV_Arg(path)));
+#else
+    da_push(ls, arena_sprintf(ls->arena, "-L" SV_Fmt, SV_Arg(path)));
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
+void link_flags_add_libname(Link_Flags *ls, SV name) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    da_push(ls, arena_sprintf(ls->arena, SV_Fmt ".lib", SV_Arg(name)));
+#else
+    da_push(ls, arena_sprintf(ls->arena, "-l" SV_Fmt, SV_Arg(name)));
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
 static_assert(COUNT_TYPES == 22, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
@@ -1445,7 +1461,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1532,7 +1548,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1603,7 +1619,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 69, "");
+            static_assert(COUNT_TOKENS == 70, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1651,7 +1667,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 69, "");
+            static_assert(COUNT_TOKENS == 70, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1682,7 +1698,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 69, "");
+            static_assert(COUNT_TOKENS == 70, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1788,7 +1804,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;

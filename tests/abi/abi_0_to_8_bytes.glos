@@ -4,6 +4,7 @@ S8 :: struct {
 }
 
 extern {
+    #library "abi"
     s8_foo :: (s: S8)
     s8_ret :: (x: i32, y: i32) -> S8
 }

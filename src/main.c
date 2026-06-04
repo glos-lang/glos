@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
     const char *cwd = get_cwd(&arena);
     const char *input_path = NULL;
     const char *output_path = NULL;
-    Link_Flags  link_flags = {0};
+    Link_Flags  link_flags = {.arena = &arena};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {
@@ -182,24 +182,14 @@ int main(int argc, char **argv) {
                     libpath = shift(&argc, &argv, program, "Library path");
                 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-                da_push(&link_flags, arena_sprintf(&arena, "/libpath:%s", libpath));
-#else
-                da_push(&link_flags, "-L");
-                da_push(&link_flags, libpath);
-#endif // PLATFORM_X86_64_WINDOWS
+                link_flags_add_libpath(&link_flags, sv_from_cstr(libpath));
             } else if (arg[1] == 'l') {
                 const char *libname = &arg[2];
                 if (*libname == '\0') {
                     libname = shift(&argc, &argv, program, "Library name");
                 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-                da_push(&link_flags, arena_sprintf(&arena, "%s.lib", libname));
-#else
-                da_push(&link_flags, "-l");
-                da_push(&link_flags, libname);
-#endif // PLATFORM_X86_64_WINDOWS
+                link_flags_add_libname(&link_flags, sv_from_cstr(libname));
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
                 usage(stderr, program);
@@ -350,6 +340,14 @@ int main(int argc, char **argv) {
     }
 
     check_nodes(&compiler);
+    ll_foreach(it, &modules) {
+        const char *path = it->absolute_path;
+        if (it == compiler.main_module) {
+            path = parser.root;
+        }
+        link_flags_add_libpath(&link_flags, sv_from_cstr(path));
+    }
+
     compiler_build(&compiler, output_path);
 
     if (run) {

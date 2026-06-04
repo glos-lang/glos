@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 70, "");
 const char *token_kind_to_cstr(Token_Kind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -156,17 +156,20 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_DIRECTIVE_IF:
         return "'#if'";
 
-    case TOKEN_DIRECTIVE_LINK:
-        return "'#link'";
-
-    case TOKEN_DIRECTIVE_MAIN:
-        return "'#main'";
-
     case TOKEN_DIRECTIVE_ASSERT:
         return "'#assert'";
 
+    case TOKEN_DIRECTIVE_LINK:
+        return "'#link'";
+
     case TOKEN_DIRECTIVE_IMPORT:
         return "'#import'";
+
+    case TOKEN_DIRECTIVE_LIBRARY:
+        return "'#library'";
+
+    case TOKEN_DIRECTIVE_MAIN:
+        return "'#main'";
 
     case TOKEN_DIRECTIVE_INLINE:
         return "'#inline'";

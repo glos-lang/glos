@@ -4,6 +4,7 @@ S16 :: struct {
 }
 
 extern {
+    #library "abi"
     s16_foo :: (s: S16)
     s16_bar :: (s0: S16, s1: S16, s2: S16, s3: S16)
     s16_baz :: (s0: S16, s1: S16, s2: S16, s3: S16, s4: S16)

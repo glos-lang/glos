@@ -365,6 +365,7 @@ typedef struct {
     Node    node;
     Token   path;
     Module *module;
+    Nodes   libraries;
 } Node_Import;
 
 struct Node_Fn {

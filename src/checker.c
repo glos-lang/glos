@@ -156,7 +156,7 @@ static_assert(COUNT_NODES == 26, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -700,7 +700,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -742,7 +742,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -785,7 +785,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1721,7 +1721,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1812,7 +1812,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -1902,7 +1902,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 70, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2075,17 +2075,23 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
-        if (!import->module) {
-            parser_import(c->parser, import);
-
-            const Context context_save = c->context;
-            memset(&c->context, 0, sizeof(c->context));
-            {
-                for (Node *it = import->module->nodes.head; it; it = it->next) {
-                    define_orderless_nodes(c, it, 0);
-                }
+        if (import->libraries.head) {
+            ll_foreach(it, &import->libraries) {
+                link_flags_add_libname(c->link_flags, it->token.sv);
             }
-            c->context = context_save;
+        } else {
+            if (!import->module) {
+                parser_import(c->parser, import);
+
+                const Context context_save = c->context;
+                memset(&c->context, 0, sizeof(c->context));
+                {
+                    for (Node *it = import->module->nodes.head; it; it = it->next) {
+                        define_orderless_nodes(c, it, 0);
+                    }
+                }
+                c->context = context_save;
+            }
         }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
     } break;
