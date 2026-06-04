@@ -2307,6 +2307,15 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     exit(1);
                 }
 
+                if (from.ref) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot spread %s without dereferencing it first\n",
+                        Pos_Arg(unary->value->token.pos),
+                        type_to_cstr(from));
+                    exit(1);
+                }
+
                 for (size_t i = 0; i < from.spec.structt->fields_count; i++) {
                     Type_Struct_Field it = from.spec.structt->fields[i];
                     if (!sv_match(it.name, "_")) {
