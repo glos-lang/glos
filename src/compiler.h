@@ -71,8 +71,6 @@ typedef struct {
     LLVMTypeRef llvm_slice_type;
 
     size_t iota_anonymous_fn;
-    size_t iota_anonymous_const;
-    size_t iota_anonymous_struct;
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);

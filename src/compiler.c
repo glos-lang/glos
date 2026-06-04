@@ -364,6 +364,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
 #endif // PLATFORM_ARM64_MACOS
 
     return info;
+    unused(is_arg); // Suppress the unused warnings
 }
 
 typedef struct {
@@ -848,21 +849,15 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
             SV name = {0};
             {
-                const char *namespace =
-                    temp_emit_nested_fn_name(c, spec->definition->defined_in, spec->definition->module);
-                temp_remove_null();
-
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
-                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
-                } else {
-                    if (!spec->definition->defined_as_anon_iota) {
-                        spec->definition->defined_as_anon_iota = ++c->iota_anonymous_struct;
-                    }
-                    temp_sprintf(".anon.%zu", spec->definition->defined_as_anon_iota);
-                }
+                    const char *namespace =
+                        temp_emit_nested_fn_name(c, spec->definition->defined_in, spec->definition->module);
 
-                name = sv_from_cstr(namespace);
+                    temp_remove_null();
+                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                    name = sv_from_cstr(namespace);
+                }
             }
 
             LLVMMetadataRef scope_metadata =
@@ -1465,6 +1460,12 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
     LLVMBuildUnreachable(c->llvm_builder);
 }
 
+static LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value) {
+    LLVMValueRef memory = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(value), "");
+    LLVMSetInitializer(memory, value);
+    return memory;
+}
+
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
     Token token = {0};
     if (n->kind == NODE_ATOM) {
@@ -1483,10 +1484,8 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
         switch (const_value.kind) {
         case CONST_VALUE_STRUCT:
             if (!definition->definition_spec->llvm) {
-                const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
-                definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
-                temp_reset(name);
-                LLVMSetInitializer(definition->definition_spec->llvm, compile_const_value(c, const_value, n->type));
+                definition->definition_spec->llvm =
+                    compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
             }
 
             if (ref) {
@@ -1607,10 +1606,8 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         switch (const_value.kind) {
         case CONST_VALUE_STRUCT:
             if (!ghost->arg->default_value_llvm) {
-                const char *name = temp_sprintf("const.anon.%zu", c->iota_anonymous_const++);
-                ghost->arg->default_value_llvm = LLVMAddGlobal(c->llvm_module, n->type.llvm, name);
-                temp_reset(name);
-                LLVMSetInitializer(ghost->arg->default_value_llvm, compile_const_value(c, const_value, n->type));
+                ghost->arg->default_value_llvm =
+                    compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
             }
 
             if (ref) {
