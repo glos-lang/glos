@@ -108,6 +108,11 @@ static void compile_type(Compiler *c, Type *type) {
 
             spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->fields_count, false);
             temp_reset(fields);
+
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                Type_Struct_Field *it = &spec->fields[i];
+                it->offset = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i);
+            }
         }
         type->llvm = spec->llvm;
     } break;
@@ -137,6 +142,11 @@ static void compile_type(Compiler *c, Type *type) {
 
             spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->count, false);
             temp_reset(fields);
+
+            spec->offsets = arena_alloc(c->arena, spec->count * sizeof(*spec->offsets));
+            for (size_t i = 0; i < spec->count; i++) {
+                spec->offsets[i] = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i);
+            }
         }
         type->llvm = spec->llvm;
     } break;
@@ -240,6 +250,61 @@ static bool type_is_compound(Type type) {
     }
 }
 
+static_assert(COUNT_TYPES == 22, "");
+static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
+    assert(type_is_compound(type));
+    switch (type.kind) {
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = type.spec.structt;
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            const Type_Struct_Field *it = &spec->fields[i];
+            const size_t             it_offset = offset + it->offset;
+            if (type_is_compound(it->type)) {
+                x86_64_linux_split_into_two(c, it->type, it_offset, out);
+            } else {
+                const size_t index = it_offset / 8;
+                assert(index < 2);
+                if (out[index]) {
+                    out[index] = LLVMInt64TypeInContext(c->llvm_context);
+                } else {
+                    out[index] = LLVMIntTypeInContext(
+                        c->llvm_context, LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8);
+                }
+            }
+        }
+    } break;
+
+    case TYPE_SLICE:
+    case TYPE_STRING:
+        out[0] = LLVMInt64TypeInContext(c->llvm_context);
+        out[1] = LLVMInt64TypeInContext(c->llvm_context);
+        break;
+
+    case TYPE_GROUP: {
+        const Type_Group *spec = &type.spec.group;
+        for (size_t i = 0; i < spec->count; i++) {
+            const Type   it_type = spec->data[i];
+            const size_t it_offset = offset + spec->offsets[i];
+            if (type_is_compound(it_type)) {
+                x86_64_linux_split_into_two(c, it_type, it_offset, out);
+            } else {
+                const size_t index = it_offset / 8;
+                assert(index < 2);
+                if (out[index]) {
+                    out[index] = LLVMInt64TypeInContext(c->llvm_context);
+                } else {
+                    out[index] =
+                        LLVMIntTypeInContext(c->llvm_context, LLVMABISizeOfType(c->llvm_target_data, it_type.llvm) * 8);
+                }
+            }
+        }
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
 static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     ABI_Info info = {0};
     size_t   size = compile_sizeof(c, type);
@@ -283,9 +348,10 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
 
 #ifdef PLATFORM_X86_64_LINUX
     if (size <= 16) {
-        // TODO(@abi): The sizes of the integers depend on the elements present in that portion
-        info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, 64);
-        info.direct_types[info.direct_types_count++] = LLVMIntTypeInContext(c->llvm_context, size * 8 - 64);
+        x86_64_linux_split_into_two(c, *type, 0, info.direct_types);
+        assert(info.direct_types[0]);
+        assert(info.direct_types[1]);
+        info.direct_types_count = 2;
         return info;
     }
 #endif // PLATFORM_X86_64_LINUX
@@ -458,8 +524,6 @@ static void abi_call_add_arg(Compiler *c, ABI_Call *call, LLVMValueRef expr, Typ
                     expr = compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), type_is_signed(type));
                 }
             }
-
-            // TODO: In macOS, compound types < 8 bytes are passed as 8 bytes anyway. It needs to be truncated/extended
         }
         call->args[call->args_iota++] = expr;
     } break;
@@ -801,12 +865,15 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 name = sv_from_cstr(namespace);
             }
 
+            LLVMMetadataRef scope_metadata =
+                get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in);
+
             spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
                 c->llvm_debug_builder,
                 DW_TAG_structure_type,
                 name.data,
                 name.count,
-                get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in),
+                scope_metadata,
                 get_debug_file(c, spec->definition->node.token.pos.path),
                 spec->definition->node.token.pos.row + 1,
                 0,
@@ -822,7 +889,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
                 const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
                 const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
-                const size_t offset_bits = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i) * 8;
+                const size_t offset_bits = it->offset * 8;
 
                 fields[i] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
@@ -838,8 +905,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                     get_debug_for_type(c, &it->type));
             }
 
-            LLVMMetadataRef scope_metadata =
-                get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in);
             LLVMMetadataRef file_metadata = get_debug_file(c, spec->definition->node.token.pos.path);
             LLVMMetadataRef real = LLVMDIBuilderCreateStructType(
                 c->llvm_debug_builder,

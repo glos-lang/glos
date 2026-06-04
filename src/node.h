@@ -115,8 +115,9 @@ typedef struct {
 } Type_Slice;
 
 typedef struct {
-    Type  *data;
-    size_t count;
+    Type   *data;
+    size_t *offsets;
+    size_t  count;
 
     LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
@@ -166,9 +167,10 @@ struct Type_Fn_Arg {
 };
 
 struct Type_Struct_Field {
-    Pos  pos;
-    SV   name;
-    Type type;
+    Pos    pos;
+    SV     name;
+    Type   type;
+    size_t offset;
 };
 
 const char *type_to_cstr_raw(Type type);

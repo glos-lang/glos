@@ -1997,6 +1997,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
 
+        // TODO: Do not allow the field to be '_'
         if (member->lhs) {
             check_expr(c, member->lhs, ref, NULL);
             check_that_type_is_known(member->lhs);

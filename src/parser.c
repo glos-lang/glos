@@ -707,6 +707,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             Node_Fn *fn_current_save = p->state.fn_current;
             p->state.fn_current = fn;
 
+            const bool fn_current_parsed_signature_save = p->state.fn_current_parsed_signature;
+            p->state.fn_current_parsed_signature = false;
+
             if (arg) {
                 definition_lhs_setup(p, (Node_Define *) arg);
             }
@@ -787,6 +790,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
             }
 
+            p->state.fn_current_parsed_signature = true;
             if (peek_token(p).kind == TOKEN_LBRACE) {
                 fn->body = parse_block(p, next_token(p));
             } else {
@@ -794,6 +798,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             p->state.fn_current = fn_current_save;
+            p->state.fn_current_parsed_signature = fn_current_parsed_signature_save;
         }
     } break;
 
@@ -840,8 +845,13 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_STRUCT: {
         node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
-        structt->defined_in = p->state.fn_current;
         structt->module = p->module_current;
+
+        if (p->state.fn_current && !p->state.fn_current_parsed_signature) {
+            structt->defined_in = p->state.fn_current->outer_fn;
+        } else {
+            structt->defined_in = p->state.fn_current;
+        }
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {

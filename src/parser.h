@@ -20,6 +20,7 @@ typedef struct {
     bool in_compile_time_condition;
 
     Node_Fn *fn_current;
+    bool     fn_current_parsed_signature;
 } Parser_State;
 
 typedef struct {
