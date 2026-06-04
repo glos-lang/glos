@@ -240,7 +240,7 @@ static bool type_is_compound(Type type) {
     }
 }
 
-static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
+static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     ABI_Info info = {0};
     size_t   size = compile_sizeof(c, type);
 
@@ -272,7 +272,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type) {
 
     if (size <= 8) {
 #ifdef PLATFORM_ARM64_MACOS
-        if (type_is_compound(*type)) {
+        if (is_arg && type_is_compound(*type)) {
             size = 8;
         }
 #endif // PLATFORM_ARM64_MACOS
@@ -316,7 +316,7 @@ typedef struct {
 
 static void abi_set_return_type(Compiler *c, ABI *abi, Type *type) {
     assert(abi->actual_args_count == 0);
-    abi->return_abi = get_abi_info_for_type(c, type);
+    abi->return_abi = get_abi_info_for_type(c, type, false);
     abi->return_type = type;
     if (!abi->return_abi.direct_types_count) {
         abi->actual_args_count++;
@@ -326,7 +326,7 @@ static void abi_set_return_type(Compiler *c, ABI *abi, Type *type) {
 static void abi_set_argument_type(Compiler *c, ABI *abi, size_t index, Type *type) {
     assert(index < abi->args_count);
     ABI_Info *it = &abi->args[index];
-    *it = get_abi_info_for_type(c, type);
+    *it = get_abi_info_for_type(c, type, true);
     if (it->direct_types_count) {
         abi->actual_args_count += it->direct_types_count;
     } else {
@@ -439,8 +439,17 @@ static void abi_call_add_arg(Compiler *c, ABI_Call *call, LLVMValueRef expr, Typ
 
     case 1: {
         if (type_is_compound(type)) {
+            LLVMTypeRef  abi_type = arg_abi.direct_types[0];
+            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+            const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, LLVMTypeOf(expr));
+
             expr = undo_load(expr);
-            expr = LLVMBuildLoad2(c->llvm_builder, arg_abi.direct_types[0], expr, "");
+            if (abi_size > expr_size) {
+                expr = LLVMBuildLoad2(c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
+                expr = LLVMBuildZExt(c->llvm_builder, expr, abi_type, "");
+            } else {
+                expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
+            }
         } else {
             if (call->abi.is_variadic) {
                 const size_t size = compile_sizeof(c, &type);
@@ -1298,10 +1307,19 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 #endif // PLATFORM_X86_64_LINUX
             } break;
 
-            case 1:
+            case 1: {
                 compile_var_def(c, it);
-                LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->definition_spec->llvm);
-                break;
+                LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
+                if (type_is_compound(it->node.type)) {
+                    const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, it->node.type.llvm);
+                    const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, LLVMTypeOf(value));
+                    if (abi_size > var_size) {
+                        value = LLVMBuildTrunc(
+                            c->llvm_builder, value, LLVMIntTypeInContext(c->llvm_context, var_size * 8), "");
+                    }
+                }
+                LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+            } break;
 
             case 2: {
                 compile_var_def(c, it);
@@ -2498,7 +2516,7 @@ static void compile_stmt(Compiler *c, Node *n) {
         const size_t group_values_count_save = c->group_values.count;
         LLVMValueRef value = compile_expr(c, returnn->value, false);
         if (type_is_compound(n->type)) {
-            ABI_Info abi = get_abi_info_for_type(c, &n->type);
+            ABI_Info abi = get_abi_info_for_type(c, &n->type, false);
             if (n->type.kind == TYPE_GROUP) {
                 const size_t count = n->type.spec.group.count;
                 assert(c->group_values.count == group_values_count_save + count);
