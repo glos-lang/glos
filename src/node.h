@@ -281,6 +281,8 @@ typedef struct {
     bool is_extern;
     bool is_assigned;
 
+    Node_Fn *static_var_fn;
+
     // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
 

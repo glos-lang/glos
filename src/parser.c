@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 70, "");
+static_assert(COUNT_TOKENS == 71, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -358,7 +358,14 @@ static void not_in_extern_assert(Parser *p, Token token) {
 }
 
 static void definition_lhs_atom_setup(
-    Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned, size_t group_index) {
+    Parser      *p,
+    Node_Define *define,
+    Node_Atom   *it,
+    Node        *it_expr,
+    bool         is_static,
+    bool         is_assigned,
+    size_t       group_index) //
+{
     if (!it->definition_spec) {
         it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
     }
@@ -370,6 +377,10 @@ static void definition_lhs_atom_setup(
     it->definition_spec->is_assigned = is_assigned;
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
+
+    if (is_static) {
+        it->definition_spec->static_var_fn = p->state.fn_current;
+    }
 
     if (it->definition_spec->is_const) {
         assert(it_expr);
@@ -383,9 +394,9 @@ static void definition_lhs_atom_setup(
     }
 }
 
-static void definition_lhs_setup(Parser *p, Node_Define *define) {
+static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static) {
     const bool is_assigned = define->expr != NULL;
-    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current; // TODO(@static)
+    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current || is_static;
 
     size_t lhs_count = 1;
     size_t rhs_count = 1;
@@ -402,7 +413,7 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
             exit(1);
         }
 
-        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_assigned, 0);
+        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_static, is_assigned, 0);
     } else {
         Node_Group *lhs = (Node_Group *) define->name;
         lhs_count = lhs->count;
@@ -435,12 +446,12 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
             size_t iota = 0;
             ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
                 assert(lhs_iota->kind == NODE_ATOM);
-                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned, iota++);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_static, is_assigned, iota++);
             }
         } else {
             size_t iota = 0;
             ll_foreach(it, &lhs->nodes) {
-                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned, iota++);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_static, is_assigned, iota++);
             }
         }
     }
@@ -549,7 +560,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed) {
+static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool is_static) {
     Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
     {
         Node *illegal = NULL;
@@ -614,7 +625,7 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
         }
     }
 
-    definition_lhs_setup(p, define);
+    definition_lhs_setup(p, define, is_static);
     return (Node *) define;
 }
 
@@ -657,7 +668,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 70, "");
+static_assert(COUNT_TOKENS == 71, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -711,7 +722,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = parse_expr(p, POWER_SET, false, true, NULL);
             if (peek_token(p).kind == TOKEN_COLON) {
                 is_fn = true;
-                node = parse_define(p, node, next_token(p), false);
+                node = parse_define(p, node, next_token(p), false, false);
             } else {
                 expect_token(p, TOKEN_RPAREN);
             }
@@ -732,7 +743,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.fn_current_parsed_signature = false;
 
             if (arg) {
-                definition_lhs_setup(p, (Node_Define *) arg);
+                definition_lhs_setup(p, (Node_Define *) arg, false);
             }
 
             bool has_default_args = false;
@@ -984,7 +995,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } break;
 
         case TOKEN_COLON:
-            return parse_define(p, node, token, groups_allowed);
+            return parse_define(p, node, token, groups_allowed, false);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {
@@ -1159,6 +1170,46 @@ static Node *parse_stmt(Parser *p) {
 
         assert(it->definition_spec);
         it->definition_spec->link_as = name.sv;
+    } break;
+
+    case TOKEN_DIRECTIVE_STATIC: {
+        if (p->state.in_extern) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Variables defined inside extern block cannot have static storage\n",
+                Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        if (!p->state.fn_current) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Variables defined in global scope already have static storage\n",
+                Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        node = parse_expr(p, POWER_NIL, true, true, NULL);
+        if (node->kind != NODE_DEFINE) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected variable definition after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Define *define = (Node_Define *) node;
+        if (define->is_const) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected variable definition after %s, got constant\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        definition_lhs_setup(p, define, true);
     } break;
 
     case TOKEN_DIRECTIVE_LIBRARY: {

@@ -1184,11 +1184,16 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
     if (it->definition_spec->is_extern) {
         // Guarantee a terminating '\0'
         name = sv_from_cstr(temp_sv_to_cstr(name));
+    } else if (it->definition_spec->static_var_fn) {
+        const char *namespace = temp_emit_nested_fn_name(c, it->definition_spec->static_var_fn, it->module);
+        temp_remove_null();
+        temp_sprintf("." SV_Fmt, SV_Arg(name));
+        name = sv_from_cstr(namespace);
     } else if (!it->definition_spec->is_local) {
         name = sv_from_cstr(temp_sprintf("%s." SV_Fmt, it->module->name, SV_Arg(name)));
     }
 
-    if (it->definition_spec->is_local && !it->definition_spec->is_extern) {
+    if (it->definition_spec->is_local && !it->definition_spec->is_extern && !it->definition_spec->static_var_fn) {
         it->definition_spec->llvm = compile_alloca(c, it->node.type.llvm);
     } else {
         if (!link_as.count) {
@@ -1199,7 +1204,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
 
     if (!it->definition_spec->is_extern) {
         LLVMMetadataRef var_debug_type = get_debug_for_type(c, &it->node.type);
-        if (it->definition_spec->is_local) {
+        if (it->definition_spec->is_local && !it->definition_spec->static_var_fn) {
             if (!it->definition_spec->arg_index && !it->definition_spec->is_assigned) {
                 LLVMBuildStore(c->llvm_builder, LLVMConstNull(it->node.type.llvm), it->definition_spec->llvm);
             }
@@ -1543,7 +1548,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1628,7 +1633,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1699,7 +1704,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 70, "");
+            static_assert(COUNT_TOKENS == 71, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1747,7 +1752,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 70, "");
+            static_assert(COUNT_TOKENS == 71, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1778,7 +1783,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 70, "");
+            static_assert(COUNT_TOKENS == 71, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1884,7 +1889,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 70, "");
+        static_assert(COUNT_TOKENS == 71, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;

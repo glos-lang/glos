@@ -1,0 +1,10 @@
+iota :: () -> i64 {
+    #static i := 0
+    i += 1
+    return i - 1
+}
+
+main :: () {
+    print iota()
+    print iota()
+}
