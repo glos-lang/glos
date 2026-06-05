@@ -193,6 +193,26 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
+static bool read_eol_or_rbrace(Parser *p) {
+    const Token ahead = peek_token(p);
+    if (ahead.newline || ahead.kind == TOKEN_EOL || ahead.kind == TOKEN_EOF || ahead.kind == TOKEN_RBRACE) {
+        consume_tokens(p, TOKEN_EOL);
+        return true;
+    }
+    return false;
+}
+
+static void expect_stmt_terminator(Parser *p) {
+    if (read_eol_or_rbrace(p)) {
+        return;
+    }
+
+    const Token ahead = peek_token(p);
+    fprintf(
+        stderr, Pos_Fmt "ERROR: Expected newline or ';', got %s\n", Pos_Arg(ahead.pos), token_kind_to_cstr(ahead.kind));
+    exit(1);
+}
+
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
@@ -200,6 +220,7 @@ static Node *parse_block(Parser *p, Token token) {
     Node_Block *block = (Node_Block *) node_alloc(p->arena, NODE_BLOCK, token);
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
+        expect_stmt_terminator(p);
     }
 
     assert(p->state.ahead.kind == TOKEN_RBRACE);
@@ -298,18 +319,19 @@ static Node *parse_for(Parser *p, Token token) {
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL, false, false, NULL);
+
+        bool was_init = false;
         if (forr->condition->kind == NODE_DEFINE ||
             (forr->condition->kind == NODE_BINARY && token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
-            buffer_token(p, expect_token(p, TOKEN_EOL));
+            expect_stmt_terminator(p);
+            was_init = true;
         }
 
-        if (read_token(p, TOKEN_EOL)) {
-            consume_tokens(p, TOKEN_EOL);
+        if (was_init || read_eol_or_rbrace(p)) {
             forr->init = forr->condition;
             forr->condition = parse_expr(p, POWER_SET, false, false, NULL);
 
-            if (read_token(p, TOKEN_EOL)) {
-                consume_tokens(p, TOKEN_EOL);
+            if (read_eol_or_rbrace(p)) {
                 forr->update = parse_expr(p, POWER_NIL, false, false, NULL);
             }
         }
@@ -837,7 +859,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
             nodes_push(&enumm->values, it);
             enumm->values_count++;
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
         }
     } break;
 
@@ -881,7 +903,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             nodes_push(&structt->fields, field);
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
         }
     } break;
 
@@ -1146,7 +1168,7 @@ static Node *parse_stmt(Parser *p) {
             while (!read_token(p, TOKEN_RBRACE)) {
                 Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
                 nodes_push(&import->libraries, library);
-                consume_tokens(p, TOKEN_EOL);
+                expect_stmt_terminator(p);
             }
         } else {
             Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
@@ -1278,7 +1300,6 @@ static Node *parse_stmt(Parser *p) {
         break;
     }
 
-    consume_tokens(p, TOKEN_EOL);
     return node;
 }
 
