@@ -644,7 +644,7 @@ static void         compile_stmt(Compiler *c, Node *n);
 
 static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *module) {
     if (!fn) {
-        return temp_sprintf("%s", module->name);
+        return temp_sv_to_cstr(module->name);
     }
 
     const char *name = temp_emit_nested_fn_name(c, fn->outer_fn, module);
@@ -1190,7 +1190,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
         temp_sprintf("." SV_Fmt, SV_Arg(name));
         name = sv_from_cstr(namespace);
     } else if (!it->definition_spec->is_local) {
-        name = sv_from_cstr(temp_sprintf("%s." SV_Fmt, it->module->name, SV_Arg(name)));
+        name = sv_from_cstr(temp_sprintf(SV_Fmt "." SV_Fmt, SV_Arg(it->module->name), SV_Arg(name)));
     }
 
     if (it->definition_spec->is_local && !it->definition_spec->is_extern && !it->definition_spec->static_var_fn) {
@@ -1594,11 +1594,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             const char *cstr = temp_sprintf(Pos_Fmt, Pos_Arg(n->token.pos));
 
             SV sv = sv_from_cstr(cstr);
-            // Since Pos_Fmt is `%s:%zu:%zu `
-            //                             ^
-            //                             This space here
-            //
-            // TODO: Remove this space from the macro itself
             sv.count -= 1;
 
             LLVMValueRef value = compile_string(c, sv, NULL, ref);

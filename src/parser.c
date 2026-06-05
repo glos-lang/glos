@@ -121,7 +121,7 @@ Module *module_get(Parser *p, const char *path) {
 
     Module *module = arena_alloc(p->arena, sizeof(*module));
     module->absolute_path = path;
-    module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
+    module->relative_path = get_relative_path(p->cwd, sv_from_cstr(path), p->arena);
 
     ht_set(&p->modules->table, path, module);
     if (p->modules->tail) {
@@ -463,15 +463,15 @@ void parser_import(Parser *p, Node_Import *import) {
         return;
     }
 
-    const char *root = NULL;
+    SV          root = {0};
     const char *absolute_path = NULL;
     if (!absolute_path) {
         // Directory inside the current module
-        root = p->module_current->absolute_path;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        root = sv_from_cstr(p->module_current->absolute_path);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -479,10 +479,10 @@ void parser_import(Parser *p, Node_Import *import) {
     if (!absolute_path) {
         // Directory inside root
         root = p->root;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -490,10 +490,10 @@ void parser_import(Parser *p, Node_Import *import) {
     if (!absolute_path) {
         // Directory inside std
         root = p->std;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -510,19 +510,14 @@ void parser_import(Parser *p, Node_Import *import) {
     Module *module_current_save = p->module_current;
     {
         Module *module = module_get(p, absolute_path);
-        if (!module->name) {
-            module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
-            if (!strcmp(module->name, "main")) {
+        if (!module->name.count) {
+            module->name = sv_from_cstr(get_relative_path(root, sv_from_cstr(module->absolute_path), p->arena));
+            if (sv_match(module->name, "main") || sv_match(module->name, "builtin")) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
-                    Pos_Arg(import->path.pos));
-                exit(1);
-            } else if (!strcmp(module->name, "builtin")) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: The module path 'builtin' is reserved for the builtin module\n",
-                    Pos_Arg(import->path.pos));
+                    Pos_Fmt "ERROR: The module path '" SV_Fmt "' is reserved\n",
+                    Pos_Arg(import->path.pos),
+                    SV_Arg(module->name));
                 exit(1);
             }
 
@@ -978,7 +973,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     while (true) {
         token = peek_token(p);
         if (token.newline) {
-            break; // TODO: Don't do this for '.'
+            break;
         }
 
         const Power lbp = token_kind_to_power(token.kind);

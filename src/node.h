@@ -28,7 +28,8 @@ typedef HT(SV, Node_Atom *) Global_Scope;
 typedef struct Module Module;
 
 struct Module {
-    const char *name;
+    SV name;
+
     const char *absolute_path;
     const char *relative_path;
 

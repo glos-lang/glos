@@ -224,6 +224,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
 #else
         cmd_push(cmd, "cc", "-c");
+        cmd_push(cmd, "-Wall", "-Wextra", "-Werror");
         cmd_push(cmd, "-ggdb");
         cmd_push(cmd, "-I./llvm/include");
         cmd_push(cmd, "-o", obj);
