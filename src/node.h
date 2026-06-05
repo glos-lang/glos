@@ -510,7 +510,7 @@ typedef struct {
 
 typedef struct {
     Node  node;
-    Node *lhs; // TODO: Think of a better name
+    Node *lhs;
     Node *a;
     Node *b;
     bool  is_ranged;
@@ -518,7 +518,7 @@ typedef struct {
 
 struct Node_Define {
     Node  node;
-    Node *name; // TODO: Rename to 'lhs'
+    Node *name;
 
     Node *expr;
     Node *type;

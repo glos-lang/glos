@@ -708,7 +708,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             return const_value_int(n->token.as.integer);
 
         case TOKEN_NULL:
-            return const_value_int(0); // TODO: Pointers in constant expressions
+            return const_value_int(0);
 
         case TOKEN_IDENT:
             if (n->type.is_meta) {
@@ -945,6 +945,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         if (n->type.kind == TYPE_STRUCT) {
             struct_value.spec = n->type.spec.structt;
             struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
+            // TODO: This broken for nested compound values
         }
 
         size_t ordered_iota = 0;
@@ -1985,8 +1986,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
+        if (sv_match(member->field.sv, "_")) {
+            error_undefined(&member->field, "field", false);
+        }
 
-        // TODO: Do not allow the field to be '_'
         if (member->lhs) {
             check_expr(c, member->lhs, ref, NULL);
             check_that_type_is_known(member->lhs);
