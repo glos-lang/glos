@@ -1987,7 +1987,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
         if (sv_match(member->field.sv, "_")) {
-            error_undefined(&member->field, "field", false);
+            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(member->field.pos));
+            exit(1);
         }
 
         if (member->lhs) {
