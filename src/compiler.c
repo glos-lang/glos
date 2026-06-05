@@ -250,6 +250,7 @@ static bool type_is_compound(Type type) {
     }
 }
 
+#ifdef PLATFORM_X86_64_LINUX
 static_assert(COUNT_TYPES == 22, "");
 static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
     assert(type_is_compound(type));
@@ -304,6 +305,7 @@ static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, L
         unreachable();
     }
 }
+#endif // PLATFORM_X86_64_LINUX
 
 static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     ABI_Info info = {0};
