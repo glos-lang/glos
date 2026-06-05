@@ -1525,7 +1525,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1958,10 +1958,15 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_IMPORT:
         unreachable();
 
+    case NODE_DISTINCT:
+        unreachable();
+
     case NODE_FN:
         return compile_fn(c, (Node_Fn *) n);
 
     case NODE_ENUM:
+        unreachable();
+
     case NODE_STRUCT:
         unreachable();
 
@@ -2296,7 +2301,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

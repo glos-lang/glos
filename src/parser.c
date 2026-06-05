@@ -670,10 +670,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_DIRECTIVE_DISTINCT: {
-        // TODO(@distinct): Should we use a dedicated node for this?
-        node = node_alloc(p->arena, NODE_BINARY, token);
-        Node_Binary *binary = (Node_Binary *) node;
-        binary->rhs = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+        node = node_alloc(p->arena, NODE_DISTINCT, token);
+        Node_Distinct *distinct = (Node_Distinct *) node;
+        distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {
@@ -1064,7 +1063,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

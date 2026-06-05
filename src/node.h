@@ -236,6 +236,7 @@ typedef enum {
     NODE_MEMBER,
     NODE_ASSERT,
     NODE_IMPORT,
+    NODE_DISTINCT,
 
     NODE_FN,
     NODE_ENUM,
@@ -369,6 +370,12 @@ typedef struct {
     Module *module;
     Nodes   libraries;
 } Node_Import;
+
+typedef struct {
+    Node       node;
+    Node_Atom *defined_as;
+    Node      *value;
+} Node_Distinct;
 
 struct Node_Fn {
     Node node;

@@ -152,7 +152,7 @@ static i64 enum_get_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
@@ -483,7 +483,7 @@ static void node_finalize_type_of_unknown(Type *t) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -543,7 +543,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -690,7 +690,7 @@ static Node_Fn *get_main(Compiler *c) {
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -866,10 +866,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(!const_value_eq(lhs, rhs));
 
-        case TOKEN_DIRECTIVE_DISTINCT:
-            assert(n->type.is_meta);
-            return const_value_type(n->type);
-
         default:
             unreachable();
             break;
@@ -924,6 +920,10 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_IMPORT:
         assert(n->type.kind == TYPE_MODULE);
         return const_value_module(n->type.spec.module);
+
+    case NODE_DISTINCT:
+        assert(n->type.is_meta);
+        return const_value_type(n->type);
 
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
@@ -1186,7 +1186,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -1375,9 +1375,9 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
             } else {
                 if (it->definition_spec->is_const) {
                     assert(it_expr);
-                    if (it_expr->kind == NODE_BINARY && it_expr->token.kind == TOKEN_DIRECTIVE_DISTINCT) {
-                        Node_Binary *binary = (Node_Binary *) it_expr;
-                        binary->lhs = (Node *) it;
+                    if (it_expr->kind == NODE_DISTINCT) {
+                        Node_Distinct *distinct = (Node_Distinct *) it_expr;
+                        distinct->defined_as = it;
                     }
                 }
 
@@ -1712,7 +1712,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type) {
     if (!n) {
         return;
@@ -1972,23 +1972,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_assignment(c, binary);
             break;
 
-        case TOKEN_DIRECTIVE_DISTINCT:
-            if (!binary->lhs) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: A distinct type must be defined as a constant before it can be used\n",
-                    Pos_Arg(n->token.pos));
-                exit(1);
-            }
-
-            check_expr(c, binary->rhs, REF_NONE, NULL);
-            type_assert_type(binary->rhs);
-            n->type = binary->rhs->type;
-
-            assert(binary->lhs->kind == NODE_ATOM);
-            n->type.distinct = (Node_Atom *) binary->lhs;
-            break;
-
         default:
             unreachable();
         }
@@ -2095,6 +2078,22 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
         }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
+    } break;
+
+    case NODE_DISTINCT: {
+        Node_Distinct *distinct = (Node_Distinct *) n;
+        if (!distinct->defined_as) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: A distinct type must be defined as a constant before it can be used\n",
+                Pos_Arg(n->token.pos));
+            exit(1);
+        }
+
+        check_expr(c, distinct->value, REF_NONE, NULL);
+        type_assert_type(distinct->value);
+        n->type = distinct->value->type;
+        n->type.distinct = distinct->defined_as;
     } break;
 
     case NODE_FN: {
@@ -2771,7 +2770,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
