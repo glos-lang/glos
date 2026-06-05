@@ -156,7 +156,7 @@ static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -700,7 +700,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -742,7 +742,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -785,7 +785,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1473,18 +1473,20 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom   *atom = NULL;
     Node_Member *member = NULL;
 
-    Token        token = {0};
-    Global_Scope globals = {0};
+    Token   token = {0};
+    Module *module = NULL;
+    bool    importing = false;
     if (n->kind == NODE_ATOM) {
         atom = (Node_Atom *) n;
         token = n->token;
-        globals = atom->module->globals;
+        module = atom->module;
     } else if (n->kind == NODE_MEMBER) {
         member = (Node_Member *) n;
         assert(member->lhs->type.kind == TYPE_MODULE);
 
         token = member->field;
-        globals = member->lhs->type.spec.module->globals;
+        module = member->lhs->type.spec.module;
+        importing = true;
     } else {
         unreachable();
     }
@@ -1500,10 +1502,15 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 
     if (!definition) {
-        definition = global_scope_find(&globals, token.sv);
+        definition = global_scope_find(&module->globals, token.sv);
         if (!definition && atom) {
-            globals = c->builtin_module->globals;
-            definition = global_scope_find(&globals, token.sv);
+            module = c->builtin_module;
+            importing = true;
+            definition = global_scope_find(&module->globals, token.sv);
+        }
+
+        if (definition && definition->definition_spec->is_private && importing) {
+            definition = NULL;
         }
     }
 
@@ -1567,18 +1574,17 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 break;
             }
         }
-        return;
-    }
-
-    if (atom) {
-        Type_Kind kind;
-        if (get_builtin_type_kind(token.sv, &kind)) {
-            n->type = (Type) {.kind = kind, .is_meta = true};
-            return;
+    } else {
+        if (atom) {
+            Type_Kind kind;
+            if (get_builtin_type_kind(token.sv, &kind)) {
+                n->type = (Type) {.kind = kind, .is_meta = true};
+                return;
+            }
         }
-    }
 
-    error_undefined(&token, "identifier", false);
+        error_undefined(&token, "identifier", false);
+    }
 }
 
 static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
@@ -1721,7 +1727,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1812,7 +1818,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -1902,7 +1908,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 71, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:

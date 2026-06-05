@@ -279,6 +279,7 @@ Node *node_iter(Node *it, Node *ll);
 typedef struct {
     bool is_local;
     bool is_extern;
+    bool is_private;
     bool is_assigned;
 
     Node_Fn *static_var_fn;

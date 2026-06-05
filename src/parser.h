@@ -19,6 +19,8 @@ typedef struct {
     bool in_extern;
     bool in_compile_time_condition;
 
+    bool after_private;
+
     Node_Fn *fn_current;
     bool     fn_current_parsed_signature;
 } Parser_State;

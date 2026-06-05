@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -374,6 +374,7 @@ static void definition_lhs_atom_setup(
     it->definition_spec->is_const = define->is_const;
     it->definition_spec->is_local = p->state.fn_current != NULL;
     it->definition_spec->is_extern = p->state.in_extern;
+    it->definition_spec->is_private = p->state.after_private;
     it->definition_spec->is_assigned = is_assigned;
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
@@ -668,7 +669,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 71, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -1210,6 +1211,25 @@ static Node *parse_stmt(Parser *p) {
         }
 
         definition_lhs_setup(p, define, true);
+    } break;
+
+    case TOKEN_DIRECTIVE_PRIVATE: {
+        local_assert(p, false, token, NULL);
+
+        const bool after_private_save = p->state.after_private;
+        p->state.after_private = true;
+
+        node = parse_stmt(p);
+        if (node->kind != NODE_DEFINE && node->kind != NODE_EXTERN) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition or extern block after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        p->state.after_private = after_private_save;
     } break;
 
     case TOKEN_DIRECTIVE_LIBRARY: {
