@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
     const char *cwd = get_cwd(&arena);
     const char *input_path = NULL;
     const char *output_path = NULL;
-    Link_Flags  link_flags = {0};
+    Link_Flags  link_flags = {.arena = &arena};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {
@@ -182,24 +182,14 @@ int main(int argc, char **argv) {
                     libpath = shift(&argc, &argv, program, "Library path");
                 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-                da_push(&link_flags, arena_sprintf(&arena, "/libpath:%s", libpath));
-#else
-                da_push(&link_flags, "-L");
-                da_push(&link_flags, libpath);
-#endif // PLATFORM_X86_64_WINDOWS
+                link_flags_add_libpath(&link_flags, sv_from_cstr(libpath));
             } else if (arg[1] == 'l') {
                 const char *libname = &arg[2];
                 if (*libname == '\0') {
                     libname = shift(&argc, &argv, program, "Library name");
                 }
 
-#ifdef PLATFORM_X86_64_WINDOWS
-                da_push(&link_flags, arena_sprintf(&arena, "%s.lib", libname));
-#else
-                da_push(&link_flags, "-l");
-                da_push(&link_flags, libname);
-#endif // PLATFORM_X86_64_WINDOWS
+                link_flags_add_libname(&link_flags, sv_from_cstr(libname));
             } else {
                 fprintf(stderr, "ERROR: Invalid flag '%s'\n\n", arg);
                 usage(stderr, program);
@@ -253,8 +243,8 @@ int main(int argc, char **argv) {
          .arena = &arena,
          .modules = &modules,
 
-         .cwd = cwd,
-         .std = get_std_dir_path(&arena),
+         .cwd = sv_from_cstr(cwd),
+         .std = sv_from_cstr(get_std_dir_path(&arena)),
     };
 
     Compiler compiler = {
@@ -268,9 +258,9 @@ int main(int argc, char **argv) {
 
     // Import the builtin module
     {
-        const char *name = "builtin";
-        const char *root = parser.std;
-        const char *absolute_path = get_absolute_path(sv_from_cstr(root), sv_from_cstr(name), &arena);
+        const SV    name = sv_from_cstr("builtin");
+        const SV    root = parser.std;
+        const char *absolute_path = get_absolute_path(root, name, &arena);
         assert(directory_exists(absolute_path));
 
         compiler.builtin_module = module_get(&parser, absolute_path);
@@ -304,12 +294,12 @@ int main(int argc, char **argv) {
     }
 
     compiler.main_module = module_get(&parser, input_path);
-    compiler.main_module->name = "main";
+    compiler.main_module->name = sv_from_cstr("main");
 
     parser.module_current = compiler.main_module;
     if (directory_exists(input_path)) {
-        parser.root = input_path;
-        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+        parser.root = sv_from_cstr(input_path);
+        input_path = get_relative_path(parser.cwd, parser.root, &arena);
 
         switch (parse_directory(&parser, input_path)) {
         case PARSE_OK:
@@ -330,8 +320,8 @@ int main(int argc, char **argv) {
             unreachable();
         }
     } else {
-        parser.root = get_parent_dir_path(input_path, &arena);
-        input_path = get_relative_path(sv_from_cstr(parser.cwd), sv_from_cstr(input_path), &arena);
+        parser.root = sv_from_cstr(get_parent_dir_path(input_path, &arena));
+        input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &arena);
 
         if (parse_file(&parser, input_path) != PARSE_OK) {
             fprintf(stderr, "ERROR: Could not read file '%s'\n", input_path);
@@ -350,6 +340,16 @@ int main(int argc, char **argv) {
     }
 
     check_nodes(&compiler);
+    ll_foreach(it, &modules) {
+        SV path = {0};
+        if (it == compiler.main_module) {
+            path = parser.root;
+        } else {
+            path = sv_from_cstr(it->absolute_path);
+        }
+        link_flags_add_libpath(&link_flags, path);
+    }
+
     compiler_build(&compiler, output_path);
 
     if (run) {

@@ -28,7 +28,8 @@ typedef HT(SV, Node_Atom *) Global_Scope;
 typedef struct Module Module;
 
 struct Module {
-    const char *name;
+    SV name;
+
     const char *absolute_path;
     const char *relative_path;
 
@@ -115,8 +116,9 @@ typedef struct {
 } Type_Slice;
 
 typedef struct {
-    Type  *data;
-    size_t count;
+    Type   *data;
+    size_t *offsets;
+    size_t  count;
 
     LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
@@ -166,9 +168,10 @@ struct Type_Fn_Arg {
 };
 
 struct Type_Struct_Field {
-    Pos  pos;
-    SV   name;
-    Type type;
+    Pos    pos;
+    SV     name;
+    Type   type;
+    size_t offset;
 };
 
 const char *type_to_cstr_raw(Type type);
@@ -234,6 +237,7 @@ typedef enum {
     NODE_MEMBER,
     NODE_ASSERT,
     NODE_IMPORT,
+    NODE_DISTINCT,
 
     NODE_FN,
     NODE_ENUM,
@@ -241,9 +245,8 @@ typedef enum {
     NODE_COMPOUND,
 
     NODE_CALL,
-
-    NODE_SLICE,
     NODE_INDEX,
+    NODE_INDEXABLE,
 
     NODE_DEFINE,
     NODE_BLOCK,
@@ -276,7 +279,10 @@ Node *node_iter(Node *it, Node *ll);
 typedef struct {
     bool is_local;
     bool is_extern;
+    bool is_private;
     bool is_assigned;
+
+    Node_Fn *static_var_fn;
 
     // This is 0 for variables which are not arguments. For arguments, counting starts from 1
     size_t arg_index;
@@ -319,8 +325,6 @@ typedef struct {
     size_t count;
 } Node_Group;
 
-// TODO: This is the solution I came up with so far for default arguments.
-// This feels like a bad solution, but better than a non-existent perfect one.
 typedef struct {
     Node         node;
     Type_Fn_Arg *arg;
@@ -365,7 +369,14 @@ typedef struct {
     Node    node;
     Token   path;
     Module *module;
+    Nodes   libraries;
 } Node_Import;
+
+typedef struct {
+    Node       node;
+    Node_Atom *defined_as;
+    Node      *value;
+} Node_Distinct;
 
 struct Node_Fn {
     Node node;
@@ -407,8 +418,6 @@ struct Node_Enum {
     //     token.as.integer = <value>
     //     value = Maybe(<constant expression which evaluates to the value of this>)
     // }
-    //
-    // TODO: Consider adding a new node, so comments like this are not necessary
     Nodes  values;
     size_t values_count;
 
@@ -451,8 +460,6 @@ typedef struct {
     //     lhs = <key>
     //     lhs = <value>
     // }
-    //
-    // TODO: Consider adding a designated initializer node, so comments like this are not necessary
     bool is_designated;
 } Node_Compound;
 
@@ -483,28 +490,23 @@ typedef struct {
     bool is_stmt;
 } Node_Call;
 
-// This *will* represent the following types:
-// - Slices
-// - Arrays
-// - Dynamic Arrays
-//
-// TODO: Come up with a better name for this
 typedef struct {
     Node  node;
-    Node *element;
-} Node_Slice;
-
-typedef struct {
-    Node  node;
-    Node *lhs; // TODO: Think of a better name
+    Node *lhs;
     Node *a;
     Node *b;
     bool  is_ranged;
 } Node_Index;
 
+// This represents a type
+typedef struct {
+    Node  node;
+    Node *element;
+} Node_Indexable;
+
 struct Node_Define {
     Node  node;
-    Node *name; // TODO: Rename to 'lhs'
+    Node *name;
 
     Node *expr;
     Node *type;

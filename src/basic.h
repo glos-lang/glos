@@ -305,7 +305,7 @@ bool read_file_into_arena(const char *path, SV *out, Arena *arena);
 bool delete_file(const char *path);
 bool create_directory(const char *path);
 
-bool file_exists(const char *path); // TODO: Is this needed?
+bool file_exists(const char *path);
 bool directory_exists(const char *path);
 
 size_t get_modified_time(const char *path);

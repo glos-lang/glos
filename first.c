@@ -224,6 +224,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
 #else
         cmd_push(cmd, "cc", "-c");
+        cmd_push(cmd, "-Wall", "-Wextra", "-Werror");
         cmd_push(cmd, "-ggdb");
         cmd_push(cmd, "-I./llvm/include");
         cmd_push(cmd, "-o", obj);
@@ -490,9 +491,6 @@ static bool test_info_diff(Test_Info expected, Test_Info actual, const char *nam
 typedef struct {
     const char *name;
 
-    const char **args;
-    size_t       args_count;
-
     bool        record_exists;
     const char *record_path;
 
@@ -564,7 +562,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
                     }
 
                     fprintf(stderr, "Replaying '%s'\n", it->name);
-                    test_prepare_cmd(*it, cmd); // TODO: Extra arguments
+                    test_prepare_cmd(*it, cmd);
                     it->proc = cmd_run_async(cmd, (Cmd_Stdio) {.out = &it->pout, .err = &it->perr});
                     continue;
                 } else if (choice == 'q') {
@@ -665,109 +663,6 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
     temp_reset(object_path);
 }
 
-static const char *temp_parse_shell_argument(SV *sv) {
-    while (sv->count && isspace(*sv->data)) {
-        sv_drop_mut(sv, 1);
-    }
-
-    if (!sv->count) {
-        return NULL;
-    }
-
-    const char *result = temp_alloc(0);
-    char        strlit = 0;
-
-#define temp_push(c) (*(char *) temp_alloc(1) = (c))
-
-    while (sv->count) {
-        switch (strlit) {
-        case '\'':
-            if (*sv->data == '\'') {
-                strlit = 0;
-            } else {
-                temp_push(*sv->data);
-            }
-            sv_drop_mut(sv, 1);
-            break;
-
-        case '"':
-            switch (*sv->data) {
-            case '"':
-                strlit = 0;
-                sv_drop_mut(sv, 1);
-                break;
-
-            case '\\':
-                sv_drop_mut(sv, 1);
-                if (!sv->count) {
-                    temp_push('\\');
-                    temp_push('\0');
-                    return result;
-                }
-
-                switch (*sv->data) {
-                case '$':
-                case '`':
-                case '\\':
-                case '\n':
-                case '"':
-                    temp_push(*sv->data);
-                    break;
-
-                default:
-                    temp_push('\\');
-                    temp_push(*sv->data);
-                    break;
-                }
-
-                sv_drop_mut(sv, 1);
-                break;
-
-            default:
-                temp_push(*sv->data);
-                sv_drop_mut(sv, 1);
-                break;
-            }
-            break;
-
-        case '\0':
-            switch (*sv->data) {
-            case '"':
-            case '\'':
-                strlit = *sv->data;
-                sv_drop_mut(sv, 1);
-                break;
-
-            case '\\':
-                sv_drop_mut(sv, 1);
-                if (sv->count) {
-                    temp_push(*sv->data);
-                    sv_drop_mut(sv, 1);
-                }
-                break;
-
-            default:
-                if (isspace(*sv->data)) {
-                    temp_push('\0');
-                    return result;
-                }
-
-                temp_push(*sv->data);
-                sv_drop_mut(sv, 1);
-                break;
-            }
-            break;
-
-        default:
-            unreachable();
-        }
-    }
-    temp_push('\0');
-
-#undef temp_push
-    return result;
-}
-
 static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Tests       tests = {0};
     Arena       arena = {0};
@@ -795,16 +690,8 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         }
 
         Test test = {0};
-        test.name = temp_sv_to_cstr(sv_split_mut(&line, ' '));
+        test.name = temp_sv_to_cstr(line);
         test_prepare_cmd(test, cmd);
-
-        while (true) {
-            const char *arg = temp_parse_shell_argument(&line);
-            if (!arg) {
-                break;
-            }
-            da_push(cmd, arg);
-        }
 
         const char *record_path = temp_replace_suffix(test.name, ".glos", ".bin");
 

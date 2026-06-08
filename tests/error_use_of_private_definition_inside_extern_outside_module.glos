@@ -1,0 +1,6 @@
+p :: #import "private"
+
+main :: () {
+    p.printf("Hello, world!\n".data)
+    p.puts("Urmom".data)
+}

@@ -5,6 +5,7 @@ S24 :: struct {
 }
 
 extern {
+    #library "abi"
     s24_foo :: (s: S24)
     s24_ret :: (x: i64, y: i64, z: i64) -> S24
 }

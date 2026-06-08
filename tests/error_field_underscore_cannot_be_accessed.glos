@@ -1,0 +1,6 @@
+Foo :: struct { _: i64 }
+
+main :: () {
+    f: Foo
+    f._
+}

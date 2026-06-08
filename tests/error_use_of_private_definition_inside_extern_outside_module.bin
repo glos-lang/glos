@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 112
+tests/error_use_of_private_definition_inside_extern_outside_module.glos:5:7: ERROR: Undefined identifier 'puts'
+

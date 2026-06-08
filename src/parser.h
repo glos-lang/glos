@@ -19,6 +19,8 @@ typedef struct {
     bool in_extern;
     bool in_compile_time_condition;
 
+    bool after_private;
+
     Node_Fn *fn_current;
 } Parser_State;
 
@@ -26,10 +28,9 @@ typedef struct {
     Arena *arena;
     Paths  paths;
 
-    // TODO: Should these be SV?
-    const char *cwd;
-    const char *std;
-    const char *root;
+    SV cwd;
+    SV std;
+    SV root;
 
     Parser_State state;
 

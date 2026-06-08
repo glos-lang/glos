@@ -479,7 +479,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -490,6 +490,7 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_MEMBER] = sizeof(Node_Member),
         [NODE_ASSERT] = sizeof(Node_Assert),
         [NODE_IMPORT] = sizeof(Node_Import),
+        [NODE_DISTINCT] = sizeof(Node_Distinct),
 
         // This comment is here to prevent clang-format from messing this up
         [NODE_FN] = sizeof(Node_Fn),
@@ -498,9 +499,8 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_COMPOUND] = sizeof(Node_Compound),
 
         [NODE_CALL] = sizeof(Node_Call),
-
-        [NODE_SLICE] = sizeof(Node_Slice),
         [NODE_INDEX] = sizeof(Node_Index),
+        [NODE_INDEXABLE] = sizeof(Node_Indexable),
 
         [NODE_DEFINE] = sizeof(Node_Define),
         [NODE_BLOCK] = sizeof(Node_Block),
@@ -569,7 +569,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -631,6 +631,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         fprintf(f, "Import '%s'\n ", import->module->relative_path);
     } break;
 
+    case NODE_DISTINCT: {
+        Node_Distinct *distinct = (Node_Distinct *) n;
+        fprintf(f, "Distinct {\n");
+        node_debug_impl(f, distinct->value, depth + 1, "Value");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
         fprintf(f, "Function {\n");
@@ -670,13 +677,6 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
-    case NODE_SLICE: {
-        Node_Slice *slice = (Node_Slice *) n;
-        fprintf(f, "Slice {\n");
-        node_debug_impl(f, slice->element, depth + 1, "Element");
-        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
-    } break;
-
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
         fprintf(f, "Index {\n");
@@ -687,6 +687,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
             node_debug_impl(f, index->a, depth + 1, "From");
             node_debug_impl(f, index->b, depth + 1, "To");
         }
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_INDEXABLE: {
+        Node_Indexable *indexable = (Node_Indexable *) n;
+        fprintf(f, "Indexable {\n");
+        node_debug_impl(f, indexable->element, depth + 1, "Element");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

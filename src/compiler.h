@@ -7,7 +7,16 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
-typedef DA(const char *) Link_Flags;
+typedef struct {
+    const char **data;
+    size_t       count;
+    size_t       capacity;
+
+    Arena *arena;
+} Link_Flags;
+
+void link_flags_add_libpath(Link_Flags *ls, SV path);
+void link_flags_add_libname(Link_Flags *ls, SV name);
 
 typedef struct {
     // These are used only by the analyzer
@@ -62,8 +71,6 @@ typedef struct {
     LLVMTypeRef llvm_slice_type;
 
     size_t iota_anonymous_fn;
-    size_t iota_anonymous_const;
-    size_t iota_anonymous_struct;
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);

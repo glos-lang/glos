@@ -1,0 +1,5 @@
+p :: #import "private"
+
+main :: () {
+    p.foo()
+}

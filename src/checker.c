@@ -152,11 +152,11 @@ static i64 enum_get_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -483,7 +483,7 @@ static void node_finalize_type_of_unknown(Type *t) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -543,7 +543,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -690,7 +690,7 @@ static Node_Fn *get_main(Compiler *c) {
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -700,7 +700,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -708,7 +708,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             return const_value_int(n->token.as.integer);
 
         case TOKEN_NULL:
-            return const_value_int(0); // TODO: Pointers in constant expressions
+            return const_value_int(0);
 
         case TOKEN_IDENT:
             if (n->type.is_meta) {
@@ -742,7 +742,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -785,7 +785,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -866,10 +866,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(!const_value_eq(lhs, rhs));
 
-        case TOKEN_DIRECTIVE_DISTINCT:
-            assert(n->type.is_meta);
-            return const_value_type(n->type);
-
         default:
             unreachable();
             break;
@@ -925,6 +921,10 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         assert(n->type.kind == TYPE_MODULE);
         return const_value_module(n->type.spec.module);
 
+    case NODE_DISTINCT:
+        assert(n->type.is_meta);
+        return const_value_type(n->type);
+
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
         if (fn->is_type) {
@@ -945,6 +945,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         if (n->type.kind == TYPE_STRUCT) {
             struct_value.spec = n->type.spec.structt;
             struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
+            // TODO: This broken for nested compound values
         }
 
         size_t ordered_iota = 0;
@@ -998,9 +999,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             unreachable();
         }
     } break;
-
-    case NODE_SLICE:
-        return const_value_type(n->type);
 
     case NODE_INDEX: {
         Node_Index       *index = (Node_Index *) n;
@@ -1074,6 +1072,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             }
         }
     }
+
+    case NODE_INDEXABLE:
+        return const_value_type(n->type);
 
     default:
         unreachable();
@@ -1186,7 +1187,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -1375,9 +1376,9 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
             } else {
                 if (it->definition_spec->is_const) {
                     assert(it_expr);
-                    if (it_expr->kind == NODE_BINARY && it_expr->token.kind == TOKEN_DIRECTIVE_DISTINCT) {
-                        Node_Binary *binary = (Node_Binary *) it_expr;
-                        binary->lhs = (Node *) it;
+                    if (it_expr->kind == NODE_DISTINCT) {
+                        Node_Distinct *distinct = (Node_Distinct *) it_expr;
+                        distinct->defined_as = it;
                     }
                 }
 
@@ -1473,18 +1474,20 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom   *atom = NULL;
     Node_Member *member = NULL;
 
-    Token        token = {0};
-    Global_Scope globals = {0};
+    Token   token = {0};
+    Module *module = NULL;
+    bool    importing = false;
     if (n->kind == NODE_ATOM) {
         atom = (Node_Atom *) n;
         token = n->token;
-        globals = atom->module->globals;
+        module = atom->module;
     } else if (n->kind == NODE_MEMBER) {
         member = (Node_Member *) n;
         assert(member->lhs->type.kind == TYPE_MODULE);
 
         token = member->field;
-        globals = member->lhs->type.spec.module->globals;
+        module = member->lhs->type.spec.module;
+        importing = true;
     } else {
         unreachable();
     }
@@ -1500,10 +1503,15 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 
     if (!definition) {
-        definition = global_scope_find(&globals, token.sv);
+        definition = global_scope_find(&module->globals, token.sv);
         if (!definition && atom) {
-            globals = c->builtin_module->globals;
-            definition = global_scope_find(&globals, token.sv);
+            module = c->builtin_module;
+            importing = true;
+            definition = global_scope_find(&module->globals, token.sv);
+        }
+
+        if (definition && definition->definition_spec->is_private && importing) {
+            definition = NULL;
         }
     }
 
@@ -1567,18 +1575,17 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 break;
             }
         }
-        return;
-    }
-
-    if (atom) {
-        Type_Kind kind;
-        if (get_builtin_type_kind(token.sv, &kind)) {
-            n->type = (Type) {.kind = kind, .is_meta = true};
-            return;
+    } else {
+        if (atom) {
+            Type_Kind kind;
+            if (get_builtin_type_kind(token.sv, &kind)) {
+                n->type = (Type) {.kind = kind, .is_meta = true};
+                return;
+            }
         }
-    }
 
-    error_undefined(&token, "identifier", false);
+        error_undefined(&token, "identifier", false);
+    }
 }
 
 static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
@@ -1712,7 +1719,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type) {
     if (!n) {
         return;
@@ -1721,7 +1728,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -1812,7 +1819,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -1902,7 +1909,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 69, "");
+        static_assert(COUNT_TOKENS == 72, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -1972,23 +1979,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_assignment(c, binary);
             break;
 
-        case TOKEN_DIRECTIVE_DISTINCT:
-            if (!binary->lhs) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: A distinct type must be defined as a constant before it can be used\n",
-                    Pos_Arg(n->token.pos));
-                exit(1);
-            }
-
-            check_expr(c, binary->rhs, REF_NONE, NULL);
-            type_assert_type(binary->rhs);
-            n->type = binary->rhs->type;
-
-            assert(binary->lhs->kind == NODE_ATOM);
-            n->type.distinct = (Node_Atom *) binary->lhs;
-            break;
-
         default:
             unreachable();
         }
@@ -1996,6 +1986,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
+        if (sv_match(member->field.sv, "_")) {
+            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(member->field.pos));
+            exit(1);
+        }
 
         if (member->lhs) {
             check_expr(c, member->lhs, ref, NULL);
@@ -2075,19 +2069,41 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
-        if (!import->module) {
-            parser_import(c->parser, import);
-
-            const Context context_save = c->context;
-            memset(&c->context, 0, sizeof(c->context));
-            {
-                for (Node *it = import->module->nodes.head; it; it = it->next) {
-                    define_orderless_nodes(c, it, 0);
-                }
+        if (import->libraries.head) {
+            ll_foreach(it, &import->libraries) {
+                link_flags_add_libname(c->link_flags, it->token.sv);
             }
-            c->context = context_save;
+        } else {
+            if (!import->module) {
+                parser_import(c->parser, import);
+
+                const Context context_save = c->context;
+                memset(&c->context, 0, sizeof(c->context));
+                {
+                    for (Node *it = import->module->nodes.head; it; it = it->next) {
+                        define_orderless_nodes(c, it, 0);
+                    }
+                }
+                c->context = context_save;
+            }
         }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
+    } break;
+
+    case NODE_DISTINCT: {
+        Node_Distinct *distinct = (Node_Distinct *) n;
+        if (!distinct->defined_as) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: A distinct type must be defined as a constant before it can be used\n",
+                Pos_Arg(n->token.pos));
+            exit(1);
+        }
+
+        check_expr(c, distinct->value, REF_NONE, NULL);
+        type_assert_type(distinct->value);
+        n->type = distinct->value->type;
+        n->type.distinct = distinct->defined_as;
     } break;
 
     case NODE_FN: {
@@ -2302,6 +2318,15 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                        Pos_Arg(unary->value->token.pos),
+                        type_to_cstr(from));
+                    exit(1);
+                }
+
+                if (from.ref) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot spread %s without dereferencing it first\n",
                         Pos_Arg(unary->value->token.pos),
                         type_to_cstr(from));
                     exit(1);
@@ -2587,37 +2612,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         }
     } break;
 
-    case NODE_SLICE: {
-        Node_Slice *slice = (Node_Slice *) n;
-
-        // The type `[]T` gets compiled to:
-        //
-        // ```
-        // struct {
-        //     T  *data;
-        //     i64 count;
-        // }
-        // ```
-        //
-        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
-        check_expr(c, slice->element, REF_ADDR, NULL);
-
-        Type element_type = type_assert_type(slice->element);
-        element_type.is_meta = false;
-
-        const Type_Slice slice_type_spec = {
-            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
-        };
-
-        n->type = (Type) {
-            .kind = TYPE_SLICE,
-            .is_meta = true,
-            .spec.slice = slice_type_spec,
-        };
-
-        is_ref_valid = ref == REF_ADDR;
-    } break;
-
     case NODE_INDEX: {
         // TODO: What about the signedness of indexing operations
         Node_Index *index = (Node_Index *) n;
@@ -2730,6 +2724,37 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         }
     } break;
 
+    case NODE_INDEXABLE: {
+        Node_Indexable *indexable = (Node_Indexable *) n;
+
+        // The type `[]T` gets compiled to:
+        //
+        // ```
+        // struct {
+        //     T  *data;
+        //     i64 count;
+        // }
+        // ```
+        //
+        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
+        check_expr(c, indexable->element, REF_ADDR, NULL);
+
+        Type element_type = type_assert_type(indexable->element);
+        element_type.is_meta = false;
+
+        const Type_Slice slice_type_spec = {
+            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
+        };
+
+        n->type = (Type) {
+            .kind = TYPE_SLICE,
+            .is_meta = true,
+            .spec.slice = slice_type_spec,
+        };
+
+        is_ref_valid = ref == REF_ADDR;
+    } break;
+
     default:
         unreachable();
     }
@@ -2755,7 +2780,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -2957,6 +2982,8 @@ Const_Value get_platform(Compiler *c, Type *type) {
     if (type) {
         *type = platform_type;
     }
+
+    // TODO: This is unsafe
 
 #ifdef PLATFORM_X86_64_LINUX
     return const_value_int(0);

@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -121,7 +121,7 @@ Module *module_get(Parser *p, const char *path) {
 
     Module *module = arena_alloc(p->arena, sizeof(*module));
     module->absolute_path = path;
-    module->relative_path = get_relative_path(sv_from_cstr(p->cwd), sv_from_cstr(path), p->arena);
+    module->relative_path = get_relative_path(p->cwd, sv_from_cstr(path), p->arena);
 
     ht_set(&p->modules->table, path, module);
     if (p->modules->tail) {
@@ -193,6 +193,26 @@ static void consume_tokens(Parser *p, Token_Kind kind) {
     while (read_token(p, kind));
 }
 
+static bool read_eol_or_rbrace(Parser *p) {
+    const Token ahead = peek_token(p);
+    if (ahead.newline || ahead.kind == TOKEN_EOL || ahead.kind == TOKEN_EOF || ahead.kind == TOKEN_RBRACE) {
+        consume_tokens(p, TOKEN_EOL);
+        return true;
+    }
+    return false;
+}
+
+static void expect_stmt_terminator(Parser *p) {
+    if (read_eol_or_rbrace(p)) {
+        return;
+    }
+
+    const Token ahead = peek_token(p);
+    fprintf(
+        stderr, Pos_Fmt "ERROR: Expected newline or ';', got %s\n", Pos_Arg(ahead.pos), token_kind_to_cstr(ahead.kind));
+    exit(1);
+}
+
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
@@ -200,6 +220,7 @@ static Node *parse_block(Parser *p, Token token) {
     Node_Block *block = (Node_Block *) node_alloc(p->arena, NODE_BLOCK, token);
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
+        expect_stmt_terminator(p);
     }
 
     assert(p->state.ahead.kind == TOKEN_RBRACE);
@@ -245,7 +266,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
                     sw->preds_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
 
             case_->body = node_alloc(p->arena, NODE_BLOCK, token);
             Node_Block *block = (Node_Block *) case_->body;
@@ -298,18 +319,19 @@ static Node *parse_for(Parser *p, Token token) {
 
     if (peek_token(p).kind != TOKEN_LBRACE) {
         forr->condition = parse_expr(p, POWER_NIL, false, false, NULL);
+
+        bool was_init = false;
         if (forr->condition->kind == NODE_DEFINE ||
             (forr->condition->kind == NODE_BINARY && token_kind_to_power(forr->condition->token.kind) == POWER_SET)) {
-            buffer_token(p, expect_token(p, TOKEN_EOL));
+            expect_stmt_terminator(p);
+            was_init = true;
         }
 
-        if (read_token(p, TOKEN_EOL)) {
-            consume_tokens(p, TOKEN_EOL);
+        if (was_init || read_eol_or_rbrace(p)) {
             forr->init = forr->condition;
             forr->condition = parse_expr(p, POWER_SET, false, false, NULL);
 
-            if (read_token(p, TOKEN_EOL)) {
-                consume_tokens(p, TOKEN_EOL);
+            if (read_eol_or_rbrace(p)) {
                 forr->update = parse_expr(p, POWER_NIL, false, false, NULL);
             }
         }
@@ -336,7 +358,14 @@ static void not_in_extern_assert(Parser *p, Token token) {
 }
 
 static void definition_lhs_atom_setup(
-    Parser *p, Node_Define *define, Node_Atom *it, Node *it_expr, bool is_assigned, size_t group_index) {
+    Parser      *p,
+    Node_Define *define,
+    Node_Atom   *it,
+    Node        *it_expr,
+    bool         is_static,
+    bool         is_assigned,
+    size_t       group_index) //
+{
     if (!it->definition_spec) {
         it->definition_spec = arena_alloc(p->arena, sizeof(*it->definition_spec));
     }
@@ -345,9 +374,14 @@ static void definition_lhs_atom_setup(
     it->definition_spec->is_const = define->is_const;
     it->definition_spec->is_local = p->state.fn_current != NULL;
     it->definition_spec->is_extern = p->state.in_extern;
+    it->definition_spec->is_private = p->state.after_private;
     it->definition_spec->is_assigned = is_assigned;
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
+
+    if (is_static) {
+        it->definition_spec->static_var_fn = p->state.fn_current;
+    }
 
     if (it->definition_spec->is_const) {
         assert(it_expr);
@@ -361,9 +395,9 @@ static void definition_lhs_atom_setup(
     }
 }
 
-static void definition_lhs_setup(Parser *p, Node_Define *define) {
+static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static) {
     const bool is_assigned = define->expr != NULL;
-    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current; // TODO(@static)
+    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current || is_static;
 
     size_t lhs_count = 1;
     size_t rhs_count = 1;
@@ -380,7 +414,7 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
             exit(1);
         }
 
-        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_assigned, 0);
+        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_static, is_assigned, 0);
     } else {
         Node_Group *lhs = (Node_Group *) define->name;
         lhs_count = lhs->count;
@@ -413,12 +447,12 @@ static void definition_lhs_setup(Parser *p, Node_Define *define) {
             size_t iota = 0;
             ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
                 assert(lhs_iota->kind == NODE_ATOM);
-                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned, iota++);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_static, is_assigned, iota++);
             }
         } else {
             size_t iota = 0;
             ll_foreach(it, &lhs->nodes) {
-                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned, iota++);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_static, is_assigned, iota++);
             }
         }
     }
@@ -429,15 +463,15 @@ void parser_import(Parser *p, Node_Import *import) {
         return;
     }
 
-    const char *root = NULL;
+    SV          root = {0};
     const char *absolute_path = NULL;
     if (!absolute_path) {
         // Directory inside the current module
-        root = p->module_current->absolute_path;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        root = sv_from_cstr(p->module_current->absolute_path);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -445,10 +479,10 @@ void parser_import(Parser *p, Node_Import *import) {
     if (!absolute_path) {
         // Directory inside root
         root = p->root;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -456,10 +490,10 @@ void parser_import(Parser *p, Node_Import *import) {
     if (!absolute_path) {
         // Directory inside std
         root = p->std;
-        absolute_path = get_absolute_path(sv_from_cstr(root), import->path.sv, p->arena);
+        absolute_path = get_absolute_path(root, import->path.sv, p->arena);
         if (!directory_exists(absolute_path)) {
             arena_reset(p->arena, absolute_path);
-            root = NULL;
+            root = (SV) {0};
             absolute_path = NULL;
         }
     }
@@ -476,19 +510,14 @@ void parser_import(Parser *p, Node_Import *import) {
     Module *module_current_save = p->module_current;
     {
         Module *module = module_get(p, absolute_path);
-        if (!module->name) {
-            module->name = get_relative_path(sv_from_cstr(root), sv_from_cstr(module->absolute_path), p->arena);
-            if (!strcmp(module->name, "main")) {
+        if (!module->name.count) {
+            module->name = sv_from_cstr(get_relative_path(root, sv_from_cstr(module->absolute_path), p->arena));
+            if (sv_match(module->name, "main") || sv_match(module->name, "builtin")) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: The module path 'main' is reserved for the main module\n",
-                    Pos_Arg(import->path.pos));
-                exit(1);
-            } else if (!strcmp(module->name, "builtin")) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: The module path 'builtin' is reserved for the builtin module\n",
-                    Pos_Arg(import->path.pos));
+                    Pos_Fmt "ERROR: The module path '" SV_Fmt "' is reserved\n",
+                    Pos_Arg(import->path.pos),
+                    SV_Arg(module->name));
                 exit(1);
             }
 
@@ -527,7 +556,7 @@ void parser_import(Parser *p, Node_Import *import) {
     p->module_current = module_current_save;
 }
 
-static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed) {
+static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool is_static) {
     Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
     {
         Node *illegal = NULL;
@@ -592,7 +621,7 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
         }
     }
 
-    definition_lhs_setup(p, define);
+    definition_lhs_setup(p, define, is_static);
     return (Node *) define;
 }
 
@@ -635,7 +664,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 69, "");
+static_assert(COUNT_TOKENS == 72, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -670,10 +699,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_DIRECTIVE_DISTINCT: {
-        // TODO(@distinct): Should we use a dedicated node for this?
-        node = node_alloc(p->arena, NODE_BINARY, token);
-        Node_Binary *binary = (Node_Binary *) node;
-        binary->rhs = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+        node = node_alloc(p->arena, NODE_DISTINCT, token);
+        Node_Distinct *distinct = (Node_Distinct *) node;
+        distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {
@@ -690,7 +718,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = parse_expr(p, POWER_SET, false, true, NULL);
             if (peek_token(p).kind == TOKEN_COLON) {
                 is_fn = true;
-                node = parse_define(p, node, next_token(p), false);
+                node = parse_define(p, node, next_token(p), false, false);
             } else {
                 expect_token(p, TOKEN_RPAREN);
             }
@@ -708,7 +736,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.fn_current = fn;
 
             if (arg) {
-                definition_lhs_setup(p, (Node_Define *) arg);
+                definition_lhs_setup(p, (Node_Define *) arg, false);
             }
 
             bool has_default_args = false;
@@ -805,11 +833,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         break;
 
     case TOKEN_LBRACKET: {
-        node = node_alloc(p->arena, NODE_SLICE, token);
-        Node_Slice *slice = (Node_Slice *) node;
+        node = node_alloc(p->arena, NODE_INDEXABLE, token);
+        Node_Indexable *indexable = (Node_Indexable *) node;
 
         expect_token(p, TOKEN_RBRACKET);
-        slice->element = parse_expr(p, POWER_REF, false, false, NULL);
+        indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
     } break;
 
     case TOKEN_ENUM: {
@@ -833,15 +861,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
             nodes_push(&enumm->values, it);
             enumm->values_count++;
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
         }
     } break;
 
     case TOKEN_STRUCT: {
         node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
-        structt->defined_in = p->state.fn_current;
         structt->module = p->module_current;
+        structt->defined_in = p->state.fn_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -872,7 +900,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             nodes_push(&structt->fields, field);
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
         }
     } break;
 
@@ -935,7 +963,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     while (true) {
         token = peek_token(p);
         if (token.newline) {
-            break; // TODO: Don't do this for '.'
+            break;
         }
 
         const Power lbp = token_kind_to_power(token.kind);
@@ -953,7 +981,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } break;
 
         case TOKEN_COLON:
-            return parse_define(p, node, token, groups_allowed);
+            return parse_define(p, node, token, groups_allowed, false);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {
@@ -1054,7 +1082,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1128,6 +1156,80 @@ static Node *parse_stmt(Parser *p) {
 
         assert(it->definition_spec);
         it->definition_spec->link_as = name.sv;
+    } break;
+
+    case TOKEN_DIRECTIVE_STATIC: {
+        if (p->state.in_extern) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Variables defined inside extern block cannot have static storage\n",
+                Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        if (!p->state.fn_current) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Variables defined in global scope already have static storage\n",
+                Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        node = parse_expr(p, POWER_NIL, true, true, NULL);
+        if (node->kind != NODE_DEFINE) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected variable definition after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Define *define = (Node_Define *) node;
+        if (define->is_const) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected variable definition after %s, got constant\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        definition_lhs_setup(p, define, true);
+    } break;
+
+    case TOKEN_DIRECTIVE_PRIVATE: {
+        local_assert(p, false, token, NULL);
+
+        const bool after_private_save = p->state.after_private;
+        p->state.after_private = true;
+
+        node = parse_stmt(p);
+        if (node->kind != NODE_DEFINE && node->kind != NODE_EXTERN) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Expected definition or extern block after %s\n",
+                Pos_Arg(node->token.pos),
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        p->state.after_private = after_private_save;
+    } break;
+
+    case TOKEN_DIRECTIVE_LIBRARY: {
+        node = node_alloc(p->arena, NODE_IMPORT, token);
+        Node_Import *import = (Node_Import *) node;
+        if (read_token(p, TOKEN_LBRACE)) {
+            while (!read_token(p, TOKEN_RBRACE)) {
+                Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
+                nodes_push(&import->libraries, library);
+                expect_stmt_terminator(p);
+            }
+        } else {
+            Node *library = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_STRING));
+            nodes_push(&import->libraries, library);
+        }
     } break;
 
     case TOKEN_LBRACE:
@@ -1254,7 +1356,6 @@ static Node *parse_stmt(Parser *p) {
         break;
     }
 
-    consume_tokens(p, TOKEN_EOL);
     return node;
 }
 
