@@ -266,7 +266,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
                     sw->preds_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }
-            consume_tokens(p, TOKEN_EOL);
+            expect_stmt_terminator(p);
 
             case_->body = node_alloc(p->arena, NODE_BLOCK, token);
             Node_Block *block = (Node_Block *) case_->body;
@@ -735,9 +735,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             Node_Fn *fn_current_save = p->state.fn_current;
             p->state.fn_current = fn;
 
-            const bool fn_current_parsed_signature_save = p->state.fn_current_parsed_signature;
-            p->state.fn_current_parsed_signature = false;
-
             if (arg) {
                 definition_lhs_setup(p, (Node_Define *) arg, false);
             }
@@ -818,7 +815,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
             }
 
-            p->state.fn_current_parsed_signature = true;
             if (peek_token(p).kind == TOKEN_LBRACE) {
                 fn->body = parse_block(p, next_token(p));
             } else {
@@ -826,7 +822,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             p->state.fn_current = fn_current_save;
-            p->state.fn_current_parsed_signature = fn_current_parsed_signature_save;
         }
     } break;
 
@@ -838,11 +833,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         break;
 
     case TOKEN_LBRACKET: {
-        node = node_alloc(p->arena, NODE_SLICE, token);
-        Node_Slice *slice = (Node_Slice *) node;
+        node = node_alloc(p->arena, NODE_INDEXABLE, token);
+        Node_Indexable *indexable = (Node_Indexable *) node;
 
         expect_token(p, TOKEN_RBRACKET);
-        slice->element = parse_expr(p, POWER_REF, false, false, NULL);
+        indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
     } break;
 
     case TOKEN_ENUM: {
@@ -874,12 +869,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
         structt->module = p->module_current;
-
-        if (p->state.fn_current && !p->state.fn_current_parsed_signature) {
-            structt->defined_in = p->state.fn_current->outer_fn;
-        } else {
-            structt->defined_in = p->state.fn_current;
-        }
+        structt->defined_in = p->state.fn_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {

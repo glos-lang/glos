@@ -1000,9 +1000,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         }
     } break;
 
-    case NODE_SLICE:
-        return const_value_type(n->type);
-
     case NODE_INDEX: {
         Node_Index       *index = (Node_Index *) n;
         const Const_Value lhs = eval_const_expr(c, index->lhs);
@@ -1075,6 +1072,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             }
         }
     }
+
+    case NODE_INDEXABLE:
+        return const_value_type(n->type);
 
     default:
         unreachable();
@@ -2612,37 +2612,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         }
     } break;
 
-    case NODE_SLICE: {
-        Node_Slice *slice = (Node_Slice *) n;
-
-        // The type `[]T` gets compiled to:
-        //
-        // ```
-        // struct {
-        //     T  *data;
-        //     i64 count;
-        // }
-        // ```
-        //
-        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
-        check_expr(c, slice->element, REF_ADDR, NULL);
-
-        Type element_type = type_assert_type(slice->element);
-        element_type.is_meta = false;
-
-        const Type_Slice slice_type_spec = {
-            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
-        };
-
-        n->type = (Type) {
-            .kind = TYPE_SLICE,
-            .is_meta = true,
-            .spec.slice = slice_type_spec,
-        };
-
-        is_ref_valid = ref == REF_ADDR;
-    } break;
-
     case NODE_INDEX: {
         // TODO: What about the signedness of indexing operations
         Node_Index *index = (Node_Index *) n;
@@ -2753,6 +2722,37 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 exit(1);
             }
         }
+    } break;
+
+    case NODE_INDEXABLE: {
+        Node_Indexable *indexable = (Node_Indexable *) n;
+
+        // The type `[]T` gets compiled to:
+        //
+        // ```
+        // struct {
+        //     T  *data;
+        //     i64 count;
+        // }
+        // ```
+        //
+        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
+        check_expr(c, indexable->element, REF_ADDR, NULL);
+
+        Type element_type = type_assert_type(indexable->element);
+        element_type.is_meta = false;
+
+        const Type_Slice slice_type_spec = {
+            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
+        };
+
+        n->type = (Type) {
+            .kind = TYPE_SLICE,
+            .is_meta = true,
+            .spec.slice = slice_type_spec,
+        };
+
+        is_ref_valid = ref == REF_ADDR;
     } break;
 
     default:
@@ -2982,6 +2982,8 @@ Const_Value get_platform(Compiler *c, Type *type) {
     if (type) {
         *type = platform_type;
     }
+
+    // TODO: This is unsafe
 
 #ifdef PLATFORM_X86_64_LINUX
     return const_value_int(0);

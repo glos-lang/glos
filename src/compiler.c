@@ -862,8 +862,10 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 }
             }
 
-            LLVMMetadataRef scope_metadata =
-                get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in);
+            LLVMMetadataRef scope_metadata = NULL;
+            if (spec->definition->defined_in) {
+                scope_metadata = get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in);
+            }
 
             spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
                 c->llvm_debug_builder,
@@ -2099,9 +2101,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         return result;
     }
 
-    case NODE_SLICE:
-        unreachable();
-
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
 
@@ -2296,6 +2295,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
     }
+
+    case NODE_INDEXABLE:
+        unreachable();
 
     default:
         unreachable();

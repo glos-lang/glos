@@ -245,9 +245,8 @@ typedef enum {
     NODE_COMPOUND,
 
     NODE_CALL,
-
-    NODE_SLICE,
     NODE_INDEX,
+    NODE_INDEXABLE,
 
     NODE_DEFINE,
     NODE_BLOCK,
@@ -326,8 +325,6 @@ typedef struct {
     size_t count;
 } Node_Group;
 
-// TODO: This is the solution I came up with so far for default arguments.
-// This feels like a bad solution, but better than a non-existent perfect one.
 typedef struct {
     Node         node;
     Type_Fn_Arg *arg;
@@ -421,8 +418,6 @@ struct Node_Enum {
     //     token.as.integer = <value>
     //     value = Maybe(<constant expression which evaluates to the value of this>)
     // }
-    //
-    // TODO: Consider adding a new node, so comments like this are not necessary
     Nodes  values;
     size_t values_count;
 
@@ -465,8 +460,6 @@ typedef struct {
     //     lhs = <key>
     //     lhs = <value>
     // }
-    //
-    // TODO: Consider adding a designated initializer node, so comments like this are not necessary
     bool is_designated;
 } Node_Compound;
 
@@ -497,17 +490,6 @@ typedef struct {
     bool is_stmt;
 } Node_Call;
 
-// This *will* represent the following types:
-// - Slices
-// - Arrays
-// - Dynamic Arrays
-//
-// TODO: Come up with a better name for this
-typedef struct {
-    Node  node;
-    Node *element;
-} Node_Slice;
-
 typedef struct {
     Node  node;
     Node *lhs;
@@ -515,6 +497,12 @@ typedef struct {
     Node *b;
     bool  is_ranged;
 } Node_Index;
+
+// This represents a type
+typedef struct {
+    Node  node;
+    Node *element;
+} Node_Indexable;
 
 struct Node_Define {
     Node  node;

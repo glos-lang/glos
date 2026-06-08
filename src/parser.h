@@ -22,7 +22,6 @@ typedef struct {
     bool after_private;
 
     Node_Fn *fn_current;
-    bool     fn_current_parsed_signature;
 } Parser_State;
 
 typedef struct {
