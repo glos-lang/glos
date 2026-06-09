@@ -952,15 +952,30 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         const Const_Value lhs = eval_const_expr(c, member->lhs);
 
-        // TODO(@slice)
         switch (lhs.kind) {
         case CONST_VALUE_STRUCT:
             return lhs.as.structt.fields[member->field_index];
 
+        case CONST_VALUE_ARRAY:
+            if (member->field_index == 0) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
+                    Pos_Arg(member->field.pos));
+                exit(1);
+            } else if (member->field_index == 1) {
+                return const_value_int(lhs.as.array.count);
+            } else {
+                unreachable();
+            }
+
         case CONST_VALUE_STRING:
             if (member->field_index == 0) {
-                // TODO: Pointers in constant expressions
-                todo();
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
+                    Pos_Arg(member->field.pos));
+                exit(1);
             } else if (member->field_index == 1) {
                 return const_value_int(lhs.as.string.count);
             } else {
@@ -1077,8 +1092,47 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Index       *index = (Node_Index *) n;
         const Const_Value lhs = eval_const_expr(c, index->lhs);
         if (index->is_ranged) {
-            // TODO(@slice)
             switch (lhs.kind) {
+            case CONST_VALUE_ARRAY: {
+                Const_Value_Array array = lhs.as.array;
+
+                i64 begin = 0;
+                if (index->a) {
+                    begin = eval_const_expr(c, index->a).as.integer;
+                }
+
+                i64 end = array.count;
+                if (index->b) {
+                    end = eval_const_expr(c, index->b).as.integer;
+                }
+
+                if (begin > end) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is invalid: Beginning of range is more than end\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end);
+                    exit(1);
+                }
+
+                if (begin < 0 || end < 0 || (size_t) begin > array.count || (size_t) end > array.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is out of bounds in array of length %zu\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end,
+                        array.count);
+                    exit(1);
+                }
+
+                array.data += begin;
+                array.count = end - begin;
+                array.auto_cast_array_to_slice = true;
+                return const_value_array(array);
+            }
+
             case CONST_VALUE_STRING: {
                 SV sv = lhs.as.string;
 
@@ -1124,8 +1178,21 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         } else {
             const i64 at = eval_const_expr(c, index->a).as.integer;
 
-            // TODO(@slice)
             switch (lhs.kind) {
+            case CONST_VALUE_ARRAY: {
+                if (at < 0 || (size_t) at >= lhs.as.array.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Index %zd is out of bounds in array of length %zu\n",
+                        Pos_Arg(n->token.pos),
+                        at,
+                        lhs.as.array.count);
+                    exit(1);
+                };
+
+                return lhs.as.array.data[at];
+            }
+
             case CONST_VALUE_STRING: {
                 if (at < 0 || (size_t) at >= lhs.as.string.count) {
                     fprintf(
@@ -2335,7 +2402,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             it->token.as.integer = iota++;
         }
 
-        // TODO: Should the type be shortened to the minimum integer to fit this?
         n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
     } break;
 
@@ -2875,23 +2941,14 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             assert(value.kind == CONST_VALUE_INT);
             array_count = value.as.integer;
 
-            const u64 max_count = INT64_MAX; // TODO: Signed vs unsigned arithmetics for array index and range
+            const u64 max_count = INT64_MAX;
             if (array_count > max_count) {
-                if (type_is_signed(indexable->count->type)) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
-                        Pos_Arg(indexable->count->token.pos),
-                        array_count,
-                        max_count);
-                } else {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Number '%zu' is invalid for array capacity, which must be in range [0, %zu]\n",
-                        Pos_Arg(indexable->count->token.pos),
-                        array_count,
-                        max_count);
-                }
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
+                    Pos_Arg(indexable->count->token.pos),
+                    array_count,
+                    max_count);
                 exit(1);
             }
 
