@@ -1,0 +1,9 @@
+print_i64s :: (xs: []i64) {
+    for i := 0; i < xs.count; i += 1 {
+        print xs[i]
+    }
+}
+
+main :: () {
+    print_i64s([]i64 {69, 420, 1337})
+}

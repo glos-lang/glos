@@ -252,11 +252,6 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
-static bool can_auto_cast_null_literal(Node *n, Type expected) {
-    // Check for rawptr because distinct types exist
-    return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR));
-}
-
 static bool type_eq_without_distinct(Type a, Type b) {
     a.distinct = NULL;
     b.distinct = NULL;
@@ -273,6 +268,27 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
     }
 }
 
+static bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
+    // untyped 'null' -> typed 'null'
+    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
+        // NOTE: We are also checking for rawptr because distinct types exist
+        n->type = expected;
+        return true;
+    }
+
+    if (n->kind == NODE_COMPOUND && type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE)) {
+        if (type_eq(*n->type.spec.array.element, *expected.spec.slice.element)) {
+            Node_Compound *compound = (Node_Compound *) n;
+            compound->memory_type = arena_clone(c->arena, &n->type, sizeof(n->type));
+            compound->auto_cast_array_to_slice = true;
+            n->type = expected;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return expected;
@@ -282,8 +298,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
-    if (can_auto_cast_null_literal(n, expected)) {
-        n->type = expected;
+    if (try_auto_cast_literal(c, n, expected)) {
         return expected;
     }
 
@@ -317,8 +332,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
             return expected;
         }
 
-        if (can_auto_cast_null_literal(n, expected)) {
-            n->type = expected;
+        if (try_auto_cast_literal(c, n, expected)) {
             return expected;
         }
 
@@ -381,13 +395,11 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return b->type;
     }
 
-    if (can_auto_cast_null_literal(a, b->type)) {
-        a->type = b->type;
+    if (try_auto_cast_literal(c, a, b->type)) {
         return a->type;
     }
 
-    if (can_auto_cast_null_literal(b, a->type)) {
-        b->type = a->type;
+    if (try_auto_cast_literal(c, b, a->type)) {
         return b->type;
     }
 
@@ -2548,6 +2560,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             n->type.kind = TYPE_ARRAY;
         }
 
+        compound->memory_type = &n->type;
         is_ref_valid = ref == REF_ADDR;
     } break;
 

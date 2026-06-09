@@ -2028,9 +2028,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
+        compile_type(c, compound->memory_type);
 
-        LLVMValueRef memory = compile_alloca(c, n->type.llvm);
-        LLVMBuildStore(c->llvm_builder, LLVMConstNull(n->type.llvm), memory);
+        LLVMValueRef memory = compile_alloca(c, compound->memory_type->llvm);
+        LLVMBuildStore(c->llvm_builder, LLVMConstNull(compound->memory_type->llvm), memory);
 
         size_t ordered_iota = 0;
         for (Node *iter = compound->children.head; iter; iter = iter->next) {
@@ -2048,10 +2049,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             LLVMValueRef ptr = NULL;
-            if (n->type.kind == TYPE_STRUCT) {
-                ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
-            } else if (n->type.kind == TYPE_ARRAY) {
-                LLVMTypeRef  element_type = n->type.spec.array.element->llvm;
+            if (compound->memory_type->kind == TYPE_STRUCT) {
+                ptr = LLVMBuildStructGEP2(c->llvm_builder, compound->memory_type->llvm, memory, it_iota, "");
+            } else if (compound->memory_type->kind == TYPE_ARRAY) {
+                LLVMTypeRef  element_type = compound->memory_type->spec.array.element->llvm;
                 LLVMValueRef indices[] = {
                     LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it_iota, true),
                 };
@@ -2062,6 +2063,19 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef value = compile_expr(c, it, false);
             LLVMBuildStore(c->llvm_builder, value, ptr);
+        }
+
+        if (compound->auto_cast_array_to_slice) {
+            assert(compound->memory_type->kind == TYPE_ARRAY); // Must be array
+
+            LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
+            LLVMBuildStore(c->llvm_builder, memory, slice);
+            LLVMBuildStore(
+                c->llvm_builder,
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compound->memory_type->spec.array.count, true),
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
+
+            memory = slice;
         }
 
         if (ref) {

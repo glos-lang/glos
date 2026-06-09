@@ -470,6 +470,11 @@ typedef struct {
     //     lhs = <value>
     // }
     bool is_designated;
+
+    // The actual type of this compound in memory
+    // This is necessary because array literals can be auto cast to slices
+    Type *memory_type;
+    bool  auto_cast_array_to_slice;
 } Node_Compound;
 
 typedef enum {
