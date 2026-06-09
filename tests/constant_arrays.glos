@@ -1,0 +1,9 @@
+XS :: []i32 {1, 2, 4, 8, 16, 32}[1..5]
+X :: XS[2]
+
+main :: () {
+    for i := 0; i < XS.count; i += 1 {
+        print XS[i]
+    }
+    assert(X == 8)
+}

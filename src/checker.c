@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "token.h"
 #include <assert.h>
+#include <stdint.h>
 
 static void error_undefined(const Token *t, const char *label, bool no_exit) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -87,7 +88,7 @@ static void check_that_type_is_known(const Node *n) {
     }
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static void check_int_limit(Node *n, const void *ptr) {
     if (type_is_signed(n->type)) {
         typedef struct {
@@ -251,11 +252,6 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
-static bool can_auto_cast_null_literal(Node *n, Type expected) {
-    // Check for rawptr because distinct types exist
-    return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR));
-}
-
 static bool type_eq_without_distinct(Type a, Type b) {
     a.distinct = NULL;
     b.distinct = NULL;
@@ -272,6 +268,27 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
     }
 }
 
+static bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
+    // untyped 'null' -> typed 'null'
+    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
+        // NOTE: We are also checking for rawptr because distinct types exist
+        n->type = expected;
+        return true;
+    }
+
+    if (n->kind == NODE_COMPOUND && type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE)) {
+        if (type_eq(*n->type.spec.array.element, *expected.spec.slice.element)) {
+            Node_Compound *compound = (Node_Compound *) n;
+            compound->memory_type = arena_clone(c->arena, &n->type, sizeof(n->type));
+            compound->auto_cast_array_to_slice = true;
+            n->type = expected;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_eq(n->type, expected)) {
         return expected;
@@ -281,8 +298,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
-    if (can_auto_cast_null_literal(n, expected)) {
-        n->type = expected;
+    if (try_auto_cast_literal(c, n, expected)) {
         return expected;
     }
 
@@ -316,8 +332,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
             return expected;
         }
 
-        if (can_auto_cast_null_literal(n, expected)) {
-            n->type = expected;
+        if (try_auto_cast_literal(c, n, expected)) {
             return expected;
         }
 
@@ -380,13 +395,11 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return b->type;
     }
 
-    if (can_auto_cast_null_literal(a, b->type)) {
-        a->type = b->type;
+    if (try_auto_cast_literal(c, a, b->type)) {
         return a->type;
     }
 
-    if (can_auto_cast_null_literal(b, a->type)) {
-        b->type = a->type;
+    if (try_auto_cast_literal(c, b, a->type)) {
         return b->type;
     }
 
@@ -444,7 +457,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 22, "");
+    static_assert(COUNT_TYPES == 23, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -689,6 +702,65 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
+static_assert(COUNT_TYPES == 23, "");
+static Const_Value default_const_value(Compiler *c, Type type) {
+    if (type.ref) {
+        return const_value_int(0); // TODO: Pointers in constant expressions
+    }
+
+    switch (type.kind) {
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+    case TYPE_INT:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_RAWPTR: // TODO: Pointers in constant expressions
+    case TYPE_FN:
+    case TYPE_ENUM:
+        return const_value_int(0);
+
+    case TYPE_STRUCT: {
+        Const_Value_Struct structure = {0};
+        structure.spec = type.spec.structt;
+        structure.fields = arena_alloc(c->arena, structure.spec->fields_count * sizeof(*structure.fields));
+        for (size_t i = 0; i < structure.spec->fields_count; i++) {
+            structure.fields[i] = default_const_value(c, structure.spec->fields[i].type);
+        }
+        return const_value_struct(structure);
+    }
+
+    case TYPE_ARRAY: {
+        Const_Value_Array array = {0};
+        array.count = type.spec.array.count;
+        array.data = arena_alloc(c->arena, array.count * sizeof(*array.data));
+        array.element_type = type.spec.array.element;
+        for (size_t i = 0; i < array.count; i++) {
+            array.data[i] = default_const_value(c, *array.element_type);
+        }
+        return const_value_array(array);
+    }
+
+    case TYPE_SLICE: {
+        todo(); // TODO: Slices in constant expressions
+    }
+
+    case TYPE_STRING:
+        return const_value_string((SV) {0});
+
+    default:
+        unreachable();
+    }
+}
+
 // Is this valid for signedness?
 static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
@@ -880,15 +952,30 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         const Const_Value lhs = eval_const_expr(c, member->lhs);
 
-        // TODO(@slice)
         switch (lhs.kind) {
         case CONST_VALUE_STRUCT:
             return lhs.as.structt.fields[member->field_index];
 
+        case CONST_VALUE_ARRAY:
+            if (member->field_index == 0) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
+                    Pos_Arg(member->field.pos));
+                exit(1);
+            } else if (member->field_index == 1) {
+                return const_value_int(lhs.as.array.count);
+            } else {
+                unreachable();
+            }
+
         case CONST_VALUE_STRING:
             if (member->field_index == 0) {
-                // TODO: Pointers in constant expressions
-                todo();
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
+                    Pos_Arg(member->field.pos));
+                exit(1);
             } else if (member->field_index == 1) {
                 return const_value_int(lhs.as.string.count);
             } else {
@@ -940,37 +1027,38 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
+        Const_Value    value = default_const_value(c, *compound->memory_type);
 
-        Const_Value_Struct struct_value = {0};
-        if (n->type.kind == TYPE_STRUCT) {
-            struct_value.spec = n->type.spec.structt;
-            struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
-            // TODO: This broken for nested compound values
+        if (compound->auto_cast_array_to_slice) {
+            assert(value.kind == CONST_VALUE_ARRAY);
+            value.as.array.auto_cast_array_to_slice = true;
         }
 
         size_t ordered_iota = 0;
-        for (Node *iter = compound->children.head; iter; iter = iter->next) {
+        ll_foreach(iter, &compound->children) {
             size_t it_iota = 0;
             if (!compound->is_designated) {
                 it_iota = ordered_iota++;
             }
 
             Node *it = iter;
-            if (n->type.kind == TYPE_STRUCT) {
-                if (compound->is_designated) {
-                    assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
-                    Node_Binary *it_binary = (Node_Binary *) it;
-                    it_iota = it->token.as.integer;
-                    it = it_binary->rhs;
-                }
+            if (compound->is_designated) {
+                assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+                Node_Binary *it_binary = (Node_Binary *) it;
+                it_iota = it->token.as.integer;
+                it = it_binary->rhs;
+            }
 
-                struct_value.fields[it_iota] = eval_const_expr(c, it);
+            if (compound->memory_type->kind == TYPE_STRUCT) {
+                value.as.structt.fields[it_iota] = eval_const_expr(c, it);
+            } else if (compound->memory_type->kind == TYPE_ARRAY) {
+                value.as.array.data[it_iota] = eval_const_expr(c, it);
             } else {
                 unreachable();
             }
         }
 
-        return const_value_struct(struct_value);
+        return value;
     }
 
     case NODE_CALL: {
@@ -1004,8 +1092,47 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Index       *index = (Node_Index *) n;
         const Const_Value lhs = eval_const_expr(c, index->lhs);
         if (index->is_ranged) {
-            // TODO(@slice)
             switch (lhs.kind) {
+            case CONST_VALUE_ARRAY: {
+                Const_Value_Array array = lhs.as.array;
+
+                i64 begin = 0;
+                if (index->a) {
+                    begin = eval_const_expr(c, index->a).as.integer;
+                }
+
+                i64 end = array.count;
+                if (index->b) {
+                    end = eval_const_expr(c, index->b).as.integer;
+                }
+
+                if (begin > end) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is invalid: Beginning of range is more than end\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end);
+                    exit(1);
+                }
+
+                if (begin < 0 || end < 0 || (size_t) begin > array.count || (size_t) end > array.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Range (%zd..%zd) is out of bounds in array of length %zu\n",
+                        Pos_Arg(n->token.pos),
+                        begin,
+                        end,
+                        array.count);
+                    exit(1);
+                }
+
+                array.data += begin;
+                array.count = end - begin;
+                array.auto_cast_array_to_slice = true;
+                return const_value_array(array);
+            }
+
             case CONST_VALUE_STRING: {
                 SV sv = lhs.as.string;
 
@@ -1051,8 +1178,21 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         } else {
             const i64 at = eval_const_expr(c, index->a).as.integer;
 
-            // TODO(@slice)
             switch (lhs.kind) {
+            case CONST_VALUE_ARRAY: {
+                if (at < 0 || (size_t) at >= lhs.as.array.count) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Index %zd is out of bounds in array of length %zu\n",
+                        Pos_Arg(n->token.pos),
+                        at,
+                        lhs.as.array.count);
+                    exit(1);
+                };
+
+                return lhs.as.array.data[at];
+            }
+
             case CONST_VALUE_STRING: {
                 if (at < 0 || (size_t) at >= lhs.as.string.count) {
                     fprintf(
@@ -1120,7 +1260,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
         if (const_value_eq(sw->preds[i].value, value)) {
             fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
 
-            static_assert(COUNT_CONST_VALUES == 6, "");
+            static_assert(COUNT_CONST_VALUES == 7, "");
             switch (value.kind) {
             case CONST_VALUE_INT:
                 if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1133,13 +1273,6 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                     fprintf(stderr, "%zu", value.as.integer);
                 }
                 break;
-
-            case CONST_VALUE_FN:
-            case CONST_VALUE_TYPE:
-            case CONST_VALUE_STRUCT:
-            case CONST_VALUE_STRING:
-            case CONST_VALUE_MODULE:
-                unreachable();
 
             default:
                 unreachable();
@@ -2024,6 +2157,17 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
 
                 n->type = definition->type;
+            } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
+                if (sv_match(member->field.sv, "data")) {
+                    n->type = *member->lhs->type.spec.array.element;
+                    n->type.ref++;
+                    member->field_index = 0;
+                } else if (sv_match(member->field.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    member->field_index = 1;
+                } else {
+                    error_undefined(&member->field, "field", false);
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
                 if (sv_match(member->field.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
@@ -2258,7 +2402,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             it->token.as.integer = iota++;
         }
 
-        // TODO: Should the type be shortened to the minimum integer to fit this?
         n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
     } break;
 
@@ -2395,10 +2538,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             n->type = compound->lhs->type;
             n->type.is_meta = false;
-            if (n->type.ref || (n->type.kind != TYPE_STRUCT)) {
+            if (n->type.ref ||
+                (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE)) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                    Pos_Fmt "ERROR: Expected structure or array type, got %s\n",
                     Pos_Arg(compound->lhs->token.pos),
                     type_to_cstr(n->type));
                 exit(1);
@@ -2422,6 +2566,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             struct_spec = n->type.spec.structt;
         }
 
+        size_t array_count = 0;
         size_t ordered_iota = 0;
         for (Node *iter = compound->children.head; iter; iter = iter->next) {
             size_t it_iota = 0;
@@ -2430,12 +2575,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
 
             Node *it = iter;
-            if (n->type.kind == TYPE_STRUCT) {
-                // TODO(@group)
-                if (compound->is_designated) {
-                    assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
-                    Node_Binary *it_binary = (Node_Binary *) it;
+            if (compound->is_designated) {
+                assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+                Node_Binary *it_binary = (Node_Binary *) it;
 
+                if (n->type.kind == TYPE_STRUCT) {
                     if (it_binary->lhs->kind != NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
                         fprintf(
                             stderr,
@@ -2463,24 +2607,77 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                             Pos_Arg(struct_spec->definition->node.token.pos));
                         exit(1);
                     }
+                } else if (n->type.kind == TYPE_ARRAY || n->type.kind == TYPE_SLICE) {
+                    check_expr(c, it_binary->lhs, REF_NONE, NULL);
+                    type_assert_numeric(it_binary->lhs, false);
 
-                    it_iota = it->token.as.integer;
-                    it = it_binary->rhs;
-                } else if (it_iota >= struct_spec->fields_count) {
-                    fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
-                    exit(1);
+                    const Const_Value value = eval_const_expr(c, it_binary->lhs);
+                    assert(value.kind == CONST_VALUE_INT);
+
+                    if (n->type.kind == TYPE_ARRAY && (size_t) value.as.integer >= n->type.spec.array.count) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Index %zd is out of bounds in array of length %zu\n",
+                            Pos_Arg(it_binary->lhs->token.pos),
+                            value.as.integer,
+                            n->type.spec.array.count);
+                        exit(1);
+                    }
+
+                    it->token.as.integer = value.as.integer;
+                } else {
+                    unreachable();
                 }
 
-                const Type *it_type = &struct_spec->fields[it_iota].type;
-                check_expr(c, it, REF_NONE, it_type);
-                type_assert(c, it, *it_type);
-            } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
-                todo();
+                it_iota = it->token.as.integer;
+                it = it_binary->rhs;
+            } else {
+                if (n->type.kind == TYPE_STRUCT) {
+                    if (it_iota >= struct_spec->fields_count) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
+                        exit(1);
+                    }
+                } else if (n->type.kind == TYPE_ARRAY) {
+                    if (it_iota >= n->type.spec.array.count) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Index %zu is out of bounds in array of length %zu\n",
+                            Pos_Arg(it->token.pos),
+                            it_iota,
+                            n->type.spec.array.count);
+                        exit(1);
+                    }
+                } else if (n->type.kind == TYPE_SLICE) {
+                    // Pass
+                } else {
+                    unreachable();
+                }
+            }
+
+            const Type *it_type = NULL;
+            if (n->type.kind == TYPE_STRUCT) {
+                it_type = &struct_spec->fields[it_iota].type;
+            } else if (n->type.kind == TYPE_ARRAY) {
+                it_type = n->type.spec.array.element;
+            } else if (n->type.kind == TYPE_SLICE) {
+                it_type = n->type.spec.slice.element;
+                array_count = max(array_count, it_iota + 1);
             } else {
                 unreachable();
             }
+
+            check_expr(c, it, REF_NONE, it_type);
+            type_assert(c, it, *it_type);
         }
 
+        if (n->type.kind == TYPE_SLICE) {
+            Type *element = n->type.spec.slice.element;
+            n->type.spec.array.element = element;
+            n->type.spec.array.count = array_count;
+            n->type.kind = TYPE_ARRAY;
+        }
+
+        compound->memory_type = &n->type;
         is_ref_valid = ref == REF_ADDR;
     } break;
 
@@ -2613,7 +2810,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     } break;
 
     case NODE_INDEX: {
-        // TODO: What about the signedness of indexing operations
         Node_Index *index = (Node_Index *) n;
         check_expr(c, index->lhs, ref, NULL);
         check_that_type_is_known(index->lhs);
@@ -2657,7 +2853,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     .kind = TYPE_SLICE,
                     .spec.slice.element = arena_clone(c->arena, &element_type, sizeof(element_type)),
                 };
-            } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) || type_kind_eq(index->lhs->type, TYPE_STRING)) {
+            } else if (
+                type_kind_eq(index->lhs->type, TYPE_ARRAY) || type_kind_eq(index->lhs->type, TYPE_SLICE) ||
+                type_kind_eq(index->lhs->type, TYPE_STRING)) {
                 // The beginning can be inferred to be the beginning of the slice
                 if (index->a) {
                     check_expr(c, index->a, REF_NONE, NULL);
@@ -2671,6 +2869,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
 
                 n->type = index->lhs->type;
+                if (type_kind_eq(n->type, TYPE_ARRAY)) {
+                    n->type.kind = TYPE_SLICE;
+                }
             } else {
                 fprintf(
                     stderr,
@@ -2683,7 +2884,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             is_ref_valid = false;
         } else {
-            if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
+            if (type_kind_eq(index->lhs->type, TYPE_ARRAY) && !index->lhs->type.ref) {
+                check_expr(c, index->a, REF_NONE, NULL);
+                type_assert_numeric(index->a, false);
+                n->type = *index->lhs->type.spec.array.element;
+            } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
                 check_expr(c, index->a, REF_NONE, NULL);
                 type_assert_numeric(index->a, false);
                 n->type = *index->lhs->type.spec.slice.element;
@@ -2727,30 +2932,59 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_INDEXABLE: {
         Node_Indexable *indexable = (Node_Indexable *) n;
 
-        // The type `[]T` gets compiled to:
-        //
-        // ```
-        // struct {
-        //     T  *data;
-        //     i64 count;
-        // }
-        // ```
-        //
-        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
-        check_expr(c, indexable->element, REF_ADDR, NULL);
+        size_t array_count = 0;
+        if (indexable->count) {
+            check_expr(c, indexable->count, REF_NONE, NULL);
+            type_assert_numeric(indexable->count, false);
 
-        Type element_type = type_assert_type(indexable->element);
-        element_type.is_meta = false;
+            const Const_Value value = eval_const_expr(c, indexable->count);
+            assert(value.kind == CONST_VALUE_INT);
+            array_count = value.as.integer;
 
-        const Type_Slice slice_type_spec = {
-            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
-        };
+            const u64 max_count = INT64_MAX;
+            if (array_count > max_count) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
+                    Pos_Arg(indexable->count->token.pos),
+                    array_count,
+                    max_count);
+                exit(1);
+            }
 
-        n->type = (Type) {
-            .kind = TYPE_SLICE,
-            .is_meta = true,
-            .spec.slice = slice_type_spec,
-        };
+            check_expr(c, indexable->element, REF_NONE, NULL);
+        } else {
+            // The type `[]T` gets compiled to:
+            //
+            // ```
+            // struct {
+            //     T  *data;
+            //     i64 count;
+            // }
+            // ```
+            //
+            // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
+            check_expr(c, indexable->element, REF_ADDR, NULL);
+        }
+
+        Type *element_type = arena_alloc(c->arena, sizeof(*element_type));
+        *element_type = type_assert_type(indexable->element);
+        element_type->is_meta = false;
+
+        if (indexable->count) {
+            n->type = (Type) {
+                .kind = TYPE_ARRAY,
+                .is_meta = true,
+                .spec.array.element = element_type,
+                .spec.array.count = array_count,
+            };
+        } else {
+            n->type = (Type) {
+                .kind = TYPE_SLICE,
+                .is_meta = true,
+                .spec.slice.element = element_type,
+            };
+        }
 
         is_ref_valid = ref == REF_ADDR;
     } break;
