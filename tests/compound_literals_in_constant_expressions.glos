@@ -1,0 +1,17 @@
+Vec2 :: struct {
+    x, y: i32
+}
+
+VS :: []Vec2 {
+    {69, 420},
+    {y = 80085, x = 1337}
+}
+
+main :: () {
+    print_vec2(VS[0])
+    print_vec2(VS[1])
+}
+
+print_vec2 :: (v: Vec2) {
+    fprintf(stdout, "(%d, %d)\n".data, v.x, v.y)
+}

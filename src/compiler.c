@@ -1117,14 +1117,18 @@ static LLVMValueRef compile_string_struct(Compiler *c, LLVMValueRef data, size_t
     return LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, slice_struct, "");
 }
 
-static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
-    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
-    LLVMValueRef data = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
-    LLVMSetInitializer(data, memory);
-    return compile_string_struct(c, data, sv.count, pos, ref);
+static LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value) {
+    LLVMValueRef memory = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(value), "");
+    LLVMSetInitializer(memory, value);
+    return memory;
 }
 
-static_assert(COUNT_CONST_VALUES == 6, "");
+static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
+    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+    return compile_string_struct(c, compile_const_value_into_memory(c, memory), sv.count, pos, ref);
+}
+
+static_assert(COUNT_CONST_VALUES == 7, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
@@ -1149,8 +1153,39 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
         return result;
     }
 
-    case CONST_VALUE_STRING:
-        return compile_string(c, value.as.string, NULL, false);
+    case CONST_VALUE_ARRAY: {
+        const Const_Value_Array array = value.as.array;
+        compile_type(c, array.element_type);
+
+        // We are using arena_alloc() here because the count might be large and overflow the temporary buffer.
+        LLVMValueRef *elements = arena_alloc(c->arena, array.count * sizeof(*elements));
+        for (size_t i = 0; i < array.count; i++) {
+            elements[i] = compile_const_value(c, array.data[i], *array.element_type);
+        }
+
+        LLVMValueRef memory = LLVMConstArray(array.element_type->llvm, elements, array.count);
+        arena_reset(c->arena, elements);
+
+        if (array.auto_cast_array_to_slice) {
+            LLVMValueRef fields[] = {
+                compile_const_value_into_memory(c, memory),
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), array.count, true),
+            };
+            memory = LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
+        }
+        return memory;
+    }
+
+    case CONST_VALUE_STRING: {
+        LLVMValueRef memory =
+            LLVMConstStringInContext(c->llvm_context, value.as.string.data, value.as.string.count, false);
+
+        LLVMValueRef fields[] = {
+            compile_const_value_into_memory(c, memory),
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value.as.string.count, true),
+        };
+        return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
+    }
 
     case CONST_VALUE_MODULE:
         unreachable();
@@ -1508,12 +1543,6 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
     LLVMBuildUnreachable(c->llvm_builder);
 }
 
-static LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value) {
-    LLVMValueRef memory = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(value), "");
-    LLVMSetInitializer(memory, value);
-    return memory;
-}
-
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
     Token token = {0};
     if (n->kind == NODE_ATOM) {
@@ -1528,9 +1557,11 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 6, "");
+        static_assert(COUNT_CONST_VALUES == 7, "");
         switch (const_value.kind) {
         case CONST_VALUE_STRUCT:
+        case CONST_VALUE_ARRAY:
+        case CONST_VALUE_STRING:
             if (!definition->definition_spec->llvm) {
                 definition->definition_spec->llvm =
                     compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
@@ -1542,16 +1573,6 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
 
             set_debug_pos(c, token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
-
-        case CONST_VALUE_STRING: {
-            const SV sv = const_value.as.string;
-            if (!definition->definition_spec->llvm) {
-                LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
-                definition->definition_spec->llvm = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(memory), "");
-                LLVMSetInitializer(definition->definition_spec->llvm, memory);
-            }
-            return compile_string_struct(c, definition->definition_spec->llvm, sv.count, &token.pos, ref);
-        }
 
         default:
             if (!definition->definition_spec->llvm) {
@@ -1645,9 +1666,12 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         const Const_Value const_value = *ghost->arg->default_value;
-        static_assert(COUNT_CONST_VALUES == 6, "");
+
+        static_assert(COUNT_CONST_VALUES == 7, "");
         switch (const_value.kind) {
         case CONST_VALUE_STRUCT:
+        case CONST_VALUE_ARRAY:
+        case CONST_VALUE_STRING:
             if (!ghost->arg->default_value_llvm) {
                 ghost->arg->default_value_llvm =
                     compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
@@ -1658,9 +1682,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ghost->arg->default_value_llvm, "");
-
-        case CONST_VALUE_STRING:
-            return compile_string(c, const_value.as.string, NULL, ref);
 
         default:
             return compile_const_value(c, const_value, n->type);

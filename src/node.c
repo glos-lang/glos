@@ -447,7 +447,7 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
-static_assert(COUNT_CONST_VALUES == 6, "");
+static_assert(COUNT_CONST_VALUES == 7, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -463,7 +463,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     case CONST_VALUE_TYPE:
         return type_eq(a.as.type, b.as.type);
 
-    case CONST_VALUE_STRUCT: {
+    case CONST_VALUE_STRUCT:
         if (!type_struct_eq(a.as.structt.spec, b.as.structt.spec)) {
             return false;
         }
@@ -475,7 +475,23 @@ bool const_value_eq(Const_Value a, Const_Value b) {
         }
 
         return true;
-    }
+
+    case CONST_VALUE_ARRAY:
+        if (!type_eq(*a.as.array.element_type, *b.as.array.element_type)) {
+            return false;
+        }
+
+        if (a.as.array.count != b.as.array.count) {
+            return false;
+        }
+
+        for (size_t i = 0; i < a.as.array.count; i++) {
+            if (!const_value_eq(a.as.array.data[i], b.as.array.data[i])) {
+                return false;
+            }
+        }
+
+        return true;
 
     case CONST_VALUE_STRING:
         return sv_eq(a.as.string, b.as.string);

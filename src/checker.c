@@ -702,6 +702,65 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
+static_assert(COUNT_TYPES == 23, "");
+static Const_Value default_const_value(Compiler *c, Type type) {
+    if (type.ref) {
+        return const_value_int(0); // TODO: Pointers in constant expressions
+    }
+
+    switch (type.kind) {
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    case TYPE_I64:
+    case TYPE_INT:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_RAWPTR: // TODO: Pointers in constant expressions
+    case TYPE_FN:
+    case TYPE_ENUM:
+        return const_value_int(0);
+
+    case TYPE_STRUCT: {
+        Const_Value_Struct structure = {0};
+        structure.spec = type.spec.structt;
+        structure.fields = arena_alloc(c->arena, structure.spec->fields_count * sizeof(*structure.fields));
+        for (size_t i = 0; i < structure.spec->fields_count; i++) {
+            structure.fields[i] = default_const_value(c, structure.spec->fields[i].type);
+        }
+        return const_value_struct(structure);
+    }
+
+    case TYPE_ARRAY: {
+        Const_Value_Array array = {0};
+        array.count = type.spec.array.count;
+        array.data = arena_alloc(c->arena, array.count * sizeof(*array.data));
+        array.element_type = type.spec.array.element;
+        for (size_t i = 0; i < array.count; i++) {
+            array.data[i] = default_const_value(c, *array.element_type);
+        }
+        return const_value_array(array);
+    }
+
+    case TYPE_SLICE: {
+        todo(); // TODO: Slices in constant expressions
+    }
+
+    case TYPE_STRING:
+        return const_value_string((SV) {0});
+
+    default:
+        unreachable();
+    }
+}
+
 // Is this valid for signedness?
 static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
@@ -953,39 +1012,38 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
+        Const_Value    value = default_const_value(c, *compound->memory_type);
 
-        Const_Value_Struct struct_value = {0};
-        if (n->type.kind == TYPE_STRUCT) {
-            struct_value.spec = n->type.spec.structt;
-            struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
-            // TODO: This broken for nested compound values
-        } else {
-            todo(); // TODO(@array)
+        if (compound->auto_cast_array_to_slice) {
+            assert(value.kind == CONST_VALUE_ARRAY);
+            value.as.array.auto_cast_array_to_slice = true;
         }
 
         size_t ordered_iota = 0;
-        for (Node *iter = compound->children.head; iter; iter = iter->next) {
+        ll_foreach(iter, &compound->children) {
             size_t it_iota = 0;
             if (!compound->is_designated) {
                 it_iota = ordered_iota++;
             }
 
             Node *it = iter;
-            if (n->type.kind == TYPE_STRUCT) {
-                if (compound->is_designated) {
-                    assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
-                    Node_Binary *it_binary = (Node_Binary *) it;
-                    it_iota = it->token.as.integer;
-                    it = it_binary->rhs;
-                }
+            if (compound->is_designated) {
+                assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+                Node_Binary *it_binary = (Node_Binary *) it;
+                it_iota = it->token.as.integer;
+                it = it_binary->rhs;
+            }
 
-                struct_value.fields[it_iota] = eval_const_expr(c, it);
+            if (compound->memory_type->kind == TYPE_STRUCT) {
+                value.as.structt.fields[it_iota] = eval_const_expr(c, it);
+            } else if (compound->memory_type->kind == TYPE_ARRAY) {
+                value.as.array.data[it_iota] = eval_const_expr(c, it);
             } else {
                 unreachable();
             }
         }
 
-        return const_value_struct(struct_value);
+        return value;
     }
 
     case NODE_CALL: {
@@ -1135,7 +1193,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
         if (const_value_eq(sw->preds[i].value, value)) {
             fprintf(stderr, Pos_Fmt "ERROR: Duplicate case ", Pos_Arg(pred->token.pos));
 
-            static_assert(COUNT_CONST_VALUES == 6, "");
+            static_assert(COUNT_CONST_VALUES == 7, "");
             switch (value.kind) {
             case CONST_VALUE_INT:
                 if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1148,13 +1206,6 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                     fprintf(stderr, "%zu", value.as.integer);
                 }
                 break;
-
-            case CONST_VALUE_FN:
-            case CONST_VALUE_TYPE:
-            case CONST_VALUE_STRUCT:
-            case CONST_VALUE_STRING:
-            case CONST_VALUE_MODULE:
-                unreachable();
 
             default:
                 unreachable();

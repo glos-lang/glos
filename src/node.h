@@ -199,8 +199,11 @@ typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
+
     CONST_VALUE_STRUCT,
+    CONST_VALUE_ARRAY,
     CONST_VALUE_STRING,
+
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
@@ -210,23 +213,38 @@ typedef struct {
     Const_Value *fields;
 } Const_Value_Struct;
 
+typedef struct {
+    Type        *element_type;
+    Const_Value *data;
+    size_t       count;
+
+    bool auto_cast_array_to_slice;
+} Const_Value_Array;
+
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        i64                integer;
-        Type               type;
-        Node_Fn           *fn;
+        i64      integer;
+        Type     type;
+        Node_Fn *fn;
+
         Const_Value_Struct structt;
+        Const_Value_Array  array;
         SV                 string;
-        Module            *module;
+
+        Module *module;
     } as;
 };
 
-#define const_value_int(v)    ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
-#define const_value_fn(v)     ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
-#define const_value_type(v)   ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+static_assert(COUNT_CONST_VALUES == 7, "");
+#define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
+
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
+#define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+
 #define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
 bool const_value_eq(Const_Value a, Const_Value b);
