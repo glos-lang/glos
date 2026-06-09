@@ -1,0 +1,45 @@
+basics :: () {
+    x := 69
+    print x++
+
+    assert(x == 70)
+    print --x;
+
+    x = 68
+    print ++x
+
+    print x--;
+    assert(x == 68)
+}
+
+dereference :: () {
+    x := 68
+    p := &x
+
+    (*p)++
+    print x
+}
+
+pointer :: () {
+    s: [6]char
+    p := s.data
+
+    *p++ = 'U'
+    *p++ = 'r'
+    *p++ = 'm'
+    *p++ = 'o'
+    *p++ = 'm'
+    *p++ = '\0'
+
+    puts(s.data)
+
+    extern {
+        puts :: (s: &char) -> i32
+    }
+}
+
+main :: () {
+    basics()
+    dereference()
+    pointer()
+}

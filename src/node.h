@@ -360,6 +360,7 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *value;
+    bool  is_postfix; // For '++' and '--'
 } Node_Unary;
 
 typedef struct {

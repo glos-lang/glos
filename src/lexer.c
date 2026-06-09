@@ -178,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 74, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -349,17 +349,19 @@ Token lexer_iter(Lexer *l) {
         token.kind = TOKEN_ADD;
         if (match_char(l, '=')) {
             token.kind = TOKEN_ADD_SET;
+        } else if (match_char(l, '+')) {
+            token.kind = TOKEN_ADD_ADD;
         }
         break;
 
     case '-':
+        token.kind = TOKEN_SUB;
         if (match_char(l, '>')) {
             token.kind = TOKEN_ARROW;
-        } else {
-            token.kind = TOKEN_SUB;
-            if (match_char(l, '=')) {
-                token.kind = TOKEN_SUB_SET;
-            }
+        } else if (match_char(l, '=')) {
+            token.kind = TOKEN_SUB_SET;
+        } else if (match_char(l, '-')) {
+            token.kind = TOKEN_SUB_SUB;
         }
         break;
 

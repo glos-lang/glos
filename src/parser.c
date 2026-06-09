@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -92,6 +92,10 @@ static Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_BOR_SET:
     case TOKEN_BAND_SET:
         return POWER_SET;
+
+    case TOKEN_ADD_ADD:
+    case TOKEN_SUB_SUB:
+        return POWER_DOT;
 
     case TOKEN_GT:
     case TOKEN_GE:
@@ -664,7 +668,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 72, "");
+static_assert(COUNT_TOKENS == 74, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -692,22 +696,24 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_SUB:
     case TOKEN_MUL:
     case TOKEN_BNOT:
-    case TOKEN_LNOT: {
+    case TOKEN_LNOT:
+    case TOKEN_ADD_ADD:
+    case TOKEN_SUB_SUB: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-    } break;
-
-    case TOKEN_DIRECTIVE_DISTINCT: {
-        node = node_alloc(p->arena, NODE_DISTINCT, token);
-        Node_Distinct *distinct = (Node_Distinct *) node;
-        distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_BAND: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_REF, false, compounds_allowed, NULL);
+    } break;
+
+    case TOKEN_DIRECTIVE_DISTINCT: {
+        node = node_alloc(p->arena, NODE_DISTINCT, token);
+        Node_Distinct *distinct = (Node_Distinct *) node;
+        distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
     } break;
 
     case TOKEN_LPAREN: {
@@ -1047,6 +1053,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             node = (Node *) index;
+        } break;
+
+        case TOKEN_ADD_ADD:
+        case TOKEN_SUB_SUB: {
+            Node_Unary *unary = (Node_Unary *) node_alloc(p->arena, NODE_UNARY, token);
+            unary->value = node;
+            unary->is_postfix = true;
+            node = (Node *) unary;
         } break;
 
         default:
