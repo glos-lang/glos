@@ -947,6 +947,8 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             struct_value.spec = n->type.spec.structt;
             struct_value.fields = arena_alloc(c->arena, struct_value.spec->fields_count * sizeof(*struct_value.fields));
             // TODO: This broken for nested compound values
+        } else {
+            todo(); // TODO(@array)
         }
 
         size_t ordered_iota = 0;
@@ -2407,10 +2409,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             n->type = compound->lhs->type;
             n->type.is_meta = false;
-            if (n->type.ref || (n->type.kind != TYPE_STRUCT)) {
+            if (n->type.ref ||
+                (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE)) {
                 fprintf(
                     stderr,
-                    Pos_Fmt "ERROR: Expected structure type, got %s\n",
+                    Pos_Fmt "ERROR: Expected structure or array type, got %s\n",
                     Pos_Arg(compound->lhs->token.pos),
                     type_to_cstr(n->type));
                 exit(1);
@@ -2434,6 +2437,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             struct_spec = n->type.spec.structt;
         }
 
+        size_t array_count = 0;
         size_t ordered_iota = 0;
         for (Node *iter = compound->children.head; iter; iter = iter->next) {
             size_t it_iota = 0;
@@ -2442,12 +2446,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
 
             Node *it = iter;
-            if (n->type.kind == TYPE_STRUCT) {
-                // TODO(@group)
-                if (compound->is_designated) {
-                    assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
-                    Node_Binary *it_binary = (Node_Binary *) it;
+            if (compound->is_designated) {
+                assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+                Node_Binary *it_binary = (Node_Binary *) it;
 
+                if (n->type.kind == TYPE_STRUCT) {
                     if (it_binary->lhs->kind != NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
                         fprintf(
                             stderr,
@@ -2475,22 +2478,74 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                             Pos_Arg(struct_spec->definition->node.token.pos));
                         exit(1);
                     }
+                } else if (n->type.kind == TYPE_ARRAY || n->type.kind == TYPE_SLICE) {
+                    check_expr(c, it_binary->lhs, REF_NONE, NULL);
+                    type_assert_numeric(it_binary->lhs, false);
 
-                    it_iota = it->token.as.integer;
-                    it = it_binary->rhs;
-                } else if (it_iota >= struct_spec->fields_count) {
-                    fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
-                    exit(1);
+                    const Const_Value value = eval_const_expr(c, it_binary->lhs);
+                    assert(value.kind == CONST_VALUE_INT);
+
+                    if (n->type.kind == TYPE_ARRAY && (size_t) value.as.integer >= n->type.spec.array.count) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Index %zd is out of bounds in array of length %zu\n",
+                            Pos_Arg(it_binary->lhs->token.pos),
+                            value.as.integer,
+                            n->type.spec.array.count);
+                        exit(1);
+                    }
+
+                    it->token.as.integer = value.as.integer;
+                } else {
+                    unreachable();
                 }
 
-                const Type *it_type = &struct_spec->fields[it_iota].type;
-                check_expr(c, it, REF_NONE, it_type);
-                type_assert(c, it, *it_type);
-            } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
-                todo();
+                it_iota = it->token.as.integer;
+                it = it_binary->rhs;
+            } else {
+                if (n->type.kind == TYPE_STRUCT) {
+                    if (it_iota >= struct_spec->fields_count) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Too many ordered initializers\n", Pos_Arg(it->token.pos));
+                        exit(1);
+                    }
+                } else if (n->type.kind == TYPE_ARRAY) {
+                    if (it_iota >= n->type.spec.array.count) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Index %zu is out of bounds in array of length %zu\n",
+                            Pos_Arg(it->token.pos),
+                            it_iota,
+                            n->type.spec.array.count);
+                        exit(1);
+                    }
+                } else if (n->type.kind == TYPE_SLICE) {
+                    // Pass
+                } else {
+                    unreachable();
+                }
+            }
+
+            const Type *it_type = NULL;
+            if (n->type.kind == TYPE_STRUCT) {
+                it_type = &struct_spec->fields[it_iota].type;
+            } else if (n->type.kind == TYPE_ARRAY) {
+                it_type = n->type.spec.array.element;
+            } else if (n->type.kind == TYPE_SLICE) {
+                it_type = n->type.spec.slice.element;
+                array_count = max(array_count, it_iota + 1);
             } else {
                 unreachable();
             }
+
+            check_expr(c, it, REF_NONE, it_type);
+            type_assert(c, it, *it_type);
+        }
+
+        if (n->type.kind == TYPE_SLICE) {
+            Type *element = n->type.spec.slice.element;
+            n->type.spec.array.element = element;
+            n->type.spec.array.count = array_count;
+            n->type.kind = TYPE_ARRAY;
         }
 
         is_ref_valid = ref == REF_ADDR;

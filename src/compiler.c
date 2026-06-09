@@ -2040,20 +2040,28 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             Node *it = iter;
-            if (n->type.kind == TYPE_STRUCT) {
-                if (compound->is_designated) {
-                    assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
-                    Node_Binary *it_binary = (Node_Binary *) it;
-                    it_iota = it->token.as.integer;
-                    it = it_binary->rhs;
-                }
+            if (compound->is_designated) {
+                assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+                Node_Binary *it_binary = (Node_Binary *) it;
+                it_iota = it->token.as.integer;
+                it = it_binary->rhs;
+            }
 
-                LLVMValueRef field = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
-                LLVMValueRef value = compile_expr(c, it, false);
-                LLVMBuildStore(c->llvm_builder, value, field);
+            LLVMValueRef ptr = NULL;
+            if (n->type.kind == TYPE_STRUCT) {
+                ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
+            } else if (n->type.kind == TYPE_ARRAY) {
+                LLVMTypeRef  element_type = n->type.spec.array.element->llvm;
+                LLVMValueRef indices[] = {
+                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it_iota, true),
+                };
+                ptr = LLVMBuildGEP2(c->llvm_builder, element_type, memory, indices, len(indices), "");
             } else {
                 unreachable();
             }
+
+            LLVMValueRef value = compile_expr(c, it, false);
+            LLVMBuildStore(c->llvm_builder, value, ptr);
         }
 
         if (ref) {
