@@ -2756,22 +2756,22 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             assert(value.kind == CONST_VALUE_INT);
             array_count = value.as.integer;
 
-            // TODO: Signed vs unsigned arithmetics for array index and range
-            if (array_count > INT64_MAX) {
+            const u64 max_count = INT64_MAX; // TODO: Signed vs unsigned arithmetics for array index and range
+            if (array_count > max_count) {
                 if (type_is_signed(indexable->count->type)) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
                         Pos_Arg(indexable->count->token.pos),
                         array_count,
-                        INT64_MAX);
+                        max_count);
                 } else {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Number '%zu' is invalid for array capacity, which must be in range [0, %zu]\n",
                         Pos_Arg(indexable->count->token.pos),
                         array_count,
-                        INT64_MAX);
+                        max_count);
                 }
                 exit(1);
             }
