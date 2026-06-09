@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -172,6 +172,12 @@ const char *type_to_cstr_raw(Type type) {
         }
     } break;
 
+    case TYPE_ARRAY:
+        temp_sprintf("[%zu]", type.spec.array.count);
+        temp_remove_null();
+        type_to_cstr_raw(*type.spec.array.element);
+        break;
+
     case TYPE_SLICE:
         temp_sprintf("[]");
         temp_remove_null();
@@ -272,7 +278,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -317,6 +323,9 @@ bool type_eq(Type a, Type b) {
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);
 
+    case TYPE_ARRAY:
+        return a.spec.array.count == b.spec.array.count && type_eq(*a.spec.array.element, *b.spec.array.element);
+
     case TYPE_SLICE:
         return type_eq(*a.spec.slice.element, *b.spec.slice.element);
 
@@ -344,7 +353,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -357,7 +366,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -405,7 +414,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -429,7 +438,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta) {
         return false;

@@ -1,0 +1,9 @@
+EXIT 134
+STDOUT 6
+2
+4
+6
+
+STDERR 108
+tests/bounds_check_fail_on_range_begin_array.glos:14:18: Range (6..7) is out of bounds in array of length 5
+

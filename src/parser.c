@@ -836,6 +836,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_INDEXABLE, token);
         Node_Indexable *indexable = (Node_Indexable *) node;
 
+        token = peek_token(p);
+        if (token.kind != TOKEN_RBRACKET) {
+            indexable->count = parse_expr(p, POWER_SET, false, true, NULL);
+        }
         expect_token(p, TOKEN_RBRACKET);
         indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
     } break;

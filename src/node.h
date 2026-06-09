@@ -69,6 +69,7 @@ typedef enum {
     TYPE_ENUM,
     TYPE_STRUCT,
 
+    TYPE_ARRAY,
     TYPE_SLICE,
     TYPE_STRING,
 
@@ -112,6 +113,11 @@ typedef struct {
 } Type_Struct;
 
 typedef struct {
+    Type  *element;
+    size_t count;
+} Type_Array;
+
+typedef struct {
     Type *element;
 } Type_Slice;
 
@@ -141,11 +147,14 @@ struct Type {
 
     union {
         Type_Fn      fn;
-        Type_Slice   slice;
         Type_Enum    enumm;
         Type_Struct *structt;
-        Type_Group   group;
-        Module      *module;
+
+        Type_Array array;
+        Type_Slice slice;
+
+        Type_Group group;
+        Module    *module;
 
         Type_Unknown_Compound unknown_compound;
     } spec;
@@ -502,6 +511,7 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *element;
+    Node *count;
 } Node_Indexable;
 
 struct Node_Define {

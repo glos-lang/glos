@@ -31,7 +31,7 @@ void link_flags_add_libname(Link_Flags *ls, SV name) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
         return;
@@ -116,6 +116,11 @@ static void compile_type(Compiler *c, Type *type) {
         }
         type->llvm = spec->llvm;
     } break;
+
+    case TYPE_ARRAY:
+        compile_type(c, type->spec.array.element);
+        type->llvm = LLVMArrayType(type->spec.array.element->llvm, type->spec.array.count);
+        break;
 
     case TYPE_SLICE:
     case TYPE_STRING:
@@ -232,7 +237,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -240,6 +245,7 @@ static bool type_is_compound(Type type) {
 
     switch (type.kind) {
     case TYPE_STRUCT:
+    case TYPE_ARRAY:
     case TYPE_SLICE:
     case TYPE_STRING:
     case TYPE_GROUP:
@@ -251,7 +257,7 @@ static bool type_is_compound(Type type) {
 }
 
 #ifdef PLATFORM_X86_64_LINUX
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
     assert(type_is_compound(type));
     switch (type.kind) {
@@ -274,6 +280,11 @@ static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, L
             }
         }
     } break;
+
+    case TYPE_ARRAY:
+        out[0] = LLVMInt64TypeInContext(c->llvm_context);
+        out[1] = LLVMIntTypeInContext(c->llvm_context, compile_sizeof(c, &type) * 8 - 64);
+        break;
 
     case TYPE_SLICE:
     case TYPE_STRING:
@@ -317,7 +328,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 22, "");
+    static_assert(COUNT_TYPES == 23, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -756,7 +767,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -942,6 +953,34 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
         return spec->debug;
     }
+
+    case TYPE_ARRAY: {
+        compile_type(c, type);
+
+        size_t subscripts_count = 0;
+        for (Type *t = type; t->kind == TYPE_ARRAY; t = t->spec.array.element) {
+            subscripts_count++;
+        }
+        LLVMMetadataRef *subscripts = temp_alloc(subscripts_count * sizeof(*subscripts));
+
+        Type  *innermost = NULL;
+        size_t subscripts_iota = 0;
+        for (innermost = type; innermost->kind == TYPE_ARRAY; innermost = innermost->spec.array.element) {
+            subscripts[subscripts_iota++] =
+                LLVMDIBuilderGetOrCreateSubrange(c->llvm_debug_builder, 0, innermost->spec.array.count);
+        }
+
+        LLVMMetadataRef metadata = LLVMDIBuilderCreateArrayType(
+            c->llvm_debug_builder,
+            compile_sizeof(c, type) * 8,
+            0,
+            get_debug_for_type(c, innermost),
+            subscripts,
+            subscripts_count);
+
+        temp_reset(subscripts);
+        return metadata;
+    } break;
 
     case TYPE_SLICE: {
         const void *checkpoint = temp_alloc(0);
@@ -1952,6 +1991,19 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             set_debug_pos(c, n->token.pos);
         }
 
+        if (member->lhs->type.kind == TYPE_ARRAY) {
+            switch (member->field_index) {
+            case 0:
+                return lhs;
+
+            case 1:
+                return LLVMConstInt(n->type.llvm, member->lhs->type.spec.array.count, type_is_signed(n->type));
+
+            default:
+                unreachable();
+            }
+        }
+
         LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, member->field_index, "");
         if (ref) {
             return ptr;
@@ -2104,16 +2156,28 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
 
-        const char *label = "slice";
-        if (!index->lhs->type.ref) {
-            static_assert(COUNT_TYPES == 22, "");
+        Type  element_type_buffer = {0};
+        Type *element_type = &element_type_buffer;
+
+        const char *label = "";
+        if (index->lhs->type.ref) {
+            element_type = n->type.spec.slice.element;
+        } else {
+            static_assert(COUNT_TYPES == 23, "");
             switch (index->lhs->type.kind) {
+            case TYPE_ARRAY:
+                label = "array";
+                element_type = index->lhs->type.spec.array.element;
+                break;
+
             case TYPE_SLICE:
-                // Pass
+                label = "slice";
+                element_type = index->lhs->type.spec.slice.element;
                 break;
 
             case TYPE_STRING:
                 label = "string";
+                element_type_buffer.kind = TYPE_CHAR;
                 break;
 
             default:
@@ -2122,22 +2186,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        LLVMValueRef lhs = compile_expr(c, index->lhs, !index->lhs->type.ref);
+        LLVMValueRef lhs = compile_expr(c, index->lhs, index->lhs->type.kind == TYPE_ARRAY || !index->lhs->type.ref);
         LLVMValueRef a = compile_expr(c, index->a, false);
 
-        Type  element_type_buffer = {0};
-        Type *element_type = &element_type_buffer;
-        if (index->lhs->type.ref) {
-            element_type = n->type.spec.slice.element;
-        } else if (index->lhs->type.kind == TYPE_SLICE) {
-            element_type = index->lhs->type.spec.slice.element;
-        } else if (index->lhs->type.kind == TYPE_STRING) {
-            element_type_buffer.kind = TYPE_CHAR;
-        } else {
-            unreachable();
-        }
         compile_type(c, element_type);
-
         if (index->is_ranged) {
             if (a) {
                 a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type));
@@ -2156,6 +2208,13 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             LLVMValueRef count = NULL;
             if (index->lhs->type.ref) {
                 ptr = lhs;
+            } else if (index->lhs->type.kind == TYPE_ARRAY) {
+                ptr = lhs;
+                count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), index->lhs->type.spec.array.count, true);
+
+                if (!b) {
+                    b = count;
+                }
             } else if (index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) {
                 ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
                 count = LLVMBuildLoad2(
@@ -2251,7 +2310,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         // Bounds check
         {
             LLVMValueRef count = NULL;
-            if (index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) {
+            if (index->lhs->type.kind == TYPE_ARRAY) {
+                count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), index->lhs->type.spec.array.count, true);
+            } else if (index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) {
                 count = LLVMBuildStructGEP2(c->llvm_builder, index->lhs->type.llvm, lhs, 1, "");
                 count = LLVMBuildLoad2(c->llvm_builder, LLVMInt64TypeInContext(c->llvm_context), count, "");
             } else {
@@ -2283,7 +2344,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         LLVMValueRef ptr = NULL;
-        if (index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) {
+        if (index->lhs->type.kind == TYPE_ARRAY) {
+            ptr = lhs;
+        } else if (index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) {
             ptr = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
         } else {
             unreachable();

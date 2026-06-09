@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "token.h"
 #include <assert.h>
+#include <stdint.h>
 
 static void error_undefined(const Token *t, const char *label, bool no_exit) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
@@ -87,7 +88,7 @@ static void check_that_type_is_known(const Node *n) {
     }
 }
 
-static_assert(COUNT_TYPES == 22, "");
+static_assert(COUNT_TYPES == 23, "");
 static void check_int_limit(Node *n, const void *ptr) {
     if (type_is_signed(n->type)) {
         typedef struct {
@@ -444,7 +445,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 22, "");
+    static_assert(COUNT_TYPES == 23, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -2024,6 +2025,17 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
 
                 n->type = definition->type;
+            } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
+                if (sv_match(member->field.sv, "data")) {
+                    n->type = *member->lhs->type.spec.array.element;
+                    n->type.ref++;
+                    member->field_index = 0;
+                } else if (sv_match(member->field.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_I64};
+                    member->field_index = 1;
+                } else {
+                    error_undefined(&member->field, "field", false);
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
                 if (sv_match(member->field.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
@@ -2613,7 +2625,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     } break;
 
     case NODE_INDEX: {
-        // TODO: What about the signedness of indexing operations
         Node_Index *index = (Node_Index *) n;
         check_expr(c, index->lhs, ref, NULL);
         check_that_type_is_known(index->lhs);
@@ -2657,7 +2668,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     .kind = TYPE_SLICE,
                     .spec.slice.element = arena_clone(c->arena, &element_type, sizeof(element_type)),
                 };
-            } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) || type_kind_eq(index->lhs->type, TYPE_STRING)) {
+            } else if (
+                type_kind_eq(index->lhs->type, TYPE_ARRAY) || type_kind_eq(index->lhs->type, TYPE_SLICE) ||
+                type_kind_eq(index->lhs->type, TYPE_STRING)) {
                 // The beginning can be inferred to be the beginning of the slice
                 if (index->a) {
                     check_expr(c, index->a, REF_NONE, NULL);
@@ -2671,6 +2684,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
 
                 n->type = index->lhs->type;
+                if (type_kind_eq(n->type, TYPE_ARRAY)) {
+                    n->type.kind = TYPE_SLICE;
+                }
             } else {
                 fprintf(
                     stderr,
@@ -2683,7 +2699,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             is_ref_valid = false;
         } else {
-            if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
+            if (type_kind_eq(index->lhs->type, TYPE_ARRAY) && !index->lhs->type.ref) {
+                check_expr(c, index->a, REF_NONE, NULL);
+                type_assert_numeric(index->a, false);
+                n->type = *index->lhs->type.spec.array.element;
+            } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
                 check_expr(c, index->a, REF_NONE, NULL);
                 type_assert_numeric(index->a, false);
                 n->type = *index->lhs->type.spec.slice.element;
@@ -2727,30 +2747,68 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_INDEXABLE: {
         Node_Indexable *indexable = (Node_Indexable *) n;
 
-        // The type `[]T` gets compiled to:
-        //
-        // ```
-        // struct {
-        //     T  *data;
-        //     i64 count;
-        // }
-        // ```
-        //
-        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
-        check_expr(c, indexable->element, REF_ADDR, NULL);
+        size_t array_count = 0;
+        if (indexable->count) {
+            check_expr(c, indexable->count, REF_NONE, NULL);
+            type_assert_numeric(indexable->count, false);
 
-        Type element_type = type_assert_type(indexable->element);
-        element_type.is_meta = false;
+            const Const_Value value = eval_const_expr(c, indexable->count);
+            assert(value.kind == CONST_VALUE_INT);
+            array_count = value.as.integer;
 
-        const Type_Slice slice_type_spec = {
-            .element = arena_clone(c->arena, &element_type, sizeof(element_type)),
-        };
+            // TODO: Signed vs unsigned arithmetics for array index and range
+            if (array_count > INT64_MAX) {
+                if (type_is_signed(indexable->count->type)) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
+                        Pos_Arg(indexable->count->token.pos),
+                        array_count,
+                        INT64_MAX);
+                } else {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Number '%zu' is invalid for array capacity, which must be in range [0, %zu]\n",
+                        Pos_Arg(indexable->count->token.pos),
+                        array_count,
+                        INT64_MAX);
+                }
+                exit(1);
+            }
 
-        n->type = (Type) {
-            .kind = TYPE_SLICE,
-            .is_meta = true,
-            .spec.slice = slice_type_spec,
-        };
+            check_expr(c, indexable->element, REF_NONE, NULL);
+        } else {
+            // The type `[]T` gets compiled to:
+            //
+            // ```
+            // struct {
+            //     T  *data;
+            //     i64 count;
+            // }
+            // ```
+            //
+            // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
+            check_expr(c, indexable->element, REF_ADDR, NULL);
+        }
+
+        Type *element_type = arena_alloc(c->arena, sizeof(*element_type));
+        *element_type = type_assert_type(indexable->element);
+        element_type->is_meta = false;
+
+        if (indexable->count) {
+            n->type = (Type) {
+                .kind = TYPE_ARRAY,
+                .is_meta = true,
+                .spec.array.element = element_type,
+                .spec.array.count = array_count,
+            };
+        } else {
+            n->type = (Type) {
+                .kind = TYPE_SLICE,
+                .is_meta = true,
+                .spec.slice.element = element_type,
+            };
+        }
 
         is_ref_valid = ref == REF_ADDR;
     } break;
