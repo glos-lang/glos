@@ -1,10 +1,16 @@
 main :: () {
-    b := board_new(30)
-    defer board_free(&b)
+    b: [30]i32
 
     b[b.count - 2] = 1
     for i := 0; i < b.count - 2; i += 1 {
-        board_show(b)
+        for i := 0; i < b.count; i += 1 {
+            if bool(b[i]) {
+                putchar(i32('*'))
+            } else {
+                putchar(i32(' '))
+            }
+        }
+        putchar(i32('\n'))
 
         pattern := (b[0] << 1) | b[1]
         for j := 1; j < b.count - 1; j += 1 {
@@ -14,31 +20,6 @@ main :: () {
     }
 }
 
-Board :: #distinct []i32
-
-board_new :: (n: i64) -> Board {
-    return Board((&i32(calloc(n, sizeof(i32))))[..n])
-}
-
-board_free :: (b: &Board) {
-    free(rawptr(b.data))
-    b.data = null
-    b.count = 0
-}
-
-board_show :: (b: Board) {
-    for i := 0; i < b.count; i += 1 {
-        if bool(b[i]) {
-            putchar(i32('*'))
-        } else {
-            putchar(i32(' '))
-        }
-    }
-    putchar(i32('\n'))
-}
-
 extern {
-    calloc :: (count: i64, size: i64) -> rawptr
-    free :: (ptr: rawptr)
     putchar :: (ch: i32) -> i32
 }
