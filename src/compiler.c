@@ -1594,7 +1594,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1650,44 +1650,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         return NULL;
     }
 
-    case NODE_GHOST: {
-        Node_Ghost *ghost = (Node_Ghost *) n;
-        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-
-        if (ghost->arg->default_value_is_caller_location) {
-            const char *cstr = temp_sprintf(Pos_Fmt, Pos_Arg(n->token.pos));
-
-            SV sv = sv_from_cstr(cstr);
-            sv.count -= 1;
-
-            LLVMValueRef value = compile_string(c, sv, NULL, ref);
-            temp_reset(cstr);
-            return value;
-        }
-
-        const Const_Value const_value = *ghost->arg->default_value;
-
-        static_assert(COUNT_CONST_VALUES == 7, "");
-        switch (const_value.kind) {
-        case CONST_VALUE_STRUCT:
-        case CONST_VALUE_ARRAY:
-        case CONST_VALUE_STRING:
-            if (!ghost->arg->default_value_llvm) {
-                ghost->arg->default_value_llvm =
-                    compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
-            }
-
-            if (ref) {
-                return ghost->arg->default_value_llvm;
-            }
-
-            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ghost->arg->default_value_llvm, "");
-
-        default:
-            return compile_const_value(c, const_value, n->type);
-        }
-    }
-
     case NODE_UNARY: {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
@@ -1722,7 +1684,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef inc = NULL;
             if (type_is_pointer(n->type)) {
-                LLVMValueRef index = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 1, type_is_signed(n->type));
+                LLVMValueRef index = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 1, true);
                 inc = LLVMBuildGEP2(c->llvm_builder, LLVMInt8TypeInContext(c->llvm_context), value, &index, 1, "");
             } else {
                 inc = LLVMBuildAdd(c->llvm_builder, value, LLVMConstInt(n->type.llvm, 1, type_is_signed(n->type)), "");
@@ -1741,7 +1703,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef inc = NULL;
             if (type_is_pointer(n->type)) {
-                LLVMValueRef index = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), -1, type_is_signed(n->type));
+                LLVMValueRef index = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), -1, true);
                 inc = LLVMBuildGEP2(c->llvm_builder, LLVMInt8TypeInContext(c->llvm_context), value, &index, 1, "");
             } else {
                 inc = LLVMBuildSub(c->llvm_builder, value, LLVMConstInt(n->type.llvm, 1, type_is_signed(n->type)), "");
@@ -2167,15 +2129,15 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        LLVMValueRef fn_value = compile_expr(c, call->fn, false);
+        LLVMValueRef  fn_value = compile_expr(c, call->fn, false);
+        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
 
         const void *checkpoint = temp_alloc(0);
 
         ABI abi = {0};
-        abi.args = temp_alloc(call->args_count * sizeof(*abi.args));
-        abi.args_count = call->args_count;
+        abi.args_count = max(call->args_count, fn_type_spec.args_count);
+        abi.args = temp_alloc(abi.args_count * sizeof(*abi.args));
 
-        const Type_Fn fn_type_spec = call->fn->type.spec.fn;
         abi_set_return_type(c, &abi, fn_type_spec.return_type);
         {
             size_t iota = 0;
@@ -2188,6 +2150,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 } else {
                     abi_set_argument_type(c, &abi, iota++, &arg->type);
                 }
+            }
+
+            for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
+                abi_set_argument_type(c, &abi, iota++, &fn_type_spec.args[i].type);
             }
 
             if (fn_type_spec.is_variadic) {
@@ -2214,6 +2180,43 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             c->group_values.count = group_values_count_save;
+        }
+
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+        for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
+            Type_Fn_Arg *arg = &fn_type_spec.args[i];
+            compile_type(c, &arg->type);
+
+            LLVMValueRef value = NULL;
+            if (arg->default_value_is_caller_location) {
+                const char *cstr = temp_sprintf(Pos_Fmt, Pos_Arg(call->fn->token.pos));
+
+                SV sv = sv_from_cstr(cstr);
+                sv.count -= 1;
+
+                value = compile_string(c, sv, NULL, ref);
+                temp_reset(cstr);
+            } else {
+                static_assert(COUNT_CONST_VALUES == 7, "");
+                switch (arg->default_value->kind) {
+                case CONST_VALUE_STRUCT:
+                case CONST_VALUE_ARRAY:
+                case CONST_VALUE_STRING:
+                    if (!arg->default_value_llvm) {
+                        arg->default_value_llvm =
+                            compile_const_value_into_memory(c, compile_const_value(c, *arg->default_value, arg->type));
+                    }
+
+                    value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, arg->default_value_llvm, "");
+                    break;
+
+                default:
+                    value = compile_const_value(c, *arg->default_value, arg->type);
+                    break;
+                }
+            }
+
+            abi_call_add_arg(c, &abi_call, value, arg->type);
         }
 
         set_debug_pos(c, n->token.pos);
@@ -2449,7 +2452,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

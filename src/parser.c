@@ -1100,7 +1100,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

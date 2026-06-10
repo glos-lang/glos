@@ -504,12 +504,11 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
         [NODE_GROUP] = sizeof(Node_Group),
-        [NODE_GHOST] = sizeof(Node_Ghost),
         [NODE_UNARY] = sizeof(Node_Unary),
         [NODE_BINARY] = sizeof(Node_Binary),
         [NODE_MEMBER] = sizeof(Node_Member),
@@ -594,7 +593,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -616,10 +615,6 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         nodes_debug_impl(f, group->nodes, depth + 1, "Nodes");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
-
-    case NODE_GHOST:
-        fprintf(f, "Ghost\n");
-        break;
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;

@@ -153,7 +153,7 @@ static i64 enum_get_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
@@ -496,7 +496,7 @@ static void node_finalize_type_of_unknown(Type *t) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -556,7 +556,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -762,7 +762,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -1320,7 +1320,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -1852,7 +1852,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type) {
     if (!n) {
         return;
@@ -1946,9 +1946,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         n->type = (Type) {.kind = TYPE_GROUP, .spec.group = spec};
         is_ref_valid = true;
     } break;
-
-    case NODE_GHOST:
-        unreachable();
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
@@ -2794,16 +2791,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
             }
 
-            for (size_t i = call->args_count; i < fn_type_spec.args_count; i++) {
-                const Token ghost_token = {.pos = call->fn->token.pos};
-                Node_Ghost *ghost = (Node_Ghost *) node_alloc(c->arena, NODE_GHOST, ghost_token);
-                ghost->arg = &fn_type_spec.args[i];
-                ghost->node.type = fn_type_spec.args[i].type;
-
-                nodes_push(&call->args, (Node *) ghost);
-                call->args_count++;
-            }
-
             n->type = *fn_type_spec.return_type;
             if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
                 fprintf(
@@ -3020,7 +3007,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
