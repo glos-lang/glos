@@ -1871,7 +1871,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         }
 
         // String comparison
-        if (binary->lhs->type.kind == TYPE_STRING) {
+        if ((n->token.kind == TOKEN_EQ || n->token.kind == TOKEN_NE) && binary->lhs->type.kind == TYPE_STRING) {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
             LLVMValueRef rhs = compile_expr(c, binary->rhs, true);
             set_debug_pos(c, n->token.pos);
