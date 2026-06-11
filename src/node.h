@@ -364,6 +364,9 @@ struct Node_Atom {
 
     // When this atom is a reference to another defining atom
     Node_Atom *definition;
+
+    bool         is_ghost;
+    LLVMValueRef ghost_llvm;
 };
 
 typedef struct {
@@ -601,6 +604,8 @@ typedef struct {
 
     bool  is_compile_time;
     Node *compile_time_real_block;
+
+    Node_Atom *ghost;
 } Node_If;
 
 typedef struct {
@@ -615,6 +620,8 @@ typedef struct {
     Node  node;
     Nodes preds;
     Node *body;
+
+    Node_Atom *ghost;
 } Node_Case;
 
 typedef struct {

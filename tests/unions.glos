@@ -7,8 +7,8 @@ show :: (s: Show) {
     print s.case
 
     if s == {
-    case i64;    print s.(i64)
-    case string; fmt.println(s.(string))
+    case i64;    print s
+    case string; fmt.println(s)
     case;        fmt.println("nil")
     }
 
@@ -20,4 +20,9 @@ main :: () {
     show(s)
     show(Show(69))
     show(Show("Urmom"))
+
+    s = Show(420)
+    if s == i64 {
+        assert(s == 420)
+    }
 }

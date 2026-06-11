@@ -1374,7 +1374,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
                 for (size_t j = 0; j < sw->preds_count; j++) {
                     const Const_Value *pred_value = &sw->preds[j].value;
                     assert(pred_value->kind == CONST_VALUE_INT);
-                    if ((size_t) pred_value->as.integer == i) {
+                    if ((size_t) pred_value->as.integer == i + 1) {
                         handled = true;
                         break;
                     }
@@ -3157,6 +3157,19 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
+static Node_Atom *introduce_ghost_for_union(Compiler *c, Node_Atom *from, Type to) {
+    from = from->definition;
+
+    Node_Atom *ghost = arena_clone(c->arena, from, sizeof(*from));
+    ghost->is_ghost = true;
+    ghost->definition = from;
+    ghost->node.type = to;
+    ghost->node.type.is_meta = false;
+    context_push_local(&c->context, ghost);
+
+    return ghost;
+}
+
 static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -3237,7 +3250,22 @@ static void check_stmt(Compiler *c, Node *n) {
         } else {
             check_expr(c, iff->condition, REF_NONE, NULL);
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+
+            size_t context_end_save = c->context.current->end;
+            if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
+                Node_Binary *condition = (Node_Binary *) iff->condition;
+                if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
+                    assert(condition->rhs->type.is_meta);
+                    iff->ghost = introduce_ghost_for_union(c, (Node_Atom *) condition->lhs, condition->rhs->type);
+                } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
+                    assert(condition->lhs->type.is_meta);
+                    iff->ghost = introduce_ghost_for_union(c, (Node_Atom *) condition->rhs, condition->lhs->type);
+                }
+            }
+
             check_stmt(c, iff->consequence);
+            context_set_end(&c->context, context_end_save);
+
             check_stmt(c, iff->antecedence);
         }
     } break;
@@ -3275,11 +3303,20 @@ static void check_stmt(Compiler *c, Node *n) {
         } else {
             size_t iota = 0;
             for (Node *it = sw->cases.head; it; it = it->next) {
-                Node_Case *case_ = (Node_Case *) it;
-                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                Node_Case *branch = (Node_Case *) it;
+                size_t     preds_count = 0;
+                for (Node *pred = branch->preds.head; pred; pred = pred->next) {
                     check_switch_pred(c, sw, pred, &iota);
+                    preds_count++;
                 }
-                check_stmt(c, case_->body);
+
+                size_t context_end_save = c->context.current->end;
+                if (sw->unionn && sw->expr->kind == NODE_ATOM && preds_count == 1) {
+                    branch->ghost = introduce_ghost_for_union(c, (Node_Atom *) sw->expr, branch->preds.head->type);
+                }
+
+                check_stmt(c, branch->body);
+                context_set_end(&c->context, context_end_save);
             }
             assert(iota == sw->preds_count);
 

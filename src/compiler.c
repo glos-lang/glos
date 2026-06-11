@@ -1676,6 +1676,16 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     }
 
     assert(definition);
+    if (definition->is_ghost) {
+        assert(definition->ghost_llvm);
+        if (ref) {
+            return definition->ghost_llvm;
+        }
+
+        set_debug_pos(c, token.pos);
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->ghost_llvm, "");
+    }
+
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
@@ -1866,8 +1876,13 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
             LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
             LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, expr, true), "");
+
             return LLVMBuildICmp(
-                c->llvm_builder, LLVMIntEQ, value, LLVMConstInt(i64_type, binary->union_check_index, true), "");
+                c->llvm_builder,
+                n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
+                value,
+                LLVMConstInt(i64_type, binary->union_check_index, true),
+                "");
         }
 
         // String comparison
@@ -2633,6 +2648,13 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
+static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost) {
+    LLVMValueRef real = compile_ident(c, (Node *) ghost, ghost->definition, true);
+    LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+    LLVMValueRef indices[] = {LLVMConstInt(i64_type, 1, true)};
+    ghost->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
+}
+
 static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -2748,6 +2770,10 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         // Consequence
         LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
+
+        if (iff->ghost) {
+            introduce_ghost_for_union(c, iff->ghost);
+        }
         compile_stmt(c, iff->consequence);
 
         LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
@@ -2868,13 +2894,13 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         size_t iota = 0;
         for (Node *it = sw->cases.head; it; it = it->next) {
-            Node_Case *case_ = (Node_Case *) it;
-            if (!case_->preds.head) {
+            Node_Case *branch = (Node_Case *) it;
+            if (!branch->preds.head) {
                 continue; // Fallback
             }
 
             LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-            for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+            for (Node *pred = branch->preds.head; pred; pred = pred->next) {
                 const Const_Value *pred_value = &sw->preds[iota++].value;
 
                 LLVMValueRef value = NULL;
@@ -2886,7 +2912,12 @@ static void compile_stmt(Compiler *c, Node *n) {
                 LLVMAddCase(sw_llvm, value, block);
             }
             LLVMPositionBuilderAtEnd(c->llvm_builder, block);
-            compile_stmt(c, case_->body);
+
+            if (branch->ghost) {
+                introduce_ghost_for_union(c, branch->ghost);
+            }
+
+            compile_stmt(c, branch->body);
 
             LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
             LLVMBuildBr(c->llvm_builder, end);
