@@ -5,5 +5,5 @@ Value :: union {
 
 main :: () {
     s := Value(69)
-    string(s)
+    s.(string)
 }

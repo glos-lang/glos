@@ -389,10 +389,13 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *lhs;
-    Token field;
+
+    Token field; // Value.field
+    Node *rhs;   // Union.(Type)
 
     union {
         size_t field_index;
+        size_t union_index;
         size_t enum_value;
     };
 
@@ -533,7 +536,6 @@ typedef enum {
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
     TYPE_CAST_TO_UNION,
-    TYPE_CAST_FROM_UNION,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 

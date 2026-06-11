@@ -2150,6 +2150,38 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             set_debug_pos(c, n->token.pos);
         }
 
+        if (member->rhs) {
+            // Check if tag matches
+            {
+                LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+                LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+                LLVMValueRef tag = LLVMBuildLoad2(c->llvm_builder, i64_type, lhs, "");
+
+                LLVMValueRef check = LLVMBuildICmp(
+                    c->llvm_builder, LLVMIntEQ, tag, LLVMConstInt(i64_type, member->union_index, true), "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                {
+                    const char *message = temp_sprintf(Pos_Fmt "Union type mismatch\n", Pos_Arg(n->token.pos));
+                    compile_panic(c, message, NULL, NULL, NULL);
+                    temp_reset(message);
+                }
+
+                // Success
+                LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+            }
+
+            LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, member->lhs->type.llvm, lhs, 1, "");
+            if (ref) {
+                return payload;
+            }
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, payload, "");
+        }
+
         if (member->lhs->type.kind == TYPE_ARRAY) {
             switch (member->field_index) {
             case 0:
@@ -2240,11 +2272,11 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_CALL: {
         Node_Call *call = (Node_Call *) n;
         if (call->is_type_cast) {
-            LLVMValueRef from = compile_expr(c, call->args.head, call->type_cast == TYPE_CAST_FROM_UNION);
+            LLVMValueRef from = compile_expr(c, call->args.head, false);
             LLVMTypeRef  from_type = call->args.head->type.llvm;
 
             set_debug_pos(c, call->fn->token.pos);
-            static_assert(COUNT_TYPE_CASTS == 5, "");
+            static_assert(COUNT_TYPE_CASTS == 4, "");
             switch (call->type_cast) {
             case TYPE_CAST_NOP:
                 return from;
@@ -2271,39 +2303,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                     return memory;
                 }
                 return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
-            }
-
-            case TYPE_CAST_FROM_UNION: {
-                // Check if tag matches
-                {
-                    LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-                    LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-
-                    LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
-                    LLVMValueRef tag = LLVMBuildLoad2(c->llvm_builder, i64_type, from, "");
-
-                    LLVMValueRef check = LLVMBuildICmp(
-                        c->llvm_builder, LLVMIntEQ, tag, LLVMConstInt(i64_type, call->type_cast_union_index, true), "");
-                    LLVMBuildCondBr(c->llvm_builder, check, success, failure);
-
-                    // Failure
-                    LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
-                    {
-                        const char *message =
-                            temp_sprintf(Pos_Fmt "Union type mismatch\n", Pos_Arg(call->fn->token.pos));
-                        compile_panic(c, message, NULL, NULL, NULL);
-                        temp_reset(message);
-                    }
-
-                    // Success
-                    LLVMPositionBuilderAtEnd(c->llvm_builder, success);
-                }
-
-                LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, call->args.head->type.llvm, from, 1, "");
-                if (ref) {
-                    return payload;
-                }
-                return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, payload, "");
             }
 
             default:

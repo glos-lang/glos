@@ -1106,7 +1106,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         }
 
         const Const_Value value = eval_const_expr(c, call->args.head);
-        static_assert(COUNT_TYPE_CASTS == 5, "");
+        static_assert(COUNT_TYPE_CASTS == 4, "");
         switch (call->type_cast) {
         case TYPE_CAST_NOP:
             return value;
@@ -1118,7 +1118,6 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             return const_value_int(value.as.integer != 0);
 
         case TYPE_CAST_TO_UNION:
-        case TYPE_CAST_FROM_UNION:
             todo();
 
         default:
@@ -1924,6 +1923,25 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
     exit(1);
 }
 
+static void check_whether_member_access_is_valid(Node_Member *m) {
+    if (m->rhs) {
+        assert(m->lhs); // A bare '.(Type)' will error out at parse time
+        if (!type_is_union(m->lhs->type)) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot access variant of %s\n",
+                Pos_Arg(m->node.token.pos),
+                type_to_cstr(m->lhs->type));
+            exit(1);
+        }
+    } else {
+        if (sv_match(m->field.sv, "_")) {
+            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(m->field.pos));
+            exit(1);
+        }
+    }
+}
+
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
 static_assert(COUNT_NODES == 27, "");
@@ -2205,11 +2223,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
-        if (sv_match(member->field.sv, "_")) {
-            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(member->field.pos));
-            exit(1);
-        }
-
         if (member->lhs) {
             check_expr(c, member->lhs, ref, NULL);
             check_that_type_is_known(member->lhs);
@@ -2217,19 +2230,30 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             is_ref_valid = true; // check_node() has already determined that the reference is valid
 
             if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
+                check_whether_member_access_is_valid(member);
                 Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
                 member->enum_value = enum_get_value(enumm, member->field.sv, &member->field);
                 member->is_enum = true;
                 n->type = member->lhs->type;
                 n->type.is_meta = false;
             } else if (type_kind_eq(member->lhs->type, TYPE_UNION)) {
-                if (sv_match(member->field.sv, "case")) {
-                    n->type = (Type) {.kind = TYPE_I64};
-                    member->field_index = 0;
+                check_whether_member_access_is_valid(member);
+                if (member->rhs) {
+                    check_expr(c, member->rhs, REF_NONE, NULL);
+                    type_assert_type(member->rhs);
+                    member->union_index = union_get_type_index(member->rhs, member->lhs->type);
+                    n->type = member->rhs->type;
+                    n->type.is_meta = false;
                 } else {
-                    error_undefined(&member->field, "field", false);
+                    if (sv_match(member->field.sv, "case")) {
+                        n->type = (Type) {.kind = TYPE_I64};
+                        member->field_index = 0;
+                    } else {
+                        error_undefined(&member->field, "field", false);
+                    }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
+                check_whether_member_access_is_valid(member);
                 Type_Struct_Field *definition = NULL;
 
                 Type_Struct *spec = member->lhs->type.spec.structt;
@@ -2251,6 +2275,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
                 n->type = definition->type;
             } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
+                check_whether_member_access_is_valid(member);
                 if (sv_match(member->field.sv, "data")) {
                     n->type = *member->lhs->type.spec.array.element;
                     n->type.ref++;
@@ -2262,6 +2287,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     error_undefined(&member->field, "field", false);
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
+                check_whether_member_access_is_valid(member);
                 if (sv_match(member->field.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
                     n->type.ref++;
@@ -2273,6 +2299,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     error_undefined(&member->field, "field", false);
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
+                check_whether_member_access_is_valid(member);
                 if (sv_match(member->field.sv, "data")) {
                     n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
                     member->field_index = 0;
@@ -2283,6 +2310,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     error_undefined(&member->field, "field", false);
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
+                check_whether_member_access_is_valid(member);
                 check_ident(c, n, ref);
             } else {
                 fprintf(
@@ -2293,6 +2321,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 exit(1);
             }
         } else {
+            check_whether_member_access_is_valid(member);
             n->type = (Type) {.kind = TYPE_UNKNOWN_ENUM};
             member->is_enum = true;
 
@@ -2812,12 +2841,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             bool same = false;
             bool to_union = false;
-            bool from_union = false;
             if (type_eq_without_distinct(*to_type, *from_type)) {
                 same = true;
-            } else if (type_is_union(*from_type)) {
-                // This has higher priority than to_union
-                from_union = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
             } else if (type_is_scalar(*to_type)) {
@@ -2829,9 +2854,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
 
             if (!same) {
-                if (from_union) {
-                    call->type_cast_union_index = union_get_type_index(call->fn, *from_type);
-                } else if (to_union) {
+                if (to_union) {
                     node_finalize_type_of_unknown(from_type);
                     call->type_cast_union_index = union_get_type_index(call->args.head, *to_type);
                 } else if (type_is_scalar(*to_type)) {
@@ -2876,8 +2899,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 call->type_cast = TYPE_CAST_NOP;
             } else if (type_eq(*to_type, (Type) {.kind = TYPE_BOOL})) {
                 call->type_cast = TYPE_CAST_TO_BOOL;
-            } else if (from_union) {
-                call->type_cast = TYPE_CAST_FROM_UNION;
             } else if (to_union) {
                 call->type_cast = TYPE_CAST_TO_UNION;
             } else {
