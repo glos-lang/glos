@@ -13,6 +13,7 @@ typedef struct Node_Define Node_Define;
 
 typedef struct Node_Fn     Node_Fn;
 typedef struct Node_Enum   Node_Enum;
+typedef struct Node_Union  Node_Union;
 typedef struct Node_Struct Node_Struct;
 
 typedef struct {
@@ -67,6 +68,7 @@ typedef enum {
 
     TYPE_FN,
     TYPE_ENUM,
+    TYPE_UNION,
     TYPE_STRUCT,
 
     TYPE_ARRAY,
@@ -81,9 +83,10 @@ typedef enum {
     COUNT_TYPES,
 } Type_Kind;
 
-typedef struct Type              Type;
-typedef struct Type_Fn_Arg       Type_Fn_Arg;
-typedef struct Type_Struct_Field Type_Struct_Field;
+typedef struct Type               Type;
+typedef struct Type_Fn_Arg        Type_Fn_Arg;
+typedef struct Type_Union_Variant Type_Union_Variant;
+typedef struct Type_Struct_Field  Type_Struct_Field;
 
 typedef struct {
     Type_Fn_Arg *args;
@@ -101,6 +104,17 @@ typedef struct {
     Type_Kind  underlying;
     Node_Enum *definition;
 } Type_Enum;
+
+typedef struct {
+    Type_Union_Variant *variants;
+    size_t              variants_count;
+    size_t              variants_size_max;
+
+    Node_Union *definition;
+
+    LLVMTypeRef     llvm;
+    LLVMMetadataRef debug;
+} Type_Union;
 
 typedef struct {
     Type_Struct_Field *fields;
@@ -148,6 +162,7 @@ struct Type {
     union {
         Type_Fn      fn;
         Type_Enum    enumm;
+        Type_Union  *unionn;
         Type_Struct *structt;
 
         Type_Array array;
@@ -174,6 +189,11 @@ struct Type_Fn_Arg {
     LLVMValueRef default_value_llvm;
 
     bool default_value_is_caller_location;
+};
+
+struct Type_Union_Variant {
+    Pos  pos;
+    Type type;
 };
 
 struct Type_Struct_Field {
@@ -267,6 +287,7 @@ typedef enum {
 
     NODE_FN,
     NODE_ENUM,
+    NODE_UNION,
     NODE_STRUCT,
     NODE_COMPOUND,
 
@@ -361,6 +382,8 @@ typedef struct {
     Node  node;
     Node *lhs;
     Node *rhs;
+
+    size_t union_check_index;
 } Node_Binary;
 
 typedef struct {
@@ -455,6 +478,21 @@ struct Node_Enum {
 };
 
 // This represents a type
+struct Node_Union {
+    Node   node;
+    Nodes  variants;
+    size_t variants_count; // Calculated at parse time
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    // The module this was parsed in
+    Module *module;
+
+    Node_Fn *defined_in;
+};
+
+// This represents a type
 struct Node_Struct {
     Node  node;
     Nodes fields;
@@ -494,6 +532,8 @@ typedef enum {
     TYPE_CAST_NOP,
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
+    TYPE_CAST_TO_UNION,
+    TYPE_CAST_FROM_UNION,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 
@@ -513,6 +553,7 @@ typedef struct {
 
     bool      is_type_cast;
     Type_Cast type_cast;
+    size_t    type_cast_union_index;
 
     bool is_stmt;
 } Node_Call;
@@ -586,7 +627,8 @@ typedef struct {
     }     *preds;
     size_t preds_count;
 
-    Node_Enum *enumeration;
+    Node_Enum  *enumeration;
+    Node_Union *unionn;
 
     bool  is_compile_time;
     Node *compile_time_real_block;

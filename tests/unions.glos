@@ -1,0 +1,23 @@
+Show :: union {
+    i64
+    string
+}
+
+show :: (s: Show) {
+    print s.case
+
+    if s == {
+    case i64;    print i64(s)
+    case string; fmt.println(string(s))
+    case;        fmt.println("nil")
+    }
+
+    fmt :: #import "fmt"
+}
+
+main :: () {
+    s: Show
+    show(s)
+    show(Show(69))
+    show(Show("Urmom"))
+}

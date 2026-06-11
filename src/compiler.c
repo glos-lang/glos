@@ -31,7 +31,7 @@ void link_flags_add_libname(Link_Flags *ls, SV name) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 static void compile_type(Compiler *c, Type *type) {
     if (!type || type->llvm) {
         return;
@@ -93,12 +93,32 @@ static void compile_type(Compiler *c, Type *type) {
         type->llvm = definition->llvm;
     } break;
 
+    case TYPE_UNION: {
+        Type_Union *spec = type->spec.unionn;
+        if (!spec->llvm) {
+            for (size_t i = 0; i < spec->variants_count; i++) {
+                Type_Union_Variant *it = &spec->variants[i];
+                compile_type(c, &it->type);
+
+                const size_t it_size = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm);
+                spec->variants_size_max = max(spec->variants_size_max, it_size);
+            }
+
+            LLVMTypeRef fields[] = {
+                LLVMInt64TypeInContext(c->llvm_context),
+                LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), spec->variants_size_max),
+            };
+
+            spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
+        }
+        type->llvm = spec->llvm;
+    } break;
+
     case TYPE_STRUCT: {
         assert(type->spec.structt);
 
         Type_Struct *spec = type->spec.structt;
         if (!spec->llvm) {
-
             LLVMTypeRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
@@ -237,13 +257,14 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
     }
 
     switch (type.kind) {
+    case TYPE_UNION:
     case TYPE_STRUCT:
     case TYPE_ARRAY:
     case TYPE_SLICE:
@@ -257,10 +278,14 @@ static bool type_is_compound(Type type) {
 }
 
 #ifdef PLATFORM_X86_64_LINUX
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
     assert(type_is_compound(type));
     switch (type.kind) {
+    case TYPE_UNION: {
+        todo(); // TODO(@union)
+    } break;
+
     case TYPE_STRUCT: {
         const Type_Struct *spec = type.spec.structt;
         for (size_t i = 0; i < spec->fields_count; i++) {
@@ -328,7 +353,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 23, "");
+    static_assert(COUNT_TYPES == 24, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -767,7 +792,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -851,6 +876,104 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             temp_reset(checkpoint);
         }
         return definition->debug;
+    }
+
+    case TYPE_UNION: {
+        compile_type(c, type);
+
+        Type_Union *spec = type->spec.unionn;
+        if (!spec->debug) {
+            const void *checkpoint = temp_alloc(0);
+
+            SV name = {0};
+            {
+                Node_Atom *defined_as = spec->definition->defined_as;
+                if (defined_as) {
+                    const char *namespace =
+                        temp_emit_nested_fn_name(c, spec->definition->defined_in, spec->definition->module);
+
+                    temp_remove_null();
+                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                    name = sv_from_cstr(namespace);
+                }
+            }
+
+            LLVMMetadataRef scope_metadata = NULL;
+            if (spec->definition->defined_in) {
+                scope_metadata = get_scope_of_definition(c, (Node *) spec->definition, spec->definition->defined_in);
+            }
+
+            LLVMMetadataRef file_metadata = get_debug_file(c, spec->definition->node.token.pos.path);
+            LLVMMetadataRef fields[2];
+
+            // Case
+            {
+                Type            case_type = {.kind = TYPE_I64};
+                LLVMMetadataRef case_type_metadata = get_debug_for_type(c, &case_type);
+
+                fields[0] = LLVMDIBuilderCreateMemberType(
+                    c->llvm_debug_builder,
+                    spec->debug,
+                    "case",
+                    strlen("case"),
+                    file_metadata,
+                    spec->definition->node.token.pos.row + 1,
+                    64,
+                    64,
+                    0,
+                    0,
+                    case_type_metadata);
+            }
+
+            // Payload
+            {
+                Type u8_type = {.kind = TYPE_U8};
+                Type payload_type = {
+                    .kind = TYPE_ARRAY,
+                    .spec.array.element = &u8_type,
+                    .spec.array.count = spec->variants_size_max,
+                };
+                compile_type(c, &payload_type);
+
+                LLVMMetadataRef payload_type_metadata = get_debug_for_type(c, &payload_type);
+                const size_t    payload_size_bits = LLVMABISizeOfType(c->llvm_target_data, payload_type.llvm) * 8;
+                const size_t    payload_align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, payload_type.llvm) * 8;
+
+                fields[1] = LLVMDIBuilderCreateMemberType(
+                    c->llvm_debug_builder,
+                    spec->debug,
+                    "payload",
+                    strlen("payload"),
+                    file_metadata,
+                    spec->definition->node.token.pos.row + 1,
+                    payload_size_bits,
+                    payload_align_bits,
+                    64,
+                    0,
+                    payload_type_metadata);
+            }
+
+            spec->debug = LLVMDIBuilderCreateStructType(
+                c->llvm_debug_builder,
+                scope_metadata,
+                name.data,
+                name.count,
+                file_metadata,
+                spec->definition->node.token.pos.row + 1,
+                LLVMABISizeOfType(c->llvm_target_data, spec->llvm) * 8,
+                LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8,
+                0,
+                NULL,
+                fields,
+                len(fields),
+                0,
+                NULL,
+                "",
+                0);
+
+            temp_reset(checkpoint);
+        }
+        return spec->debug;
     }
 
     case TYPE_STRUCT: {
@@ -950,7 +1073,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             spec->debug = real;
             temp_reset(checkpoint);
         }
-
         return spec->debug;
     }
 
@@ -1594,7 +1716,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1612,7 +1734,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1654,7 +1776,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -1732,6 +1854,22 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
 
+        if (binary->union_check_index) {
+            Node *expr = NULL;
+            if (binary->rhs->type.is_meta) {
+                expr = binary->lhs;
+            } else if (binary->lhs->type.is_meta) {
+                expr = binary->rhs;
+            } else {
+                unreachable();
+            }
+
+            LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+            LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, expr, true), "");
+            return LLVMBuildICmp(
+                c->llvm_builder, LLVMIntEQ, value, LLVMConstInt(i64_type, binary->union_check_index, true), "");
+        }
+
         // String comparison
         if (binary->lhs->type.kind == TYPE_STRING) {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
@@ -1763,7 +1901,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 74, "");
+            static_assert(COUNT_TOKENS == 75, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -1811,7 +1949,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 74, "");
+            static_assert(COUNT_TOKENS == 75, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -1842,7 +1980,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 74, "");
+            static_assert(COUNT_TOKENS == 75, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -1948,7 +2086,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 74, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -2041,12 +2179,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_FN:
         return compile_fn(c, (Node_Fn *) n);
 
-    case NODE_ENUM:
-        unreachable();
-
-    case NODE_STRUCT:
-        unreachable();
-
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
         compile_type(c, compound->memory_type);
@@ -2108,10 +2240,11 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_CALL: {
         Node_Call *call = (Node_Call *) n;
         if (call->is_type_cast) {
-            LLVMValueRef from = compile_expr(c, call->args.head, false);
+            LLVMValueRef from = compile_expr(c, call->args.head, call->type_cast == TYPE_CAST_FROM_UNION);
             LLVMTypeRef  from_type = call->args.head->type.llvm;
 
-            static_assert(COUNT_TYPE_CASTS == 3, "");
+            set_debug_pos(c, call->fn->token.pos);
+            static_assert(COUNT_TYPE_CASTS == 5, "");
             switch (call->type_cast) {
             case TYPE_CAST_NOP:
                 return from;
@@ -2123,6 +2256,55 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             case TYPE_CAST_TO_BOOL:
                 set_debug_pos(c, n->token.pos);
                 return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(from_type), "");
+
+            case TYPE_CAST_TO_UNION: {
+                LLVMValueRef memory = compile_alloca(c, n->type.llvm);
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->type_cast_union_index, true),
+                    memory);
+
+                LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, 1, "");
+                LLVMBuildStore(c->llvm_builder, from, payload);
+
+                if (ref) {
+                    return memory;
+                }
+                return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+            }
+
+            case TYPE_CAST_FROM_UNION: {
+                // Check if tag matches
+                {
+                    LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                    LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+                    LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+                    LLVMValueRef tag = LLVMBuildLoad2(c->llvm_builder, i64_type, from, "");
+
+                    LLVMValueRef check = LLVMBuildICmp(
+                        c->llvm_builder, LLVMIntEQ, tag, LLVMConstInt(i64_type, call->type_cast_union_index, true), "");
+                    LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                    // Failure
+                    LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                    {
+                        const char *message =
+                            temp_sprintf(Pos_Fmt "Union type mismatch\n", Pos_Arg(call->fn->token.pos));
+                        compile_panic(c, message, NULL, NULL, NULL);
+                        temp_reset(message);
+                    }
+
+                    // Success
+                    LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+                }
+
+                LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, call->args.head->type.llvm, from, 1, "");
+                if (ref) {
+                    return payload;
+                }
+                return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, payload, "");
+            }
 
             default:
                 unreachable();
@@ -2247,7 +2429,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         if (index->lhs->type.ref) {
             element_type = n->type.spec.slice.element;
         } else {
-            static_assert(COUNT_TYPES == 23, "");
+            static_assert(COUNT_TYPES == 24, "");
             switch (index->lhs->type.kind) {
             case TYPE_ARRAY:
                 label = "array";
@@ -2452,7 +2634,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -2672,7 +2854,13 @@ static void compile_stmt(Compiler *c, Node *n) {
             return;
         }
 
-        LLVMValueRef      expr = compile_expr(c, sw->expr, false);
+        LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+        LLVMValueRef expr = compile_expr(c, sw->expr, false);
+        if (sw->unionn) {
+            expr = undo_load(expr);
+            expr = LLVMBuildLoad2(c->llvm_builder, i64_type, expr, "");
+        }
+
         LLVMBasicBlockRef fallback = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
         LLVMBasicBlockRef end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
 
@@ -2688,7 +2876,15 @@ static void compile_stmt(Compiler *c, Node *n) {
 
             LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
             for (Node *pred = case_->preds.head; pred; pred = pred->next) {
-                LLVMAddCase(sw_llvm, compile_const_value(c, sw->preds[iota++].value, sw->expr->type), block);
+                const Const_Value *pred_value = &sw->preds[iota++].value;
+
+                LLVMValueRef value = NULL;
+                if (sw->unionn) {
+                    value = LLVMConstInt(i64_type, pred_value->as.integer, true);
+                } else {
+                    value = compile_const_value(c, *pred_value, sw->expr->type);
+                }
+                LLVMAddCase(sw_llvm, value, block);
             }
             LLVMPositionBuilderAtEnd(c->llvm_builder, block);
             compile_stmt(c, case_->body);
@@ -2995,3 +3191,5 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->defers);
     temp_reset(checkpoint);
 }
+
+// TODO: Do not allocate string literal structs in local memory

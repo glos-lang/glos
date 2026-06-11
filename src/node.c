@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -144,17 +144,40 @@ const char *type_to_cstr_raw(Type type) {
         }
     } break;
 
+    case TYPE_UNION: {
+        const Type_Union *spec = type.spec.unionn;
+        const Node_Atom  *defined_as = spec->definition->defined_as;
+        if (defined_as) {
+            temp_sv_to_cstr(defined_as->node.token.sv);
+        } else {
+            temp_sprintf("union {");
+
+            for (size_t i = 0; i < spec->variants_count; i++) {
+                Type_Union_Variant it = spec->variants[i];
+                if (i) {
+                    temp_remove_null();
+                    temp_sprintf("; ");
+                }
+
+                temp_remove_null();
+                type_to_cstr_raw(it.type);
+            }
+
+            temp_remove_null();
+            temp_sprintf("}");
+        }
+    } break;
+
     case TYPE_STRUCT: {
-        assert(type.spec.structt);
-        assert(type.spec.structt->definition);
-        const Node_Atom *defined_as = type.spec.structt->definition->defined_as;
+        const Type_Struct *spec = type.spec.structt;
+        const Node_Atom   *defined_as = spec->definition->defined_as;
         if (defined_as) {
             temp_sv_to_cstr(defined_as->node.token.sv);
         } else {
             temp_sprintf("struct {");
 
-            for (size_t i = 0; i < type.spec.structt->fields_count; i++) {
-                Type_Struct_Field it = type.spec.structt->fields[i];
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                Type_Struct_Field it = spec->fields[i];
                 if (i) {
                     temp_remove_null();
                     temp_sprintf("; ");
@@ -256,6 +279,28 @@ const char *type_to_cstr(Type type) {
     return s;
 }
 
+static bool type_union_eq(Type_Union *a, Type_Union *b) {
+    if (a->definition->defined_as || b->definition->defined_as) {
+        return a->definition->defined_as == b->definition->defined_as;
+    }
+
+    if (a->variants_count != b->variants_count) {
+        return false;
+    }
+
+    if (a->variants == b->variants) {
+        return true;
+    }
+
+    for (size_t i = 0; i < a->variants_count; i++) {
+        if (!type_eq(a->variants[i].type, b->variants[i].type)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     if (a->definition->defined_as || b->definition->defined_as) {
         return a->definition->defined_as == b->definition->defined_as;
@@ -278,7 +323,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 bool type_eq(Type a, Type b) {
     if (a.kind != b.kind || a.ref != b.ref) {
         return false;
@@ -320,6 +365,9 @@ bool type_eq(Type a, Type b) {
     case TYPE_ENUM:
         return a.spec.enumm.definition == b.spec.enumm.definition;
 
+    case TYPE_UNION:
+        return type_union_eq(a.spec.unionn, b.spec.unionn);
+
     case TYPE_STRUCT:
         return type_struct_eq(a.spec.structt, b.spec.structt);
 
@@ -353,7 +401,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -366,7 +414,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -414,7 +462,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -438,7 +486,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 23, "");
+static_assert(COUNT_TYPES == 24, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta) {
         return false;
@@ -504,7 +552,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -519,6 +567,7 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         // This comment is here to prevent clang-format from messing this up
         [NODE_FN] = sizeof(Node_Fn),
         [NODE_ENUM] = sizeof(Node_Enum),
+        [NODE_UNION] = sizeof(Node_Union),
         [NODE_STRUCT] = sizeof(Node_Struct),
         [NODE_COMPOUND] = sizeof(Node_Compound),
 
@@ -593,7 +642,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -671,6 +720,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         Node_Enum *enumm = (Node_Enum *) n;
         fprintf(f, "Enumeration {\n");
         nodes_debug_impl(f, enumm->values, depth + 1, "Values");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_UNION: {
+        Node_Union *unionn = (Node_Union *) n;
+        fprintf(f, "Union {\n");
+        nodes_debug_impl(f, unionn->variants, depth + 1, "Variants");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

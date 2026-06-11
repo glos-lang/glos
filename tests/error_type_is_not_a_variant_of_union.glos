@@ -1,0 +1,8 @@
+Value :: union {
+    i64
+    string
+}
+
+main :: () {
+    Value(true)
+}
