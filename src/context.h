@@ -21,8 +21,9 @@ struct Context_Fn {
 Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name, bool only_consts);
 
 typedef struct {
-    Local_Scope locals;
-    Context_Fn *current;
+    Local_Scope      locals;
+    Context_Fn      *fn;
+    Context_Replace *replace;
 } Context;
 
 // The function `context_push_fn()` will modify the following fields of `fn`:

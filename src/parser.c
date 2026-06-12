@@ -267,6 +267,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
             if (!fallback) {
                 do {
                     nodes_push(&case_->preds, parse_expr(p, POWER_SET, false, false, NULL));
+                    case_->preds_count++;
                     sw->preds_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }

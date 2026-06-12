@@ -521,7 +521,7 @@ static bool loop_breaks(Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            return loop_breaks(iff->compile_time_real_block);
+            return loop_breaks(iff->compile_time_real);
         }
         return loop_breaks(iff->consequence) || loop_breaks(iff->antecedence);
     }
@@ -534,7 +534,10 @@ static bool loop_breaks(Node *n) {
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
         if (sw->is_compile_time) {
-            return loop_breaks(sw->compile_time_real_block);
+            if (!sw->compile_time_real) {
+                return false;
+            }
+            return loop_breaks(sw->compile_time_real->body);
         }
 
         for (Node *it = sw->cases.head; it; it = it->next) {
@@ -586,7 +589,7 @@ static bool always_returns(Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            return always_returns(iff->compile_time_real_block);
+            return always_returns(iff->compile_time_real);
         }
 
         if (is_atom_true(iff->condition)) {
@@ -631,7 +634,10 @@ static bool always_returns(Node *n) {
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
         if (sw->is_compile_time) {
-            return always_returns(sw->compile_time_real_block);
+            if (!sw->compile_time_real) {
+                return false;
+            }
+            return always_returns(sw->compile_time_real->body);
         }
 
         for (Node *it = sw->cases.head; it; it = it->next) {
@@ -1440,6 +1446,40 @@ static void check_switch_exhaustive(Node_Switch *sw) {
     }
 }
 
+static Node_Atom *introduce_ghost_for_union(Compiler *c, Node_Atom *from, Type to, bool push_into_context) {
+    Node_Atom *ghost = arena_clone(c->arena, from, sizeof(*from));
+    ghost->is_ghost = true;
+    ghost->definition = from;
+    ghost->definition_spec = arena_clone(c->arena, ghost->definition_spec, sizeof(*ghost->definition_spec));
+    ghost->node.type = to;
+    ghost->node.type.is_meta = false;
+
+    if (push_into_context) {
+        context_push_local(&c->context, ghost);
+    }
+
+    return ghost;
+}
+
+static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from, Type to) {
+    replace->from = from;
+
+    // The only definitions which have definitions are ghosts
+    while (replace->from->definition) {
+        replace->from = replace->from->definition;
+    }
+
+    replace->to = introduce_ghost_for_union(c, from, to, false);
+
+    assert(replace->to->definition_spec->is_const_value_evaluated);
+    Const_Value *value = &replace->to->definition_spec->const_value;
+    assert(value->kind == CONST_VALUE_UNION);
+    assert(value->as.unionn.real);
+    *value = *value->as.unionn.real;
+
+    c->context.replace = replace;
+}
+
 static_assert(COUNT_NODES == 27, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
@@ -1451,7 +1491,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             if (!sv_match(it->node.token.sv, "_")) {
                 if (it->definition_spec->is_local) {
                     if (it->definition_spec->is_const) {
-                        const Context_Fn *fn = c->context.current;
+                        const Context_Fn *fn = c->context.fn;
 
                         assert(fn->end <= c->context.locals.count);
                         assert(block_start <= c->context.locals.count);
@@ -1468,7 +1508,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                             }
                         }
 
-                        it->definition_spec->context = c->context.current;
+                        it->definition_spec->fn_context = c->context.fn;
                         context_push_local(&c->context, it);
                     }
                 } else {
@@ -1483,6 +1523,8 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
 
                     global_scope_push(&it->module->globals, it);
                 }
+
+                it->definition_spec->replace_context = c->context.replace;
             }
         }
     } break;
@@ -1501,19 +1543,34 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
             const Const_Value value = eval_const_expr(c, iff->condition);
-            iff->compile_time_real_block = value.as.integer ? iff->consequence : iff->antecedence;
+            iff->compile_time_real = value.as.integer ? iff->consequence : iff->antecedence;
 
-            if (iff->compile_time_real_block) {
-                if (iff->compile_time_real_block->kind == NODE_IF) {
-                    define_orderless_nodes(c, iff->compile_time_real_block, block_start);
-                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+            if (iff->compile_time_real) {
+                iff->context_replace.outer = c->context.replace;
+
+                if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
+                    Node_Binary *condition = (Node_Binary *) iff->condition;
+                    if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
+                        assert(condition->rhs->type.is_meta);
+                        push_context_replace(
+                            c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
+                    } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
+                        assert(condition->lhs->type.is_meta);
+                        push_context_replace(
+                            c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
+                    }
+                }
+
+                if (iff->compile_time_real->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real;
                     for (Node *it = block->body.head; it; it = it->next) {
                         define_orderless_nodes(c, it, block_start);
                     }
                 } else {
-                    unreachable();
+                    define_orderless_nodes(c, iff->compile_time_real, block_start);
                 }
+
+                c->context.replace = iff->context_replace.outer;
             }
         }
     } break;
@@ -1527,34 +1584,43 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
 
             size_t iota = 0;
             for (Node *it = sw->cases.head; it; it = it->next) {
-                Node_Case *case_ = (Node_Case *) it;
-                for (Node *pred = case_->preds.head; pred; pred = pred->next) {
+                Node_Case *branch = (Node_Case *) it;
+                for (Node *pred = branch->preds.head; pred; pred = pred->next) {
                     const Const_Value pred_value = check_switch_pred(c, sw, pred, &iota);
                     if (sw->unionn) {
                         assert(value.kind == CONST_VALUE_UNION);
                         assert(pred_value.kind == CONST_VALUE_INT);
                         if (value.as.unionn.index == (size_t) pred_value.as.integer) {
-                            sw->compile_time_real_block = case_->body;
+                            sw->compile_time_real = branch;
                         }
                     } else if (const_value_eq(pred_value, value)) {
-                        sw->compile_time_real_block = case_->body;
+                        sw->compile_time_real = branch;
                     }
                 }
             }
             assert(iota == sw->preds_count);
 
-            if (!sw->compile_time_real_block && sw->fallback) {
+            if (!sw->compile_time_real && sw->fallback) {
                 assert(sw->fallback->kind == NODE_CASE);
-                Node_Case *fallback = (Node_Case *) sw->fallback;
-                sw->compile_time_real_block = fallback->body;
+                sw->compile_time_real = (Node_Case *) sw->fallback;
             }
 
-            if (sw->compile_time_real_block) {
-                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
-                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+            Node_Case *branch = sw->compile_time_real;
+            if (branch) {
+                sw->context_replace.outer = c->context.replace;
+
+                if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
+                    push_context_replace(
+                        c, &sw->context_replace, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type);
+                }
+
+                assert(branch->body->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) branch->body;
                 for (Node *it = block->body.head; it; it = it->next) {
                     define_orderless_nodes(c, it, block_start);
                 }
+
+                c->context.replace = sw->context_replace.outer;
             }
 
             check_switch_exhaustive(sw);
@@ -1774,6 +1840,15 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         }
     }
 
+    if (definition) {
+        for (Context_Replace *it = c->context.replace; it; it = it->outer) {
+            if (it->from == definition) {
+                definition = it->to;
+                break;
+            }
+        }
+    }
+
     if (atom) {
         atom->definition = definition;
     } else if (member) {
@@ -1783,8 +1858,11 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     if (definition) {
         switch (definition->definition_spec->check_status) {
         case UNCHECKED: {
-            Context_Fn *context_fn_save = c->context.current;
-            c->context.current = definition->definition_spec->context;
+            Context_Fn *context_fn_save = c->context.fn;
+            c->context.fn = definition->definition_spec->fn_context;
+
+            Context_Replace *context_replace_save = c->context.replace;
+            c->context.replace = definition->definition_spec->replace_context;
 
             // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
             assert(definition->definition_spec->definition_node->is_value_known_at_compile_time);
@@ -1794,7 +1872,9 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 definition,
                 definition->definition_spec->assignment_node,
                 definition->definition_spec->definition_node->type);
+
             context_restore_fn(&c->context, context_fn_save);
+            c->context.replace = context_replace_save;
         } break;
 
         case CHECKING:
@@ -2428,7 +2508,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
 
-        Context_Fn context_fn = {.fn = fn, .outer = c->context.current};
+        Context_Fn context_fn = {.fn = fn, .outer = c->context.fn};
         context_push_fn(&c->context, &context_fn);
 
         {
@@ -3210,19 +3290,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static Node_Atom *introduce_ghost_for_union(Compiler *c, Node_Atom *from, Type to) {
-    from = from->definition;
-
-    Node_Atom *ghost = arena_clone(c->arena, from, sizeof(*from));
-    ghost->is_ghost = true;
-    ghost->definition = from;
-    ghost->node.type = to;
-    ghost->node.type.is_meta = false;
-    context_push_local(&c->context, ghost);
-
-    return ghost;
-}
-
 static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -3274,7 +3341,7 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_BLOCK: {
         Node_Block *block = (Node_Block *) n;
 
-        const size_t context_end_save = c->context.current->end;
+        const size_t context_end_save = c->context.fn->end;
         for (Node *it = block->body.head; it; it = it->next) {
             define_orderless_nodes(c, it, context_end_save);
         }
@@ -3288,31 +3355,36 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            if (iff->compile_time_real_block) {
-                if (iff->compile_time_real_block->kind == NODE_IF) {
-                    check_stmt(c, iff->compile_time_real_block);
-                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+            if (iff->compile_time_real) {
+                Context_Replace *context_replace_save = c->context.replace;
+                c->context.replace = &iff->context_replace;
+
+                if (iff->compile_time_real->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real;
                     for (Node *it = block->body.head; it; it = it->next) {
                         check_stmt(c, it);
                     }
                 } else {
-                    unreachable();
+                    check_stmt(c, iff->compile_time_real);
                 }
+
+                c->context.replace = context_replace_save;
             }
         } else {
             check_expr(c, iff->condition, REF_NONE, NULL);
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
-            size_t context_end_save = c->context.current->end;
+            size_t context_end_save = c->context.fn->end;
             if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                 Node_Binary *condition = (Node_Binary *) iff->condition;
                 if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
                     assert(condition->rhs->type.is_meta);
-                    iff->ghost = introduce_ghost_for_union(c, (Node_Atom *) condition->lhs, condition->rhs->type);
+                    iff->ghost = introduce_ghost_for_union(
+                        c, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type, true);
                 } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
                     assert(condition->lhs->type.is_meta);
-                    iff->ghost = introduce_ghost_for_union(c, (Node_Atom *) condition->rhs, condition->lhs->type);
+                    iff->ghost = introduce_ghost_for_union(
+                        c, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type, true);
                 }
             }
 
@@ -3326,7 +3398,7 @@ static void check_stmt(Compiler *c, Node *n) {
     case NODE_FOR: {
         Node_For *forr = (Node_For *) n;
 
-        const size_t context_end_save = c->context.current->end;
+        const size_t context_end_save = c->context.fn->end;
         {
             check_stmt(c, forr->init);
             if (forr->condition) {
@@ -3346,26 +3418,30 @@ static void check_stmt(Compiler *c, Node *n) {
         Node_Switch *sw = (Node_Switch *) n;
         check_switch_expr_and_alloc_preds(c, sw);
         if (sw->is_compile_time) {
-            if (sw->compile_time_real_block) {
-                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
-                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+            if (sw->compile_time_real) {
+                Context_Replace *context_replace_save = c->context.replace;
+                c->context.replace = &sw->context_replace;
+
+                assert(sw->compile_time_real->body->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real->body;
                 for (Node *it = block->body.head; it; it = it->next) {
                     check_stmt(c, it);
                 }
+
+                c->context.replace = context_replace_save;
             }
         } else {
             size_t iota = 0;
             for (Node *it = sw->cases.head; it; it = it->next) {
                 Node_Case *branch = (Node_Case *) it;
-                size_t     preds_count = 0;
                 for (Node *pred = branch->preds.head; pred; pred = pred->next) {
                     check_switch_pred(c, sw, pred, &iota);
-                    preds_count++;
                 }
 
-                size_t context_end_save = c->context.current->end;
-                if (sw->unionn && sw->expr->kind == NODE_ATOM && preds_count == 1) {
-                    branch->ghost = introduce_ghost_for_union(c, (Node_Atom *) sw->expr, branch->preds.head->type);
+                size_t context_end_save = c->context.fn->end;
+                if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
+                    branch->ghost = introduce_ghost_for_union(
+                        c, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type, true);
                 }
 
                 check_stmt(c, branch->body);
@@ -3388,7 +3464,7 @@ static void check_stmt(Compiler *c, Node *n) {
 
     case NODE_RETURN: {
         Node_Return  *returnn = (Node_Return *) n;
-        const Type_Fn fn_type = c->context.current->fn->node.type.spec.fn;
+        const Type_Fn fn_type = c->context.fn->fn->node.type.spec.fn;
         if (returnn->value) {
             check_expr(c, returnn->value, REF_NONE, fn_type.return_type);
 

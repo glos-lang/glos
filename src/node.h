@@ -4,7 +4,8 @@
 #include "token.h"
 #include <llvm-c/Types.h>
 
-typedef struct Context_Fn Context_Fn;
+typedef struct Context_Fn      Context_Fn;
+typedef struct Context_Replace Context_Replace;
 
 typedef struct Node Node;
 
@@ -335,6 +336,17 @@ struct Node {
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
 Node *node_iter(Node *it, Node *ll);
 
+// When the concrete type of an abstract value is resolved inside conditional statements
+//
+// This is only used for compile time if statements and switch statements. During runtime, it can be done simply using
+// ghost definitions in the stack-like lexical scope, and thus does not require use of this.
+struct Context_Replace {
+    Node_Atom *from;
+    Node_Atom *to;
+
+    Context_Replace *outer;
+};
+
 typedef struct {
     bool is_local;
     bool is_extern;
@@ -352,7 +364,9 @@ typedef struct {
     Node_Define *definition_node;
     Node        *assignment_node;
 
-    Context_Fn  *context;
+    Context_Fn      *fn_context;
+    Context_Replace *replace_context;
+
     Check_Status check_status;
 
     bool        is_const;
@@ -615,9 +629,10 @@ typedef struct {
     Node *antecedence;
 
     bool  is_compile_time;
-    Node *compile_time_real_block;
+    Node *compile_time_real;
 
-    Node_Atom *ghost;
+    Node_Atom      *ghost;
+    Context_Replace context_replace;
 } Node_If;
 
 typedef struct {
@@ -629,8 +644,10 @@ typedef struct {
 } Node_For;
 
 typedef struct {
-    Node  node;
-    Nodes preds;
+    Node   node;
+    Nodes  preds;
+    size_t preds_count;
+
     Node *body;
 
     Node_Atom *ghost;
@@ -651,8 +668,10 @@ typedef struct {
     Node_Enum  *enumeration;
     Node_Union *unionn;
 
-    bool  is_compile_time;
-    Node *compile_time_real_block;
+    bool       is_compile_time;
+    Node_Case *compile_time_real;
+
+    Context_Replace context_replace;
 } Node_Switch;
 
 typedef struct {

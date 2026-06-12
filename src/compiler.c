@@ -1697,16 +1697,6 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     }
 
     assert(definition);
-    if (definition->is_ghost) {
-        assert(definition->ghost_llvm);
-        if (ref) {
-            return definition->ghost_llvm;
-        }
-
-        set_debug_pos(c, token.pos);
-        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->ghost_llvm, "");
-    }
-
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
@@ -1734,6 +1724,16 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
             }
             return definition->definition_spec->llvm;
         }
+    }
+
+    if (definition->is_ghost) {
+        assert(definition->ghost_llvm);
+        if (ref) {
+            return definition->ghost_llvm;
+        }
+
+        set_debug_pos(c, token.pos);
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->ghost_llvm, "");
     }
 
     if (!definition->definition_spec->llvm) {
@@ -2763,11 +2763,11 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
         if (iff->is_compile_time) {
-            if (iff->compile_time_real_block) {
-                if (iff->compile_time_real_block->kind == NODE_IF) {
-                    compile_stmt(c, iff->compile_time_real_block);
-                } else if (iff->compile_time_real_block->kind == NODE_BLOCK) {
-                    Node_Block *block = (Node_Block *) iff->compile_time_real_block;
+            if (iff->compile_time_real) {
+                if (iff->compile_time_real->kind == NODE_IF) {
+                    compile_stmt(c, iff->compile_time_real);
+                } else if (iff->compile_time_real->kind == NODE_BLOCK) {
+                    Node_Block *block = (Node_Block *) iff->compile_time_real;
                     for (Node *it = block->body.head; it; it = it->next) {
                         compile_stmt(c, it);
                     }
@@ -2892,9 +2892,9 @@ static void compile_stmt(Compiler *c, Node *n) {
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
         if (sw->is_compile_time) {
-            if (sw->compile_time_real_block) {
-                assert(sw->compile_time_real_block->kind == NODE_BLOCK);
-                Node_Block *block = (Node_Block *) sw->compile_time_real_block;
+            if (sw->compile_time_real) {
+                assert(sw->compile_time_real->body->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) sw->compile_time_real->body;
                 for (Node *it = block->body.head; it; it = it->next) {
                     compile_stmt(c, it);
                 }
