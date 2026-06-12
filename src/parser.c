@@ -1245,17 +1245,19 @@ static Node *parse_stmt(Parser *p) {
         const bool after_private_save = p->state.after_private;
         p->state.after_private = true;
 
-        node = parse_stmt(p);
-        if (node->kind != NODE_DEFINE && node->kind != NODE_EXTERN) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Expected definition or extern block after %s\n",
-                Pos_Arg(node->token.pos),
-                token_kind_to_cstr(token.kind));
-            exit(1);
-        }
+        if (!read_token(p, TOKEN_SPREAD)) {
+            node = parse_stmt(p);
+            if (node->kind != NODE_DEFINE && node->kind != NODE_EXTERN) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Expected definition or extern block after %s\n",
+                    Pos_Arg(node->token.pos),
+                    token_kind_to_cstr(token.kind));
+                exit(1);
+            }
 
-        p->state.after_private = after_private_save;
+            p->state.after_private = after_private_save;
+        }
     } break;
 
     case TOKEN_DIRECTIVE_LIBRARY: {
@@ -1285,9 +1287,11 @@ static Node *parse_stmt(Parser *p) {
         node = parse_if(p, token, false);
         break;
 
-    case TOKEN_DIRECTIVE_IF:
+    case TOKEN_DIRECTIVE_IF: {
+        const bool after_private_save = p->state.after_private;
         node = parse_if(p, token, true);
-        break;
+        p->state.after_private = after_private_save;
+    } break;
 
     case TOKEN_FOR:
         not_in_extern_assert(p, token);
@@ -1361,6 +1365,8 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
+        const bool after_private_save = p->state.after_private;
+
         node = node_alloc(p->arena, NODE_EXTERN, token);
         Node_Extern *externn = (Node_Extern *) node;
 
@@ -1370,6 +1376,8 @@ static Node *parse_stmt(Parser *p) {
             nodes_push(&externn->nodes, parse_stmt(p));
         }
         p->state.in_extern = false;
+
+        p->state.after_private = after_private_save;
     } break;
 
     case TOKEN_PRINT: {
