@@ -109,7 +109,9 @@ typedef struct {
 typedef struct {
     Type_Union_Variant *variants;
     size_t              variants_count;
-    size_t              variants_size_max;
+
+    size_t variants_size_max;
+    size_t variants_align_max;
 
     Node_Union *definition;
 

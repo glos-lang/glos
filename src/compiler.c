@@ -102,6 +102,9 @@ static void compile_type(Compiler *c, Type *type) {
 
                 const size_t it_size = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm);
                 spec->variants_size_max = max(spec->variants_size_max, it_size);
+
+                const size_t it_align = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm);
+                spec->variants_align_max = max(spec->variants_align_max, it_align);
             }
 
             LLVMTypeRef fields[] = {
@@ -903,6 +906,21 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             LLVMMetadataRef file_metadata = get_debug_file(c, spec->definition->node.token.pos.path);
             LLVMMetadataRef fields[2];
 
+            spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
+                c->llvm_debug_builder,
+                DW_TAG_structure_type,
+                name.data,
+                name.count,
+                scope_metadata,
+                file_metadata,
+                spec->definition->node.token.pos.row + 1,
+                0,
+                0,
+                0,
+                0,
+                NULL,
+                0);
+
             // Case
             {
                 Type            case_type = {.kind = TYPE_I64};
@@ -924,33 +942,75 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
             // Payload
             {
-                Type u8_type = {.kind = TYPE_U8};
-                Type payload_type = {
-                    .kind = TYPE_ARRAY,
-                    .spec.array.element = &u8_type,
-                    .spec.array.count = spec->variants_size_max,
-                };
-                compile_type(c, &payload_type);
+                LLVMMetadataRef forward = LLVMDIBuilderCreateReplaceableCompositeType(
+                    c->llvm_debug_builder,
+                    DW_TAG_union_type,
+                    name.data,
+                    name.count,
+                    spec->debug,
+                    file_metadata,
+                    spec->definition->node.token.pos.row + 1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    NULL,
+                    0);
 
-                LLVMMetadataRef payload_type_metadata = get_debug_for_type(c, &payload_type);
-                const size_t    payload_size_bits = LLVMABISizeOfType(c->llvm_target_data, payload_type.llvm) * 8;
-                const size_t    payload_align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, payload_type.llvm) * 8;
+                LLVMMetadataRef *variants = temp_alloc(spec->variants_count * sizeof(*variants));
+                for (size_t i = 0; i < spec->variants_count; i++) {
+                    Type_Union_Variant *it = &spec->variants[i];
 
+                    const SV     name = sv_from_cstr(type_to_cstr_raw(it->type));
+                    const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm) * 8;
+                    const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm) * 8;
+
+                    variants[i] = LLVMDIBuilderCreateMemberType(
+                        c->llvm_debug_builder,
+                        forward,
+                        name.data,
+                        name.count,
+                        file_metadata,
+                        it->pos.row + 1,
+                        size_bits,
+                        align_bits,
+                        0,
+                        0,
+                        get_debug_for_type(c, &it->type));
+                }
+
+                LLVMMetadataRef real = LLVMDIBuilderCreateUnionType(
+                    c->llvm_debug_builder,
+                    spec->debug,
+                    "",
+                    0,
+                    file_metadata,
+                    spec->definition->node.token.pos.row + 1,
+                    spec->variants_size_max * 8,
+                    spec->variants_align_max * 8,
+                    0,
+                    variants,
+                    spec->variants_count,
+                    0,
+                    "",
+                    0);
+
+                LLVMMetadataReplaceAllUsesWith(forward, real);
                 fields[1] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
                     spec->debug,
-                    "payload",
-                    strlen("payload"),
+                    "",
+                    0,
                     file_metadata,
                     spec->definition->node.token.pos.row + 1,
-                    payload_size_bits,
-                    payload_align_bits,
+                    spec->variants_size_max * 8,
+                    spec->variants_align_max * 8,
                     64,
                     0,
-                    payload_type_metadata);
+                    real);
             }
 
-            spec->debug = LLVMDIBuilderCreateStructType(
+            LLVMMetadataRef real = LLVMDIBuilderCreateStructType(
                 c->llvm_debug_builder,
                 scope_metadata,
                 name.data,
@@ -968,6 +1028,20 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 "",
                 0);
 
+            LLVMMetadataReplaceAllUsesWith(spec->debug, real);
+            if (spec->definition->defined_as) {
+                real = LLVMDIBuilderCreateTypedef(
+                    c->llvm_debug_builder,
+                    real,
+                    name.data,
+                    name.count,
+                    file_metadata,
+                    spec->definition->node.token.pos.row + 1,
+                    scope_metadata,
+                    LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8);
+            }
+
+            spec->debug = real;
             temp_reset(checkpoint);
         }
         return spec->debug;
@@ -1054,6 +1128,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 "",
                 0);
 
+            LLVMMetadataReplaceAllUsesWith(spec->debug, real);
             if (spec->definition->defined_as) {
                 real = LLVMDIBuilderCreateTypedef(
                     c->llvm_debug_builder,
@@ -1066,7 +1141,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                     LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8);
             }
 
-            LLVMMetadataReplaceAllUsesWith(spec->debug, real);
             spec->debug = real;
             temp_reset(checkpoint);
         }
