@@ -631,7 +631,8 @@ typedef struct {
     bool  is_compile_time;
     Node *compile_time_real;
 
-    Node_Atom      *ghost;
+    bool condition_will_be_false;
+
     Context_Replace context_replace;
 } Node_If;
 
@@ -649,8 +650,9 @@ typedef struct {
     size_t preds_count;
 
     Node *body;
+    bool  is_dead;
 
-    Node_Atom *ghost;
+    Context_Replace context_replace;
 } Node_Case;
 
 typedef struct {
@@ -670,8 +672,6 @@ typedef struct {
 
     bool       is_compile_time;
     Node_Case *compile_time_real;
-
-    Context_Replace context_replace;
 } Node_Switch;
 
 typedef struct {

@@ -2794,13 +2794,16 @@ static void compile_stmt(Compiler *c, Node *n) {
         // Consequence
         LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
 
-        if (iff->ghost) {
-            introduce_ghost_for_union(c, iff->ghost);
+        if (iff->condition_will_be_false) {
+            LLVMBuildUnreachable(c->llvm_builder);
+        } else {
+            if (iff->context_replace.to) {
+                introduce_ghost_for_union(c, iff->context_replace.to);
+            }
+            compile_stmt(c, iff->consequence);
+            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMBuildBr(c->llvm_builder, end);
         }
-        compile_stmt(c, iff->consequence);
-
-        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
-        LLVMBuildBr(c->llvm_builder, end);
 
         // Antecedence
         if (iff->antecedence) {
@@ -2936,14 +2939,16 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
             LLVMPositionBuilderAtEnd(c->llvm_builder, block);
 
-            if (branch->ghost) {
-                introduce_ghost_for_union(c, branch->ghost);
+            if (branch->is_dead) {
+                LLVMBuildUnreachable(c->llvm_builder);
+            } else {
+                if (branch->context_replace.to) {
+                    introduce_ghost_for_union(c, branch->context_replace.to);
+                }
+                compile_stmt(c, branch->body);
+                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, end);
             }
-
-            compile_stmt(c, branch->body);
-
-            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
-            LLVMBuildBr(c->llvm_builder, end);
         }
         assert(iota == sw->preds_count);
 
