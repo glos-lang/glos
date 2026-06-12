@@ -1430,6 +1430,8 @@ Parse_Result parse_file(Parser *p, const char *path) {
 
         nodes_push(&p->module_current->nodes, parse_stmt(p));
     }
+
+    p->state.after_private = false;
     return PARSE_OK;
 }
 
