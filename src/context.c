@@ -55,37 +55,37 @@ void context_push_fn(Context *c, Context_Fn *fn) {
     assert(fn);
     fn->begin = c->locals.count;
     fn->end = c->locals.count;
-    c->current = fn;
+    c->fn = fn;
 }
 
 void context_pop_fn(Context *c) {
-    assert(c->current);
-    c->locals.count = c->current->begin;
-    c->current = c->current->outer;
+    assert(c->fn);
+    c->locals.count = c->fn->begin;
+    c->fn = c->fn->outer;
 }
 
 void context_restore_fn(Context *c, Context_Fn *save) {
-    c->current = save;
-    if (c->current) {
-        c->locals.count = c->current->end;
+    c->fn = save;
+    if (c->fn) {
+        c->locals.count = c->fn->end;
     }
 }
 
 void context_push_local(Context *c, Node_Atom *atom) {
-    assert(c->current);
-    assert(c->current->end == c->locals.count);
+    assert(c->fn);
+    assert(c->fn->end == c->locals.count);
     da_push(&c->locals, atom);
-    c->current->end++;
+    c->fn->end++;
 }
 
 Node_Atom *context_find_local(const Context *c, SV name) {
-    return context_fn_find(c->current, &c->locals, name, false);
+    return context_fn_find(c->fn, &c->locals, name, false);
 }
 
 void context_set_end(Context *c, size_t end) {
-    if (c->current) {
-        assert(c->current->end == c->locals.count);
-        c->current->end = end;
+    if (c->fn) {
+        assert(c->fn->end == c->locals.count);
+        c->fn->end = end;
         c->locals.count = end;
     }
 }

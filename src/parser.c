@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -267,6 +267,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time) {
             if (!fallback) {
                 do {
                     nodes_push(&case_->preds, parse_expr(p, POWER_SET, false, false, NULL));
+                    case_->preds_count++;
                     sw->preds_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }
@@ -393,6 +394,8 @@ static void definition_lhs_atom_setup(
             ((Node_Fn *) it_expr)->defined_as = it;
         } else if (it_expr->kind == NODE_ENUM) {
             ((Node_Enum *) it_expr)->defined_as = it;
+        } else if (it_expr->kind == NODE_UNION) {
+            ((Node_Union *) it_expr)->defined_as = it;
         } else if (it_expr->kind == NODE_STRUCT) {
             ((Node_Struct *) it_expr)->defined_as = it;
         }
@@ -668,7 +671,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 74, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -690,7 +693,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_DOT: {
         node = node_alloc(p->arena, NODE_MEMBER, token);
         Node_Member *member = (Node_Member *) node;
-        member->field = expect_token(p, TOKEN_IDENT);
+        member->field = expect_token(p, TOKEN_IDENT, TOKEN_CASE);
     } break;
 
     case TOKEN_SUB:
@@ -875,6 +878,20 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
     } break;
 
+    case TOKEN_UNION: {
+        node = node_alloc(p->arena, NODE_UNION, token);
+        Node_Union *unionn = (Node_Union *) node;
+        unionn->module = p->module_current;
+        unionn->defined_in = p->state.fn_current;
+
+        expect_token(p, TOKEN_LBRACE);
+        while (!read_token(p, TOKEN_RBRACE)) {
+            nodes_push(&unionn->variants, parse_expr(p, POWER_SET, false, true, NULL));
+            unionn->variants_count++;
+            expect_stmt_terminator(p);
+        }
+    } break;
+
     case TOKEN_STRUCT: {
         node = node_alloc(p->arena, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
@@ -887,29 +904,28 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (token.kind == TOKEN_SPREAD) {
                 Node_Unary *spread = (Node_Unary *) node_alloc(p->arena, NODE_UNARY, next_token(p));
                 spread->value = parse_expr(p, POWER_PRE, false, false, NULL);
-
                 nodes_push(&structt->fields, (Node *) spread);
-                continue;
-            }
+            } else {
+                Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
+                if (field->kind != NODE_DEFINE) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
+                    exit(1);
+                }
 
-            Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
-            if (field->kind != NODE_DEFINE) {
-                fprintf(stderr, Pos_Fmt "ERROR: Expected field, got expression\n", Pos_Arg(field->token.pos));
-                exit(1);
-            }
+                Node_Define *define = (Node_Define *) field;
+                if (define->is_const) {
+                    fprintf(
+                        stderr, Pos_Fmt "ERROR: Expected field, got constant definition\n", Pos_Arg(field->token.pos));
+                    exit(1);
+                }
 
-            Node_Define *define = (Node_Define *) field;
-            if (define->is_const) {
-                fprintf(stderr, Pos_Fmt "ERROR: Expected field, got constant definition\n", Pos_Arg(field->token.pos));
-                exit(1);
+                if (define->expr) {
+                    fprintf(
+                        stderr, Pos_Fmt "ERROR: Field definition cannot have assignment\n", Pos_Arg(field->token.pos));
+                    exit(1);
+                }
+                nodes_push(&structt->fields, field);
             }
-
-            if (define->expr) {
-                fprintf(stderr, Pos_Fmt "ERROR: Field definition cannot have assignment\n", Pos_Arg(field->token.pos));
-                exit(1);
-            }
-
-            nodes_push(&structt->fields, field);
             expect_stmt_terminator(p);
         }
     } break;
@@ -986,7 +1002,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         case TOKEN_DOT: {
             Node_Member *member = (Node_Member *) node_alloc(p->arena, NODE_MEMBER, token);
             member->lhs = node;
-            member->field = expect_token(p, TOKEN_IDENT);
+
+            token = expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN);
+            if (token.kind == TOKEN_LPAREN) {
+                member->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                expect_token(p, TOKEN_RPAREN);
+            } else {
+                member->field = token;
+            }
             node = (Node *) member;
         } break;
 
@@ -1100,7 +1123,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

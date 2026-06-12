@@ -1,0 +1,34 @@
+Foo :: union {
+    bool
+    i64
+}
+
+Value :: union {
+    Foo
+    string
+}
+
+a :: Value(Foo(69))
+#if a == {
+case Foo
+    #if a == {
+    case i64
+        main :: () {
+            other()
+            print a
+        }
+
+    case bool
+    }
+
+case string
+}
+
+b :: Value("Urmom")
+#if b == string {
+    other :: () {
+        fmt.println(b)
+    }
+}
+
+fmt :: #import "fmt"

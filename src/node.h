@@ -4,7 +4,8 @@
 #include "token.h"
 #include <llvm-c/Types.h>
 
-typedef struct Context_Fn Context_Fn;
+typedef struct Context_Fn      Context_Fn;
+typedef struct Context_Replace Context_Replace;
 
 typedef struct Node Node;
 
@@ -13,6 +14,7 @@ typedef struct Node_Define Node_Define;
 
 typedef struct Node_Fn     Node_Fn;
 typedef struct Node_Enum   Node_Enum;
+typedef struct Node_Union  Node_Union;
 typedef struct Node_Struct Node_Struct;
 
 typedef struct {
@@ -67,6 +69,7 @@ typedef enum {
 
     TYPE_FN,
     TYPE_ENUM,
+    TYPE_UNION,
     TYPE_STRUCT,
 
     TYPE_ARRAY,
@@ -81,9 +84,10 @@ typedef enum {
     COUNT_TYPES,
 } Type_Kind;
 
-typedef struct Type              Type;
-typedef struct Type_Fn_Arg       Type_Fn_Arg;
-typedef struct Type_Struct_Field Type_Struct_Field;
+typedef struct Type               Type;
+typedef struct Type_Fn_Arg        Type_Fn_Arg;
+typedef struct Type_Union_Variant Type_Union_Variant;
+typedef struct Type_Struct_Field  Type_Struct_Field;
 
 typedef struct {
     Type_Fn_Arg *args;
@@ -101,6 +105,19 @@ typedef struct {
     Type_Kind  underlying;
     Node_Enum *definition;
 } Type_Enum;
+
+typedef struct {
+    Type_Union_Variant *variants;
+    size_t              variants_count;
+
+    size_t variants_size_max;
+    size_t variants_align_max;
+
+    Node_Union *definition;
+
+    LLVMTypeRef     llvm;
+    LLVMMetadataRef debug;
+} Type_Union;
 
 typedef struct {
     Type_Struct_Field *fields;
@@ -148,6 +165,7 @@ struct Type {
     union {
         Type_Fn      fn;
         Type_Enum    enumm;
+        Type_Union  *unionn;
         Type_Struct *structt;
 
         Type_Array array;
@@ -176,6 +194,11 @@ struct Type_Fn_Arg {
     bool default_value_is_caller_location;
 };
 
+struct Type_Union_Variant {
+    Pos  pos;
+    Type type;
+};
+
 struct Type_Struct_Field {
     Pos    pos;
     SV     name;
@@ -200,13 +223,21 @@ typedef enum {
     CONST_VALUE_FN,
     CONST_VALUE_TYPE,
 
+    CONST_VALUE_UNION,
     CONST_VALUE_STRUCT,
+
     CONST_VALUE_ARRAY,
     CONST_VALUE_STRING,
 
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
+
+typedef struct {
+    Type_Union  *spec;
+    size_t       index;
+    Const_Value *real;
+} Const_Value_Union;
 
 typedef struct {
     Type_Struct *spec;
@@ -228,20 +259,24 @@ struct Const_Value {
         Type     type;
         Node_Fn *fn;
 
+        Const_Value_Union  unionn;
         Const_Value_Struct structt;
-        Const_Value_Array  array;
-        SV                 string;
+
+        Const_Value_Array array;
+        SV                string;
 
         Module *module;
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 7, "");
+static_assert(COUNT_CONST_VALUES == 8, "");
 #define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
+#define const_value_union(v)  ((Const_Value) {.kind = CONST_VALUE_UNION, .as.unionn = (v)})
+
 #define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
 
@@ -267,6 +302,7 @@ typedef enum {
 
     NODE_FN,
     NODE_ENUM,
+    NODE_UNION,
     NODE_STRUCT,
     NODE_COMPOUND,
 
@@ -302,6 +338,17 @@ struct Node {
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
 Node *node_iter(Node *it, Node *ll);
 
+// When the concrete type of an abstract value is resolved inside conditional statements
+//
+// This is only used for compile time if statements and switch statements. During runtime, it can be done simply using
+// ghost definitions in the stack-like lexical scope, and thus does not require use of this.
+struct Context_Replace {
+    Node_Atom *from;
+    Node_Atom *to;
+
+    Context_Replace *outer;
+};
+
 typedef struct {
     bool is_local;
     bool is_extern;
@@ -319,7 +366,9 @@ typedef struct {
     Node_Define *definition_node;
     Node        *assignment_node;
 
-    Context_Fn  *context;
+    Context_Fn      *fn_context;
+    Context_Replace *replace_context;
+
     Check_Status check_status;
 
     bool        is_const;
@@ -343,6 +392,9 @@ struct Node_Atom {
 
     // When this atom is a reference to another defining atom
     Node_Atom *definition;
+
+    bool         is_ghost;
+    LLVMValueRef ghost_llvm;
 };
 
 typedef struct {
@@ -361,15 +413,20 @@ typedef struct {
     Node  node;
     Node *lhs;
     Node *rhs;
+
+    size_t union_check_index;
 } Node_Binary;
 
 typedef struct {
     Node  node;
     Node *lhs;
-    Token field;
+
+    Token field; // Value.field
+    Node *rhs;   // Union.(Type)
 
     union {
         size_t field_index;
+        size_t union_index;
         size_t enum_value;
     };
 
@@ -455,6 +512,21 @@ struct Node_Enum {
 };
 
 // This represents a type
+struct Node_Union {
+    Node   node;
+    Nodes  variants;
+    size_t variants_count; // Calculated at parse time
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    // The module this was parsed in
+    Module *module;
+
+    Node_Fn *defined_in;
+};
+
+// This represents a type
 struct Node_Struct {
     Node  node;
     Nodes fields;
@@ -494,6 +566,7 @@ typedef enum {
     TYPE_CAST_NOP,
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
+    TYPE_CAST_TO_UNION,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 
@@ -513,6 +586,7 @@ typedef struct {
 
     bool      is_type_cast;
     Type_Cast type_cast;
+    size_t    type_cast_union_index;
 
     bool is_stmt;
 } Node_Call;
@@ -557,7 +631,11 @@ typedef struct {
     Node *antecedence;
 
     bool  is_compile_time;
-    Node *compile_time_real_block;
+    Node *compile_time_real;
+
+    bool condition_will_be_false;
+
+    Context_Replace context_replace;
 } Node_If;
 
 typedef struct {
@@ -569,9 +647,14 @@ typedef struct {
 } Node_For;
 
 typedef struct {
-    Node  node;
-    Nodes preds;
+    Node   node;
+    Nodes  preds;
+    size_t preds_count;
+
     Node *body;
+    bool  is_dead;
+
+    Context_Replace context_replace;
 } Node_Case;
 
 typedef struct {
@@ -586,10 +669,11 @@ typedef struct {
     }     *preds;
     size_t preds_count;
 
-    Node_Enum *enumeration;
+    Node_Enum  *enumeration;
+    Node_Union *unionn;
 
-    bool  is_compile_time;
-    Node *compile_time_real_block;
+    bool       is_compile_time;
+    Node_Case *compile_time_real;
 } Node_Switch;
 
 typedef struct {
