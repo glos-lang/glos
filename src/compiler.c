@@ -282,10 +282,6 @@ static_assert(COUNT_TYPES == 24, "");
 static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
     assert(type_is_compound(type));
     switch (type.kind) {
-    case TYPE_UNION: {
-        todo(); // TODO(@union)
-    } break;
-
     case TYPE_STRUCT: {
         const Type_Struct *spec = type.spec.structt;
         for (size_t i = 0; i < spec->fields_count; i++) {
@@ -306,6 +302,7 @@ static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, L
         }
     } break;
 
+    case TYPE_UNION:
     case TYPE_ARRAY:
         out[0] = LLVMInt64TypeInContext(c->llvm_context);
         out[1] = LLVMIntTypeInContext(c->llvm_context, compile_sizeof(c, &type) * 8 - 64);
@@ -1250,7 +1247,7 @@ static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref)
     return compile_string_struct(c, compile_const_value_into_memory(c, memory), sv.count, pos, ref);
 }
 
-static_assert(COUNT_CONST_VALUES == 7, "");
+static_assert(COUNT_CONST_VALUES == 8, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
@@ -1261,6 +1258,30 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
     case CONST_VALUE_TYPE:
         unreachable();
+
+    case CONST_VALUE_UNION: {
+        const Type_Union *spec = value.as.unionn.spec;
+
+        LLVMValueRef fields[3] = {0};
+        size_t       fields_iota = 0;
+        fields[fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value.as.unionn.index, true);
+
+        size_t real_size = 0;
+        if (value.as.unionn.index) {
+            Type type = spec->variants[value.as.unionn.index - 1].type;
+            real_size = compile_sizeof(c, &type);
+
+            assert(value.as.unionn.real); // The index is not zero, that means a real value exists
+            fields[fields_iota++] = compile_const_value(c, *value.as.unionn.real, type);
+        }
+
+        const size_t padding = LLVMABISizeOfType(c->llvm_target_data, spec->llvm) - 8 - real_size;
+        if (padding) {
+            fields[fields_iota++] = LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), padding));
+        }
+
+        return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, true);
+    }
 
     case CONST_VALUE_STRUCT: {
         const Type_Struct *spec = value.as.structt.spec;
@@ -1689,8 +1710,9 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 7, "");
+        static_assert(COUNT_CONST_VALUES == 8, "");
         switch (const_value.kind) {
+        case CONST_VALUE_UNION:
         case CONST_VALUE_STRUCT:
         case CONST_VALUE_ARRAY:
         case CONST_VALUE_STRING:
@@ -2393,8 +2415,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 value = compile_string(c, sv, NULL, ref);
                 temp_reset(cstr);
             } else {
-                static_assert(COUNT_CONST_VALUES == 7, "");
+                static_assert(COUNT_CONST_VALUES == 8, "");
                 switch (arg->default_value->kind) {
+                case CONST_VALUE_UNION:
                 case CONST_VALUE_STRUCT:
                 case CONST_VALUE_ARRAY:
                 case CONST_VALUE_STRING:

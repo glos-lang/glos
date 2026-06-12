@@ -733,9 +733,8 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_ENUM:
         return const_value_int(0);
 
-    case TYPE_UNION: {
-        todo(); // TODO(@union)
-    } break;
+    case TYPE_UNION:
+        return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
 
     case TYPE_STRUCT: {
         Const_Value_Struct structure = {0};
@@ -963,6 +962,28 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_EQ:
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
+            if (lhs.kind == CONST_VALUE_UNION) {
+                assert(rhs.kind == CONST_VALUE_TYPE);
+                if (lhs.as.unionn.index == 0) {
+                    return const_value_int(0);
+                }
+
+                Type expected = rhs.as.type;
+                expected.is_meta = false;
+                return const_value_int(type_eq(lhs.as.unionn.spec->variants[lhs.as.unionn.index - 1].type, expected));
+            }
+
+            if (rhs.kind == CONST_VALUE_UNION) {
+                assert(lhs.kind == CONST_VALUE_TYPE);
+                if (rhs.as.unionn.index == 0) {
+                    return const_value_int(0);
+                }
+
+                Type expected = lhs.as.type;
+                expected.is_meta = false;
+                return const_value_int(type_eq(rhs.as.unionn.spec->variants[rhs.as.unionn.index - 1].type, expected));
+            }
+
             return const_value_int(const_value_eq(lhs, rhs));
 
         case TOKEN_NE:
@@ -984,8 +1005,27 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         const Const_Value lhs = eval_const_expr(c, member->lhs);
 
-        static_assert(COUNT_CONST_VALUES == 7, "");
+        static_assert(COUNT_CONST_VALUES == 8, "");
         switch (lhs.kind) {
+        case CONST_VALUE_UNION:
+            if (member->rhs) {
+                if (member->union_index != lhs.as.unionn.index) {
+                    const Type_Union *spec = lhs.as.unionn.spec;
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Union type mismatch: Accessing %s, but real type is %s\n",
+                        Pos_Arg(n->token.pos),
+                        member->union_index ? type_to_cstr(spec->variants[member->union_index - 1].type) : "null",
+                        lhs.as.unionn.index ? type_to_cstr(spec->variants[lhs.as.unionn.index - 1].type) : "null");
+                    exit(1);
+                }
+
+                assert(lhs.as.unionn.real); // The type is checked, that means a real value exists
+                return *lhs.as.unionn.real;
+            } else {
+                return const_value_int(lhs.as.unionn.index);
+            }
+
         case CONST_VALUE_STRUCT:
             return lhs.as.structt.fields[member->field_index];
 
@@ -1117,8 +1157,15 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TYPE_CAST_TO_BOOL:
             return const_value_int(value.as.integer != 0);
 
-        case TYPE_CAST_TO_UNION:
-            todo();
+        case TYPE_CAST_TO_UNION: {
+            Const_Value_Union unionn = {0};
+            assert(n->type.kind == TYPE_UNION);
+
+            unionn.spec = n->type.spec.unionn;
+            unionn.index = call->type_cast_union_index;
+            unionn.real = arena_clone(c->arena, &value, sizeof(value));
+            return const_value_union(unionn);
+        }
 
         default:
             unreachable();
@@ -1129,7 +1176,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Index       *index = (Node_Index *) n;
         const Const_Value lhs = eval_const_expr(c, index->lhs);
         if (index->is_ranged) {
-            static_assert(COUNT_CONST_VALUES == 7, "");
+            static_assert(COUNT_CONST_VALUES == 8, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 Const_Value_Array array = lhs.as.array;
@@ -1216,7 +1263,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         } else {
             const i64 at = eval_const_expr(c, index->a).as.integer;
 
-            static_assert(COUNT_CONST_VALUES == 7, "");
+            static_assert(COUNT_CONST_VALUES == 8, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -1305,7 +1352,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                 fprintf(stderr, "%s", type_to_cstr(pred->type));
                 pred->type.is_meta = true;
             } else {
-                static_assert(COUNT_CONST_VALUES == 7, "");
+                static_assert(COUNT_CONST_VALUES == 8, "");
                 switch (value.kind) {
                 case CONST_VALUE_INT:
                     if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1483,7 +1530,13 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                 Node_Case *case_ = (Node_Case *) it;
                 for (Node *pred = case_->preds.head; pred; pred = pred->next) {
                     const Const_Value pred_value = check_switch_pred(c, sw, pred, &iota);
-                    if (const_value_eq(pred_value, value)) {
+                    if (sw->unionn) {
+                        assert(value.kind == CONST_VALUE_UNION);
+                        assert(pred_value.kind == CONST_VALUE_INT);
+                        if (value.as.unionn.index == (size_t) pred_value.as.integer) {
+                            sw->compile_time_real_block = case_->body;
+                        }
+                    } else if (const_value_eq(pred_value, value)) {
                         sw->compile_time_real_block = case_->body;
                     }
                 }

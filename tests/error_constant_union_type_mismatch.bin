@@ -1,0 +1,6 @@
+EXIT 1
+STDOUT 0
+
+STDERR 122
+tests/error_constant_union_type_mismatch.glos:7:7: ERROR: Union type mismatch: Accessing 'string', but real type is 'i64'
+

@@ -1,0 +1,7 @@
+Value :: union {
+    i64
+    string
+}
+
+a :: Value(69)
+b :: a.(string)
