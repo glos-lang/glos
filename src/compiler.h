@@ -19,6 +19,11 @@ void link_flags_add_libpath(Link_Flags *ls, SV path);
 void link_flags_add_libname(Link_Flags *ls, SV name);
 
 typedef struct {
+    size_t       id;
+    LLVMValueRef info;
+} Type_Info;
+
+typedef struct {
     // These are used only by the analyzer
     Type main_fn_type;
     DA(Type_Struct_Field) struct_fields;
@@ -34,11 +39,11 @@ typedef struct {
     Module *main_module;
     Module *builtin_module;
 
-    Type rtti_type;         // This holds `Type_Info`
-    Type rtti_pointer_type; // This holds `&Type_Info`
+    Type type_info_type;         // This holds `Type_Info`
+    Type type_info_pointer_type; // This holds `&Type_Info`
 
-    size_t            rtti_variants[COUNT_TYPES];
-    const Type_Union *rtti_variants_union;
+    size_t            type_info_variants[COUNT_TYPES];
+    const Type_Union *type_info_variants_union;
 
     // Rest all are only used by compiler
     Cmd        *cmd;
@@ -72,7 +77,8 @@ typedef struct {
 
     HT(const char *, LLVMMetadataRef) llvm_debug_files;
 
-    HT(Type, LLVMValueRef) rtti_cache;
+    size_t type_id_iota;
+    HT(Type, Type_Info) type_info_cache;
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.

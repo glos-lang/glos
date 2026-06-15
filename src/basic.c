@@ -117,7 +117,7 @@ void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hashe
     return (entry && *entry == HT_OCCUPIED) ? entry + layout.value_offset : NULL;
 }
 
-void ht_set_impl(
+void *ht_set_impl(
     void      **ht_data,
     size_t     *ht_count,
     size_t     *ht_capacity,
@@ -155,6 +155,7 @@ void ht_set_impl(
         (*ht_count)++;
     }
     memcpy(dst + layout.value_offset, value, layout.value_size);
+    return dst + layout.value_offset;
 }
 
 void ht_delete_impl(void *data, size_t *count, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key) {

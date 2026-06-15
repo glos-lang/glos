@@ -162,7 +162,7 @@ static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -258,10 +258,10 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 }
 
 static bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
-    if (n->type.is_meta && type_eq(expected, c->rtti_pointer_type)) {
+    if (n->type.is_meta && type_eq(expected, c->type_info_pointer_type)) {
         n->emit_type_info = arena_clone(c->arena, &n->type, sizeof(n->type));
         n->emit_type_info->is_meta = false;
-        n->type = c->rtti_pointer_type;
+        n->type = c->type_info_pointer_type;
         return true;
     }
 
@@ -844,7 +844,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -886,7 +886,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -919,6 +919,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TOKEN_SIZEOF:
             return const_value_int(compile_sizeof(c, &unary->value->type));
 
+        case TOKEN_TYPEOF: {
+            Type type = unary->value->type;
+            type.is_meta = true;
+            return const_value_type(type);
+        }
+
         default:
             unreachable();
         }
@@ -929,7 +935,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1750,7 +1756,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 if (it_expr->type.is_meta && !it->definition_spec->is_const) {
                     it_expr->emit_type_info = arena_clone(c->arena, &it_expr->type, sizeof(it_expr->type));
                     it_expr->emit_type_info->is_meta = false;
-                    it_expr->type = c->rtti_pointer_type;
+                    it_expr->type = c->type_info_pointer_type;
                 }
 
                 const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
@@ -2137,7 +2143,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -2225,7 +2231,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -2314,6 +2320,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             n->type = (Type) {.kind = TYPE_INT};
             break;
 
+        case TOKEN_TYPEOF:
+            check_expr(c, unary->value, REF_NONE, NULL);
+            check_that_type_is_known(unary->value);
+            n->type = unary->value->type;
+            n->type.is_meta = true;
+            break;
+
         default:
             unreachable();
         }
@@ -2321,7 +2334,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -3676,47 +3689,47 @@ void check_nodes(Compiler *c) {
     {
         const Const_Value value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type_Info"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
-        c->rtti_type = value.as.type;
-        c->rtti_type.is_meta = false;
+        c->type_info_type = value.as.type;
+        c->type_info_type.is_meta = false;
 
-        c->rtti_pointer_type = c->rtti_type;
-        c->rtti_pointer_type.ref++;
+        c->type_info_pointer_type = c->type_info_type;
+        c->type_info_pointer_type.ref++;
 
-        assert(c->rtti_pointer_type.kind == TYPE_STRUCT);
-        const Type_Struct *type_info_structure = c->rtti_pointer_type.spec.structt;
+        assert(c->type_info_pointer_type.kind == TYPE_STRUCT);
+        const Type_Struct *type_info_structure = c->type_info_pointer_type.spec.structt;
 
         assert(type_info_structure->fields_count == 3);
         const Type *type_info_variant = &type_info_structure->fields[2].type;
 
         assert(type_info_variant->kind == TYPE_UNION);
-        c->rtti_variants_union = type_info_variant->spec.unionn;
-        assert(c->rtti_variants_union->variants_count == 11);
+        c->type_info_variants_union = type_info_variant->spec.unionn;
+        assert(c->type_info_variants_union->variants_count == 11);
 
         static_assert(COUNT_TYPES == 24, "");
-        c->rtti_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
-        c->rtti_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
+        c->type_info_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
+        c->type_info_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
 
-        c->rtti_variants[TYPE_I8] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_I16] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_I32] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_I64] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_INT] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_I8] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_I16] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_I32] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_I64] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_INT] = CONTRACT_TYPE_INFO_INTEGER;
 
-        c->rtti_variants[TYPE_U8] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_U16] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_U32] = CONTRACT_TYPE_INFO_INTEGER;
-        c->rtti_variants[TYPE_U64] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_U8] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_U16] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_U32] = CONTRACT_TYPE_INFO_INTEGER;
+        c->type_info_variants[TYPE_U64] = CONTRACT_TYPE_INFO_INTEGER;
 
-        c->rtti_variants[TYPE_RAWPTR] = CONTRACT_TYPE_INFO_POINTER;
+        c->type_info_variants[TYPE_RAWPTR] = CONTRACT_TYPE_INFO_POINTER;
 
-        c->rtti_variants[TYPE_FN] = CONTRACT_TYPE_INFO_FUNCTION;
-        c->rtti_variants[TYPE_ENUM] = CONTRACT_TYPE_INFO_ENUMERATION;
-        c->rtti_variants[TYPE_UNION] = CONTRACT_TYPE_INFO_UNION;
-        c->rtti_variants[TYPE_STRUCT] = CONTRACT_TYPE_INFO_STRUCTURE;
+        c->type_info_variants[TYPE_FN] = CONTRACT_TYPE_INFO_FUNCTION;
+        c->type_info_variants[TYPE_ENUM] = CONTRACT_TYPE_INFO_ENUMERATION;
+        c->type_info_variants[TYPE_UNION] = CONTRACT_TYPE_INFO_UNION;
+        c->type_info_variants[TYPE_STRUCT] = CONTRACT_TYPE_INFO_STRUCTURE;
 
-        c->rtti_variants[TYPE_ARRAY] = CONTRACT_TYPE_INFO_ARRAY;
-        c->rtti_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
-        c->rtti_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
+        c->type_info_variants[TYPE_ARRAY] = CONTRACT_TYPE_INFO_ARRAY;
+        c->type_info_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
+        c->type_info_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
     }
 
     for (Module *m = c->modules->head; m; m = m->next) {

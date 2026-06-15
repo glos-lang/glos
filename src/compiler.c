@@ -1849,23 +1849,24 @@ static_assert(COUNT_TYPES == 24, "");
 static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     compile_type(c, type);
 
-    if (!c->rtti_cache.hasheq) {
-        c->rtti_cache.hasheq = ht_hasheq_type;
+    if (!c->type_info_cache.hasheq) {
+        c->type_info_cache.hasheq = ht_hasheq_type;
     }
 
-    const size_t variant_index = c->rtti_variants[type->ref ? TYPE_RAWPTR : type->kind];
+    const size_t variant_index = c->type_info_variants[type->ref ? TYPE_RAWPTR : type->kind];
     assert(variant_index);
 
     // Emit unique RTTI
-    LLVMValueRef forward = NULL;
+    Type_Info *type_info = NULL;
     {
-        LLVMValueRef *cached = ht_get(&c->rtti_cache, *type);
-        if (cached) {
-            return *cached;
+        type_info = ht_get(&c->type_info_cache, *type);
+        if (type_info) {
+            return type_info->info;
         }
 
-        forward = LLVMAddGlobal(c->llvm_module, c->rtti_type.llvm, "");
-        ht_set(&c->rtti_cache, *type, forward);
+        type_info = ht_set(&c->type_info_cache, *type, (Type_Info) {0});
+        type_info->id = ++c->type_id_iota;
+        type_info->info = LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, "");
     }
 
     LLVMValueRef ti_fields[3] = {0};
@@ -2042,8 +2043,8 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         }
     }
 
-    const size_t variant_size = c->rtti_variants_union->variants[variant_index - 1].size;
-    const size_t variant_padding = c->rtti_variants_union->variants_size_max - variant_size;
+    const size_t variant_size = c->type_info_variants_union->variants[variant_index - 1].size;
+    const size_t variant_padding = c->type_info_variants_union->variants_size_max - variant_size;
     if (variant_padding) {
         tiv_fields[tiv_fields_iota++] =
             LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), variant_padding));
@@ -2054,10 +2055,9 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     LLVMValueRef real =
         compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, ti_fields, ti_fields_iota, false));
 
-    LLVMReplaceAllUsesWith(forward, real);
-    LLVMDeleteGlobal(forward);
-
-    ht_set(&c->rtti_cache, *type, real);
+    LLVMReplaceAllUsesWith(type_info->info, real);
+    LLVMDeleteGlobal(type_info->info);
+    type_info->info = real;
     return real;
 }
 
@@ -2083,7 +2083,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -2131,7 +2131,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -2262,7 +2262,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -2310,7 +2310,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -2341,7 +2341,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -2447,7 +2447,7 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -3485,7 +3485,7 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
-    compile_type(c, &c->rtti_type);
+    compile_type(c, &c->type_info_type);
     for (Module *m = c->modules->head; m; m = m->next) {
         ht_foreach(g, &m->globals) {
             Node_Atom *it = *g.value;
@@ -3569,7 +3569,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     }
 
     ht_free(&c->llvm_debug_files);
-    ht_free(&c->rtti_cache);
+    ht_free(&c->type_info_cache);
     da_free(&c->context.locals);
     da_free(&c->struct_fields);
     da_free(&c->group_values);
