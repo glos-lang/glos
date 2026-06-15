@@ -1,9 +1,0 @@
-// This file contains type definitions which serve as the interface between the
-// compiler and the source code. Any modifications done here will be at the
-// risk of the user themselves.
-
-Platform :: enum {
-    Linux
-    MacOS
-    Windows
-}

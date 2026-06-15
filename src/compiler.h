@@ -23,6 +23,13 @@ typedef struct {
     Type main_fn_type;
     DA(Type_Struct_Field) struct_fields;
 
+    Type rtti_pointer_type; // This holds `&Type_Info`
+
+    size_t            rtti_variants[COUNT_TYPES];
+    const Type_Union *rtti_variants_union;
+
+    HT(Type, LLVMValueRef) rtti_cache;
+
     // These are used both by the analyzer and the compiler
     Arena  *arena;
     Context context;

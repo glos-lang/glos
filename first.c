@@ -167,6 +167,16 @@ note:
 static void build_glos(Cmd *cmd, size_t nprocs) {
     ensure_llvm(cmd);
 
+    // Check that the contract is OK
+    {
+        const char *glos_contract_path = "std/builtin/contract.glos";
+        const char *c_contract_path = "src/contract.h";
+        if (get_modified_time(glos_contract_path) > get_modified_time(c_contract_path)) {
+            fprintf(stderr, "ERROR: The file '%s' was modified after '%s'\n", glos_contract_path, c_contract_path);
+            exit(1);
+        }
+    }
+
     static const char *headers[] = {
         "src/basic.h",
         "src/token.h",
@@ -176,6 +186,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/context.h",
         "src/checker.h",
         "src/dwarf.h",
+        "src/contract.h",
         "src/compiler.h",
     };
 
@@ -219,7 +230,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         proc_stdio.out = (FILE **) temp_alloc(sizeof(FILE *));
         procs.callback_before_wait = filter_cl_exe_output;
 
-        cmd_push(cmd, "cl", "/nologo", "/c");
+        cmd_push(cmd, "cl", "/Z7", "/nologo", "/c");
         cmd_push(cmd, "/I", "./llvm/include");
         cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
 #else
@@ -269,6 +280,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             cmd_push(cmd, "link", "/nologo");
         }
 
+        cmd_push(cmd, "/debug");
         cmd_push(cmd, "/out:glos.exe");
 #else
         cmd_push(cmd, "g++");

@@ -333,6 +333,8 @@ struct Node {
     Token     token;
     Type      type;
     Node     *next;
+
+    Type *emit_type_info;
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);

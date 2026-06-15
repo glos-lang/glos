@@ -1,6 +1,7 @@
 #include "checker.h"
 #include "basic.h"
 #include "context.h"
+#include "contract.h"
 #include "node.h"
 #include "parser.h"
 #include "token.h"
@@ -145,7 +146,7 @@ static void check_int_limit(Node *n, const void *ptr) {
 }
 
 // TODO: What about sign?
-static i64 enum_get_value(Node_Enum *enumm, SV name, const Token *t) {
+static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
     ll_foreach(it, &enumm->values) {
         if (sv_eq(it->token.sv, name)) {
             return it->token.as.integer;
@@ -208,7 +209,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         if (member->is_enum) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
             assert(type_kind_eq(expected, TYPE_ENUM));
-            member->enum_value = enum_get_value(expected.spec.enumm.definition, member->field.sv, &member->field);
+            member->enum_value = get_enum_value(expected.spec.enumm.definition, member->field.sv, &member->field);
             n->type = expected;
         } else {
             assert(member->module_access_definition); // Must be a module access
@@ -250,6 +251,17 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
     if (type_kind_eq(expected, TYPE_ENUM) && type_kind_eq(n->type, TYPE_UNKNOWN_ENUM)) {
         cast_untyped(c, n, expected);
+        return true;
+    }
+
+    return false;
+}
+
+static bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
+    if (n->type.is_meta && type_eq(expected, c->rtti_pointer_type)) {
+        n->emit_type_info = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->emit_type_info->is_meta = false;
+        n->type = c->rtti_pointer_type;
         return true;
     }
 
@@ -306,6 +318,10 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
+    if (try_auto_cast_type_to_rtti(c, n, expected)) {
+        return expected;
+    }
+
     check_that_type_is_known(n);
 
     fprintf(
@@ -337,6 +353,10 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
         }
 
         if (try_auto_cast_literal(c, n, expected)) {
+            return expected;
+        }
+
+        if (try_auto_cast_type_to_rtti(c, n, expected)) {
             return expected;
         }
 
@@ -404,6 +424,14 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
     }
 
     if (try_auto_cast_literal(c, b, a->type)) {
+        return b->type;
+    }
+
+    if (try_auto_cast_type_to_rtti(c, a, b->type)) {
+        return a->type;
+    }
+
+    if (try_auto_cast_type_to_rtti(c, b, a->type)) {
         return b->type;
     }
 
@@ -660,6 +688,9 @@ typedef enum {
     REF_NONE,
     REF_ADDR,
     REF_ASSIGN,
+
+    REF_ADDR_MEMBER,
+    REF_ASSIGN_MEMBER,
 } Ref_Kind;
 
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type);
@@ -803,6 +834,10 @@ static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
+    }
+
+    if (n->emit_type_info) {
+        return const_value_type(*n->emit_type_info);
     }
 
     switch (n->kind) {
@@ -1712,9 +1747,14 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                     }
                 }
 
+                if (it_expr->type.is_meta && !it->definition_spec->is_const) {
+                    it_expr->emit_type_info = arena_clone(c->arena, &it_expr->type, sizeof(it_expr->type));
+                    it_expr->emit_type_info->is_meta = false;
+                    it_expr->type = c->rtti_pointer_type;
+                }
+
                 const bool is_it_a_module = type_kind_eq(it_expr->type, TYPE_MODULE) && !it->definition_spec->is_const;
-                const bool is_it_a_type = it_expr->type.is_meta && !it->definition_spec->is_const;
-                if (is_it_a_module || is_it_a_type) {
+                if (is_it_a_module) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot store %s in a %s\n",
@@ -1901,9 +1941,27 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 }
                 break;
 
+            case REF_ADDR_MEMBER:
+                if (!n->type.is_meta && !type_kind_eq(definition->node.type, TYPE_MODULE)) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
+                        Pos_Arg(token.pos));
+                    exit(1);
+                }
+                break;
+
             case REF_ASSIGN:
                 fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(token.pos));
                 exit(1);
+                break;
+
+            case REF_ASSIGN_MEMBER:
+                if (!type_kind_eq(definition->node.type, TYPE_MODULE)) {
+                    fprintf(
+                        stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(token.pos));
+                    exit(1);
+                }
                 break;
             }
         }
@@ -2350,7 +2408,27 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
         if (member->lhs) {
-            check_expr(c, member->lhs, ref, NULL);
+            {
+                Ref_Kind ref_member = ref;
+                switch (ref_member) {
+                case REF_ADDR:
+                    ref_member = REF_ADDR_MEMBER;
+                    break;
+
+                case REF_ASSIGN:
+                    ref_member = REF_ASSIGN_MEMBER;
+                    break;
+
+                case REF_NONE:
+                case REF_ADDR_MEMBER:
+                case REF_ASSIGN_MEMBER:
+                    // Pass
+                    break;
+                }
+
+                check_expr(c, member->lhs, ref_member, NULL);
+            }
+
             check_that_type_is_known(member->lhs);
 
             is_ref_valid = true; // check_node() has already determined that the reference is valid
@@ -2358,7 +2436,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
                 check_whether_member_access_is_valid(member);
                 Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
-                member->enum_value = enum_get_value(enumm, member->field.sv, &member->field);
+                member->enum_value = get_enum_value(enumm, member->field.sv, &member->field);
                 member->is_enum = true;
                 n->type = member->lhs->type;
                 n->type.is_meta = false;
@@ -2453,7 +2531,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             if (expected_type && type_kind_eq(*expected_type, TYPE_ENUM)) {
                 Node_Enum *enumm = expected_type->spec.enumm.definition;
-                member->enum_value = enum_get_value(enumm, member->field.sv, &member->field);
+                member->enum_value = get_enum_value(enumm, member->field.sv, &member->field);
                 n->type = *expected_type;
             }
         }
@@ -3269,6 +3347,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             break;
 
         case REF_ADDR:
+        case REF_ADDR_MEMBER:
             if (!n->type.is_meta) {
                 fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference to value not in memory\n", Pos_Arg(n->token.pos));
                 exit(1);
@@ -3276,6 +3355,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             break;
 
         case REF_ASSIGN:
+        case REF_ASSIGN_MEMBER:
             fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to value not in memory\n", Pos_Arg(n->token.pos));
             exit(1);
             break;
@@ -3547,15 +3627,15 @@ Const_Value get_platform(Compiler *c, Type *type) {
     // TODO: This is unsafe
 
 #ifdef PLATFORM_X86_64_LINUX
-    return const_value_int(0);
+    return const_value_int(CONTRACT_PLATFORM_LINUX);
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    return const_value_int(1);
+    return const_value_int(CONTRACT_PLATFORM_MACOS);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    return const_value_int(2);
+    return const_value_int(CONTRACT_PLATFORM_WINDOWS);
 #endif // PLATFORM_X86_64_WINDOWS
 
     unreachable();
@@ -3579,16 +3659,62 @@ void check_nodes(Compiler *c) {
     assert(c->main_module);
     assert(c->builtin_module);
 
-    const Type unit = {.kind = TYPE_UNIT};
-    c->main_fn_type = (Type) {
-        .kind = TYPE_FN,
-        .spec.fn.return_type = arena_clone(c->arena, &unit, sizeof(unit)),
-    };
+    {
+        const Type unit = {.kind = TYPE_UNIT};
+        c->main_fn_type = (Type) {
+            .kind = TYPE_FN,
+            .spec.fn.return_type = arena_clone(c->arena, &unit, sizeof(unit)),
+        };
+    }
 
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
             define_orderless_nodes(c, it, 0);
         }
+    }
+
+    {
+        const Const_Value value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type_Info"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+        c->rtti_pointer_type = value.as.type;
+        c->rtti_pointer_type.is_meta = false;
+        c->rtti_pointer_type.ref++;
+
+        assert(c->rtti_pointer_type.kind == TYPE_STRUCT);
+        const Type_Struct *type_info_structure = c->rtti_pointer_type.spec.structt;
+
+        assert(type_info_structure->fields_count == 3);
+        const Type *type_info_variant = &type_info_structure->fields[2].type;
+
+        assert(type_info_variant->kind == TYPE_UNION);
+        c->rtti_variants_union = type_info_variant->spec.unionn;
+        assert(c->rtti_variants_union->variants_count == 11);
+
+        static_assert(COUNT_TYPES == 24, "");
+        c->rtti_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
+        c->rtti_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
+
+        c->rtti_variants[TYPE_I8] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_I16] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_I32] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_I64] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_INT] = CONTRACT_TYPE_INFO_INTEGER;
+
+        c->rtti_variants[TYPE_U8] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_U16] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_U32] = CONTRACT_TYPE_INFO_INTEGER;
+        c->rtti_variants[TYPE_U64] = CONTRACT_TYPE_INFO_INTEGER;
+
+        c->rtti_variants[TYPE_RAWPTR] = CONTRACT_TYPE_INFO_POINTER;
+
+        c->rtti_variants[TYPE_FN] = CONTRACT_TYPE_INFO_FUNCTION;
+        c->rtti_variants[TYPE_ENUM] = CONTRACT_TYPE_INFO_ENUMERATION;
+        c->rtti_variants[TYPE_UNION] = CONTRACT_TYPE_INFO_UNION;
+        c->rtti_variants[TYPE_STRUCT] = CONTRACT_TYPE_INFO_STRUCTURE;
+
+        c->rtti_variants[TYPE_ARRAY] = CONTRACT_TYPE_INFO_ARRAY;
+        c->rtti_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
+        c->rtti_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
     }
 
     for (Module *m = c->modules->head; m; m = m->next) {

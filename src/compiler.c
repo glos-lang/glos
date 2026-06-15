@@ -1321,6 +1321,19 @@ static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref)
     return compile_string_struct(c, compile_const_value_into_memory(c, memory), sv.count, pos, ref);
 }
 
+// TODO: Make this the default
+static LLVMValueRef compile_string_into_const(Compiler *c, SV sv) {
+    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
+
+    LLVMValueRef fields[] = {
+        compile_const_value_into_memory(c, memory),
+        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), sv.count, true),
+    };
+    return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
+}
+
+static LLVMValueRef compile_type_info(Compiler *c, Type *type);
+
 static_assert(COUNT_CONST_VALUES == 8, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
@@ -1331,7 +1344,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
         return compile_fn(c, value.as.fn);
 
     case CONST_VALUE_TYPE:
-        unreachable();
+        return compile_type_info(c, &value.as.type);
 
     case CONST_VALUE_UNION: {
         const Type_Union *spec = value.as.unionn.spec;
@@ -1354,7 +1367,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
             fields[fields_iota++] = LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), padding));
         }
 
-        return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, true);
+        return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, false);
     }
 
     case CONST_VALUE_STRUCT: {
@@ -1393,16 +1406,8 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
         return memory;
     }
 
-    case CONST_VALUE_STRING: {
-        LLVMValueRef memory =
-            LLVMConstStringInContext(c->llvm_context, value.as.string.data, value.as.string.count, false);
-
-        LLVMValueRef fields[] = {
-            compile_const_value_into_memory(c, memory),
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value.as.string.count, true),
-        };
-        return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
-    }
+    case CONST_VALUE_STRING:
+        return compile_string_into_const(c, value.as.string);
 
     case CONST_VALUE_MODULE:
         unreachable();
@@ -1578,6 +1583,8 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         LLVMMetadataRef   llvm_debug_scope_save = c->llvm_debug_scope;
         LLVMBasicBlockRef llvm_current_block_save = LLVMGetInsertBlock(c->llvm_builder);
 
+        LLVMMetadataRef llvm_current_debug_location_save = LLVMGetCurrentDebugLocation2(c->llvm_builder);
+
         SV fn_name = sv_from_cstr(temp_emit_nested_fn_name(c, fn, fn->module));
         if (!link_as.count) {
             link_as = fn_name;
@@ -1633,7 +1640,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         c->llvm_debug_scope = fn->llvm_debug_scope;
 
         LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, fn->llvm, ""));
-        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
 
         size_t abi_iota = 0;
         size_t arg_iota = 0;
@@ -1726,7 +1733,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
         c->llvm_debug_scope = llvm_debug_scope_save;
         LLVMPositionBuilderAtEnd(c->llvm_builder, llvm_current_block_save);
-        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, llvm_current_debug_location_save);
     }
 
     temp_reset(checkpoint);
@@ -1822,6 +1829,249 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
+static uint64_t ht_hasheq_type(const void *va, const void *vb, size_t n) {
+    unused(n);
+    if (vb) {
+        return type_eq(*(const Type *) va, *(const Type *) vb);
+    }
+
+    // Technically this is correct, however this will decay to O(n) very often.
+    // TODO: Implement a more specific hashing algorithm for types
+    uint64_t hash = 14695981039346656037UL;
+    for (size_t i = 0; i < sizeof(Type); i++) {
+        hash ^= *(const uint8_t *) va;
+        hash *= 1099511628211UL;
+    }
+    return hash;
+}
+
+static LLVMValueRef
+create_const_slice_from_memory(Compiler *c, LLVMTypeRef element, LLVMValueRef *memory, size_t count) {
+    LLVMValueRef fields[2] = {0};
+    if (count) {
+        fields[0] = compile_const_value_into_memory(c, LLVMConstArray(element, memory, count));
+    } else {
+        fields[0] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+    }
+
+    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), count, true);
+    return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
+}
+
+static_assert(COUNT_TYPES == 24, "");
+static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
+    compile_type(c, type);
+
+    if (!c->rtti_cache.hasheq) {
+        c->rtti_cache.hasheq = ht_hasheq_type;
+    }
+
+    // Emit unique RTTI
+    {
+        LLVMValueRef *cached = ht_get(&c->rtti_cache, *type);
+        if (cached) {
+            return *cached;
+        }
+    }
+
+    LLVMValueRef ti_fields[3] = {0};
+    size_t       ti_fields_iota = 0;
+    ti_fields[ti_fields_iota++] = LLVMConstInt(
+        LLVMInt64TypeInContext(c->llvm_context), LLVMABISizeOfType(c->llvm_target_data, type->llvm), false);
+
+    ti_fields[ti_fields_iota++] = LLVMConstInt(
+        LLVMInt64TypeInContext(c->llvm_context), LLVMABIAlignmentOfType(c->llvm_target_data, type->llvm), false);
+
+    const size_t variant_index = c->rtti_variants[type->kind];
+    assert(variant_index);
+
+    LLVMValueRef tiv_fields[3] = {0};
+    size_t       tiv_fields_iota = 0;
+
+    if (type->ref) {
+        tiv_fields[tiv_fields_iota++] =
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), c->rtti_variants[TYPE_RAWPTR], false);
+
+        Type underlying = *type;
+        underlying.ref--;
+        underlying.llvm = NULL;
+        tiv_fields[tiv_fields_iota++] = compile_type_info(c, &underlying);
+    } else {
+        tiv_fields[tiv_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variant_index, false);
+
+        switch (type->kind) {
+        case TYPE_BOOL:
+        case TYPE_CHAR:
+        case TYPE_RAWPTR:
+        case TYPE_STRING:
+            // Pass
+            break;
+
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_INT:
+
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+            tiv_fields[tiv_fields_iota++] =
+                LLVMConstInt(LLVMInt8TypeInContext(c->llvm_context), type_is_signed(*type), true);
+            break;
+
+        case TYPE_FN: {
+            const void *checkpoint = temp_alloc(0);
+
+            LLVMValueRef fn_fields[2] = {0};
+            size_t       fn_fields_iota = 0;
+
+            const Type_Fn *spec = &type->spec.fn;
+
+            LLVMValueRef *args = temp_alloc(spec->args_count * sizeof(*args));
+            for (size_t i = 0; i < spec->args_count; i++) {
+                args[i] = compile_type_info(c, &spec->args[i].type);
+            }
+            fn_fields[fn_fields_iota++] =
+                create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), args, spec->args_count);
+
+            LLVMValueRef *returns = temp_alloc(spec->returns_count * sizeof(*returns));
+            for (size_t i = 0; i < spec->returns_count; i++) {
+                returns[i] = compile_type_info(c, &spec->returns[i]);
+            }
+            fn_fields[fn_fields_iota++] = create_const_slice_from_memory(
+                c, LLVMPointerTypeInContext(c->llvm_context, 0), returns, spec->returns_count);
+
+            tiv_fields[tiv_fields_iota++] = LLVMConstStructInContext(c->llvm_context, fn_fields, fn_fields_iota, false);
+            temp_reset(checkpoint);
+        } break;
+
+        case TYPE_ENUM: {
+            const void *checkpoint = temp_alloc(0);
+
+            LLVMValueRef enum_fields[3] = {0};
+            size_t       enum_fields_iota = 0;
+
+            const Type_Enum *spec = &type->spec.enumm;
+
+            LLVMValueRef *names = temp_alloc(spec->definition->values_count * sizeof(*names));
+            LLVMValueRef *values = temp_alloc(spec->definition->values_count * sizeof(*values));
+
+            {
+                size_t iota = 0;
+                ll_foreach(it, &spec->definition->values) {
+                    names[iota] = compile_string_into_const(c, it->token.sv);
+                    values[iota] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it->token.as.integer, true);
+                    iota++;
+                }
+                assert(iota == spec->definition->values_count);
+            }
+
+            enum_fields[enum_fields_iota++] =
+                create_const_slice_from_memory(c, c->llvm_slice_type, names, spec->definition->values_count);
+
+            enum_fields[enum_fields_iota++] = create_const_slice_from_memory(
+                c, LLVMInt64TypeInContext(c->llvm_context), values, spec->definition->values_count);
+
+            Type underlying = {.kind = spec->underlying};
+            enum_fields[enum_fields_iota++] = compile_type_info(c, &underlying);
+
+            tiv_fields[tiv_fields_iota++] =
+                LLVMConstStructInContext(c->llvm_context, enum_fields, enum_fields_iota, false);
+
+            temp_reset(checkpoint);
+        } break;
+
+        case TYPE_UNION: {
+            const void *checkpoint = temp_alloc(0);
+
+            const Type_Union *spec = type->spec.unionn;
+
+            LLVMValueRef *variants = temp_alloc(spec->variants_count * sizeof(*variants));
+            for (size_t i = 0; i < spec->variants_count; i++) {
+                variants[i] = compile_type_info(c, &spec->variants[i].type);
+            }
+            tiv_fields[tiv_fields_iota++] = create_const_slice_from_memory(
+                c, LLVMPointerTypeInContext(c->llvm_context, 0), variants, spec->variants_count);
+
+            temp_reset(checkpoint);
+        } break;
+
+        case TYPE_STRUCT: {
+            const void *checkpoint = temp_alloc(0);
+
+            LLVMValueRef struct_fields[3] = {0};
+            size_t       struct_fields_iota = 0;
+
+            const Type_Struct *spec = type->spec.structt;
+
+            LLVMValueRef *names = temp_alloc(spec->fields_count * sizeof(*names));
+            LLVMValueRef *types = temp_alloc(spec->fields_count * sizeof(*types));
+            LLVMValueRef *offsets = temp_alloc(spec->fields_count * sizeof(*offsets));
+
+            for (size_t i = 0; i < spec->fields_count; i++) {
+                Type_Struct_Field *it = &spec->fields[i];
+                names[i] = compile_string_into_const(c, it->name);
+                types[i] = compile_type_info(c, &it->type);
+                offsets[i] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it->offset, true);
+            }
+
+            struct_fields[struct_fields_iota++] =
+                create_const_slice_from_memory(c, c->llvm_slice_type, names, spec->fields_count);
+
+            struct_fields[struct_fields_iota++] = create_const_slice_from_memory(
+                c, LLVMPointerTypeInContext(c->llvm_context, 0), types, spec->fields_count);
+
+            struct_fields[struct_fields_iota++] =
+                create_const_slice_from_memory(c, LLVMInt64TypeInContext(c->llvm_context), offsets, spec->fields_count);
+
+            tiv_fields[tiv_fields_iota++] =
+                LLVMConstStructInContext(c->llvm_context, struct_fields, struct_fields_iota, false);
+            temp_reset(checkpoint);
+        } break;
+
+        case TYPE_ARRAY: {
+            LLVMValueRef array_fields[2] = {0};
+            size_t       array_fields_iota = 0;
+
+            array_fields[array_fields_iota++] = compile_type_info(c, type->spec.array.element);
+            array_fields[array_fields_iota++] =
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), type->spec.array.count, true);
+
+            tiv_fields[tiv_fields_iota++] =
+                LLVMConstStructInContext(c->llvm_context, array_fields, array_fields_iota, false);
+        } break;
+
+        case TYPE_SLICE:
+            tiv_fields[tiv_fields_iota++] = compile_type_info(c, type->spec.slice.element);
+            break;
+
+        default:
+            unreachable();
+            break;
+        }
+    }
+
+    const size_t variant_size =
+        LLVMABISizeOfType(c->llvm_target_data, c->rtti_variants_union->variants[variant_index - 1].type.llvm);
+
+    const size_t variant_padding =
+        LLVMABISizeOfType(c->llvm_target_data, c->rtti_variants_union->llvm) - 8 - variant_size;
+
+    if (variant_padding) {
+        tiv_fields[tiv_fields_iota++] =
+            LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), variant_padding));
+    }
+
+    ti_fields[ti_fields_iota++] = LLVMConstStructInContext(c->llvm_context, tiv_fields, tiv_fields_iota, false);
+
+    LLVMValueRef rtti =
+        compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, ti_fields, ti_fields_iota, false));
+    ht_set(&c->rtti_cache, *type, rtti);
+    return rtti;
+}
+
 static_assert(COUNT_NODES == 27, "");
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -1834,6 +2084,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
     if (n->type.kind != TYPE_GROUP) {
         compile_type(c, &n->type);
+    }
+
+    if (n->emit_type_info) {
+        return compile_type_info(c, n->emit_type_info);
     }
 
     switch (n->kind) {
@@ -1985,12 +2239,13 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         if ((n->token.kind == TOKEN_EQ || n->token.kind == TOKEN_NE) && binary->lhs->type.kind == TYPE_STRING) {
             LLVMValueRef lhs = compile_expr(c, binary->lhs, true);
             LLVMValueRef rhs = compile_expr(c, binary->rhs, true);
-            set_debug_pos(c, n->token.pos);
 
             LLVMTypeRef  fn_type = NULL;
             LLVMValueRef fn_value = get_builtin_func(c, sv_from_cstr("string_eq"), &fn_type);
 
             LLVMValueRef args[] = {lhs, rhs};
+
+            set_debug_pos(c, n->token.pos);
             LLVMValueRef equal = LLVMBuildCall2(c->llvm_builder, fn_type, fn_value, args, len(args), "");
 
             switch (n->token.kind) {
@@ -2875,7 +3130,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 introduce_ghost_for_union(c, iff->context_replace.to);
             }
             compile_stmt(c, iff->consequence);
-            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
             LLVMBuildBr(c->llvm_builder, end);
         }
 
@@ -2884,7 +3139,7 @@ static void compile_stmt(Compiler *c, Node *n) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, antecedence);
             compile_stmt(c, iff->antecedence);
 
-            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
             LLVMBuildBr(c->llvm_builder, end);
         }
 
@@ -2927,12 +3182,12 @@ static void compile_stmt(Compiler *c, Node *n) {
             // Condition
             if (forr->condition) {
                 start = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, start);
                 LLVMPositionBuilderAtEnd(c->llvm_builder, start);
                 LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
             } else {
-                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, body);
             }
 
@@ -2942,7 +3197,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
             // Update
             if (forr->update) {
-                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, update);
 
                 LLVMPositionBuilderAtEnd(c->llvm_builder, update);
@@ -2950,7 +3205,7 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
 
             // Loop
-            LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
             LLVMBuildBr(c->llvm_builder, start);
 
             // End
@@ -3020,7 +3275,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                     introduce_ghost_for_union(c, branch->context_replace.to);
                 }
                 compile_stmt(c, branch->body);
-                LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
                 LLVMBuildBr(c->llvm_builder, end);
             }
         }
@@ -3031,7 +3286,7 @@ static void compile_stmt(Compiler *c, Node *n) {
             compile_stmt(c, ((Node_Case *) sw->fallback)->body);
         }
 
-        LLVMSetCurrentDebugLocation(c->llvm_builder, NULL);
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
         LLVMBuildBr(c->llvm_builder, end);
 
         LLVMPositionBuilderAtEnd(c->llvm_builder, end);
@@ -3317,6 +3572,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     }
 
     ht_free(&c->llvm_debug_files);
+    ht_free(&c->rtti_cache);
     da_free(&c->context.locals);
     da_free(&c->struct_fields);
     da_free(&c->group_values);

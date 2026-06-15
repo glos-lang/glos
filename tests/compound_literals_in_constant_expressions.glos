@@ -13,5 +13,7 @@ main :: () {
 }
 
 print_vec2 :: (v: Vec2) {
-    fprintf(stdout, "(%d, %d)\n".data, v.x, v.y)
+    C.fprintf(C.stdout, "(%d, %d)\n".data, v.x, v.y)
 }
+
+C :: #import "C"

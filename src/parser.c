@@ -1551,6 +1551,22 @@ Parse_Result parse_directory(Parser *p, const char *path) {
         return PARSE_FAILURE;
     }
 
+    if (sv_match(p->module_current->name, "builtin")) {
+        bool found = false;
+        for (size_t i = start; i < p->paths.count; i++) {
+            const char *it = p->paths.data[i];
+            if (sv_has_suffix(sv_from_cstr(it), sv_from_cstr("builtin/contract.glos"))) {
+                found = true;
+                for (size_t j = i; j > start; j--) {
+                    p->paths.data[j] = p->paths.data[j - i];
+                }
+                p->paths.data[start] = it;
+                break;
+            }
+        }
+        assert(found);
+    }
+
     bool empty = true;
 
     const Parser_State parser_state_save = p->state;

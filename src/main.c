@@ -256,6 +256,18 @@ int main(int argc, char **argv) {
         .link_flags = &link_flags,
     };
 
+    compiler.main_module = module_get(&parser, input_path);
+    compiler.main_module->name = sv_from_cstr("main");
+
+    const bool input_is_directory = directory_exists(input_path);
+    if (input_is_directory) {
+        parser.root = sv_from_cstr(input_path);
+        input_path = get_relative_path(parser.cwd, parser.root, &arena);
+    } else {
+        parser.root = sv_from_cstr(get_parent_dir_path(input_path, &arena));
+        input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &arena);
+    }
+
     // Import the builtin module
     {
         const SV    name = sv_from_cstr("builtin");
@@ -293,14 +305,8 @@ int main(int argc, char **argv) {
         parser.module_current = NULL;
     }
 
-    compiler.main_module = module_get(&parser, input_path);
-    compiler.main_module->name = sv_from_cstr("main");
-
     parser.module_current = compiler.main_module;
-    if (directory_exists(input_path)) {
-        parser.root = sv_from_cstr(input_path);
-        input_path = get_relative_path(parser.cwd, parser.root, &arena);
-
+    if (input_is_directory) {
         switch (parse_directory(&parser, input_path)) {
         case PARSE_OK:
             // Pass
@@ -320,9 +326,6 @@ int main(int argc, char **argv) {
             unreachable();
         }
     } else {
-        parser.root = sv_from_cstr(get_parent_dir_path(input_path, &arena));
-        input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &arena);
-
         if (parse_file(&parser, input_path) != PARSE_OK) {
             fprintf(stderr, "ERROR: Could not read file '%s'\n", input_path);
             exit(1);
