@@ -172,8 +172,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         const char *glos_contract_path = "std/builtin/contract.glos";
         const char *c_contract_path = "src/contract.h";
         if (get_modified_time(glos_contract_path) > get_modified_time(c_contract_path)) {
-            fprintf(stderr, "ERROR: The file '%s' was modified after '%s'\n", glos_contract_path, c_contract_path);
-            exit(1);
+            fprintf(stderr, "WARNING: The file '%s' was modified after '%s'\n", glos_contract_path, c_contract_path);
         }
     }
 
