@@ -1387,14 +1387,17 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
         const Const_Value_Array array = value.as.array;
         compile_type(c, array.element_type);
 
-        // We are using arena_alloc() here because the count might be large and overflow the temporary buffer.
-        LLVMValueRef *elements = arena_alloc(c->arena, array.count * sizeof(*elements));
-        for (size_t i = 0; i < array.count; i++) {
-            elements[i] = compile_const_value(c, array.data[i], *array.element_type);
-        }
+        LLVMValueRef memory = NULL;
+        {
+            const size_t group_values_count_save = c->group_values.count;
+            for (size_t i = 0; i < array.count; i++) {
+                da_push(&c->group_values, compile_const_value(c, array.data[i], *array.element_type));
+            }
+            LLVMValueRef *elements = &c->group_values.data[group_values_count_save];
 
-        LLVMValueRef memory = LLVMConstArray(array.element_type->llvm, elements, array.count);
-        arena_reset(c->arena, elements);
+            memory = LLVMConstArray(array.element_type->llvm, elements, array.count);
+            c->group_values.count = group_values_count_save;
+        }
 
         if (array.auto_cast_array_to_slice) {
             LLVMValueRef fields[] = {
