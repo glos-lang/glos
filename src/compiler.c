@@ -1292,37 +1292,13 @@ static void set_debug_pos(Compiler *c, Pos pos) {
         LLVMDIBuilderCreateDebugLocation(c->llvm_context, pos.row + 1, pos.col + 1, c->llvm_debug_scope, NULL));
 }
 
-static LLVMValueRef compile_string_struct(Compiler *c, LLVMValueRef data, size_t count, const Pos *pos, bool ref) {
-    LLVMValueRef slice_struct = compile_alloca(c, c->llvm_slice_type);
-    LLVMBuildStore(c->llvm_builder, data, slice_struct);
-    LLVMBuildStore(
-        c->llvm_builder,
-        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), count, false),
-        LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice_struct, 1, ""));
-
-    if (ref) {
-        return slice_struct;
-    }
-
-    if (pos) {
-        set_debug_pos(c, *pos);
-    }
-    return LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, slice_struct, "");
-}
-
 static LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value) {
     LLVMValueRef memory = LLVMAddGlobal(c->llvm_module, LLVMTypeOf(value), "");
     LLVMSetInitializer(memory, value);
     return memory;
 }
 
-static LLVMValueRef compile_string(Compiler *c, SV sv, const Pos *pos, bool ref) {
-    LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
-    return compile_string_struct(c, compile_const_value_into_memory(c, memory), sv.count, pos, ref);
-}
-
-// TODO: Make this the default
-static LLVMValueRef compile_string_into_const(Compiler *c, SV sv) {
+static LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv) {
     LLVMValueRef memory = LLVMConstStringInContext(c->llvm_context, sv.data, sv.count, false);
 
     LLVMValueRef fields[] = {
@@ -1410,7 +1386,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
     }
 
     case CONST_VALUE_STRING:
-        return compile_string_into_const(c, value.as.string);
+        return compile_string_into_const_value(c, value.as.string);
 
     case CONST_VALUE_MODULE:
         unreachable();
@@ -1964,7 +1940,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             {
                 size_t iota = 0;
                 ll_foreach(it, &spec->definition->values) {
-                    names[iota] = compile_string_into_const(c, it->token.sv);
+                    names[iota] = compile_string_into_const_value(c, it->token.sv);
                     values[iota] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it->token.as.integer, true);
                     iota++;
                 }
@@ -2015,7 +1991,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
 
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
-                names[i] = compile_string_into_const(c, it->name);
+                names[i] = compile_string_into_const_value(c, it->name);
                 types[i] = compile_type_info(c, &it->type);
                 offsets[i] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it->offset, true);
             }
@@ -2110,8 +2086,14 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
         case TOKEN_IDENT:
             return compile_ident(c, n, (Node_Atom *) atom->definition, ref);
 
-        case TOKEN_STRING:
-            return compile_string(c, n->token.sv, &n->token.pos, ref);
+        case TOKEN_STRING: {
+            LLVMValueRef memory = compile_const_value_into_memory(c, compile_string_into_const_value(c, n->token.sv));
+            if (ref) {
+                return memory;
+            }
+
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+        }
 
         case TOKEN_DIRECTIVE_MAIN:
             return compile_fn(c, c->main_fn);
@@ -2744,7 +2726,8 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 SV sv = sv_from_cstr(cstr);
                 sv.count -= 1;
 
-                value = compile_string(c, sv, NULL, ref);
+                value = compile_const_value_into_memory(c, compile_string_into_const_value(c, sv));
+                value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, value, "");
                 temp_reset(cstr);
             } else {
                 static_assert(COUNT_CONST_VALUES == 8, "");
