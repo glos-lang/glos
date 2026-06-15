@@ -69,10 +69,36 @@ main :: () {
     {
         write_type([]string)
     }
+
+    // Recursive
+    {
+        Node :: struct {
+            name: string
+            next: &Node
+        }
+
+        write_type(Node)
+    }
 }
 
 write_type :: (ti: &Type_Info) {
+    write_type(ti)
+    write_string("\n")
+
     write_type :: (ti: &Type_Info) {
+        #static depth: i64
+        #static tm: [1024]&Type_Info
+        #static tm_count: i64
+        for i := 0; i < tm_count; i++ {
+            if tm[i] == ti {
+                write_string("<Recursive>")
+                return
+            }
+        }
+
+        tm[tm_count++] = ti
+        defer tm_count--
+
         variant := ti.variant
         if variant == {
         case Type_Info_Boolean
@@ -126,42 +152,56 @@ write_type :: (ti: &Type_Info) {
             }
 
         case Type_Info_Enumeration
-            write_string("enum {")
-            for i := 0; i < variant.names.count; i++ {
-                if i > 0 {
-                    write_string("; ")
+            write_string("enum ")
+            write_type(variant.underlying)
+            write_string(" {")
+            if variant.names.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.names.count; i++ {
+                    write_indent(depth)
+                    write_string(variant.names[i])
+                    write_string(" = ")
+                    write_i64(variant.values[i])
+                    write_string("\n")
                 }
-
-                write_string(variant.names[i])
-                write_string(" = ")
-                write_i64(variant.values[i])
+                depth--
+                write_indent(depth)
             }
             write_string("}")
 
 
         case Type_Info_Union
             write_string("union {")
-            for i := 0; i < variant.variants.count; i++ {
-                if i > 0 {
-                    write_string("; ")
+            if variant.variants.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.variants.count; i++ {
+                    write_indent(depth)
+                    write_type(variant.variants[i])
+                    write_string("\n")
                 }
-                write_type(variant.variants[i])
+                depth--
+                write_indent(depth)
             }
             write_string("}")
 
         case Type_Info_Structure
             write_string("struct {")
-            for i := 0; i < variant.names.count; i++ {
-                if i > 0 {
-                    write_string("; ")
+            if variant.names.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.names.count; i++ {
+                    write_indent(depth)
+                    write_string(variant.names[i])
+                    write_string(": ")
+                    write_type(variant.types[i])
+                    write_string(" // offset = ")
+                    write_i64(variant.offsets[i])
+                    write_string("\n")
                 }
-
-                write_string(variant.names[i])
-                write_string(": ")
-                write_type(variant.types[i])
-                write_string(" /* ")
-                write_i64(variant.offsets[i])
-                write_string(" */")
+                depth--
+                write_indent(depth)
             }
             write_string("}")
 
@@ -179,16 +219,18 @@ write_type :: (ti: &Type_Info) {
             write_string("string")
         }
     }
-    write_type(ti)
-    write_string("\n")
-}
 
-write_string :: (s: string) {
-    C.fprintf(C.stdout, "%.*s".data, i32(s.count), s.data)
-}
+    write_string :: (s: string) {
+        C.fprintf(C.stdout, "%.*s".data, i32(s.count), s.data)
+    }
 
-write_i64 :: (n: i64) {
-    C.fprintf(C.stdout, "%ld".data, n)
-}
+    write_indent :: (n: i64) {
+        C.fprintf(C.stdout, "%*s".data, i32(n * 4), "".data)
+    }
 
-C :: #import "C"
+    write_i64 :: (n: i64) {
+        C.fprintf(C.stdout, "%ld".data, n)
+    }
+
+    C :: #import "C"
+}

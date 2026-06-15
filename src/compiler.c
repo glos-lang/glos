@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#include "llvm-c/Target.h"
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
@@ -100,11 +101,11 @@ static void compile_type(Compiler *c, Type *type) {
                 Type_Union_Variant *it = &spec->variants[i];
                 compile_type(c, &it->type);
 
-                const size_t it_size = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm);
-                spec->variants_size_max = max(spec->variants_size_max, it_size);
+                it->size = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm);
+                spec->variants_size_max = max(spec->variants_size_max, it->size);
 
-                const size_t it_align = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm);
-                spec->variants_align_max = max(spec->variants_align_max, it_align);
+                it->align = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm);
+                spec->variants_align_max = max(spec->variants_align_max, it->align);
             }
 
             LLVMTypeRef fields[] = {
@@ -1837,6 +1838,13 @@ create_const_slice_from_memory(Compiler *c, LLVMTypeRef element, LLVMValueRef *m
     return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
 }
 
+static LLVMValueRef create_const_struct_from_single_value_if_not_already(Compiler *c, LLVMValueRef value) {
+    if (LLVMGetValueKind(value) == LLVMConstantStructValueKind) {
+        return value;
+    }
+    return LLVMConstStructInContext(c->llvm_context, &value, 1, false);
+}
+
 static_assert(COUNT_TYPES == 24, "");
 static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     compile_type(c, type);
@@ -1845,12 +1853,19 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         c->rtti_cache.hasheq = ht_hasheq_type;
     }
 
+    const size_t variant_index = c->rtti_variants[type->ref ? TYPE_RAWPTR : type->kind];
+    assert(variant_index);
+
     // Emit unique RTTI
+    LLVMValueRef forward = NULL;
     {
         LLVMValueRef *cached = ht_get(&c->rtti_cache, *type);
         if (cached) {
             return *cached;
         }
+
+        forward = LLVMAddGlobal(c->llvm_module, c->rtti_type.llvm, "");
+        ht_set(&c->rtti_cache, *type, forward);
     }
 
     LLVMValueRef ti_fields[3] = {0};
@@ -1861,23 +1876,17 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     ti_fields[ti_fields_iota++] = LLVMConstInt(
         LLVMInt64TypeInContext(c->llvm_context), LLVMABIAlignmentOfType(c->llvm_target_data, type->llvm), false);
 
-    const size_t variant_index = c->rtti_variants[type->kind];
-    assert(variant_index);
-
     LLVMValueRef tiv_fields[3] = {0};
     size_t       tiv_fields_iota = 0;
 
+    tiv_fields[tiv_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variant_index, false);
     if (type->ref) {
-        tiv_fields[tiv_fields_iota++] =
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), c->rtti_variants[TYPE_RAWPTR], false);
-
         Type underlying = *type;
         underlying.ref--;
         underlying.llvm = NULL;
-        tiv_fields[tiv_fields_iota++] = compile_type_info(c, &underlying);
+        tiv_fields[tiv_fields_iota++] =
+            create_const_struct_from_single_value_if_not_already(c, compile_type_info(c, &underlying));
     } else {
-        tiv_fields[tiv_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variant_index, false);
-
         switch (type->kind) {
         case TYPE_BOOL:
         case TYPE_CHAR:
@@ -1896,8 +1905,8 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         case TYPE_U16:
         case TYPE_U32:
         case TYPE_U64:
-            tiv_fields[tiv_fields_iota++] =
-                LLVMConstInt(LLVMInt8TypeInContext(c->llvm_context), type_is_signed(*type), true);
+            tiv_fields[tiv_fields_iota++] = create_const_struct_from_single_value_if_not_already(
+                c, LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), type_is_signed(*type), true));
             break;
 
         case TYPE_FN: {
@@ -2023,7 +2032,8 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         } break;
 
         case TYPE_SLICE:
-            tiv_fields[tiv_fields_iota++] = compile_type_info(c, type->spec.slice.element);
+            tiv_fields[tiv_fields_iota++] =
+                create_const_struct_from_single_value_if_not_already(c, compile_type_info(c, type->spec.slice.element));
             break;
 
         default:
@@ -2032,12 +2042,8 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         }
     }
 
-    const size_t variant_size =
-        LLVMABISizeOfType(c->llvm_target_data, c->rtti_variants_union->variants[variant_index - 1].type.llvm);
-
-    const size_t variant_padding =
-        LLVMABISizeOfType(c->llvm_target_data, c->rtti_variants_union->llvm) - 8 - variant_size;
-
+    const size_t variant_size = c->rtti_variants_union->variants[variant_index - 1].size;
+    const size_t variant_padding = c->rtti_variants_union->variants_size_max - variant_size;
     if (variant_padding) {
         tiv_fields[tiv_fields_iota++] =
             LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), variant_padding));
@@ -2045,10 +2051,14 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
 
     ti_fields[ti_fields_iota++] = LLVMConstStructInContext(c->llvm_context, tiv_fields, tiv_fields_iota, false);
 
-    LLVMValueRef rtti =
+    LLVMValueRef real =
         compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, ti_fields, ti_fields_iota, false));
-    ht_set(&c->rtti_cache, *type, rtti);
-    return rtti;
+
+    LLVMReplaceAllUsesWith(forward, real);
+    LLVMDeleteGlobal(forward);
+
+    ht_set(&c->rtti_cache, *type, real);
+    return real;
 }
 
 static_assert(COUNT_NODES == 27, "");
@@ -3475,6 +3485,7 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
+    compile_type(c, &c->rtti_type);
     for (Module *m = c->modules->head; m; m = m->next) {
         ht_foreach(g, &m->globals) {
             Node_Atom *it = *g.value;

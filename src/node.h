@@ -195,8 +195,10 @@ struct Type_Fn_Arg {
 };
 
 struct Type_Union_Variant {
-    Pos  pos;
-    Type type;
+    Pos    pos;
+    Type   type;
+    size_t size;
+    size_t align;
 };
 
 struct Type_Struct_Field {

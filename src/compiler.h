@@ -23,13 +23,6 @@ typedef struct {
     Type main_fn_type;
     DA(Type_Struct_Field) struct_fields;
 
-    Type rtti_pointer_type; // This holds `&Type_Info`
-
-    size_t            rtti_variants[COUNT_TYPES];
-    const Type_Union *rtti_variants_union;
-
-    HT(Type, LLVMValueRef) rtti_cache;
-
     // These are used both by the analyzer and the compiler
     Arena  *arena;
     Context context;
@@ -40,6 +33,12 @@ typedef struct {
 
     Module *main_module;
     Module *builtin_module;
+
+    Type rtti_type;         // This holds `Type_Info`
+    Type rtti_pointer_type; // This holds `&Type_Info`
+
+    size_t            rtti_variants[COUNT_TYPES];
+    const Type_Union *rtti_variants_union;
 
     // Rest all are only used by compiler
     Cmd        *cmd;
@@ -72,6 +71,8 @@ typedef struct {
     LLVMMetadataRef  llvm_debug_scope;
 
     HT(const char *, LLVMMetadataRef) llvm_debug_files;
+
+    HT(Type, LLVMValueRef) rtti_cache;
 
     // Compound types like these are the same irrespective of underlying type, therefore don't generate them over and
     // over.

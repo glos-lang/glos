@@ -3676,8 +3676,10 @@ void check_nodes(Compiler *c) {
     {
         const Const_Value value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type_Info"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
-        c->rtti_pointer_type = value.as.type;
-        c->rtti_pointer_type.is_meta = false;
+        c->rtti_type = value.as.type;
+        c->rtti_type.is_meta = false;
+
+        c->rtti_pointer_type = c->rtti_type;
         c->rtti_pointer_type.ref++;
 
         assert(c->rtti_pointer_type.kind == TYPE_STRUCT);
