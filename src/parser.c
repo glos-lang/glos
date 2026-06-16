@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -671,7 +671,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -930,7 +930,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
     } break;
 
-    case TOKEN_SIZEOF: {
+    case TOKEN_SIZEOF:
+    case TOKEN_TYPEOF: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
@@ -1549,6 +1550,22 @@ Parse_Result parse_directory(Parser *p, const char *path) {
     const size_t start = p->paths.count;
     if (!get_source_files(path, &p->paths, p->arena)) {
         return PARSE_FAILURE;
+    }
+
+    if (sv_match(p->module_current->name, "builtin")) {
+        bool found = false;
+        for (size_t i = start; i < p->paths.count; i++) {
+            const char *it = p->paths.data[i];
+            if (sv_has_suffix(sv_from_cstr(it), sv_from_cstr("builtin/contract.glos"))) {
+                found = true;
+                for (size_t j = i; j > start; j--) {
+                    p->paths.data[j] = p->paths.data[j - i];
+                }
+                p->paths.data[start] = it;
+                break;
+            }
+        }
+        assert(found);
     }
 
     bool empty = true;

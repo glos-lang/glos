@@ -137,9 +137,9 @@ typedef uint64_t (*HT_Hasheq)(const void *a, const void *b, size_t n);
     ((__typeof__((ht)->data->value) *) ht_get_impl(                                                                    \
         (ht)->data, (ht)->capacity, HT_LAYOUT(ht), (ht)->hasheq, (__typeof__((ht)->data->key)[]) {k}))
 
-// void ht_get(HT(K, V) *ht, K key, V value)
+// V *ht_set(HT(K, V) *ht, K key, V value)
 #define ht_set(ht, k, v)                                                                                               \
-    (ht_set_impl(                                                                                                      \
+    ((__typeof__((ht)->data->value) *) ht_set_impl(                                                                    \
         (void **) &(ht)->data,                                                                                         \
         &(ht)->count,                                                                                                  \
         &(ht)->capacity,                                                                                               \
@@ -215,14 +215,14 @@ uint64_t ht_hasheq_sv(const void *va, const void *vb, size_t n);
 
 void *ht_find_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
 void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
-void  ht_set_impl(
-     void      **ht_data,
-     size_t     *ht_count,
-     size_t     *ht_capacity,
-     HT_Layout   layout,
-     HT_Hasheq   hasheq,
-     const void *key,
-     const void *value);
+void *ht_set_impl(
+    void      **ht_data,
+    size_t     *ht_count,
+    size_t     *ht_capacity,
+    HT_Layout   layout,
+    HT_Hasheq   hasheq,
+    const void *key,
+    const void *value);
 void ht_delete_impl(void *data, size_t *count, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
 
 bool ht_iter_impl(

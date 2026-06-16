@@ -1,0 +1,239 @@
+main :: () {
+    // Primitives
+    {
+        write_type(bool)
+        write_type(char)
+
+        write_type(i8)
+        write_type(i16)
+        write_type(i32)
+        write_type(i64)
+
+        write_type(u8)
+        write_type(u16)
+        write_type(u32)
+        write_type(u64)
+
+        write_type(rawptr)
+        write_type(string)
+    }
+
+    // Functions
+    {
+        write_type(())
+        write_type((_: string))
+        write_type((_: string, _: rawptr))
+        write_type(() -> i32)
+        write_type((_: i32) -> i32)
+        write_type((_: i32, _: u8) -> i32)
+        write_type(() -> (i32, bool))
+        write_type((_: i32) -> (i32, bool))
+        write_type((_: i32, _: u8) -> (i32, bool))
+        write_type(() -> ((_: i32) -> bool))
+    }
+
+    // Enumerations
+    {
+        write_type(enum {
+            Foo
+            Bar
+            Baz = 69
+            Urmom
+        })
+    }
+
+    // Unions
+    {
+        write_type(union {
+            i32
+            string
+            (_: string) -> i64
+        })
+    }
+
+    // Structures
+    {
+        write_type(struct {
+            x, y: i32
+            urmom: string
+        })
+    }
+
+    // Arrays
+    {
+        write_type([69]string)
+        write_type([69][420]u8)
+    }
+
+    // Arrays
+    {
+        write_type([]string)
+    }
+
+    // Recursive
+    {
+        Node :: struct {
+            name: string
+            next: &Node
+        }
+
+        write_type(Node)
+    }
+}
+
+write_type :: (ti: &Type_Info) {
+    write_type(ti)
+    write_string("\n")
+
+    write_type :: (ti: &Type_Info) {
+        #static depth: i64
+        #static tm: [1024]&Type_Info
+        #static tm_count: i64
+        for i := 0; i < tm_count; i++ {
+            if tm[i] == ti {
+                write_string("<Recursive>")
+                return
+            }
+        }
+
+        tm[tm_count++] = ti
+        defer tm_count--
+
+        variant := ti.variant
+        if variant == {
+        case Type_Info_Boolean
+            write_string("bool")
+
+        case Type_Info_Character
+            write_string("char")
+
+        case Type_Info_Integer
+            if variant.signed {
+                write_string("i")
+            } else {
+                write_string("u")
+            }
+            write_i64(ti.size * 8)
+
+        case Type_Info_Pointer
+            if variant.underlying != null {
+                write_string("&")
+                write_type(variant.underlying)
+            } else {
+                write_string("rawptr")
+            }
+
+        case Type_Info_Function
+            write_string("(")
+            for i := 0; i < variant.args.count; i++ {
+                if i > 0 {
+                    write_string(", ")
+                }
+                write_type(variant.args[i])
+            }
+            write_string(")")
+
+            if variant.returns.count > 0 {
+                write_string(" -> ")
+                if variant.returns.count > 1 {
+                    write_string("(")
+                }
+
+                for i := 0; i < variant.returns.count; i++ {
+                    if i > 0 {
+                        write_string(", ")
+                    }
+                    write_type(variant.returns[i])
+                }
+
+                if variant.returns.count > 1 {
+                    write_string(")")
+                }
+            }
+
+        case Type_Info_Enumeration
+            write_string("enum ")
+            write_type(variant.underlying)
+            write_string(" {")
+            if variant.names.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.names.count; i++ {
+                    write_indent(depth)
+                    write_string(variant.names[i])
+                    write_string(" = ")
+                    write_i64(variant.values[i])
+                    write_string("\n")
+                }
+                depth--
+                write_indent(depth)
+            }
+            write_string("}")
+
+
+        case Type_Info_Union
+            write_string("union {")
+            if variant.variants.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.variants.count; i++ {
+                    write_indent(depth)
+                    write_type(variant.variants[i])
+                    write_string("\n")
+                }
+                depth--
+                write_indent(depth)
+            }
+            write_string("}")
+
+        case Type_Info_Structure
+            write_string("struct {")
+            if variant.names.count != 0 {
+                write_string("\n")
+                depth++
+                for i := 0; i < variant.names.count; i++ {
+                    write_indent(depth)
+                    write_string(variant.names[i])
+                    write_string(": ")
+                    write_type(variant.types[i])
+                    write_string(" // offset = ")
+                    write_i64(variant.offsets[i])
+                    write_string("\n")
+                }
+                depth--
+                write_indent(depth)
+            }
+            write_string("}")
+
+        case Type_Info_Array
+            write_string("[")
+            write_i64(variant.count)
+            write_string("]")
+            write_type(variant.underlying)
+
+        case Type_Info_Slice
+            write_string("[]")
+            write_type(variant.underlying)
+
+        case Type_Info_String
+            write_string("string")
+
+        case null
+            unreachable()
+        }
+    }
+
+    write_string :: (s: string) {
+        C.fprintf(C.stdout, "%.*s".data, i32(s.count), s.data)
+    }
+
+    write_indent :: (n: i64) {
+        C.fprintf(C.stdout, "%*s".data, i32(n * 4), "".data)
+    }
+
+    write_i64 :: (n: i64) {
+        C.fprintf(C.stdout, "%ld".data, n)
+    }
+
+    C :: #import "C"
+}

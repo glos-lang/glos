@@ -195,8 +195,10 @@ struct Type_Fn_Arg {
 };
 
 struct Type_Union_Variant {
-    Pos  pos;
-    Type type;
+    Pos    pos;
+    Type   type;
+    size_t size;
+    size_t align;
 };
 
 struct Type_Struct_Field {
@@ -333,6 +335,8 @@ struct Node {
     Token     token;
     Type      type;
     Node     *next;
+
+    Type *emit_type_info;
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
@@ -414,6 +418,7 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
+    Node  *union_check;
     size_t union_check_index;
 } Node_Binary;
 
@@ -633,8 +638,6 @@ typedef struct {
     bool  is_compile_time;
     Node *compile_time_real;
 
-    bool condition_will_be_false;
-
     Context_Replace context_replace;
 } Node_If;
 
@@ -652,7 +655,6 @@ typedef struct {
     size_t preds_count;
 
     Node *body;
-    bool  is_dead;
 
     Context_Replace context_replace;
 } Node_Case;
@@ -671,6 +673,8 @@ typedef struct {
 
     Node_Enum  *enumeration;
     Node_Union *unionn;
+
+    bool is_expr_type_info;
 
     bool       is_compile_time;
     Node_Case *compile_time_real;

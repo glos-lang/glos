@@ -1,0 +1,9 @@
+main :: () {
+    a :: "Urmom"
+    b :: typeof(a)
+
+    x: b = a
+    fmt.println(x)
+}
+
+fmt :: #import "fmt"

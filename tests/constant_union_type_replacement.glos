@@ -1,0 +1,24 @@
+Value :: union {
+    i64
+    string
+}
+
+main :: () {
+    V :: Value(69)
+    if V == {
+    case string
+        fmt.println(V)
+
+    case i64
+        print V
+
+    case null
+        unreachable()
+    }
+
+    if V == string {
+        fmt.println(V)
+    }
+}
+
+fmt :: #import "fmt"

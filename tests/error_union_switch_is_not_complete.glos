@@ -1,0 +1,11 @@
+Value :: union {
+    i64
+    string
+}
+
+main :: () {
+    v: Value
+    if v == {
+    case string
+    }
+}

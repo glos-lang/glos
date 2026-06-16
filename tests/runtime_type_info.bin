@@ -1,0 +1,50 @@
+EXIT 0
+STDOUT 526
+bool
+char
+i8
+i16
+i32
+i64
+u8
+u16
+u32
+u64
+rawptr
+string
+()
+(string)
+(string, rawptr)
+() -> i32
+(i32) -> i32
+(i32, u8) -> i32
+() -> (i32, bool)
+(i32) -> (i32, bool)
+(i32, u8) -> (i32, bool)
+() -> (i32) -> bool
+enum i64 {
+    Foo = 0
+    Bar = 1
+    Baz = 69
+    Urmom = 70
+}
+union {
+    i32
+    string
+    (string) -> i64
+}
+struct {
+    x: i32 // offset = 0
+    y: i32 // offset = 4
+    urmom: string // offset = 8
+}
+[69]string
+[69][420]u8
+[]string
+struct {
+    name: string // offset = 0
+    next: &<Recursive> // offset = 16
+}
+
+STDERR 0
+
