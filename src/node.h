@@ -637,8 +637,6 @@ typedef struct {
     bool  is_compile_time;
     Node *compile_time_real;
 
-    bool condition_will_be_false;
-
     Context_Replace context_replace;
 } Node_If;
 
@@ -656,7 +654,6 @@ typedef struct {
     size_t preds_count;
 
     Node *body;
-    bool  is_dead;
 
     Context_Replace context_replace;
 } Node_Case;
@@ -675,6 +672,8 @@ typedef struct {
 
     Node_Enum  *enumeration;
     Node_Union *unionn;
+
+    bool is_expr_type_info;
 
     bool       is_compile_time;
     Node_Case *compile_time_real;

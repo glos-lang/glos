@@ -523,7 +523,7 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static void node_finalize_type_of_unknown(Type *t) {
+static void finalize_untyped_type(Type *t) {
     if (type_kind_eq(*t, TYPE_INT)) {
         t->kind = TYPE_I64;
     }
@@ -921,6 +921,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         case TOKEN_TYPEOF: {
             Type type = unary->value->type;
+            finalize_untyped_type(&type);
             type.is_meta = true;
             return const_value_type(type);
         }
@@ -1357,13 +1358,20 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_expr(c, sw->expr, REF_NONE, NULL);
-    node_finalize_type_of_unknown(&sw->expr->type);
+    finalize_untyped_type(&sw->expr->type);
     check_that_type_is_known(sw->expr);
 
     if (!sw->expr->type.ref && type_kind_eq(sw->expr->type, TYPE_ENUM)) {
         sw->enumeration = sw->expr->type.spec.enumm.definition;
     } else if (type_is_union(sw->expr->type)) {
         sw->unionn = sw->expr->type.spec.unionn->definition;
+    } else if (sw->expr->type.is_meta) {
+        sw->expr->emit_type_info = arena_clone(c->arena, &sw->expr->type, sizeof(sw->expr->type));
+        sw->expr->emit_type_info->is_meta = false;
+        sw->expr->type = c->type_info_pointer_type;
+        sw->is_expr_type_info = true;
+    } else if (type_eq(sw->expr->type, c->type_info_pointer_type)) {
+        sw->is_expr_type_info = true;
     } else if (!type_is_numeric(sw->expr->type) && !type_kind_eq(sw->expr->type, TYPE_CHAR)) {
         fprintf(
             stderr,
@@ -1507,8 +1515,17 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
         assert(value->kind == CONST_VALUE_UNION);
-        assert(value->as.unionn.real);
-        *value = *value->as.unionn.real;
+
+        const Const_Value_Union unionn = value->as.unionn;
+        if (unionn.index) {
+            if (type_eq(unionn.spec->variants[unionn.index - 1].type, replace->to->node.type)) {
+                assert(unionn.real);
+                *value = *unionn.real;
+            }
+
+            // Technically the code generated will access invalid memory.
+            // However it will be unreachable, so does it even matter?
+        }
     }
 
     c->context.replace = replace;
@@ -1799,7 +1816,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                     type_assert_grouped(c, n, type->type, group_index, &it->node.token.pos);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
-                    node_finalize_type_of_unknown(&it->node.type);
+                    finalize_untyped_type(&it->node.type);
                 }
 
                 type_determined = true;
@@ -1811,7 +1828,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 type_assert(c, it_expr, type->type);
             } else {
                 if (!it->definition_spec->is_const) {
-                    node_finalize_type_of_unknown(&it_expr->type);
+                    finalize_untyped_type(&it_expr->type);
                 }
                 it->node.type = it_expr->type;
             }
@@ -2324,6 +2341,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, unary->value, REF_NONE, NULL);
             check_that_type_is_known(unary->value);
             n->type = unary->value->type;
+
+            finalize_untyped_type(&n->type);
             n->type.is_meta = true;
             break;
 
@@ -3072,7 +3091,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             if (!same) {
                 if (to_union) {
-                    node_finalize_type_of_unknown(from_type);
+                    finalize_untyped_type(from_type);
                     call->type_cast_union_index = union_get_type_index(call->args.head, *to_type);
                 } else if (type_is_scalar(*to_type)) {
                     type_assert_scalar(call->args.head);
@@ -3472,17 +3491,6 @@ static void check_stmt(Compiler *c, Node *n) {
                     push_context_replace(
                         c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
                 }
-
-                if (iff->context_replace.to) {
-                    if (iff->context_replace.to->definition->definition_spec->is_const) {
-                        const Const_Value value = iff->context_replace.to->definition->definition_spec->const_value;
-                        assert(value.kind == CONST_VALUE_UNION);
-
-                        if (value.as.unionn.index != (size_t) condition->union_check_index) {
-                            iff->condition_will_be_false = true;
-                        }
-                    }
-                }
             }
 
             check_stmt(c, iff->consequence);
@@ -3541,18 +3549,6 @@ static void check_stmt(Compiler *c, Node *n) {
                 if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
                     push_context_replace(
                         c, &branch->context_replace, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type);
-
-                    if (branch->context_replace.to->definition->definition_spec->is_const) {
-                        const Const_Value value = branch->context_replace.to->definition->definition_spec->const_value;
-                        assert(value.kind == CONST_VALUE_UNION);
-
-                        const Const_Value pred_value = sw->preds[iota - 1].value;
-                        assert(pred_value.kind == CONST_VALUE_INT);
-
-                        if (value.as.unionn.index != (size_t) pred_value.as.integer) {
-                            branch->is_dead = true;
-                        }
-                    }
                 }
 
                 check_stmt(c, branch->body);
@@ -3698,7 +3694,7 @@ void check_nodes(Compiler *c) {
         assert(c->type_info_pointer_type.kind == TYPE_STRUCT);
         const Type_Struct *type_info_structure = c->type_info_pointer_type.spec.structt;
 
-        assert(type_info_structure->fields_count == 3);
+        assert(type_info_structure->fields_count == 4);
         const Type *type_info_variant = &type_info_structure->fields[2].type;
 
         assert(type_info_variant->kind == TYPE_UNION);

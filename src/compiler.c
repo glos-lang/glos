@@ -1869,7 +1869,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         type_info->info = LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, "");
     }
 
-    LLVMValueRef ti_fields[3] = {0};
+    LLVMValueRef ti_fields[4] = {0};
     size_t       ti_fields_iota = 0;
     ti_fields[ti_fields_iota++] = LLVMConstInt(
         LLVMInt64TypeInContext(c->llvm_context), LLVMABISizeOfType(c->llvm_target_data, type->llvm), false);
@@ -2051,6 +2051,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     }
 
     ti_fields[ti_fields_iota++] = LLVMConstStructInContext(c->llvm_context, tiv_fields, tiv_fields_iota, false);
+    ti_fields[ti_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), type_info->id, true);
 
     LLVMValueRef real =
         compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, ti_fields, ti_fields_iota, false));
@@ -3003,6 +3004,32 @@ static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost) {
     ghost->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
 }
 
+static LLVMValueRef get_type_id_from_type_info_pointer(Compiler *c, LLVMValueRef ptr) {
+    LLVMValueRef is_null =
+        LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, ptr, LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0)), "");
+
+    LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef not_null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef merge_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildCondBr(c->llvm_builder, is_null, null_block, not_null_block);
+
+    LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
+    LLVMBuildBr(c->llvm_builder, merge_block);
+
+    LLVMPositionBuilderAtEnd(c->llvm_builder, not_null_block);
+    LLVMValueRef id = LLVMBuildStructGEP2(c->llvm_builder, c->type_info_type.llvm, ptr, 3, "");
+    id = LLVMBuildLoad2(c->llvm_builder, LLVMInt64TypeInContext(c->llvm_context), id, "");
+    LLVMBuildBr(c->llvm_builder, merge_block);
+
+    LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
+    LLVMTypeRef       i64_type = LLVMInt64TypeInContext(c->llvm_context);
+    LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, i64_type, "");
+    LLVMValueRef      phi_values[] = {LLVMConstNull(i64_type), id};
+    LLVMBasicBlockRef phi_blocks[] = {null_block, not_null_block};
+    LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
+    return phi;
+}
+
 static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
@@ -3118,17 +3145,12 @@ static void compile_stmt(Compiler *c, Node *n) {
 
         // Consequence
         LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
-
-        if (iff->condition_will_be_false) {
-            LLVMBuildUnreachable(c->llvm_builder);
-        } else {
-            if (iff->context_replace.to) {
-                introduce_ghost_for_union(c, iff->context_replace.to);
-            }
-            compile_stmt(c, iff->consequence);
-            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-            LLVMBuildBr(c->llvm_builder, end);
+        if (iff->context_replace.to) {
+            introduce_ghost_for_union(c, iff->context_replace.to);
         }
+        compile_stmt(c, iff->consequence);
+        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+        LLVMBuildBr(c->llvm_builder, end);
 
         // Antecedence
         if (iff->antecedence) {
@@ -3235,6 +3257,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         if (sw->unionn) {
             expr = undo_load(expr);
             expr = LLVMBuildLoad2(c->llvm_builder, i64_type, expr, "");
+        } else if (sw->is_expr_type_info) {
+            expr = get_type_id_from_type_info_pointer(c, expr);
         }
 
         LLVMBasicBlockRef fallback = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
@@ -3252,11 +3276,22 @@ static void compile_stmt(Compiler *c, Node *n) {
 
             LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
             for (Node *pred = branch->preds.head; pred; pred = pred->next) {
-                const Const_Value *pred_value = &sw->preds[iota++].value;
+                Const_Value *pred_value = &sw->preds[iota++].value;
 
                 LLVMValueRef value = NULL;
                 if (sw->unionn) {
                     value = LLVMConstInt(i64_type, pred_value->as.integer, true);
+                } else if (sw->is_expr_type_info) {
+                    if (pred_value->kind == CONST_VALUE_TYPE) {
+                        compile_type_info(c, &pred_value->as.type);
+
+                        const size_t id = ht_get(&c->type_info_cache, pred_value->as.type)->id;
+                        value = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), id, true);
+                    } else if (pred_value->kind == CONST_VALUE_INT && pred_value->as.integer == 0) {
+                        value = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 0, true);
+                    } else {
+                        unreachable();
+                    }
                 } else {
                     value = compile_const_value(c, *pred_value, sw->expr->type);
                 }
@@ -3264,16 +3299,12 @@ static void compile_stmt(Compiler *c, Node *n) {
             }
             LLVMPositionBuilderAtEnd(c->llvm_builder, block);
 
-            if (branch->is_dead) {
-                LLVMBuildUnreachable(c->llvm_builder);
-            } else {
-                if (branch->context_replace.to) {
-                    introduce_ghost_for_union(c, branch->context_replace.to);
-                }
-                compile_stmt(c, branch->body);
-                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-                LLVMBuildBr(c->llvm_builder, end);
+            if (branch->context_replace.to) {
+                introduce_ghost_for_union(c, branch->context_replace.to);
             }
+            compile_stmt(c, branch->body);
+            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+            LLVMBuildBr(c->llvm_builder, end);
         }
         assert(iota == sw->preds_count);
 
@@ -3576,5 +3607,3 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->defers);
     temp_reset(checkpoint);
 }
-
-// TODO: Do not allocate string literal structs in local memory
