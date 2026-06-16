@@ -2210,18 +2210,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
 
-        if (binary->union_check_index) {
-            Node *expr = NULL;
-            if (binary->rhs->type.is_meta) {
-                expr = binary->lhs;
-            } else if (binary->lhs->type.is_meta) {
-                expr = binary->rhs;
-            } else {
-                unreachable();
-            }
-
+        if (binary->union_check) {
             LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
-            LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, expr, true), "");
+            LLVMValueRef value =
+                LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, binary->union_check, true), "");
 
             return LLVMBuildICmp(
                 c->llvm_builder,

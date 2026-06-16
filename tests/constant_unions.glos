@@ -18,10 +18,11 @@ case Foo
             print a
         }
 
-    case bool
+    case
     }
 
 case string
+case null
 }
 
 b :: Value("Urmom")

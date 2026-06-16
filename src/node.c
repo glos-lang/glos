@@ -325,16 +325,16 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
 
 static_assert(COUNT_TYPES == 24, "");
 bool type_eq(Type a, Type b) {
-    if (a.kind != b.kind || a.ref != b.ref) {
-        return false;
-    }
-
     if (a.is_meta) {
         return b.is_meta;
     }
 
     if (b.is_meta) {
         return a.is_meta;
+    }
+
+    if (a.kind != b.kind || a.ref != b.ref) {
+        return false;
     }
 
     if (a.distinct || b.distinct) {

@@ -12,6 +12,10 @@ static bool type_is_union(Type type) {
     return !type.ref && type_kind_eq(type, TYPE_UNION);
 }
 
+static bool node_is_null(Node *n) {
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL;
+}
+
 static void error_undefined(const Token *t, const char *label, bool no_exit) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
     if (!no_exit) {
@@ -286,7 +290,7 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
 
 static bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
-    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
+    if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
         // NOTE: We are also checking for rawptr because distinct types exist
         n->type = expected;
         return true;
@@ -1007,32 +1011,40 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(lhs.as.integer <= rhs.as.integer);
 
-        case TOKEN_EQ:
+        case TOKEN_EQ: {
             lhs = eval_const_expr(c, binary->lhs);
             rhs = eval_const_expr(c, binary->rhs);
-            if (lhs.kind == CONST_VALUE_UNION) {
-                assert(rhs.kind == CONST_VALUE_TYPE);
-                if (lhs.as.unionn.index == 0) {
+
+            if (binary->union_check) {
+                Const_Value unionn;
+                Const_Value variant;
+                if (binary->union_check == binary->lhs) {
+                    unionn = lhs;
+                    variant = rhs;
+                } else {
+                    unionn = rhs;
+                    variant = lhs;
+                }
+                assert(unionn.kind == CONST_VALUE_UNION);
+
+                // TODO: Pointers in constant expressions
+                if (variant.kind == CONST_VALUE_INT && variant.as.integer == 0) {
+                    return const_value_int(unionn.as.unionn.index == 0);
+                }
+
+                assert(variant.kind == CONST_VALUE_TYPE);
+                if (unionn.as.unionn.index == 0) {
                     return const_value_int(0);
                 }
 
-                Type expected = rhs.as.type;
+                Type expected = variant.as.type;
                 expected.is_meta = false;
-                return const_value_int(type_eq(lhs.as.unionn.spec->variants[lhs.as.unionn.index - 1].type, expected));
-            }
-
-            if (rhs.kind == CONST_VALUE_UNION) {
-                assert(lhs.kind == CONST_VALUE_TYPE);
-                if (rhs.as.unionn.index == 0) {
-                    return const_value_int(0);
-                }
-
-                Type expected = lhs.as.type;
-                expected.is_meta = false;
-                return const_value_int(type_eq(rhs.as.unionn.spec->variants[rhs.as.unionn.index - 1].type, expected));
+                return const_value_int(
+                    type_eq(unionn.as.unionn.spec->variants[unionn.as.unionn.index - 1].type, expected));
             }
 
             return const_value_int(const_value_eq(lhs, rhs));
+        }
 
         case TOKEN_NE:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1390,8 +1402,12 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     Const_Value value = {0};
     if (sw->unionn) {
         check_expr(c, pred, REF_NONE, NULL);
-        type_assert_type(pred);
-        value = const_value_int(union_get_type_index(pred, sw->expr->type));
+        if (node_is_null(pred)) {
+            value = const_value_int(0); // TODO: Pointers in constant expressions
+        } else {
+            type_assert_type(pred);
+            value = const_value_int(union_get_type_index(pred, sw->expr->type));
+        }
     } else {
         check_expr(c, pred, REF_NONE, &sw->expr->type);
         type_assert(c, pred, sw->expr->type);
@@ -1466,25 +1482,30 @@ static void check_switch_exhaustive(Node_Switch *sw) {
             exit(1);
         }
     } else if (sw->unionn) {
-        if (sw->preds_count < sw->unionn->variants_count && !sw->fallback) {
+        if (sw->preds_count < sw->unionn->variants_count + 1 && !sw->fallback) {
             fprintf(stderr, Pos_Fmt "ERROR: This switch statement is not complete\n", Pos_Arg(sw->node.token.pos));
 
             fprintf(stderr, "\n");
             fprintf(stderr, "The following union variants are not handled:\n");
-            for (size_t i = 0; i < sw->unionn->variants_count; i++) {
-                bool handled = false;
-                for (size_t j = 0; j < sw->preds_count; j++) {
-                    const Const_Value *pred_value = &sw->preds[j].value;
-                    assert(pred_value->kind == CONST_VALUE_INT);
-                    if ((size_t) pred_value->as.integer == i + 1) {
-                        handled = true;
-                        break;
-                    }
-                }
 
-                if (!handled) {
+            const size_t variants_count = sw->unionn->variants_count + 1;
+
+            bool *handled = temp_alloc(variants_count * sizeof(*handled));
+            for (size_t i = 0; i < sw->preds_count; i++) {
+                const Const_Value *pred_value = &sw->preds[i].value;
+                assert(pred_value->kind == CONST_VALUE_INT);
+
+                const size_t pred_index = pred_value->as.integer;
+                assert(pred_index < variants_count);
+                handled[pred_index] = true;
+            }
+
+            for (size_t i = 0; i < variants_count; i++) {
+                if (!handled[i]) {
                     fprintf(
-                        stderr, "    - %s\n", type_to_cstr_raw(sw->unionn->node.type.spec.unionn->variants[i].type));
+                        stderr,
+                        "    - %s\n",
+                        i ? type_to_cstr_raw(sw->unionn->node.type.spec.unionn->variants[i - 1].type) : "null");
                 }
             }
             fprintf(stderr, "\n");
@@ -1602,13 +1623,21 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                 if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                     Node_Binary *condition = (Node_Binary *) iff->condition;
                     if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
-                        assert(condition->rhs->type.is_meta);
-                        push_context_replace(
-                            c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
+                        if (!node_is_null(condition->rhs)) {
+                            push_context_replace(
+                                c,
+                                &iff->context_replace,
+                                ((Node_Atom *) condition->lhs)->definition,
+                                condition->rhs->type);
+                        }
                     } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
-                        assert(condition->lhs->type.is_meta);
-                        push_context_replace(
-                            c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
+                        if (!node_is_null(condition->lhs)) {
+                            push_context_replace(
+                                c,
+                                &iff->context_replace,
+                                ((Node_Atom *) condition->rhs)->definition,
+                                condition->lhs->type);
+                        }
                     }
                 }
 
@@ -1661,8 +1690,13 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                 branch->context_replace.outer = c->context.replace;
 
                 if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
-                    push_context_replace(
-                        c, &branch->context_replace, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type);
+                    if (!node_is_null(branch->preds.head)) {
+                        push_context_replace(
+                            c,
+                            &branch->context_replace,
+                            ((Node_Atom *) sw->expr)->definition,
+                            branch->preds.head->type);
+                    }
                 }
 
                 assert(branch->body->kind == NODE_BLOCK);
@@ -2399,15 +2433,25 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, &binary->lhs->type);
 
             if (type_is_union(binary->lhs->type)) {
-                type_assert_type(binary->rhs);
-                binary->union_check_index = union_get_type_index(binary->rhs, binary->lhs->type);
+                if (!node_is_null(binary->rhs)) {
+                    type_assert_type(binary->rhs);
+                    binary->union_check_index = union_get_type_index(binary->rhs, binary->lhs->type);
+                }
+                binary->union_check = binary->lhs;
             } else if (type_is_union(binary->rhs->type)) {
-                type_assert_type(binary->lhs);
-                binary->union_check_index = union_get_type_index(binary->lhs, binary->rhs->type);
+                if (!node_is_null(binary->lhs)) {
+                    type_assert_type(binary->lhs);
+                    binary->union_check_index = union_get_type_index(binary->lhs, binary->rhs->type);
+                }
+                binary->union_check = binary->rhs;
             } else {
                 type_assert_node(c, binary->rhs, binary->lhs);
                 check_that_type_is_known(binary->lhs);
-                if (!type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
+
+                if (try_auto_cast_type_to_rtti(c, binary->lhs, c->type_info_pointer_type)) {
+                    assert(try_auto_cast_type_to_rtti(c, binary->rhs, c->type_info_pointer_type));
+                } else if (
+                    !type_is_scalar(binary->lhs->type) && !type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING})) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot perform equality check on %s\n",
@@ -3483,13 +3527,15 @@ static void check_stmt(Compiler *c, Node *n) {
             if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                 Node_Binary *condition = (Node_Binary *) iff->condition;
                 if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
-                    assert(condition->rhs->type.is_meta);
-                    push_context_replace(
-                        c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
+                    if (!node_is_null(condition->rhs)) {
+                        push_context_replace(
+                            c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
+                    }
                 } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
-                    assert(condition->lhs->type.is_meta);
-                    push_context_replace(
-                        c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
+                    if (!node_is_null(condition->lhs)) {
+                        push_context_replace(
+                            c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
+                    }
                 }
             }
 
@@ -3547,8 +3593,13 @@ static void check_stmt(Compiler *c, Node *n) {
 
                 branch->context_replace.outer = c->context.replace;
                 if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
-                    push_context_replace(
-                        c, &branch->context_replace, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type);
+                    if (!node_is_null(branch->preds.head)) {
+                        push_context_replace(
+                            c,
+                            &branch->context_replace,
+                            ((Node_Atom *) sw->expr)->definition,
+                            branch->preds.head->type);
+                    }
                 }
 
                 check_stmt(c, branch->body);

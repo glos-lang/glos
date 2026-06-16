@@ -418,6 +418,7 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
+    Node  *union_check;
     size_t union_check_index;
 } Node_Binary;
 

@@ -11,6 +11,9 @@ main :: () {
 
     case i64
         print V
+
+    case null
+        unreachable()
     }
 
     if V == string {
