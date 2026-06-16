@@ -1,0 +1,23 @@
+Value :: union {
+    i64
+    string
+}
+
+print_value :: (v: Value) {
+    if v == {
+    case i64
+        print v
+
+    case string
+        fmt :: #import "fmt"
+        fmt.println(v)
+
+    case null
+        unreachable()
+    }
+}
+
+main :: () {
+    print_value(69)
+    print_value("Urmom")
+}

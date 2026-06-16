@@ -261,6 +261,29 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
+static size_t get_union_type_index(Node *n, Type unionn) {
+    assert(unionn.kind == TYPE_UNION);
+    const Type_Union *spec = unionn.spec.unionn;
+
+    Type type = n->type;
+    type.is_meta = false;
+
+    for (size_t i = 0; i < spec->variants_count; i++) {
+        if (type_eq(spec->variants[i].type, type)) {
+            return i + 1;
+        }
+    }
+
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Type %s is not a variant of %s\n",
+        Pos_Arg(n->token.pos),
+        type_to_cstr(type),
+        type_to_cstr(unionn));
+    fprintf(stderr, Pos_Fmt "NOTE: Union defined here\n", Pos_Arg(spec->definition->node.token.pos));
+    exit(1);
+}
+
 static bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
     if (n->type.is_meta && type_eq(expected, c->type_info_pointer_type)) {
         n->emit_type_info = arena_clone(c->arena, &n->type, sizeof(n->type));
@@ -278,6 +301,12 @@ static bool type_eq_without_distinct(Type a, Type b) {
     return type_eq(a, b);
 }
 
+static void finalize_untyped_type(Type *t) {
+    if (type_kind_eq(*t, TYPE_INT)) {
+        t->kind = TYPE_I64;
+    }
+}
+
 // Nice name
 static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(Node *n, Type expected) {
     if (type_eq_without_distinct(n->type, expected)) {
@@ -288,7 +317,7 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
     }
 }
 
-static bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
+static bool try_auto_cast_literal(Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
     if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
         // NOTE: We are also checking for rawptr because distinct types exist
@@ -296,14 +325,36 @@ static bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
         return true;
     }
 
-    if (n->kind == NODE_COMPOUND && type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE)) {
-        if (type_eq(*n->type.spec.array.element, *expected.spec.slice.element)) {
-            Node_Compound *compound = (Node_Compound *) n;
-            compound->memory_type = arena_clone(c->arena, &n->type, sizeof(n->type));
-            compound->auto_cast_array_to_slice = true;
-            n->type = expected;
-            return true;
-        }
+    return false;
+}
+
+static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
+    if (try_auto_cast_untyped(c, n, expected)) {
+        return true;
+    }
+
+    if (try_auto_cast_literal(n, expected)) {
+        return true;
+    }
+
+    if (try_auto_cast_type_to_rtti(c, n, expected)) {
+        return true;
+    }
+
+    if (type_is_union(expected)) {
+        finalize_untyped_type(&n->type);
+        n->auto_cast_from = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->auto_cast_kind = AUTO_CAST_TO_UNION;
+        n->auto_cast_data = get_union_type_index(n, expected);
+        n->type = expected;
+        return true;
+    }
+
+    if (type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE) && !n->type.ref && !expected.ref) {
+        n->auto_cast_from = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->auto_cast_kind = AUTO_CAST_ARRAY_TO_SLICE;
+        n->type = expected;
+        return true;
     }
 
     return false;
@@ -314,15 +365,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
-    if (try_auto_cast_untyped(c, n, expected)) {
-        return expected;
-    }
-
-    if (try_auto_cast_literal(c, n, expected)) {
-        return expected;
-    }
-
-    if (try_auto_cast_type_to_rtti(c, n, expected)) {
+    if (try_auto_cast(c, n, expected)) {
         return expected;
     }
 
@@ -352,20 +395,11 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
     }
 
     if (!is_group) {
-        if (try_auto_cast_untyped(c, n, expected)) {
-            return expected;
-        }
-
-        if (try_auto_cast_literal(c, n, expected)) {
-            return expected;
-        }
-
-        if (try_auto_cast_type_to_rtti(c, n, expected)) {
+        if (try_auto_cast(c, n, expected)) {
             return expected;
         }
 
         check_that_type_is_known(n);
-
         fprintf(
             stderr,
             Pos_Fmt "ERROR: Expected %s, got %s\n",
@@ -415,27 +449,11 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped(c, b, a->type)) {
+    if (try_auto_cast(c, b, a->type)) {
         return a->type;
     }
 
-    if (try_auto_cast_untyped(c, a, b->type)) {
-        return b->type;
-    }
-
-    if (try_auto_cast_literal(c, a, b->type)) {
-        return a->type;
-    }
-
-    if (try_auto_cast_literal(c, b, a->type)) {
-        return b->type;
-    }
-
-    if (try_auto_cast_type_to_rtti(c, a, b->type)) {
-        return a->type;
-    }
-
-    if (try_auto_cast_type_to_rtti(c, b, a->type)) {
+    if (try_auto_cast(c, a, b->type)) {
         return b->type;
     }
 
@@ -525,12 +543,6 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     }
 
     return false;
-}
-
-static void finalize_untyped_type(Type *t) {
-    if (type_kind_eq(*t, TYPE_INT)) {
-        t->kind = TYPE_I64;
-    }
 }
 
 static_assert(COUNT_NODES == 27, "");
@@ -810,32 +822,18 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     }
 }
 
-static size_t union_get_type_index(Node *n, Type unionn) {
-    assert(unionn.kind == TYPE_UNION);
-    const Type_Union *spec = unionn.spec.unionn;
-
-    Type type = n->type;
-    type.is_meta = false;
-
-    for (size_t i = 0; i < spec->variants_count; i++) {
-        if (type_eq(spec->variants[i].type, type)) {
-            return i + 1;
-        }
-    }
-
-    fprintf(
-        stderr,
-        Pos_Fmt "ERROR: Type %s is not a variant of %s\n",
-        Pos_Arg(n->token.pos),
-        type_to_cstr(type),
-        type_to_cstr(unionn));
-    fprintf(stderr, Pos_Fmt "NOTE: Union defined here\n", Pos_Arg(spec->definition->node.token.pos));
-    exit(1);
+static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t union_index, Const_Value value) {
+    Const_Value_Union unionn = {0};
+    assert(union_type.kind == TYPE_UNION);
+    unionn.spec = union_type.spec.unionn;
+    unionn.index = union_index;
+    unionn.real = arena_clone(c->arena, &value, sizeof(value));
+    return const_value_union(unionn);
 }
 
 // Is this valid for signedness?
 static_assert(COUNT_NODES == 27, "");
-static Const_Value eval_const_expr(Compiler *c, Node *n) {
+static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
     }
@@ -1161,12 +1159,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
-        Const_Value    value = default_const_value(c, *compound->memory_type);
-
-        if (compound->auto_cast_array_to_slice) {
-            assert(value.kind == CONST_VALUE_ARRAY);
-            value.as.array.auto_cast_array_to_slice = true;
-        }
+        Const_Value    value = default_const_value(c, n->type);
 
         size_t ordered_iota = 0;
         ll_foreach(iter, &compound->children) {
@@ -1183,9 +1176,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
                 it = it_binary->rhs;
             }
 
-            if (compound->memory_type->kind == TYPE_STRUCT) {
+            if (n->type.kind == TYPE_STRUCT) {
                 value.as.structt.fields[it_iota] = eval_const_expr(c, it);
-            } else if (compound->memory_type->kind == TYPE_ARRAY) {
+            } else if (n->type.kind == TYPE_ARRAY) {
                 value.as.array.data[it_iota] = eval_const_expr(c, it);
             } else {
                 unreachable();
@@ -1217,15 +1210,8 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         case TYPE_CAST_TO_BOOL:
             return const_value_int(value.as.integer != 0);
 
-        case TYPE_CAST_TO_UNION: {
-            Const_Value_Union unionn = {0};
-            assert(n->type.kind == TYPE_UNION);
-
-            unionn.spec = n->type.spec.unionn;
-            unionn.index = call->type_cast_union_index;
-            unionn.real = arena_clone(c->arena, &value, sizeof(value));
-            return const_value_union(unionn);
-        }
+        case TYPE_CAST_TO_UNION:
+            return const_value_to_union(c, n->type, call->type_cast_union_index, value);
 
         default:
             unreachable();
@@ -1274,7 +1260,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
                 array.data += begin;
                 array.count = end - begin;
-                array.auto_cast_array_to_slice = true;
+                array.is_slice = true;
                 return const_value_array(array);
             }
 
@@ -1368,6 +1354,40 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
     }
 }
 
+static Const_Value eval_const_expr(Compiler *c, Node *n) {
+    if (!n) {
+        return (Const_Value) {0};
+    }
+
+    Type n_type_save;
+    if (n->auto_cast_from) {
+        n_type_save = n->type;
+        n->type = *n->auto_cast_from;
+    }
+
+    Const_Value result = eval_const_expr_impl(c, n);
+    if (n->auto_cast_from) {
+        n->type = n_type_save;
+
+        static_assert(COUNT_AUTO_CASTS == 2, "");
+        switch (n->auto_cast_kind) {
+        case AUTO_CAST_TO_UNION:
+            result = const_value_to_union(c, n->type, n->auto_cast_data, result);
+            break;
+
+        case AUTO_CAST_ARRAY_TO_SLICE:
+            assert(result.kind == CONST_VALUE_ARRAY);
+            result.as.array.is_slice = true;
+            break;
+
+        default:
+            unreachable();
+        }
+    }
+
+    return result;
+}
+
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_expr(c, sw->expr, REF_NONE, NULL);
     finalize_untyped_type(&sw->expr->type);
@@ -1406,7 +1426,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
             value = const_value_int(0); // TODO: Pointers in constant expressions
         } else {
             type_assert_type(pred);
-            value = const_value_int(union_get_type_index(pred, sw->expr->type));
+            value = const_value_int(get_union_type_index(pred, sw->expr->type));
         }
     } else {
         check_expr(c, pred, REF_NONE, &sw->expr->type);
@@ -2435,13 +2455,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             if (type_is_union(binary->lhs->type)) {
                 if (!node_is_null(binary->rhs)) {
                     type_assert_type(binary->rhs);
-                    binary->union_check_index = union_get_type_index(binary->rhs, binary->lhs->type);
+                    binary->union_check_index = get_union_type_index(binary->rhs, binary->lhs->type);
                 }
                 binary->union_check = binary->lhs;
             } else if (type_is_union(binary->rhs->type)) {
                 if (!node_is_null(binary->lhs)) {
                     type_assert_type(binary->lhs);
-                    binary->union_check_index = union_get_type_index(binary->lhs, binary->rhs->type);
+                    binary->union_check_index = get_union_type_index(binary->lhs, binary->rhs->type);
                 }
                 binary->union_check = binary->rhs;
             } else {
@@ -2521,7 +2541,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 if (member->rhs) {
                     check_expr(c, member->rhs, REF_NONE, NULL);
                     type_assert_type(member->rhs);
-                    member->union_index = union_get_type_index(member->rhs, member->lhs->type);
+                    member->union_index = get_union_type_index(member->rhs, member->lhs->type);
                     n->type = member->rhs->type;
                     n->type.is_meta = false;
                 } else {
@@ -3100,7 +3120,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             n->type.kind = TYPE_ARRAY;
         }
 
-        compound->memory_type = &n->type;
         is_ref_valid = ref == REF_ADDR;
     } break;
 
@@ -3136,7 +3155,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             if (!same) {
                 if (to_union) {
                     finalize_untyped_type(from_type);
-                    call->type_cast_union_index = union_get_type_index(call->args.head, *to_type);
+                    call->type_cast_union_index = get_union_type_index(call->args.head, *to_type);
                 } else if (type_is_scalar(*to_type)) {
                     type_assert_scalar(call->args.head);
 

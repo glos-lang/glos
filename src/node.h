@@ -251,7 +251,7 @@ typedef struct {
     Const_Value *data;
     size_t       count;
 
-    bool auto_cast_array_to_slice;
+    bool is_slice;
 } Const_Value_Array;
 
 struct Const_Value {
@@ -330,6 +330,12 @@ typedef enum {
     COUNT_NODES
 } Node_Kind;
 
+typedef enum {
+    AUTO_CAST_TO_UNION,
+    AUTO_CAST_ARRAY_TO_SLICE,
+    COUNT_AUTO_CASTS
+} Auto_Cast_Kind;
+
 struct Node {
     Node_Kind kind;
     Token     token;
@@ -337,6 +343,10 @@ struct Node {
     Node     *next;
 
     Type *emit_type_info;
+
+    Type          *auto_cast_from;
+    Auto_Cast_Kind auto_cast_kind;
+    size_t         auto_cast_data;
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
@@ -560,11 +570,6 @@ typedef struct {
     //     lhs = <value>
     // }
     bool is_designated;
-
-    // The actual type of this compound in memory
-    // This is necessary because array literals can be auto cast to slices
-    Type *memory_type;
-    bool  auto_cast_array_to_slice;
 } Node_Compound;
 
 typedef enum {

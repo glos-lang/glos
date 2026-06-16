@@ -1376,7 +1376,7 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
             c->group_values.count = group_values_count_save;
         }
 
-        if (array.auto_cast_array_to_slice) {
+        if (array.is_slice) {
             LLVMValueRef fields[] = {
                 compile_const_value_into_memory(c, memory),
                 LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), array.count, true),
@@ -2062,8 +2062,22 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     return real;
 }
 
+static LLVMValueRef
+compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, LLVMValueRef from, bool ref) {
+    LLVMValueRef memory = compile_alloca(c, union_type);
+    LLVMBuildStore(c->llvm_builder, LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), union_index, true), memory);
+
+    LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, union_type, memory, 1, "");
+    LLVMBuildStore(c->llvm_builder, from, payload);
+
+    if (ref) {
+        return memory;
+    }
+    return LLVMBuildLoad2(c->llvm_builder, union_type, memory, "");
+}
+
 static_assert(COUNT_NODES == 27, "");
-static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
+static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
     }
@@ -2567,10 +2581,9 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
-        compile_type(c, compound->memory_type);
 
-        LLVMValueRef memory = compile_alloca(c, compound->memory_type->llvm);
-        LLVMBuildStore(c->llvm_builder, LLVMConstNull(compound->memory_type->llvm), memory);
+        LLVMValueRef memory = compile_alloca(c, n->type.llvm);
+        LLVMBuildStore(c->llvm_builder, LLVMConstNull(n->type.llvm), memory);
 
         size_t ordered_iota = 0;
         for (Node *iter = compound->children.head; iter; iter = iter->next) {
@@ -2588,10 +2601,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
             }
 
             LLVMValueRef ptr = NULL;
-            if (compound->memory_type->kind == TYPE_STRUCT) {
-                ptr = LLVMBuildStructGEP2(c->llvm_builder, compound->memory_type->llvm, memory, it_iota, "");
-            } else if (compound->memory_type->kind == TYPE_ARRAY) {
-                LLVMTypeRef  element_type = compound->memory_type->spec.array.element->llvm;
+            if (n->type.kind == TYPE_STRUCT) {
+                ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
+            } else if (n->type.kind == TYPE_ARRAY) {
+                LLVMTypeRef  element_type = n->type.spec.array.element->llvm;
                 LLVMValueRef indices[] = {
                     LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it_iota, true),
                 };
@@ -2602,19 +2615,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef value = compile_expr(c, it, false);
             LLVMBuildStore(c->llvm_builder, value, ptr);
-        }
-
-        if (compound->auto_cast_array_to_slice) {
-            assert(compound->memory_type->kind == TYPE_ARRAY); // Must be array
-
-            LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
-            LLVMBuildStore(c->llvm_builder, memory, slice);
-            LLVMBuildStore(
-                c->llvm_builder,
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compound->memory_type->spec.array.count, true),
-                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
-
-            memory = slice;
         }
 
         if (ref) {
@@ -2643,21 +2643,8 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
                 set_debug_pos(c, n->token.pos);
                 return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(from_type), "");
 
-            case TYPE_CAST_TO_UNION: {
-                LLVMValueRef memory = compile_alloca(c, n->type.llvm);
-                LLVMBuildStore(
-                    c->llvm_builder,
-                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->type_cast_union_index, true),
-                    memory);
-
-                LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, 1, "");
-                LLVMBuildStore(c->llvm_builder, from, payload);
-
-                if (ref) {
-                    return memory;
-                }
-                return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
-            }
+            case TYPE_CAST_TO_UNION:
+                return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from, ref);
 
             default:
                 unreachable();
@@ -2986,6 +2973,52 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     default:
         unreachable();
         break;
+    }
+}
+
+static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
+    if (!n) {
+        return NULL;
+    }
+
+    if (!n->auto_cast_from) {
+        return compile_expr_impl(c, n, ref);
+    }
+
+    const Type n_type_save = n->type;
+    n->type = *n->auto_cast_from;
+
+    static_assert(COUNT_AUTO_CASTS == 2, "");
+    switch (n->auto_cast_kind) {
+    case AUTO_CAST_TO_UNION: {
+        LLVMValueRef result = compile_expr_impl(c, n, false);
+        n->type = n_type_save;
+        compile_type(c, &n->type);
+        return compile_cast_to_union(c, n->type.llvm, n->auto_cast_data, result, ref);
+    }
+
+    case AUTO_CAST_ARRAY_TO_SLICE: {
+        LLVMValueRef memory = compile_expr_impl(c, n, true);
+        assert(n->type.kind == TYPE_ARRAY);
+
+        LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
+        LLVMBuildStore(c->llvm_builder, memory, slice);
+        LLVMBuildStore(
+            c->llvm_builder,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), n->type.spec.array.count, true),
+            LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
+
+        n->type = n_type_save;
+        compile_type(c, &n->type);
+
+        if (ref) {
+            return slice;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
+    }
+
+    default:
+        unreachable();
     }
 }
 
