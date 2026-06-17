@@ -1,29 +1,29 @@
 main :: () {
     if true {
-        print 69
+        println(69)
     }
 
     if false {
-        print 69
+        println(69)
     }
 
     if true {
-        print 420
+        println(420)
     } else {
-        print 1337
+        println(1337)
     }
 
     if false {
-        print 420
+        println(420)
     } else {
-        print 1337
+        println(1337)
     }
 
     if false {
-        print 420
+        println(420)
     } else if true {
-        print 80085
+        println(80085)
     } else {
-        print 8008135
+        println(8008135)
     }
 }

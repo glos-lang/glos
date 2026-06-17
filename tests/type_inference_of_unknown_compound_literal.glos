@@ -4,8 +4,8 @@ Vec2 :: struct {
 }
 
 print_vec2 :: (v: Vec2) {
-    print v.x
-    print v.y
+    println(v.x)
+    println(v.y)
 }
 
 main :: () {

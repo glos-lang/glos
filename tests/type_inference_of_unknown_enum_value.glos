@@ -10,13 +10,13 @@ foo :: () -> (Foo, Foo) {
 }
 
 bar :: (a: Foo) {
-    print a
+    println(i64(a))
 }
 
 main :: () {
     a, b := foo()
-    print a
-    print b
+    println(i64(a))
+    println(i64(b))
     bar(.w - .z)
     assert(a == .x + .y)
 }

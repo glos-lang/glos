@@ -9,7 +9,7 @@ test_self_ptr :: () {
             return
         }
 
-        print f.v
+        println(f.v)
         foo_print(f.next)
     }
 
@@ -29,7 +29,7 @@ test_self_slice :: () {
             return
         }
 
-        print f.v
+        println(f.v)
         for i := 0; i < f.children.count; i += 1 {
             foo_print(&f.children[i])
         }

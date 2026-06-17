@@ -9,8 +9,8 @@ foo :: (v: &Vec2) {
 }
 
 bar :: (v: Vec2) {
-    print v.x
-    print v.y
+    println(v.x)
+    println(v.y)
 }
 
 vec2 :: (x: i32, y: i32) -> Vec2 {
@@ -22,10 +22,10 @@ vec2 :: (x: i32, y: i32) -> Vec2 {
 
 main :: () {
     pos: Vec2
-    print sizeof(pos)
+    println(sizeof(pos))
 
     foo(&pos)
     bar(pos)
     bar(vec2(420, 1337))
-    print vec2(80085, 69).x
+    println(vec2(80085, 69).x)
 }

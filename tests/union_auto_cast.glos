@@ -6,11 +6,10 @@ Value :: union {
 print_value :: (v: Value) {
     if v == {
     case i64
-        print v
+        println(v)
 
     case string
-        fmt :: #import "fmt"
-        fmt.println(v)
+        println(v)
 
     case null
         unreachable()

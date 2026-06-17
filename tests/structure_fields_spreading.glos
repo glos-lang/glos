@@ -13,5 +13,7 @@ main :: () {
     v.x = 69
     v.y = 420
     v.z = 1337
-    print v.x; print v.y; print v.z
+    println(v.x)
+    println(v.y)
+    println(v.z)
 }

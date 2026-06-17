@@ -1,0 +1,10 @@
+main :: () {
+    println("Hello, world!")
+    println([]i64 {69, 420, 1337})
+    println(Vec2 {80085, 8008135})
+    println([]any {69, "Urmom", true})
+}
+
+Vec2 :: struct {
+    x, y: i64
+}

@@ -1,5 +1,5 @@
 EXIT 0
-STDOUT 30
+STDOUT 37
 69
 420
 1337
@@ -8,8 +8,8 @@ STDOUT 30
 2
 4
 8
-1
-0
+true
+false
 
 STDERR 0
 

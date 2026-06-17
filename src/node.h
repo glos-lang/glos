@@ -75,6 +75,7 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_SLICE,
     TYPE_STRING,
+    TYPE_ANY,
 
     TYPE_GROUP,
     TYPE_MODULE,
@@ -230,6 +231,7 @@ typedef enum {
 
     CONST_VALUE_ARRAY,
     CONST_VALUE_STRING,
+    CONST_VALUE_ANY,
 
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
@@ -254,6 +256,11 @@ typedef struct {
     bool is_slice;
 } Const_Value_Array;
 
+typedef struct {
+    Type        *type;
+    Const_Value *value;
+} Const_Value_Any;
+
 struct Const_Value {
     Const_Value_Kind kind;
     union {
@@ -266,12 +273,13 @@ struct Const_Value {
 
         Const_Value_Array array;
         SV                string;
+        Const_Value_Any   any;
 
         Module *module;
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 8, "");
+static_assert(COUNT_CONST_VALUES == 9, "");
 #define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
@@ -281,6 +289,7 @@ static_assert(COUNT_CONST_VALUES == 8, "");
 
 #define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+#define const_value_any(v)    ((Const_Value) {.kind = CONST_VALUE_ANY, .as.any = (v)})
 
 #define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
@@ -325,12 +334,11 @@ typedef enum {
     NODE_RETURN,
 
     NODE_EXTERN,
-
-    NODE_PRINT,
     COUNT_NODES
 } Node_Kind;
 
 typedef enum {
+    AUTO_CAST_TO_ANY,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
     COUNT_AUTO_CASTS
@@ -428,6 +436,9 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
+    Node *any_check;
+    Type *any_check_type;
+
     Node  *union_check;
     size_t union_check_index;
 } Node_Binary;
@@ -441,8 +452,8 @@ typedef struct {
 
     union {
         size_t field_index;
-        size_t union_index;
         size_t enum_value;
+        size_t union_index;
     };
 
     // Foo :: #import "Foo"
@@ -679,6 +690,7 @@ typedef struct {
     Node_Enum  *enumeration;
     Node_Union *unionn;
 
+    bool is_expr_any;
     bool is_expr_type_info;
 
     bool       is_compile_time;
@@ -703,11 +715,6 @@ typedef struct {
     Node  node;
     Nodes nodes;
 } Node_Extern;
-
-typedef struct {
-    Node  node;
-    Node *value;
-} Node_Print;
 
 void node_debug(FILE *f, Node *n);
 void nodes_debug(FILE *f, Nodes ns);

@@ -2,7 +2,7 @@ main :: () {
     N :: 420
     {
         N :: 69
-        print N
+        println(N)
     }
-    print N
+    println(N)
 }

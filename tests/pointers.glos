@@ -2,9 +2,9 @@ f :: () {
     x := 69
     p := &x
 
-    print x
+    println(x)
     *p = 420
-    print x
+    println(x)
 }
 
 g :: () {
@@ -14,24 +14,24 @@ g :: () {
     y := &a
     z := &y
 
-    print a
-    print b
+    println(a)
+    println(b)
 
     *y = 420
 
-    print a
-    print b
+    println(a)
+    println(b)
 
     *z = &b
     *y = 69
 
-    print a
-    print b
+    println(a)
+    println(b)
 
     **z = 1337
 
-    print a
-    print b
+    println(a)
+    println(b)
 }
 
 main :: () {
@@ -41,5 +41,5 @@ main :: () {
     x: i64
     y := &x
     z := y + &i64(80085)
-    print z - y
+    println(z - y)
 }

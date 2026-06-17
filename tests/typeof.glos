@@ -3,7 +3,5 @@ main :: () {
     b :: typeof(a)
 
     x: b = a
-    fmt.println(x)
+    println(x)
 }
-
-fmt :: #import "fmt"

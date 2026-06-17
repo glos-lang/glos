@@ -13,11 +13,11 @@ double :: (i: &&Iota) {
 main :: () {
     iota := Iota {x = 67}
     ptr := &iota
-    print(iota.x)
+    println(iota.x)
 
     single(ptr)
-    print(iota.x)
+    println(iota.x)
 
     double(&ptr)
-    print(iota.x)
+    println(iota.x)
 }

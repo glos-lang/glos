@@ -103,8 +103,6 @@ typedef enum {
     TOKEN_RETURN,
 
     TOKEN_EXTERN,
-
-    TOKEN_PRINT,
     COUNT_TOKENS
 } Token_Kind;
 

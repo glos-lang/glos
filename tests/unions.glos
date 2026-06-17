@@ -4,15 +4,13 @@ Show :: union {
 }
 
 show :: (s: Show) {
-    print s.case
+    println(s.case)
 
     if s == {
-    case i64;    print s
-    case string; fmt.println(s)
-    case;        fmt.println("nil")
+    case i64;    println(s)
+    case string; println(s)
+    case;        println("nil")
     }
-
-    fmt :: #import "fmt"
 }
 
 main :: () {

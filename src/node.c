@@ -22,7 +22,7 @@ void modules_free(Modules *ms) {
     ht_free(&ms->table);
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 const char *type_to_cstr_raw(Type type) {
     assert(!type.is_meta);
 
@@ -211,6 +211,10 @@ const char *type_to_cstr_raw(Type type) {
         temp_sprintf("string");
         break;
 
+    case TYPE_ANY:
+        temp_sprintf("any");
+        break;
+
     case TYPE_GROUP:
         temp_sprintf("(");
         for (size_t i = 0; i < type.spec.group.count; i++) {
@@ -323,7 +327,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 bool type_eq(Type a, Type b) {
     if (a.is_meta) {
         return b.is_meta;
@@ -401,7 +405,7 @@ bool type_eq(Type a, Type b) {
     }
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 bool type_kind_eq(Type type, Type_Kind kind) {
     if (type.is_meta) {
         return false;
@@ -414,7 +418,7 @@ bool type_is_numeric(Type type) {
     return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -455,14 +459,14 @@ bool type_is_scalar(Type type) {
         return true;
     }
 
-    if (type.kind == TYPE_BOOL || type.kind == TYPE_CHAR || type.kind == TYPE_FN) {
+    if (type.kind == TYPE_BOOL || type.kind == TYPE_CHAR || type.kind == TYPE_FN || type.kind == TYPE_ANY) {
         return true;
     }
 
     return false;
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -486,7 +490,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 24, "");
+static_assert(COUNT_TYPES == 25, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta) {
         return false;
@@ -495,7 +499,7 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
-static_assert(COUNT_CONST_VALUES == 8, "");
+static_assert(COUNT_CONST_VALUES == 9, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -561,6 +565,17 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     case CONST_VALUE_STRING:
         return sv_eq(a.as.string, b.as.string);
 
+    case CONST_VALUE_ANY:
+        if (!a.as.any.type) {
+            return !b.as.any.type;
+        }
+
+        if (!type_eq(*a.as.any.type, *b.as.any.type)) {
+            return false;
+        }
+
+        return const_value_eq(*a.as.any.value, *b.as.any.value);
+
     case CONST_VALUE_MODULE:
         unreachable();
 
@@ -569,7 +584,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -605,8 +620,6 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_RETURN] = sizeof(Node_Return),
 
         [NODE_EXTERN] = sizeof(Node_Extern),
-
-        [NODE_PRINT] = sizeof(Node_Print),
     };
 
     assert(kind >= NODE_ATOM && kind < COUNT_NODES);
@@ -659,7 +672,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -884,13 +897,6 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         } else {
             fprintf(f, "Extern {}\n");
         }
-    } break;
-
-    case NODE_PRINT: {
-        Node_Print *print = (Node_Print *) n;
-        fprintf(f, "Print {\n");
-        node_debug_impl(f, print->value, depth + 1, "Value");
-        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
     default:

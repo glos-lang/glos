@@ -1,6 +1,6 @@
 main :: () {
-    println("Hello, world!")
+    printf("Hello, world!\n".data)
 
-    fmt :: #import "fmt"
-    println :: fmt.println
+    C :: #import "C"
+    printf :: C.printf
 }

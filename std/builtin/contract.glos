@@ -15,6 +15,8 @@ Platform :: enum {
 
 PLATFORM :: #platform
 
+Type :: &Type_Info
+
 Type_Info :: struct {
     size: i64
     align: i64
@@ -30,6 +32,7 @@ Type_Info :: struct {
         Type_Info_Array
         Type_Info_Slice
         Type_Info_String
+        Type_Info_Any
     }
     id: i64
 }
@@ -42,37 +45,38 @@ Type_Info_Integer :: struct {
 }
 
 Type_Info_Pointer :: struct {
-    underlying: &Type_Info
+    underlying: Type
 }
 
 Type_Info_Function :: struct {
-    args:    []&Type_Info
-    returns: []&Type_Info
+    args:    []Type
+    returns: []Type
 }
 
 Type_Info_Enumeration :: struct {
     names:      []string
     values:     []i64
-    underlying: &Type_Info
+    underlying: Type
 }
 
 Type_Info_Union :: struct {
-    variants: []&Type_Info
+    variants: []Type
 }
 
 Type_Info_Structure :: struct {
     names:   []string
-    types:   []&Type_Info
+    types:   []Type
     offsets: []i64
 }
 
 Type_Info_Array :: struct {
-    underlying: &Type_Info
+    underlying: Type
     count: i64
 }
 
 Type_Info_Slice :: struct {
-    underlying: &Type_Info
+    underlying: Type
 }
 
 Type_Info_String :: struct {}
+Type_Info_Any :: struct {}

@@ -47,7 +47,10 @@ typedef enum {
 } Parse_Result;
 
 void parser_free(Parser *p);
-void parser_import(Parser *p, Node_Import *import);
+
+// Return true if actually imported
+// Return false if was imported before, and reusing that
+bool parser_import(Parser *p, Node_Import *import);
 
 Parse_Result parse_file(Parser *p, const char *path);
 Parse_Result parse_directory(Parser *p, const char *path);

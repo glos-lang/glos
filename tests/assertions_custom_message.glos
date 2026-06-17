@@ -1,9 +1,9 @@
 main :: () {
-    print(69)
+    println(69)
     assert(true)
 
-    print(420)
+    println(420)
     assert(!true, "Custom message for testing")
 
-    print(1337)
+    println(1337)
 }

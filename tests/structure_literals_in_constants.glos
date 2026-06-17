@@ -7,6 +7,6 @@ v :: Vec2 {69, 420}
 y :: v.y
 
 main :: () {
-    print v.x
-    print y
+    println(v.x)
+    println(y)
 }

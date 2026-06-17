@@ -5,7 +5,7 @@ Int :: i64
 C: Int = A + 8 + B * 3
 
 main :: () {
-    print A
-    print B
-    print C
+    println(A)
+    println(B)
+    println(C)
 }

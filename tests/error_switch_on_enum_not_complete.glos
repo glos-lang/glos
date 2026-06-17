@@ -8,10 +8,8 @@ Foo :: enum {
 main :: () {
     if Foo.D == {
     case .A
-        fmt.println("Foo.A")
+        println("Foo.A")
     case .B
-        fmt.println("Foo.B")
+        println("Foo.B")
     }
 }
-
-fmt :: #import "fmt"

@@ -1,10 +1,10 @@
 bar :: () -> i64 {
     return 69
-    print 420 // Unreachable
+    println(420) // Unreachable
 }
 
 main :: () {
-    print bar()
+    println(bar())
     return
-    print 420 // Unreachable
+    println(420) // Unreachable
 }

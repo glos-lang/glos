@@ -4,7 +4,7 @@ main :: () {
     comptime :: #main
     runtime := #main
 
-    print v
+    println(v)
 
     if v == {
     case 0

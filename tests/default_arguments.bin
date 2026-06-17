@@ -1,13 +1,13 @@
 EXIT 0
-STDOUT 69
+STDOUT 91
 69
 420
-1
-0
-0
-0
-0
-1
+true
+false
+false
+false
+false
+true
 Hello, world
 I slept with urmom
 69

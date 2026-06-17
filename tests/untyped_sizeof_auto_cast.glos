@@ -1,5 +1,5 @@
 foo :: (x: u8) {
-    print x
+    println(x)
 }
 
 main :: () {

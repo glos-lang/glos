@@ -1,6 +1,6 @@
 print_i64s :: (xs: []i64) {
     for i := 0; i < xs.count; i += 1 {
-        print xs[i]
+        println(xs[i])
     }
 }
 

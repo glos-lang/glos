@@ -1,7 +1,7 @@
 main :: () {
-    print true
-    print false
+    println(true)
+    println(false)
 
-    print !true
-    print !false
+    println(!true)
+    println(!false)
 }

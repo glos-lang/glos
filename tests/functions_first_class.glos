@@ -7,12 +7,12 @@ map :: (x: i64, f: (_: i64) -> i64) -> i64 {
 }
 
 main :: () {
-    foo := () { print 69 }
+    foo := () { println(69) }
     foo()
 
-    foo = () { print 420 }
+    foo = () { println(420) }
     foo()
 
-    apply(2674, (x: i64) { print x / 2 })
-    print map(26695, (x: i64) -> i64 { return x * 3 })
+    apply(2674, (x: i64) { println(x / 2) })
+    println(map(26695, (x: i64) -> i64 { return x * 3 }))
 }

@@ -1,11 +1,18 @@
 EXIT 0
-STDOUT 17
+STDOUT 31
+A
 0
+B
 1
+C
 69
+D
 70
+A
 0
+B
 1
+C
 42
 
 STDERR 0

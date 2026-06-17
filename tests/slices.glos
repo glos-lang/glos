@@ -9,7 +9,7 @@ alloc_i64s :: (n: i64) -> []i64 {
 
 print_i64s :: (xs: []i64) {
     for i := 0; i < xs.count; i = i + 1 {
-        print xs[i]
+        println(xs[i])
     }
 }
 

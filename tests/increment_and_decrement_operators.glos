@@ -1,14 +1,14 @@
 basics :: () {
     x := 69
-    print x++
+    println(x++)
 
     assert(x == 70)
-    print --x;
+    println(--x)
 
     x = 68
-    print ++x
+    println(++x)
 
-    print x--;
+    println(x--)
     assert(x == 68)
 }
 
@@ -17,7 +17,7 @@ dereference :: () {
     p := &x
 
     (*p)++
-    print x
+    println(x)
 }
 
 pointer :: () {

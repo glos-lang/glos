@@ -1,0 +1,4 @@
+main :: () {
+    s: any = 69
+    s.(string)
+}
