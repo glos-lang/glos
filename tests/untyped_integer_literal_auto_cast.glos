@@ -1,12 +1,12 @@
-a :: (x: i8)  { print x }
-b :: (x: i16) { print x }
-c :: (x: i32) { print x }
-d :: (x: i64) { print x }
+a :: (x: i8)  { println(x) }
+b :: (x: i16) { println(x) }
+c :: (x: i32) { println(x) }
+d :: (x: i64) { println(x) }
 
-e :: (x: u8)  { print x }
-f :: (x: u16) { print x }
-g :: (x: u32) { print x }
-h :: (x: u64) { print x }
+e :: (x: u8)  { println(x) }
+f :: (x: u16) { println(x) }
+g :: (x: u32) { println(x) }
+h :: (x: u64) { println(x) }
 
 main :: () {
     a(69)

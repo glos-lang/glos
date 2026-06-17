@@ -1,40 +1,40 @@
 main :: () {
     // Arithmetics
-    print 34 + 35
-    print 500 - 80
-    print 23 * 3
-    print 1260 / 3
-    print 17 * 2 - -35
-    print 10 % 4 * (100 + 110)
+    println(34 + 35)
+    println(500 - 80)
+    println(23 * 3)
+    println(1260 / 3)
+    println(17 * 2 - -35)
+    println(10 % 4 * (100 + 110))
 
     // Bitwise
-    print 276 >> 2
-    print 105 << 2
-    print ~-70
-    print 160 | 260
-    print 77 & 103
-    print ~-419 + 10 & 3
+    println(276 >> 2)
+    println(105 << 2)
+    println(~-70)
+    println(160 | 260)
+    println(77 & 103)
+    println(~-419 + 10 & 3)
 
     // Comparisons
-    print 2 > 1
-    print 1 > 1
-    print 0 > 1
+    println(2 > 1)
+    println(1 > 1)
+    println(0 > 1)
 
-    print 2 >= 1
-    print 1 >= 1
-    print 0 >= 1
+    println(2 >= 1)
+    println(1 >= 1)
+    println(0 >= 1)
 
-    print 1 < 2
-    print 1 < 1
-    print 1 < 0
+    println(1 < 2)
+    println(1 < 1)
+    println(1 < 0)
 
-    print 1 <= 2
-    print 1 <= 1
-    print 1 <= 0
+    println(1 <= 2)
+    println(1 <= 1)
+    println(1 <= 0)
 
-    print 1 == 1
-    print 1 == 2
+    println(1 == 1)
+    println(1 == 2)
 
-    print 1 != 2
-    print 1 != 1
+    println(1 != 2)
+    println(1 != 1)
 }

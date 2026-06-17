@@ -15,7 +15,7 @@ case Foo
     case i64
         main :: () {
             other()
-            print a
+            println(a)
         }
 
     case
@@ -28,8 +28,6 @@ case null
 b :: Value("Urmom")
 #if b == string {
     other :: () {
-        fmt.println(b)
+        println(b)
     }
 }
-
-fmt :: #import "fmt"

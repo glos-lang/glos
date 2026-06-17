@@ -1,31 +1,31 @@
 main :: () {
     acc := 42
-    print(acc)
+    println(acc)
 
     acc += 10
-    print(acc)
+    println(acc)
 
     acc -= 5
-    print(acc)
+    println(acc)
 
     acc *= 2
-    print(acc)
+    println(acc)
 
     acc /= 3
-    print(acc)
+    println(acc)
 
     acc <<= 1
-    print(acc)
+    println(acc)
 
     acc >>= 2
-    print(acc)
+    println(acc)
 
     acc |= 8
-    print(acc)
+    println(acc)
 
     acc &= 15
-    print(acc)
+    println(acc)
 
     acc %= 4
-    print(acc)
+    println(acc)
 }

@@ -4,6 +4,6 @@ main :: () {
         xs[i] = i * 2
     }
 
-    print xs[2]
-    print xs[5]
+    println(xs[2])
+    println(xs[5])
 }

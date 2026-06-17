@@ -3,7 +3,7 @@ main :: () {
     y: &i64 = &x
     z: &&i64 = &y
 
-    print x
+    println(x)
     **z = 420
-    print x
+    println(x)
 }

@@ -5,18 +5,18 @@ main :: () {
     d := i64(80085)
 
     // Basics
-    print a
-    print b
-    print c
-    print d
+    println(a)
+    println(b)
+    println(c)
+    println(d)
 
     // Sizes
-    print sizeof(a)
-    print sizeof(b)
-    print sizeof(c)
-    print sizeof(d)
+    println(sizeof(a))
+    println(sizeof(b))
+    println(sizeof(c))
+    println(sizeof(d))
 
     // Comparisons
-    print u64(1) > 0
-    print u64(1) > u64(-1)
+    println(u64(1) > 0)
+    println(u64(1) > u64(-1))
 }

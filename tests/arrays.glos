@@ -1,13 +1,13 @@
 print_i64s :: (xs: []i64) {
     for i := 0; i < xs.count; i += 1 {
-        print xs[i]
+        println(xs[i])
     }
 }
 
 main :: () {
     xs: [6]i64
-    print xs.data == &xs[0]
-    print xs.count
+    println(xs.data == &xs[0])
+    println(xs.count)
 
     for i := 0; i < xs.count; i += 1 {
         xs[i] = i * 2

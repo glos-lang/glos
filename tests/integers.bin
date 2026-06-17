@@ -1,5 +1,5 @@
 EXIT 0
-STDOUT 74
+STDOUT 130
 69
 420
 69
@@ -12,22 +12,22 @@ STDOUT 74
 420
 69
 420
-1
-0
-0
-1
-1
-0
-1
-0
-0
-1
-1
-0
-1
-0
-1
-0
+true
+false
+false
+true
+true
+false
+true
+false
+false
+true
+true
+false
+true
+false
+true
+false
 
 STDERR 0
 

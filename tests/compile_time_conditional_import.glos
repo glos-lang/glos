@@ -6,12 +6,12 @@ main :: () {
     case;     #assert(false, "No funny :(")
     }
 
-    fmt.println("Hello, world!")
+    C.printf("Hello, world!\n".data)
     funny.hello()
 
     #if true {
-        fmt :: #import "fmt"
+        C :: #import "C"
     } else {
-        fmt :: #import "does_not_exist"
+        C :: #import "does_not_exist"
     }
 }

@@ -1,10 +1,10 @@
 EXIT 0
-STDOUT 10
+STDOUT 20
 1
 0
-1
-0
-1
+true
+false
+true
 
 STDERR 0
 

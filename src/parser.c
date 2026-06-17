@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -465,9 +465,9 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
     }
 }
 
-void parser_import(Parser *p, Node_Import *import) {
+bool parser_import(Parser *p, Node_Import *import) {
     if (import->module) {
-        return;
+        return false;
     }
 
     SV          root = {0};
@@ -514,10 +514,14 @@ void parser_import(Parser *p, Node_Import *import) {
         exit(1);
     }
 
+    bool    newly_imported = true;
     Module *module_current_save = p->module_current;
     {
         Module *module = module_get(p, absolute_path);
-        if (!module->name.count) {
+
+        if (module->name.count) {
+            newly_imported = false;
+        } else {
             module->name = sv_from_cstr(get_relative_path(root, sv_from_cstr(module->absolute_path), p->arena));
             if (sv_match(module->name, "main") || sv_match(module->name, "builtin")) {
                 fprintf(
@@ -561,6 +565,7 @@ void parser_import(Parser *p, Node_Import *import) {
         import->module = module;
     }
     p->module_current = module_current_save;
+    return newly_imported;
 }
 
 static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool is_static) {
@@ -671,7 +676,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 75, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -1124,7 +1129,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1380,15 +1385,6 @@ static Node *parse_stmt(Parser *p) {
 
         p->state.after_private = after_private_save;
     } break;
-
-    case TOKEN_PRINT: {
-        not_in_extern_assert(p, token);
-        local_assert(p, true, token, NULL);
-        Node_Print *print = (Node_Print *) node_alloc(p->arena, NODE_PRINT, token);
-        print->value = parse_expr(p, POWER_SET, false, true, NULL);
-        node = (Node *) print;
-        break;
-    }
 
     default:
         buffer_token(p, token);

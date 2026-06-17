@@ -1,6 +1,7 @@
 File :: #distinct rawptr
 
 extern {
+    printf :: (fmt: &char, ...) -> i32
     fprintf :: (f: File, fmt: &char, ...) -> i32
     fflush :: (f: File)
     abort :: ()

@@ -1,14 +1,14 @@
 main :: () {
     {
-        foo :: (x := 69) { print x }
+        foo :: (x := 69) { println(x) }
         foo()
         foo(420)
     }
 
     {
         foo :: (enabled := true, debug := false) {
-            print enabled
-            print debug
+            println(enabled)
+            println(debug)
         }
 
         foo()
@@ -18,10 +18,9 @@ main :: () {
 
     {
         foo :: (name: string, greeting := "Hello,") {
-            display(greeting)
-            display(" ")
-            display(name)
-            display("\n")
+            print(greeting)
+            print(" ")
+            println(name)
         }
 
         foo("world")
@@ -35,18 +34,11 @@ main :: () {
         }
 
         foo :: (opts := Opts {69, 420}) {
-            print opts.a
-            print opts.b
+            println(opts.a)
+            println(opts.b)
         }
 
         foo()
         foo(Opts {1337, 80085})
-    }
-}
-
-display :: (s: string) {
-    for i := 0; i < s.count; i += 1 {
-        extern { putchar :: (c: i32) -> i32 }
-        putchar(i32(s[i]))
     }
 }

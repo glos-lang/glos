@@ -151,7 +151,21 @@ defer:
     return result;
 }
 
+#ifdef PROFILING
+#include <time.h>
+
+#define perf_begin()    (timer = clock())
+#define perf_end(label) (printf("%s: %g\n", label, (double) (clock() - timer) / CLOCKS_PER_SEC))
+#else
+#define perf_begin()
+#define perf_end(label)
+#endif // PROFILING
+
 int main(int argc, char **argv) {
+#ifdef PROFILING
+    clock_t timer = 0;
+#endif // PROFILING
+
     atexit(temporary_files_cleanup);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
@@ -268,6 +282,8 @@ int main(int argc, char **argv) {
         input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &arena);
     }
 
+    perf_begin();
+
     // Import the builtin module
     {
         const SV    name = sv_from_cstr("builtin");
@@ -305,6 +321,10 @@ int main(int argc, char **argv) {
         parser.module_current = NULL;
     }
 
+    perf_end("builtin module");
+
+    perf_begin();
+
     parser.module_current = compiler.main_module;
     if (input_is_directory) {
         switch (parse_directory(&parser, input_path)) {
@@ -332,6 +352,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    perf_end("main module");
+
 #ifdef PLATFORM_X86_64_WINDOWS
     if (!sv_has_suffix(sv_from_cstr(output_path), sv_from_cstr(".exe"))) {
         output_path = temp_sprintf("%s.exe", output_path);
@@ -342,7 +364,10 @@ int main(int argc, char **argv) {
         temporary_files_push(output_path);
     }
 
+    perf_begin();
     check_nodes(&compiler);
+    perf_end("analysis");
+
     ll_foreach(it, &modules) {
         SV path = {0};
         if (it == compiler.main_module) {
@@ -353,7 +378,9 @@ int main(int argc, char **argv) {
         link_flags_add_libpath(&link_flags, path);
     }
 
+    perf_begin();
     compiler_build(&compiler, output_path);
+    perf_end("compilation");
 
     if (run) {
         const char *child_name = output_path;

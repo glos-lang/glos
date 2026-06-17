@@ -5,7 +5,7 @@ D :: "HEHE"[1]
 
 main :: () {
 	println_str(A)
-	print B
+	println(B)
     println_str(C)
 	println_char(D)
 }

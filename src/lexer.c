@@ -178,7 +178,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 75, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -260,8 +260,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_RETURN;
         } else if (sv_match(token.sv, "extern")) {
             token.kind = TOKEN_EXTERN;
-        } else if (sv_match(token.sv, "print")) {
-            token.kind = TOKEN_PRINT;
         } else {
             token.kind = TOKEN_IDENT;
         }

@@ -1,6 +1,6 @@
 foo :: () {
-    print 69
-    print 420
+    println(69)
+    println(420)
 }
 
 main :: () {

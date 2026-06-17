@@ -1,10 +1,9 @@
 iota :: () -> i64 {
     #static i := 0
-    i += 1
-    return i - 1
+    return i++
 }
 
 main :: () {
-    print iota()
-    print iota()
+    println(iota())
+    println(iota())
 }

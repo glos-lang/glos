@@ -1,14 +1,14 @@
 foo :: () {}
 
 main :: () {
-    print sizeof(bool)
-    print sizeof(i64)
-    print sizeof(())
-    print sizeof(rawptr)
-    print sizeof(&&bool)
+    println(sizeof(bool))
+    println(sizeof(i64))
+    println(sizeof(()))
+    println(sizeof(rawptr))
+    println(sizeof(&&bool))
 
-    print sizeof(struct {})
-    print sizeof(69)
-    print sizeof(420 == 1337)
-    print sizeof(rawptr(0))
+    println(sizeof(struct {}))
+    println(sizeof(69))
+    println(sizeof(420 == 1337))
+    println(sizeof(rawptr(0)))
 }

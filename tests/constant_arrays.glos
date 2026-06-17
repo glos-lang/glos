@@ -3,7 +3,7 @@ X :: XS[2]
 
 main :: () {
     for i := 0; i < XS.count; i += 1 {
-        print XS[i]
+        println(XS[i])
     }
     assert(X == 8)
 }

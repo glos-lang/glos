@@ -8,10 +8,14 @@ main :: () {
             D
         }
 
-        print Foo.A
-        print Foo.B
-        print Foo.C
-        print Foo.D
+        println(Foo.A)
+        println(i64(Foo.A))
+        println(Foo.B)
+        println(i64(Foo.B))
+        println(Foo.C)
+        println(i64(Foo.C))
+        println(Foo.D)
+        println(i64(Foo.D))
     }
 
     // Typed enumeration
@@ -23,8 +27,11 @@ main :: () {
         }
         #assert(sizeof(Foo) == sizeof(u8))
 
-        print Foo.A
-        print Foo.B
-        print Foo.C
+        println(Foo.A)
+        println(u8(Foo.A))
+        println(Foo.B)
+        println(u8(Foo.B))
+        println(Foo.C)
+        println(u8(Foo.C))
     }
 }

@@ -1,17 +1,17 @@
 foo :: (x: bool) {
     if x {
-        print 1337
+        println(1337)
     } else {
-        print 69
+        println(69)
     }
     bar(x)
 }
 
 bar :: (x: bool) {
     if x {
-        print 80085
+        println(80085)
     } else {
-        print 420
+        println(420)
         foo(true)
     }
 }

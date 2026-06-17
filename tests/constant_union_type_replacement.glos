@@ -7,18 +7,16 @@ main :: () {
     V :: Value(69)
     if V == {
     case string
-        fmt.println(V)
+        println(V)
 
     case i64
-        print V
+        println(V)
 
     case null
         unreachable()
     }
 
     if V == string {
-        fmt.println(V)
+        println(V)
     }
 }
-
-fmt :: #import "fmt"

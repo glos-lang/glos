@@ -1,5 +1,5 @@
 foo :: () {
-    print 69
+    println(69)
 }
 
 main :: () {

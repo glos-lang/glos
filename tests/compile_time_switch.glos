@@ -16,7 +16,7 @@ main :: () {
     case;       #assert(false, "Unhandled value of SECOND")
     }
 
-    print FIRST
-    print SECOND
-    print THIRD
+    println(FIRST)
+    println(SECOND)
+    println(THIRD)
 }

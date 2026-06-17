@@ -1,5 +1,5 @@
-print_i64  :: (x: i64)  { print x }
-print_bool :: (x: bool) { print x }
+print_i64  :: (x: i64)  { println(x) }
+print_bool :: (x: bool) { println(x) }
 
 main :: () {
     print_i64(i64(true))

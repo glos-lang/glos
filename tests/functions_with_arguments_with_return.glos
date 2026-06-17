@@ -3,5 +3,5 @@ add :: (x: i64, y: i64) -> i64 {
 }
 
 main :: () {
-    print add(34, 35)
+    println(add(34, 35))
 }

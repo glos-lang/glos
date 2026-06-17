@@ -1,5 +1,5 @@
-fmt :: #import "fmt"
+C :: #import "C"
 
 main :: () {
-    fmt.println("Hello, world!")
+    C.printf("Hello, world!\n".data)
 }

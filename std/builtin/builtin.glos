@@ -112,7 +112,7 @@ wprint :: (f: C.File, a: any) {
                 }
             }
 
-            C.fprintf(f, "(enum out of range: %ld)".data, value)
+            C.fprintf(f, "(Invalid enum value: %ld)".data, value)
 
         case Type_Info_Union
             variant := *&i64(data)
@@ -198,8 +198,7 @@ wprintln :: (f: C.File, v: any) {
     wprint(f, '\n')
 }
 
-// TODO: Rename to `print` and remove the 'print' keyword
-print_ :: (v: any) {
+print :: (v: any) {
     wprint(C.stdout, v)
 }
 

@@ -162,11 +162,11 @@ static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -555,7 +555,7 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -618,7 +618,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -846,7 +846,7 @@ static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t uni
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -860,7 +860,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -902,7 +902,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -952,7 +952,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1602,7 +1602,7 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     c->context.replace = replace;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -2235,7 +2235,7 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type) {
     if (!n) {
         return;
@@ -2244,7 +2244,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -2332,7 +2332,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -2437,7 +2437,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 75, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -2711,16 +2711,16 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
         } else {
             if (!import->module) {
-                parser_import(c->parser, import);
-
-                const Context context_save = c->context;
-                memset(&c->context, 0, sizeof(c->context));
-                {
-                    for (Node *it = import->module->nodes.head; it; it = it->next) {
-                        define_orderless_nodes(c, it, 0);
+                if (parser_import(c->parser, import)) {
+                    const Context context_save = c->context;
+                    memset(&c->context, 0, sizeof(c->context));
+                    {
+                        for (Node *it = import->module->nodes.head; it; it = it->next) {
+                            define_orderless_nodes(c, it, 0);
+                        }
                     }
+                    c->context = context_save;
                 }
-                c->context = context_save;
             }
         }
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
@@ -2825,7 +2825,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             if (fn->is_type) {
                 n->type.is_meta = true;
-                is_ref_valid = ref == REF_ADDR;
+                is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
             } else if (fn->body) {
                 check_stmt(c, fn->body);
                 if (fn_type_spec.returns_count && !always_returns(fn->body)) {
@@ -2936,7 +2936,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             iota++;
         }
 
-        is_ref_valid = ref == REF_ADDR;
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
     } break;
 
     case NODE_STRUCT: {
@@ -3040,7 +3040,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         }
 
         c->struct_fields.count = fields_start;
-        is_ref_valid = ref == REF_ADDR;
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
     } break;
 
     case NODE_COMPOUND: {
@@ -3190,7 +3190,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             n->type.kind = TYPE_ARRAY;
         }
 
-        is_ref_valid = ref == REF_ADDR;
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
     } break;
 
     case NODE_CALL: {
@@ -3498,7 +3498,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             };
         }
 
-        is_ref_valid = ref == REF_ADDR;
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
     } break;
 
     default:
@@ -3528,7 +3528,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 26, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -3750,12 +3750,6 @@ static void check_stmt(Compiler *c, Node *n) {
         for (Node *it = externn->nodes.head; it; it = it->next) {
             check_stmt(c, it);
         }
-    } break;
-
-    case NODE_PRINT: {
-        Node_Print *print = (Node_Print *) n;
-        check_expr(c, print->value, REF_NONE, NULL);
-        type_assert_scalar(print->value);
     } break;
 
     default:

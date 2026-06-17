@@ -5,10 +5,10 @@ third: i64
 main :: () {
     third = 3
 
-    print first
-    print second
-    print first + 8 + second * third
+    println(first)
+    println(second)
+    println(first + 8 + second * third)
 
     local := 80085
-    print local
+    println(local)
 }

@@ -326,8 +326,6 @@ typedef enum {
     NODE_RETURN,
 
     NODE_EXTERN,
-
-    NODE_PRINT,
     COUNT_NODES
 } Node_Kind;
 
@@ -709,11 +707,6 @@ typedef struct {
     Node  node;
     Nodes nodes;
 } Node_Extern;
-
-typedef struct {
-    Node  node;
-    Node *value;
-} Node_Print;
 
 void node_debug(FILE *f, Node *n);
 void nodes_debug(FILE *f, Nodes ns);
