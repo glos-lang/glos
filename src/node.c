@@ -499,7 +499,7 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
-static_assert(COUNT_CONST_VALUES == 8, "");
+static_assert(COUNT_CONST_VALUES == 9, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -564,6 +564,17 @@ bool const_value_eq(Const_Value a, Const_Value b) {
 
     case CONST_VALUE_STRING:
         return sv_eq(a.as.string, b.as.string);
+
+    case CONST_VALUE_ANY:
+        if (!a.as.any.type) {
+            return !b.as.any.type;
+        }
+
+        if (!type_eq(*a.as.any.type, *b.as.any.type)) {
+            return false;
+        }
+
+        return const_value_eq(*a.as.any.value, *b.as.any.value);
 
     case CONST_VALUE_MODULE:
         unreachable();

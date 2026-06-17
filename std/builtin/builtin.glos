@@ -49,10 +49,12 @@ unreachable :: (message := "", location := #caller_location) {
 }
 
 wprint :: (f: C.File, a: any) {
-    write :: (f: C.File, data: rawptr, type: &Type_Info, nested: bool) {
+    write :: (f: C.File, data: rawptr, type: Type, nested: bool) {
         v := type.variant
         if v == {
         case null
+            C.fprintf(f, "null".data)
+
         case Type_Info_Boolean
             if *&bool(data) {
                 C.fprintf(f, "true".data)
@@ -186,11 +188,19 @@ wprint :: (f: C.File, a: any) {
 
         case Type_Info_Any
             a := *&any(data)
-            write(f, a.data, a.case, nested)
+            if a == null {
+                C.fprintf(f, "null".data)
+            } else {
+                write(f, a.data, a.case, nested)
+            }
         }
     }
 
-    write(f, a.data, a.case, false)
+    if a == null {
+        C.fprintf(f, "null".data)
+    } else {
+        write(f, a.data, a.case, false)
+    }
 }
 
 wprintln :: (f: C.File, v: any) {

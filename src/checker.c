@@ -827,9 +827,8 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_STRING:
         return const_value_string((SV) {0});
 
-    case TYPE_ANY: {
-        todo(); // TODO: Any in constant expression
-    }
+    case TYPE_ANY:
+        return const_value_any((Const_Value_Any) {0});
 
     default:
         unreachable();
@@ -843,6 +842,67 @@ static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t uni
     unionn.index = union_index;
     unionn.real = arena_clone(c->arena, &value, sizeof(value));
     return const_value_union(unionn);
+}
+
+static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
+    Const_Value lhs = eval_const_expr(c, binary->lhs);
+    Const_Value rhs = eval_const_expr(c, binary->rhs);
+
+    if (binary->any_check) {
+        Const_Value any;
+        Const_Value type;
+        if (binary->any_check == binary->lhs) {
+            any = lhs;
+            type = rhs;
+        } else {
+            any = rhs;
+            type = lhs;
+        }
+        assert(any.kind == CONST_VALUE_ANY);
+
+        // TODO: Pointers in constant expressions
+        if (type.kind == CONST_VALUE_INT && type.as.integer == 0) {
+            return !any.as.any.type;
+        }
+
+        assert(type.kind == CONST_VALUE_TYPE);
+        if (!any.as.any.type) {
+            return false;
+        }
+
+        Type expected = type.as.type;
+        expected.is_meta = false;
+        return type_eq(*any.as.any.type, expected);
+    }
+
+    if (binary->union_check) {
+        Const_Value unionn;
+        Const_Value variant;
+        if (binary->union_check == binary->lhs) {
+            unionn = lhs;
+            variant = rhs;
+        } else {
+            unionn = rhs;
+            variant = lhs;
+        }
+        assert(unionn.kind == CONST_VALUE_UNION);
+
+        // TODO: Pointers in constant expressions
+        if (variant.kind == CONST_VALUE_INT && variant.as.integer == 0) {
+            return unionn.as.unionn.index == 0;
+        }
+
+        assert(variant.kind == CONST_VALUE_TYPE);
+        if (unionn.as.unionn.index == 0) {
+            return false;
+        }
+
+        Type expected = variant.as.type;
+        expected.is_meta = false;
+        return type_eq(unionn.as.unionn.spec->variants[unionn.as.unionn.index - 1].type, expected);
+    }
+
+    return const_value_eq(lhs, rhs);
 }
 
 // Is this valid for signedness?
@@ -1023,45 +1083,11 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             rhs = eval_const_expr(c, binary->rhs);
             return const_value_int(lhs.as.integer <= rhs.as.integer);
 
-        case TOKEN_EQ: {
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
-
-            if (binary->union_check) {
-                Const_Value unionn;
-                Const_Value variant;
-                if (binary->union_check == binary->lhs) {
-                    unionn = lhs;
-                    variant = rhs;
-                } else {
-                    unionn = rhs;
-                    variant = lhs;
-                }
-                assert(unionn.kind == CONST_VALUE_UNION);
-
-                // TODO: Pointers in constant expressions
-                if (variant.kind == CONST_VALUE_INT && variant.as.integer == 0) {
-                    return const_value_int(unionn.as.unionn.index == 0);
-                }
-
-                assert(variant.kind == CONST_VALUE_TYPE);
-                if (unionn.as.unionn.index == 0) {
-                    return const_value_int(0);
-                }
-
-                Type expected = variant.as.type;
-                expected.is_meta = false;
-                return const_value_int(
-                    type_eq(unionn.as.unionn.spec->variants[unionn.as.unionn.index - 1].type, expected));
-            }
-
-            return const_value_int(const_value_eq(lhs, rhs));
-        }
+        case TOKEN_EQ:
+            return const_value_int(eval_const_binary_equality(c, binary));
 
         case TOKEN_NE:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
-            return const_value_int(!const_value_eq(lhs, rhs));
+            return const_value_int(!eval_const_binary_equality(c, binary));
 
         default:
             unreachable();
@@ -1077,7 +1103,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
         const Const_Value lhs = eval_const_expr(c, member->lhs);
 
-        static_assert(COUNT_CONST_VALUES == 8, "");
+        static_assert(COUNT_CONST_VALUES == 9, "");
         switch (lhs.kind) {
         case CONST_VALUE_UNION:
             if (member->rhs) {
@@ -1094,8 +1120,10 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
                 assert(lhs.as.unionn.real); // The type is checked, that means a real value exists
                 return *lhs.as.unionn.real;
-            } else {
+            } else if (member->field_index == 0) {
                 return const_value_int(lhs.as.unionn.index);
+            } else {
+                unreachable();
             }
 
         case CONST_VALUE_STRUCT:
@@ -1123,6 +1151,35 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
                 exit(1);
             } else if (member->field_index == 1) {
                 return const_value_int(lhs.as.string.count);
+            } else {
+                unreachable();
+            }
+
+        case CONST_VALUE_ANY:
+            if (member->rhs) {
+                if (!lhs.as.any.type || !type_eq(n->type, *lhs.as.any.type)) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Type mismatch: Accessing %s, but real type is %s\n",
+                        Pos_Arg(n->token.pos),
+                        type_to_cstr(n->type),
+                        lhs.as.any.type ? type_to_cstr(*lhs.as.any.type) : "null");
+                    exit(1);
+                }
+
+                assert(lhs.as.any.value); // The type is checked, that means a real value exists
+                return *lhs.as.any.value;
+            } else if (member->field_index == 0) {
+                if (lhs.as.any.type) {
+                    return const_value_type(*lhs.as.any.type);
+                }
+                return const_value_int(0);
+            } else if (member->field_index == 1) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
+                    Pos_Arg(member->field.pos));
+                exit(1);
             } else {
                 unreachable();
             }
@@ -1236,7 +1293,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Node_Index       *index = (Node_Index *) n;
         const Const_Value lhs = eval_const_expr(c, index->lhs);
         if (index->is_ranged) {
-            static_assert(COUNT_CONST_VALUES == 8, "");
+            static_assert(COUNT_CONST_VALUES == 9, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 Const_Value_Array array = lhs.as.array;
@@ -1323,7 +1380,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         } else {
             const i64 at = eval_const_expr(c, index->a).as.integer;
 
-            static_assert(COUNT_CONST_VALUES == 8, "");
+            static_assert(COUNT_CONST_VALUES == 9, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -1385,9 +1442,12 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         static_assert(COUNT_AUTO_CASTS == 3, "");
         switch (n->auto_cast_kind) {
-        case AUTO_CAST_TO_ANY:
-            todo(); // TODO(@any)
-            break;
+        case AUTO_CAST_TO_ANY: {
+            Const_Value_Any any = {0};
+            any.type = n->auto_cast_from;
+            any.value = arena_clone(c->arena, &result, sizeof(result));
+            result = const_value_any(any);
+        } break;
 
         case AUTO_CAST_TO_UNION:
             result = const_value_to_union(c, n->type, n->auto_cast_data, result);
@@ -1473,7 +1533,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                 fprintf(stderr, "%s", type_to_cstr(pred->type));
                 pred->type.is_meta = true;
             } else {
-                static_assert(COUNT_CONST_VALUES == 8, "");
+                static_assert(COUNT_CONST_VALUES == 9, "");
                 switch (value.kind) {
                 case CONST_VALUE_INT:
                     if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1585,17 +1645,34 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
 
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
-        assert(value->kind == CONST_VALUE_UNION);
 
-        const Const_Value_Union unionn = value->as.unionn;
-        if (unionn.index) {
-            if (type_eq(unionn.spec->variants[unionn.index - 1].type, replace->to->node.type)) {
-                assert(unionn.real);
-                *value = *unionn.real;
+        static_assert(COUNT_CONST_VALUES == 9, "");
+        switch (value->kind) {
+        case CONST_VALUE_UNION: {
+            const Const_Value_Union unionn = value->as.unionn;
+            if (unionn.index) {
+                if (type_eq(unionn.spec->variants[unionn.index - 1].type, replace->to->node.type)) {
+                    assert(unionn.real);
+                    *value = *unionn.real;
+                }
+
+                // Technically the code generated will access invalid memory.
+                // However it will be unreachable, so does it even matter?
             }
+        } break;
 
-            // Technically the code generated will access invalid memory.
-            // However it will be unreachable, so does it even matter?
+        case CONST_VALUE_ANY: {
+            const Const_Value_Any any = value->as.any;
+            if (any.type) {
+                if (type_eq(*any.type, replace->to->node.type)) {
+                    assert(any.value);
+                    *value = *any.value;
+                }
+            }
+        } break;
+
+        default:
+            unreachable();
         }
     }
 
@@ -1670,23 +1747,29 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             if (iff->compile_time_real) {
                 iff->context_replace.outer = c->context.replace;
 
-                if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
-                    Node_Binary *condition = (Node_Binary *) iff->condition;
-                    if (type_is_union(condition->lhs->type) && condition->lhs->kind == NODE_ATOM) {
-                        if (!node_is_null(condition->rhs)) {
-                            push_context_replace(
-                                c,
-                                &iff->context_replace,
-                                ((Node_Atom *) condition->lhs)->definition,
-                                condition->rhs->type);
-                        }
-                    } else if (type_is_union(condition->rhs->type) && condition->rhs->kind == NODE_ATOM) {
-                        if (!node_is_null(condition->lhs)) {
-                            push_context_replace(
-                                c,
-                                &iff->context_replace,
-                                ((Node_Atom *) condition->rhs)->definition,
-                                condition->lhs->type);
+                if (iff->compile_time_real == iff->consequence) {
+                    if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
+                        Node_Binary *condition = (Node_Binary *) iff->condition;
+                        const Type   any_type = {.kind = TYPE_ANY};
+                        if ((type_eq(condition->lhs->type, any_type) || type_is_union(condition->lhs->type)) &&
+                            condition->lhs->kind == NODE_ATOM) {
+                            if (!node_is_null(condition->rhs)) {
+                                push_context_replace(
+                                    c,
+                                    &iff->context_replace,
+                                    ((Node_Atom *) condition->lhs)->definition,
+                                    condition->rhs->type);
+                            }
+                        } else if (
+                            (type_eq(condition->rhs->type, any_type) || type_is_union(condition->rhs->type)) &&
+                            condition->rhs->kind == NODE_ATOM) {
+                            if (!node_is_null(condition->lhs)) {
+                                push_context_replace(
+                                    c,
+                                    &iff->context_replace,
+                                    ((Node_Atom *) condition->rhs)->definition,
+                                    condition->lhs->type);
+                            }
                         }
                     }
                 }
@@ -1717,7 +1800,24 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                 Node_Case *branch = (Node_Case *) it;
                 for (Node *pred = branch->preds.head; pred; pred = pred->next) {
                     const Const_Value pred_value = check_switch_pred(c, sw, pred, &iota);
-                    if (sw->unionn) {
+                    if (sw->is_expr_any) {
+                        assert(value.kind == CONST_VALUE_ANY);
+
+                        const Type *pred_type = NULL;
+                        if (pred_value.kind == CONST_VALUE_TYPE) {
+                            pred_type = &pred_value.as.type;
+                        }
+
+                        if (value.as.any.type) {
+                            if (pred_type && type_eq(*value.as.any.type, *pred_type)) {
+                                sw->compile_time_real = branch;
+                            }
+                        } else {
+                            if (!pred_type) {
+                                sw->compile_time_real = branch;
+                            }
+                        }
+                    } else if (sw->unionn) {
                         assert(value.kind == CONST_VALUE_UNION);
                         assert(pred_value.kind == CONST_VALUE_INT);
                         if (value.as.unionn.index == (size_t) pred_value.as.integer) {
@@ -1739,7 +1839,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             if (branch) {
                 branch->context_replace.outer = c->context.replace;
 
-                if (sw->unionn && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
+                if ((sw->unionn || sw->is_expr_any) && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
                     if (!node_is_null(branch->preds.head)) {
                         push_context_replace(
                             c,
@@ -3615,8 +3715,7 @@ static void check_stmt(Compiler *c, Node *n) {
             iff->context_replace.outer = c->context.replace;
             if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                 Node_Binary *condition = (Node_Binary *) iff->condition;
-
-                const Type any_type = {.kind = TYPE_ANY};
+                const Type   any_type = {.kind = TYPE_ANY};
                 if ((type_eq(condition->lhs->type, any_type) || type_is_union(condition->lhs->type)) &&
                     condition->lhs->kind == NODE_ATOM) {
                     if (!node_is_null(condition->rhs)) {

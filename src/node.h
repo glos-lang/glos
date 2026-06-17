@@ -231,6 +231,7 @@ typedef enum {
 
     CONST_VALUE_ARRAY,
     CONST_VALUE_STRING,
+    CONST_VALUE_ANY,
 
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
@@ -255,6 +256,11 @@ typedef struct {
     bool is_slice;
 } Const_Value_Array;
 
+typedef struct {
+    Type        *type;
+    Const_Value *value;
+} Const_Value_Any;
+
 struct Const_Value {
     Const_Value_Kind kind;
     union {
@@ -267,12 +273,13 @@ struct Const_Value {
 
         Const_Value_Array array;
         SV                string;
+        Const_Value_Any   any;
 
         Module *module;
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 8, "");
+static_assert(COUNT_CONST_VALUES == 9, "");
 #define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
@@ -282,6 +289,7 @@ static_assert(COUNT_CONST_VALUES == 8, "");
 
 #define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
+#define const_value_any(v)    ((Const_Value) {.kind = CONST_VALUE_ANY, .as.any = (v)})
 
 #define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
