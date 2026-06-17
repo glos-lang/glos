@@ -75,6 +75,7 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_SLICE,
     TYPE_STRING,
+    TYPE_ANY,
 
     TYPE_GROUP,
     TYPE_MODULE,
@@ -331,6 +332,7 @@ typedef enum {
 } Node_Kind;
 
 typedef enum {
+    AUTO_CAST_TO_ANY,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
     COUNT_AUTO_CASTS
@@ -428,6 +430,9 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
+    Node *any_check;
+    Type *any_check_type;
+
     Node  *union_check;
     size_t union_check_index;
 } Node_Binary;
@@ -441,8 +446,8 @@ typedef struct {
 
     union {
         size_t field_index;
-        size_t union_index;
         size_t enum_value;
+        size_t union_index;
     };
 
     // Foo :: #import "Foo"
@@ -679,6 +684,7 @@ typedef struct {
     Node_Enum  *enumeration;
     Node_Union *unionn;
 
+    bool is_expr_any;
     bool is_expr_type_info;
 
     bool       is_compile_time;

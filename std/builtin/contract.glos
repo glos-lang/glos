@@ -30,6 +30,7 @@ Type_Info :: struct {
         Type_Info_Array
         Type_Info_Slice
         Type_Info_String
+        Type_Info_Any
     }
     id: i64
 }
@@ -76,3 +77,4 @@ Type_Info_Slice :: struct {
 }
 
 Type_Info_String :: struct {}
+Type_Info_Any :: struct {}
