@@ -5,12 +5,12 @@ main :: () {
     for i := 0; i < b.count - 2; i += 1 {
         for i := 0; i < b.count; i += 1 {
             if bool(b[i]) {
-                putchar(i32('*'))
+                print('*')
             } else {
-                putchar(i32(' '))
+                print(' ')
             }
         }
-        putchar(i32('\n'))
+        print('\n')
 
         pattern := (b[0] << 1) | b[1]
         for j := 1; j < b.count - 1; j += 1 {
@@ -18,8 +18,4 @@ main :: () {
             b[j] = (110 >> pattern) & 1
         }
     }
-}
-
-extern {
-    putchar :: (ch: i32) -> i32
 }

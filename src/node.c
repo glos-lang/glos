@@ -101,8 +101,8 @@ const char *type_to_cstr_raw(Type type) {
     case TYPE_FN:
         temp_sprintf("(");
 
-        for (size_t i = 0; i < type.spec.fn.args_count; i++) {
-            Type_Fn_Arg it = type.spec.fn.args[i];
+        for (size_t i = 0; i < type.spec.fn->args_count; i++) {
+            Type_Fn_Arg it = type.spec.fn->args[i];
             if (i) {
                 temp_remove_null();
                 temp_sprintf(", ");
@@ -115,7 +115,7 @@ const char *type_to_cstr_raw(Type type) {
             type_to_cstr_raw(it.type);
         }
 
-        if (type.spec.fn.is_variadic) {
+        if (type.spec.fn->is_variadic) {
             temp_remove_null();
             temp_sprintf(", ...");
         }
@@ -123,12 +123,12 @@ const char *type_to_cstr_raw(Type type) {
         temp_remove_null();
         temp_sprintf(")");
 
-        if (type.spec.fn.returns_count) {
+        if (type.spec.fn->returns_count) {
             temp_remove_null();
             temp_sprintf(" -> ");
 
             temp_remove_null();
-            type_to_cstr_raw(*type.spec.fn.return_type);
+            type_to_cstr_raw(*type.spec.fn->return_type);
         }
         break;
 
@@ -347,23 +347,23 @@ bool type_eq(Type a, Type b) {
 
     switch (a.kind) {
     case TYPE_FN: {
-        const Type_Fn as = a.spec.fn;
-        const Type_Fn bs = b.spec.fn;
-        if (as.args == bs.args && as.return_type == bs.return_type) {
+        const Type_Fn *as = a.spec.fn;
+        const Type_Fn *bs = b.spec.fn;
+        if (as->args == bs->args && as->return_type == bs->return_type) {
             return true;
         }
 
-        if (as.args_count != bs.args_count || as.returns_count != bs.returns_count) {
+        if (as->args_count != bs->args_count || as->returns_count != bs->returns_count) {
             return false;
         }
 
-        for (size_t i = 0; i < as.args_count; i++) {
-            if (!type_eq(as.args[i].type, bs.args[i].type)) {
+        for (size_t i = 0; i < as->args_count; i++) {
+            if (!type_eq(as->args[i].type, bs->args[i].type)) {
                 return false;
             }
         }
 
-        return type_eq(*as.return_type, *bs.return_type);
+        return type_eq(*as->return_type, *bs->return_type);
     }
 
     case TYPE_ENUM:

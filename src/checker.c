@@ -756,13 +756,13 @@ static Node_Fn *get_main(Compiler *c) {
     c->main_fn = (Node_Fn *) main->definition_spec->assignment_node;
     check_stmt(c, (Node *) main->definition_spec->definition_node);
 
-    const Type_Fn signature = main->node.type.spec.fn;
-    if (signature.args_count) {
+    const Type_Fn *signature = main->node.type.spec.fn;
+    if (signature->args_count) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot take any arguments\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
 
-    if (signature.returns_count) {
+    if (signature->returns_count) {
         fprintf(stderr, Pos_Fmt "ERROR: Function 'main' cannot return anything\n", Pos_Arg(main->node.token.pos));
         exit(1);
     }
@@ -2849,11 +2849,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         context_push_fn(&c->context, &context_fn);
 
         {
-            Type_Fn fn_type_spec = {
-                .args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec.args)),
-                .args_count_min = fn->args_count_min,
-                .is_variadic = fn->is_variadic,
-            };
+            Type_Fn *fn_type_spec = arena_alloc(c->arena, sizeof(*fn_type_spec));
+            fn_type_spec->args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec->args));
+            fn_type_spec->args_count_min = fn->args_count_min;
+            fn_type_spec->is_variadic = fn->is_variadic;
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
                 assert(arg->kind == NODE_DEFINE);
@@ -2862,58 +2861,57 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 assert(define->name->kind == NODE_ATOM);
                 Node_Atom *it = (Node_Atom *) define->name;
                 if (!sv_match(it->node.token.sv, "_")) {
-                    for (size_t i = 0; i < fn_type_spec.args_count; i++) {
-                        Type_Fn_Arg previous = fn_type_spec.args[i];
+                    for (size_t i = 0; i < fn_type_spec->args_count; i++) {
+                        Type_Fn_Arg previous = fn_type_spec->args[i];
                         if (sv_eq(previous.name, it->node.token.sv)) {
                             error_redefinition((Node *) it, &previous.pos);
                         }
                     }
                 }
 
-                fn_type_spec.args[fn_type_spec.args_count].name = it->node.token.sv;
-                fn_type_spec.args[fn_type_spec.args_count].pos = it->node.token.pos;
+                fn_type_spec->args[fn_type_spec->args_count].name = it->node.token.sv;
+                fn_type_spec->args[fn_type_spec->args_count].pos = it->node.token.pos;
 
                 check_stmt(c, arg);
 
                 if (define->expr) {
                     if (is_node_caller_location(define->expr)) {
-                        fn_type_spec.args[fn_type_spec.args_count].default_value_is_caller_location = true;
+                        fn_type_spec->args[fn_type_spec->args_count].default_value_is_caller_location = true;
                     } else {
                         it->definition_spec->const_value = eval_const_expr(c, define->expr);
-                        fn_type_spec.args[fn_type_spec.args_count].default_value = &it->definition_spec->const_value;
+                        fn_type_spec->args[fn_type_spec->args_count].default_value = &it->definition_spec->const_value;
                     }
                 }
-                fn_type_spec.args[fn_type_spec.args_count].type = it->node.type;
-
-                fn_type_spec.args_count += define->count;
+                fn_type_spec->args[fn_type_spec->args_count].type = it->node.type;
+                fn_type_spec->args_count += define->count;
             }
 
             if (fn->returns.head) {
-                fn_type_spec.returns = arena_alloc(c->arena, fn->returns_count * sizeof(*fn_type_spec.returns));
+                fn_type_spec->returns = arena_alloc(c->arena, fn->returns_count * sizeof(*fn_type_spec->returns));
 
                 size_t iota = 0;
                 ll_foreach(it, &fn->returns) {
                     check_expr(c, it, REF_NONE, NULL);
                     type_assert_type(it);
 
-                    fn_type_spec.returns[iota] = it->type;
-                    fn_type_spec.returns[iota].is_meta = false;
+                    fn_type_spec->returns[iota] = it->type;
+                    fn_type_spec->returns[iota].is_meta = false;
                     iota++;
                 }
             }
-            fn_type_spec.returns_count = fn->returns_count;
+            fn_type_spec->returns_count = fn->returns_count;
 
             Type return_type = {0};
-            if (fn_type_spec.returns_count == 0) {
+            if (fn_type_spec->returns_count == 0) {
                 return_type.kind = TYPE_UNIT;
-            } else if (fn_type_spec.returns_count == 1) {
-                return_type = *fn_type_spec.returns;
+            } else if (fn_type_spec->returns_count == 1) {
+                return_type = *fn_type_spec->returns;
             } else {
                 return_type.kind = TYPE_GROUP;
-                return_type.spec.group.data = fn_type_spec.returns;
-                return_type.spec.group.count = fn_type_spec.returns_count;
+                return_type.spec.group.data = fn_type_spec->returns;
+                return_type.spec.group.count = fn_type_spec->returns_count;
             }
-            fn_type_spec.return_type = arena_clone(c->arena, &return_type, sizeof(return_type));
+            fn_type_spec->return_type = arena_clone(c->arena, &return_type, sizeof(return_type));
 
             n->type = (Type) {.kind = TYPE_FN, .spec.fn = fn_type_spec};
 
@@ -2928,7 +2926,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
             } else if (fn->body) {
                 check_stmt(c, fn->body);
-                if (fn_type_spec.returns_count && !always_returns(fn->body)) {
+                if (fn_type_spec->returns_count && !always_returns(fn->body)) {
                     assert(fn->body->kind == NODE_BLOCK);
                     const Pos end = ((Node_Block *) fn->body)->end;
                     fprintf(stderr, Pos_Fmt "ERROR: Expected return statement\n", Pos_Arg(end));
@@ -3387,9 +3385,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     type_to_cstr(fn_type));
                 exit(1);
             }
-            const Type_Fn fn_type_spec = fn_type.spec.fn;
+            const Type_Fn *fn_type_spec = fn_type.spec.fn;
 
-            check_call_arguments(c, call, &fn_type_spec);
+            check_call_arguments(c, call, fn_type_spec);
 
             size_t iota = 0;
             bool   check_args = true;
@@ -3398,19 +3396,19 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 
                 for (size_t i = 0; i < arg_parts; i++) {
-                    if (iota >= fn_type_spec.args_count) {
+                    if (iota >= fn_type_spec->args_count) {
                         check_args = false;
                     }
 
                     if (check_args) {
-                        type_assert_grouped(c, arg, fn_type_spec.args[iota].type, i, NULL);
+                        type_assert_grouped(c, arg, fn_type_spec->args[iota].type, i, NULL);
                     }
 
                     iota++;
                 }
             }
 
-            n->type = *fn_type_spec.return_type;
+            n->type = *fn_type_spec->return_type;
             if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {
                 fprintf(
                     stderr,
@@ -3814,34 +3812,34 @@ static void check_stmt(Compiler *c, Node *n) {
     } break;
 
     case NODE_RETURN: {
-        Node_Return  *returnn = (Node_Return *) n;
-        const Type_Fn fn_type = c->context.fn->fn->node.type.spec.fn;
+        Node_Return   *returnn = (Node_Return *) n;
+        const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
         if (returnn->value) {
-            check_expr(c, returnn->value, REF_NONE, fn_type.return_type);
+            check_expr(c, returnn->value, REF_NONE, fn_type->return_type);
 
             const bool   is_group = type_kind_eq(returnn->value->type, TYPE_GROUP);
             const size_t actual_count = is_group ? returnn->value->type.spec.group.count : 1;
 
-            if (actual_count != fn_type.returns_count) {
-                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, actual_count);
+            if (actual_count != fn_type->returns_count) {
+                error_number_of_return_values_mismatch(n->token.pos, fn_type->returns_count, actual_count);
             }
 
-            assert(actual_count == fn_type.returns_count);
-            for (size_t i = 0; i < fn_type.returns_count; i++) {
+            assert(actual_count == fn_type->returns_count);
+            for (size_t i = 0; i < fn_type->returns_count; i++) {
                 i64   group_index = -1;
                 Node *n = get_node_from_group(returnn->value, i, &group_index);
-                type_assert_grouped(c, n, fn_type.returns[i], group_index, NULL);
+                type_assert_grouped(c, n, fn_type->returns[i], group_index, NULL);
             }
 
             // The inference of the individual group items might not have reflected here
-            returnn->value->type = *fn_type.return_type;
+            returnn->value->type = *fn_type->return_type;
         } else {
-            if (fn_type.returns_count) {
-                error_number_of_return_values_mismatch(n->token.pos, fn_type.returns_count, 0);
+            if (fn_type->returns_count) {
+                error_number_of_return_values_mismatch(n->token.pos, fn_type->returns_count, 0);
             }
         }
 
-        n->type = *fn_type.return_type;
+        n->type = *fn_type->return_type;
     } break;
 
     case NODE_EXTERN: {
@@ -3907,10 +3905,14 @@ void check_nodes(Compiler *c) {
     assert(c->builtin_module);
 
     {
+        Type_Fn *fn_spec = arena_alloc(c->arena, sizeof(*fn_spec));
+
         const Type unit = {.kind = TYPE_UNIT};
+        fn_spec->return_type = arena_clone(c->arena, &unit, sizeof(unit));
+
         c->main_fn_type = (Type) {
             .kind = TYPE_FN,
-            .spec.fn.return_type = arena_clone(c->arena, &unit, sizeof(unit)),
+            .spec.fn = fn_spec,
         };
     }
 
