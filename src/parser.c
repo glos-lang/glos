@@ -1075,8 +1075,19 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             call->fn = node;
 
             while (!read_token(p, TOKEN_RPAREN)) {
+                token = peek_token(p);
+                if (token.kind == TOKEN_SPREAD) {
+                    call->has_spread = true;
+                    call->spread_pos = next_token(p).pos;
+                }
+
                 nodes_push(&call->args, parse_expr(p, POWER_SET, false, true, NULL));
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                    break;
+                }
+
+                if (call->has_spread) {
+                    expect_token(p, TOKEN_RPAREN);
                     break;
                 }
             }

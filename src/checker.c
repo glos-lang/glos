@@ -3406,10 +3406,46 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
             const Type_Fn *fn_type_spec = fn_type.spec.fn;
 
+            if (call->has_spread) {
+                if (fn_type_spec->variadics_kind != VARIADICS_TYPED) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot use %s in a call to a function that does not have typed variadics\n",
+                        Pos_Arg(call->spread_pos),
+                        token_kind_to_cstr(TOKEN_SPREAD));
+                    exit(1);
+                }
+            }
+
             check_call_arguments(c, call, fn_type_spec);
 
             size_t iota = 0;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
+                if (call->has_spread && iota == fn_type_spec->variadics_index) {
+                    // TODO: We cannot really assume this once named arguments are implemented, but for now this is
+                    // true.
+                    if (arg->next) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt
+                            "ERROR: Cannot supply variadics from two sources. This argument starts a variadic source...\n",
+                            Pos_Arg(arg->token.pos));
+                        fprintf(stderr, Pos_Fmt "... But this spread here starts another\n", Pos_Arg(call->spread_pos));
+                        fprintf(
+                            stderr,
+                            "\n"
+                            "NOTE: Variadic arguments must originate from a single variadic source. Explicit variadic arguments are\n"
+                            "lowered into a temporary stack array with a compile time known length, while a spread slice is passed\n"
+                            "directly as it is, the difference being that its length is not known at compile time. Mixing these two\n"
+                            "is not supported, since that would require the combination of a compile time length and a runtime length\n"
+                            "into a compile time length, which is not possible.\n");
+                        exit(1);
+                    }
+
+                    type_assert(c, arg, fn_type_spec->args[fn_type_spec->variadics_index].type);
+                    break;
+                }
+
                 const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
                 const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 

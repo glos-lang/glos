@@ -5,8 +5,17 @@ foo :: (ns: ...i64) {
     }
 }
 
+bar :: (ns: ...i64) {
+    println("bar:")
+    foo(...ns)
+}
+
 main :: () {
     foo()
     foo(69)
     foo(69, 420, 1337)
+
+    bar()
+    bar(69)
+    bar(69, 420, 1337)
 }

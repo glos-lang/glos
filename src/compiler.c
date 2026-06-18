@@ -2784,7 +2784,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
         LLVMTypeRef  variadics_type = NULL;
         LLVMValueRef variadics_memory = NULL;
-        if (fn_spec->variadics_kind == VARIADICS_TYPED) {
+        if (fn_spec->variadics_kind == VARIADICS_TYPED && !call->has_spread) {
             // TODO: This will be all so wrong once named arguments are implemented, but that is a problem for future
             // me. Just implement something that works. It can be made rigorous and correct later.
 
@@ -2824,7 +2824,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     Typed_LLVM_Value tv = {0};
                     tv.type = group->data[i];
                     tv.value = c->group_values.data[group_values_count_save + i];
-                    if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index) {
+                    if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index &&
+                        !call->has_spread) {
                         LLVMValueRef indices[] = {
                             LLVMConstInt(
                                 LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),
@@ -2842,7 +2843,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 Typed_LLVM_Value tv = {0};
                 tv.type = arg->type;
                 tv.value = expr;
-                if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index) {
+                if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index &&
+                    !call->has_spread) {
                     LLVMValueRef indices[] = {
                         LLVMConstInt(
                             LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),

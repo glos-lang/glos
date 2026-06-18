@@ -1,0 +1,13 @@
+EXIT 1
+STDOUT 0
+
+STDERR 709
+tests/error_cannot_mix_typed_variadic_sources.glos:8:9: ERROR: Cannot supply variadics from two sources. This argument starts a variadic source...
+tests/error_cannot_mix_typed_variadic_sources.glos:8:13: ... But this spread here starts another
+
+NOTE: Variadic arguments must originate from a single variadic source. Explicit variadic arguments are
+lowered into a temporary stack array with a compile time known length, while a spread slice is passed
+directly as it is, the difference being that its length is not known at compile time. Mixing these two
+is not supported, since that would require the combination of a compile time length and a runtime length
+into a compile time length, which is not possible.
+

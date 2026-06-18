@@ -1,8 +1,18 @@
 EXIT 0
-STDOUT 30
+STDOUT 75
 foo:
 foo:
 69
+foo:
+69
+420
+1337
+bar:
+foo:
+bar:
+foo:
+69
+bar:
 foo:
 69
 420

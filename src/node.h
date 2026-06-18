@@ -616,6 +616,9 @@ typedef struct {
 
     Pos end;
 
+    bool has_spread;
+    Pos  spread_pos;
+
     bool      is_type_cast;
     Type_Cast type_cast;
     size_t    type_cast_union_index;
