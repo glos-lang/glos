@@ -2242,22 +2242,36 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     binary->node.type = (Type) {.kind = TYPE_UNIT};
 }
 
+static const Type *get_argument_type(const Type_Fn *spec, size_t index) {
+    const Type *type = NULL;
+    if (index < spec->args_count) {
+        type = &spec->args[index].type;
+    }
+
+    if (spec->variadics_kind == VARIADICS_TYPED && index >= spec->variadics_index) {
+        type = &spec->args[spec->variadics_index].type;
+        assert(type->kind == TYPE_SLICE);
+        type = type->spec.slice.element;
+    }
+    return type;
+}
+
 // If this is a cast, then do not pass 'fn_type_spec'
 static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn_type_spec) {
     size_t args_count_min = 1;
     size_t args_count_max = 1;
     if (fn_type_spec) {
         args_count_min = fn_type_spec->args_count_min;
-        args_count_max = fn_type_spec->is_variadic ? UINT64_MAX : fn_type_spec->args_count;
+        args_count_max = fn_type_spec->variadics_kind != VARIADICS_NONE ? UINT64_MAX : fn_type_spec->args_count;
     }
 
     ll_foreach(it, &call->args) {
-        const Type *arg_expected_type = NULL;
-        if (fn_type_spec && call->args_count < args_count_max) {
-            arg_expected_type = &fn_type_spec->args[call->args_count].type;
+        const Type *expected = NULL;
+        if (fn_type_spec) {
+            expected = get_argument_type(fn_type_spec, call->args_count);
         }
 
-        check_expr(c, it, REF_NONE, arg_expected_type);
+        check_expr(c, it, REF_NONE, expected);
         check_that_type_is_known(it);
         call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
     }
@@ -2852,7 +2866,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             Type_Fn *fn_type_spec = arena_alloc(c->arena, sizeof(*fn_type_spec));
             fn_type_spec->args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec->args));
             fn_type_spec->args_count_min = fn->args_count_min;
-            fn_type_spec->is_variadic = fn->is_variadic;
+            fn_type_spec->variadics_kind = fn->variadics_kind;
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
                 assert(arg->kind == NODE_DEFINE);
@@ -2873,6 +2887,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 fn_type_spec->args[fn_type_spec->args_count].pos = it->node.token.pos;
 
                 check_stmt(c, arg);
+                if (define->has_spread) {
+                    fn_type_spec->variadics_index = fn_type_spec->args_count;
+                    it->node.type.kind = TYPE_SLICE;
+                    it->node.type.spec.slice.element = &define->type->type;
+                }
 
                 if (define->expr) {
                     if (is_node_caller_location(define->expr)) {
@@ -3387,21 +3406,53 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
             const Type_Fn *fn_type_spec = fn_type.spec.fn;
 
+            if (call->has_spread) {
+                if (fn_type_spec->variadics_kind != VARIADICS_TYPED) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot use %s in a call to a function that does not have typed variadics\n",
+                        Pos_Arg(call->spread_pos),
+                        token_kind_to_cstr(TOKEN_SPREAD));
+                    exit(1);
+                }
+            }
+
             check_call_arguments(c, call, fn_type_spec);
 
             size_t iota = 0;
-            bool   check_args = true;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
+                if (call->has_spread && iota == fn_type_spec->variadics_index) {
+                    // TODO: We cannot really assume this once named arguments are implemented, but for now this is
+                    // true.
+                    if (arg->next) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt
+                            "ERROR: Cannot supply variadics from two sources. This argument starts a variadic source...\n",
+                            Pos_Arg(arg->token.pos));
+                        fprintf(stderr, Pos_Fmt "... But this spread here starts another\n", Pos_Arg(call->spread_pos));
+                        fprintf(
+                            stderr,
+                            "\n"
+                            "NOTE: Variadic arguments must originate from a single variadic source. Explicit variadic arguments are\n"
+                            "lowered into a temporary stack array with a compile time known length, while a spread slice is passed\n"
+                            "directly as it is, the difference being that its length is not known at compile time. Mixing these two\n"
+                            "is not supported, since that would require the combination of a compile time length and a runtime length\n"
+                            "into a compile time length, which is not possible.\n");
+                        exit(1);
+                    }
+
+                    type_assert(c, arg, fn_type_spec->args[fn_type_spec->variadics_index].type);
+                    break;
+                }
+
                 const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
                 const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 
                 for (size_t i = 0; i < arg_parts; i++) {
-                    if (iota >= fn_type_spec->args_count) {
-                        check_args = false;
-                    }
-
-                    if (check_args) {
-                        type_assert_grouped(c, arg, fn_type_spec->args[iota].type, i, NULL);
+                    const Type *expected = get_argument_type(fn_type_spec, iota);
+                    if (expected) {
+                        type_assert_grouped(c, arg, *expected, i, NULL);
                     }
 
                     iota++;

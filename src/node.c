@@ -111,11 +111,20 @@ const char *type_to_cstr_raw(Type type) {
             temp_remove_null();
             temp_sprintf(SV_Fmt ": ", SV_Arg(it.name));
 
+            Type it_type = it.type;
+            if (type.spec.fn->variadics_kind == VARIADICS_TYPED && i == type.spec.fn->variadics_index) {
+                temp_remove_null();
+                temp_sprintf("...");
+
+                assert(it_type.kind == TYPE_SLICE);
+                it_type = *it_type.spec.slice.element;
+            }
+
             temp_remove_null();
-            type_to_cstr_raw(it.type);
+            type_to_cstr_raw(it_type);
         }
 
-        if (type.spec.fn->is_variadic) {
+        if (type.spec.fn->variadics_kind == VARIADICS_UNTYPED) {
             temp_remove_null();
             temp_sprintf(", ...");
         }
