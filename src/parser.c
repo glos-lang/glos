@@ -568,8 +568,13 @@ bool parser_import(Parser *p, Node_Import *import) {
     return newly_imported;
 }
 
-static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool is_static) {
+static Node *
+parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool spread_allowed, bool is_static) {
     Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
+    if (spread_allowed) {
+        define->has_spread = read_token(p, TOKEN_SPREAD);
+    }
+
     {
         Node *illegal = NULL;
         if (name->kind == NODE_ATOM && name->token.kind == TOKEN_IDENT) {
@@ -604,6 +609,11 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
 
     token = peek_token(p);
     if (token.kind == TOKEN_SET) {
+        if (define->has_spread) {
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot have default value here\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
         p->state.peeked = false;
         if (p->state.in_extern) {
             assert(p->state.ahead.kind == TOKEN_SET);
@@ -613,6 +623,11 @@ static Node *parse_define(Parser *p, Node *name, Token token, bool groups_allowe
 
         define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
     } else if (token.kind == TOKEN_COLON) {
+        if (define->has_spread) {
+            fprintf(stderr, Pos_Fmt "ERROR: Cannot have default value here\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
         p->state.peeked = false;
         define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
         define->is_const = true;
@@ -732,7 +747,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = parse_expr(p, POWER_SET, false, true, NULL);
             if (peek_token(p).kind == TOKEN_COLON) {
                 is_fn = true;
-                node = parse_define(p, node, next_token(p), false, false);
+                node = parse_define(p, node, next_token(p), false, true, false);
             } else {
                 expect_token(p, TOKEN_RPAREN);
             }
@@ -753,7 +768,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 definition_lhs_setup(p, (Node_Define *) arg, false);
             }
 
-            bool has_default_args = false;
+            bool  has_default_args = false;
+            Node *typed_variadics = NULL;
 
             size_t args_iota = 1;
             while (arg) {
@@ -762,6 +778,20 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Expected argument definition, got constant\n", Pos_Arg(arg->token.pos));
                     exit(1);
+                }
+
+                if (define->has_spread) {
+                    if (fn->variadics_kind == VARIADICS_TYPED) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Cannot have multiple variadic arguments\n",
+                            Pos_Arg(arg->token.pos));
+                        fprintf(stderr, Pos_Fmt "NOTE: Previously here\n", Pos_Arg(typed_variadics->token.pos));
+                        exit(1);
+                    }
+
+                    fn->variadics_kind = VARIADICS_TYPED;
+                    typed_variadics = arg;
                 }
 
                 if (define->expr) {
@@ -790,7 +820,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 nodes_push(&fn->args, arg);
                 fn->args_count += define->count;
-                if (!define->expr) {
+                if (!define->expr && fn->variadics_kind == VARIADICS_NONE) {
                     fn->args_count_min += define->count;
                 }
 
@@ -798,20 +828,20 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     break;
                 }
 
-                if (read_token(p, TOKEN_SPREAD)) {
-                    fn->is_variadic = true;
+                if (fn->variadics_kind == VARIADICS_TYPED) {
+                    // TODO: Currently there is no support for named arguments, therefore this needs to be mandated.
                     expect_token(p, TOKEN_RPAREN);
                     break;
                 }
 
-                arg = parse_expr(p, POWER_NIL, false, true, NULL);
-                if (arg->kind != NODE_DEFINE) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Expected argument definition, got expression\n",
-                        Pos_Arg(arg->token.pos));
-                    exit(1);
+                if (read_token(p, TOKEN_SPREAD)) {
+                    fn->variadics_kind = VARIADICS_UNTYPED;
+                    expect_token(p, TOKEN_RPAREN);
+                    break;
                 }
+
+                Node *name = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_IDENT));
+                arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false);
             }
 
             if (read_token(p, TOKEN_ARROW)) {
@@ -1020,7 +1050,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } break;
 
         case TOKEN_COLON:
-            return parse_define(p, node, token, groups_allowed, false);
+            return parse_define(p, node, token, groups_allowed, false, false);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {

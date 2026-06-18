@@ -90,11 +90,19 @@ typedef struct Type_Fn_Arg        Type_Fn_Arg;
 typedef struct Type_Union_Variant Type_Union_Variant;
 typedef struct Type_Struct_Field  Type_Struct_Field;
 
+typedef enum {
+    VARIADICS_NONE,
+    VARIADICS_TYPED,
+    VARIADICS_UNTYPED,
+} Variadics_Kind;
+
 typedef struct {
     Type_Fn_Arg *args;
     size_t       args_count;
     size_t       args_count_min;
-    bool         is_variadic;
+
+    Variadics_Kind variadics_kind;
+    size_t         variadics_index;
 
     Type  *returns;
     size_t returns_count;
@@ -492,6 +500,8 @@ struct Node_Fn {
     size_t args_count;     // Actual
     size_t args_count_min; // Minimum
 
+    Variadics_Kind variadics_kind;
+
     Nodes  returns;
     size_t returns_count;
 
@@ -500,7 +510,6 @@ struct Node_Fn {
     bool is_type;
     bool is_extern;
     bool is_inline;
-    bool is_variadic;
 
     Node_Fn *outer_fn;
 
@@ -635,6 +644,8 @@ struct Node_Define {
 
     Node *expr;
     Node *type;
+
+    bool has_spread;
 
     bool   is_const;
     bool   is_value_known_at_compile_time;

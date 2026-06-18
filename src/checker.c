@@ -2242,22 +2242,36 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     binary->node.type = (Type) {.kind = TYPE_UNIT};
 }
 
+static const Type *get_argument_type(const Type_Fn *spec, size_t index) {
+    const Type *type = NULL;
+    if (index < spec->args_count) {
+        type = &spec->args[index].type;
+    }
+
+    if (spec->variadics_kind == VARIADICS_TYPED && index >= spec->variadics_index) {
+        type = &spec->args[spec->variadics_index].type;
+        assert(type->kind == TYPE_SLICE);
+        type = type->spec.slice.element;
+    }
+    return type;
+}
+
 // If this is a cast, then do not pass 'fn_type_spec'
 static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn_type_spec) {
     size_t args_count_min = 1;
     size_t args_count_max = 1;
     if (fn_type_spec) {
         args_count_min = fn_type_spec->args_count_min;
-        args_count_max = fn_type_spec->is_variadic ? UINT64_MAX : fn_type_spec->args_count;
+        args_count_max = fn_type_spec->variadics_kind != VARIADICS_NONE ? UINT64_MAX : fn_type_spec->args_count;
     }
 
     ll_foreach(it, &call->args) {
-        const Type *arg_expected_type = NULL;
-        if (fn_type_spec && call->args_count < args_count_max) {
-            arg_expected_type = &fn_type_spec->args[call->args_count].type;
+        const Type *expected = NULL;
+        if (fn_type_spec) {
+            expected = get_argument_type(fn_type_spec, call->args_count);
         }
 
-        check_expr(c, it, REF_NONE, arg_expected_type);
+        check_expr(c, it, REF_NONE, expected);
         check_that_type_is_known(it);
         call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
     }
@@ -2852,7 +2866,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             Type_Fn *fn_type_spec = arena_alloc(c->arena, sizeof(*fn_type_spec));
             fn_type_spec->args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_type_spec->args));
             fn_type_spec->args_count_min = fn->args_count_min;
-            fn_type_spec->is_variadic = fn->is_variadic;
+            fn_type_spec->variadics_kind = fn->variadics_kind;
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
                 assert(arg->kind == NODE_DEFINE);
@@ -2873,6 +2887,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 fn_type_spec->args[fn_type_spec->args_count].pos = it->node.token.pos;
 
                 check_stmt(c, arg);
+                if (define->has_spread) {
+                    fn_type_spec->variadics_index = fn_type_spec->args_count;
+                    it->node.type.kind = TYPE_SLICE;
+                    it->node.type.spec.slice.element = &define->type->type;
+                }
 
                 if (define->expr) {
                     if (is_node_caller_location(define->expr)) {
@@ -3390,18 +3409,14 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_call_arguments(c, call, fn_type_spec);
 
             size_t iota = 0;
-            bool   check_args = true;
             for (Node *arg = call->args.head; arg; arg = arg->next) {
                 const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
                 const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
 
                 for (size_t i = 0; i < arg_parts; i++) {
-                    if (iota >= fn_type_spec->args_count) {
-                        check_args = false;
-                    }
-
-                    if (check_args) {
-                        type_assert_grouped(c, arg, fn_type_spec->args[iota].type, i, NULL);
+                    const Type *expected = get_argument_type(fn_type_spec, iota);
+                    if (expected) {
+                        type_assert_grouped(c, arg, *expected, i, NULL);
                     }
 
                     iota++;

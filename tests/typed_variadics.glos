@@ -1,0 +1,12 @@
+foo :: (ns: ...i64) {
+    println("foo:")
+    for i := 0; i < ns.count; i++ {
+        println(ns[i])
+    }
+}
+
+main :: () {
+    foo()
+    foo(69)
+    foo(69, 420, 1337)
+}

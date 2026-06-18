@@ -33,9 +33,13 @@ void link_flags_add_libname(Link_Flags *ls, SV name) {
 }
 
 static_assert(COUNT_TYPES == 25, "");
-static void compile_type(Compiler *c, Type *type) {
-    if (!type || type->llvm) {
-        return;
+static LLVMTypeRef compile_type(Compiler *c, Type *type) {
+    if (!type) {
+        return NULL;
+    }
+
+    if (type->llvm) {
+        return type->llvm;
     }
 
     assert(type->kind != TYPE_MODULE);
@@ -45,7 +49,7 @@ static void compile_type(Compiler *c, Type *type) {
     // NOTE: Do not use `type*` functions because this function should not care whether a type is a metatype or not.
     if (type->ref) {
         type->llvm = LLVMPointerTypeInContext(c->llvm_context, 0);
-        return;
+        return type->llvm;
     }
 
     switch (type->kind) {
@@ -185,6 +189,8 @@ static void compile_type(Compiler *c, Type *type) {
         unreachable();
         break;
     }
+
+    return type->llvm;
 }
 
 static LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type) {
@@ -512,7 +518,7 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
             abi_set_argument_type(c, abi, i, &spec->args[i].type);
         }
 
-        if (spec->is_variadic) {
+        if (spec->variadics_kind == VARIADICS_UNTYPED) {
             abi_set_variadic_at(abi, abi->actual_args_count);
         }
 
@@ -2035,7 +2041,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
                     expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
                 }
             } else {
-                if (fn_spec->is_variadic) {
+                if (fn_spec->variadics_kind == VARIADICS_UNTYPED) {
                     const size_t size = compile_sizeof(c, &arg->type);
                     if (size < 4) {
                         // Promote values smaller than i32 into i32
@@ -2768,10 +2774,43 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         Typed_LLVM_Value fn = {0};
         fn.value = compile_expr(c, call->fn, false);
         fn.type = call->fn->type;
-        const Type_Fn *fn_type_spec = call->fn->type.spec.fn;
+        const Type_Fn *fn_spec = call->fn->type.spec.fn;
 
-        const size_t      args_count = max(call->args_count, fn_type_spec->args_count);
+        size_t args_count = fn_spec->args_count;
+        if (fn_spec->variadics_kind == VARIADICS_UNTYPED) {
+            args_count = max(args_count, call->args_count);
+        }
         Typed_LLVM_Value *args = temp_alloc(args_count * sizeof(*args));
+
+        LLVMTypeRef  variadics_type = NULL;
+        LLVMValueRef variadics_memory = NULL;
+        if (fn_spec->variadics_kind == VARIADICS_TYPED) {
+            // TODO: This will be all so wrong once named arguments are implemented, but that is a problem for future
+            // me. Just implement something that works. It can be made rigorous and correct later.
+
+            Type *type = &fn_spec->args[fn_spec->variadics_index].type;
+            assert(type->kind == TYPE_SLICE);
+            variadics_type = compile_type(c, type->spec.slice.element);
+
+            const size_t variadics_count = call->args_count - fn_spec->variadics_index;
+            if (variadics_count) {
+                variadics_memory = compile_alloca(c, LLVMArrayType(variadics_type, variadics_count));
+            } else {
+                variadics_memory = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+            }
+
+            LLVMValueRef variadics_slice = compile_alloca(c, c->llvm_slice_type);
+            LLVMBuildStore(c->llvm_builder, variadics_memory, variadics_slice);
+            LLVMBuildStore(
+                c->llvm_builder,
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variadics_count, true),
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, variadics_slice, 1, ""));
+
+            Typed_LLVM_Value arg = {0};
+            arg.type = *type;
+            arg.value = LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, variadics_slice, "");
+            args[fn_spec->variadics_index] = arg;
+        }
 
         size_t args_iota = 0;
         for (Node *arg = call->args.head; arg; arg = arg->next) {
@@ -2785,21 +2824,49 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     Typed_LLVM_Value tv = {0};
                     tv.type = group->data[i];
                     tv.value = c->group_values.data[group_values_count_save + i];
-                    args[args_iota++] = tv;
+                    if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index) {
+                        LLVMValueRef indices[] = {
+                            LLVMConstInt(
+                                LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),
+                        };
+
+                        LLVMValueRef dst =
+                            LLVMBuildGEP2(c->llvm_builder, variadics_type, variadics_memory, indices, len(indices), "");
+                        LLVMBuildStore(c->llvm_builder, tv.value, dst);
+                    } else {
+                        args[args_iota] = tv;
+                    }
+                    args_iota++;
                 }
             } else {
                 Typed_LLVM_Value tv = {0};
                 tv.type = arg->type;
                 tv.value = expr;
-                args[args_iota++] = tv;
+                if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index) {
+                    LLVMValueRef indices[] = {
+                        LLVMConstInt(
+                            LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),
+                    };
+
+                    LLVMValueRef dst =
+                        LLVMBuildGEP2(c->llvm_builder, variadics_type, variadics_memory, indices, len(indices), "");
+                    LLVMBuildStore(c->llvm_builder, tv.value, dst);
+                } else {
+                    args[args_iota] = tv;
+                }
+                args_iota++;
             }
 
             c->group_values.count = group_values_count_save;
         }
 
         LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-        for (size_t i = call->args_count; i < fn_type_spec->args_count; i++) {
-            Type_Fn_Arg *arg = &fn_type_spec->args[i];
+        for (size_t i = call->args_count; i < fn_spec->args_count; i++) {
+            if (fn_spec->variadics_kind == VARIADICS_TYPED && i >= fn_spec->variadics_index) {
+                break;
+            }
+
+            Type_Fn_Arg *arg = &fn_spec->args[i];
             compile_type(c, &arg->type);
 
             LLVMValueRef value = NULL;
