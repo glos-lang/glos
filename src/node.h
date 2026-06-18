@@ -100,6 +100,8 @@ typedef struct {
     size_t returns_count;
 
     Type *return_type;
+
+    LLVMTypeRef llvm;
 } Type_Fn;
 
 typedef struct {
@@ -164,7 +166,7 @@ struct Type {
     Node_Atom *distinct;
 
     union {
-        Type_Fn      fn;
+        Type_Fn     *fn;
         Type_Enum    enumm;
         Type_Union  *unionn;
         Type_Struct *structt;

@@ -53,6 +53,7 @@ typedef struct {
     size_t defers_start;
     size_t loop_defers_start;
 
+    DA(LLVMValueRef) arg_values;
     DA(LLVMValueRef) group_values;
 
     LLVMContextRef       llvm_context;
