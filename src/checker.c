@@ -2258,22 +2258,197 @@ static const Type *get_argument_type(const Type_Fn *spec, size_t index) {
 
 // If this is a cast, then do not pass 'fn_type_spec'
 static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn_type_spec) {
-    size_t args_count_min = 1;
-    size_t args_count_max = 1;
+    typedef struct {
+        const Node *node;
+        const Node *name;
+    } Argument;
+
+    Argument *args = NULL;
+    size_t    args_count_min = 1;
+    size_t    args_count_max = 1;
     if (fn_type_spec) {
+        args = temp_alloc(fn_type_spec->args_count * sizeof(*args));
         args_count_min = fn_type_spec->args_count_min;
         args_count_max = fn_type_spec->variadics_kind != VARIADICS_NONE ? UINT64_MAX : fn_type_spec->args_count;
     }
 
-    ll_foreach(it, &call->args) {
+    ll_foreach(arg, &call->args) {
+        Node      *it = arg;
+        size_t     it_index = call->args_count;
+        const bool it_is_named = it->kind == NODE_BINARY && it->token.kind == TOKEN_SET;
+        Node      *it_name = NULL;
+
         const Type *expected = NULL;
-        if (fn_type_spec) {
+        if (it_is_named) {
+            if (!fn_type_spec) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot use named arguments in a cast expression\n", Pos_Arg(it->token.pos));
+                exit(1);
+            }
+
+            it_name = ((Node_Binary *) it)->lhs;
+            assert(it_name->kind == NODE_ATOM && it_name->token.kind == TOKEN_IDENT);
+
+            for (size_t i = 0; i < fn_type_spec->args_count; i++) {
+                const Type_Fn_Arg *arg = &fn_type_spec->args[i];
+                if (sv_eq(arg->name, it_name->token.sv)) {
+                    it_index = i;
+                    expected = get_argument_type(fn_type_spec, i);
+                    break;
+                }
+            }
+
+            if (!expected) {
+                error_undefined(&it_name->token, "argument", true);
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The function being called is %s\n",
+                    Pos_Arg(call->fn->token.pos),
+                    type_to_cstr(call->fn->type));
+                exit(1);
+            }
+
+            if (args[it_index].node) {
+                const Node *previous_named = args[it_index].name;
+                if (previous_named) {
+                    error_redefinition(it_name, &previous_named->token.pos);
+                }
+            } else {
+                args[it_index].name = it_name;
+            }
+
+            it->token.as.integer = it_index;
+            it = ((Node_Binary *) it)->rhs;
+        } else if (fn_type_spec) {
             expected = get_argument_type(fn_type_spec, call->args_count);
         }
 
         check_expr(c, it, REF_NONE, expected);
         check_that_type_is_known(it);
-        call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+
+        const size_t parts = type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
+        if (args) {
+            bool type_checked = false;
+            if (it_is_named) {
+                assert(expected);
+                if (fn_type_spec->variadics_kind == VARIADICS_TYPED && it_index == fn_type_spec->variadics_index) {
+                    expected = &fn_type_spec->args[fn_type_spec->variadics_index].type;
+                    call->do_not_allocate_typed_variadic_array = true;
+                }
+                type_assert(c, it, *expected);
+                type_checked = true;
+            } else if (arg == call->spread) {
+                assert(fn_type_spec->variadics_kind == VARIADICS_TYPED);
+                if (it_index != fn_type_spec->variadics_index) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Spread is in the wrong position\n", Pos_Arg(call->spread_pos));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: The function being called is %s\n",
+                        Pos_Arg(call->fn->token.pos),
+                        type_to_cstr(call->fn->type));
+                    exit(1);
+                }
+
+                expected = &fn_type_spec->args[fn_type_spec->variadics_index].type;
+                type_assert(c, it, *expected);
+                type_checked = true;
+            } else if (fn_type_spec->variadics_kind == VARIADICS_TYPED && it_index >= fn_type_spec->variadics_index) {
+                call->typed_variadics_array_count += parts;
+            }
+
+            for (size_t i = 0; i < parts; i++) {
+                if (!type_checked && expected) {
+                    type_assert_grouped(c, it, *expected, i, NULL);
+                }
+
+                const size_t n = it_index + i;
+                if (fn_type_spec->variadics_kind == VARIADICS_TYPED && n >= fn_type_spec->variadics_index) {
+                    Argument *variadic_arg = &args[fn_type_spec->variadics_index];
+                    if (it_is_named) {
+                        if (n == fn_type_spec->variadics_index) {
+                            // Provide the variadic argument as a named argument
+                            if (variadic_arg->node) {
+                                // Variadic arguments was already started as a stack allocated array
+                                fprintf(
+                                    stderr,
+                                    Pos_Fmt "ERROR: Multiple typed variadic sources found\n",
+                                    Pos_Arg(call->node.token.pos));
+
+                                if (variadic_arg->node == call->spread) {
+                                    fprintf(
+                                        stderr,
+                                        Pos_Fmt "... This spread provide one source\n",
+                                        Pos_Arg(call->spread_pos));
+                                } else {
+                                    bool following = false;
+                                    if (variadic_arg->node->next) {
+                                        following = true;
+                                        Node *next = variadic_arg->node->next;
+                                        if (next->kind == NODE_BINARY && next->token.kind == TOKEN_SET) {
+                                            following = false;
+                                        }
+                                    }
+
+                                    fprintf(
+                                        stderr,
+                                        Pos_Fmt "... This argument%s provides one source\n",
+                                        Pos_Arg(variadic_arg->node->token.pos),
+                                        following ? " and its following positional arguments" : "");
+                                }
+
+                                fprintf(
+                                    stderr,
+                                    Pos_Fmt "... But this named argument directly passes another variadic source\n",
+                                    Pos_Arg(it_name->token.pos));
+                                exit(1);
+                            }
+                        }
+                    } else {
+                        // Start the variadic arguments as a stack allocated array
+                        if (call->spread && call->spread != it) {
+                            // There is a spread later, but another variadic allocation starts here
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: Multiple typed variadic sources found\n",
+                                Pos_Arg(call->node.token.pos));
+
+                            bool following = false;
+                            if (it->next) {
+                                following = true;
+                                Node *next = it->next;
+                                if (next->kind == NODE_BINARY && next->token.kind == TOKEN_SET) {
+                                    following = false;
+                                }
+
+                                if (next == call->spread) {
+                                    following = false;
+                                }
+                            }
+
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "... This argument%s provides one source\n",
+                                Pos_Arg(it->token.pos),
+                                following ? " and its following positional arguments" : "");
+
+                            fprintf(
+                                stderr, Pos_Fmt "... But this spread provides another\n", Pos_Arg(call->spread_pos));
+                            exit(1);
+                        }
+
+                        if (!variadic_arg->node) {
+                            variadic_arg->node = it;
+                        }
+                        continue;
+                    }
+                }
+
+                if (n < fn_type_spec->args_count) {
+                    args[n].node = it;
+                }
+            }
+        }
+        call->args_count += parts;
     }
 
     bool   has_minimum = true;
@@ -2298,6 +2473,26 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
     }
 
     if (has_minimum && has_maximum) {
+        if (args) {
+            for (size_t i = 0; i < fn_type_spec->args_count; i++) {
+                if (fn_type_spec->variadics_kind == VARIADICS_TYPED && i == fn_type_spec->variadics_index) {
+                    continue;
+                }
+
+                const Type_Fn_Arg *it = &fn_type_spec->args[i];
+                if (!args[i].node && !it->default_value && !it->default_value_is_caller_location) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Argument '" SV_Fmt "' is not provided\n",
+                        Pos_Arg(call->end),
+                        SV_Arg(it->name));
+                    exit(1);
+                }
+            }
+
+            temp_reset(args);
+        }
+
         return;
     }
 
@@ -3406,7 +3601,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
             const Type_Fn *fn_type_spec = fn_type.spec.fn;
 
-            if (call->has_spread) {
+            if (call->spread) {
                 if (fn_type_spec->variadics_kind != VARIADICS_TYPED) {
                     fprintf(
                         stderr,
@@ -3418,46 +3613,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
 
             check_call_arguments(c, call, fn_type_spec);
-
-            size_t iota = 0;
-            for (Node *arg = call->args.head; arg; arg = arg->next) {
-                if (call->has_spread && iota == fn_type_spec->variadics_index) {
-                    // TODO: We cannot really assume this once named arguments are implemented, but for now this is
-                    // true.
-                    if (arg->next) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt
-                            "ERROR: Cannot supply variadics from two sources. This argument starts a variadic source...\n",
-                            Pos_Arg(arg->token.pos));
-                        fprintf(stderr, Pos_Fmt "... But this spread here starts another\n", Pos_Arg(call->spread_pos));
-                        fprintf(
-                            stderr,
-                            "\n"
-                            "NOTE: Variadic arguments must originate from a single variadic source. Explicit variadic arguments are\n"
-                            "lowered into a temporary stack array with a compile time known length, while a spread slice is passed\n"
-                            "directly as it is, the difference being that its length is not known at compile time. Mixing these two\n"
-                            "is not supported, since that would require the combination of a compile time length and a runtime length\n"
-                            "into a compile time length, which is not possible.\n");
-                        exit(1);
-                    }
-
-                    type_assert(c, arg, fn_type_spec->args[fn_type_spec->variadics_index].type);
-                    break;
-                }
-
-                const bool   is_group = type_kind_eq(arg->type, TYPE_GROUP);
-                const size_t arg_parts = is_group ? arg->type.spec.group.count : 1;
-
-                for (size_t i = 0; i < arg_parts; i++) {
-                    const Type *expected = get_argument_type(fn_type_spec, iota);
-                    if (expected) {
-                        type_assert_grouped(c, arg, *expected, i, NULL);
-                    }
-
-                    iota++;
-                }
-            }
 
             n->type = *fn_type_spec->return_type;
             if (!call->is_stmt && type_kind_eq(n->type, TYPE_UNIT)) {

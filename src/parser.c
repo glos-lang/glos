@@ -768,7 +768,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 definition_lhs_setup(p, (Node_Define *) arg, false);
             }
 
-            bool  has_default_args = false;
             Node *typed_variadics = NULL;
 
             size_t args_iota = 1;
@@ -777,6 +776,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 if (define->is_const) {
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Expected argument definition, got constant\n", Pos_Arg(arg->token.pos));
+                    exit(1);
+                }
+
+                if (!define->expr && fn->variadics_kind == VARIADICS_TYPED) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot have argument without default value after typed variadics\n",
+                        Pos_Arg(arg->token.pos));
                     exit(1);
                 }
 
@@ -794,23 +801,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     typed_variadics = arg;
                 }
 
-                if (define->expr) {
-                    has_default_args = true;
-                } else {
-                    if (has_default_args) {
-                        // TODO: Currently there is no support for named arguments, therefore this needs to be mandated.
-                        //       This will be removed once named arguments are implemented
-                        //
-                        //       Since this is a temporary error, so the error message does not need to be pretty.
-                        fprintf(
-                            stderr,
-                            Pos_Fmt
-                            "ERROR: Cannot have argument without default value after argument with default value\n",
-                            Pos_Arg(arg->token.pos));
-                        exit(1);
-                    }
-                }
-
                 if (define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT) {
                     Node_Atom *it = (Node_Atom *) define->name;
                     it->definition_spec->arg_index = args_iota++;
@@ -825,12 +815,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
-                    break;
-                }
-
-                if (fn->variadics_kind == VARIADICS_TYPED) {
-                    // TODO: Currently there is no support for named arguments, therefore this needs to be mandated.
-                    expect_token(p, TOKEN_RPAREN);
                     break;
                 }
 
@@ -1074,20 +1058,63 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             Node_Call *call = (Node_Call *) node_alloc(p->arena, NODE_CALL, token);
             call->fn = node;
 
+            bool has_named_args = false;
             while (!read_token(p, TOKEN_RPAREN)) {
                 token = peek_token(p);
-                if (token.kind == TOKEN_SPREAD) {
-                    call->has_spread = true;
+
+                const bool need_to_spread = token.kind == TOKEN_SPREAD;
+                if (need_to_spread) {
                     call->spread_pos = next_token(p).pos;
                 }
 
-                nodes_push(&call->args, parse_expr(p, POWER_SET, false, true, NULL));
-                if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
-                    break;
+                Node *arg = parse_expr(p, POWER_SET, false, true, NULL);
+
+                token = peek_token(p);
+                if (token.kind == TOKEN_SET) {
+                    if (need_to_spread) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Cannot spread a named argument\n", Pos_Arg(token.pos));
+                        exit(1);
+                    }
+
+                    if (arg->kind != NODE_ATOM || arg->token.kind != TOKEN_IDENT) {
+                        error_unexpected(token);
+                    }
+
+                    if (sv_match(arg->token.sv, "_")) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Cannot use '_' as a named argument\n", Pos_Arg(arg->token.pos));
+                        exit(1);
+                    }
+
+                    Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, next_token(p));
+                    binary->lhs = arg;
+                    binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                    arg = (Node *) binary;
+                    has_named_args = true;
+                } else {
+                    if (call->spread) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Cannot have positional arguments after variadics spread\n",
+                            Pos_Arg(arg->token.pos));
+                        exit(1);
+                    }
+
+                    if (has_named_args) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Cannot have positional arguments after named arguments\n",
+                            Pos_Arg(arg->token.pos));
+                        exit(1);
+                    }
                 }
 
-                if (call->has_spread) {
-                    expect_token(p, TOKEN_RPAREN);
+                if (need_to_spread) {
+                    call->spread = arg;
+                    call->do_not_allocate_typed_variadic_array = true;
+                }
+
+                nodes_push(&call->args, arg);
+                if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
                 }
             }

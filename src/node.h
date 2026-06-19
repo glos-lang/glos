@@ -616,8 +616,11 @@ typedef struct {
 
     Pos end;
 
-    bool has_spread;
-    Pos  spread_pos;
+    Node *spread;
+    Pos   spread_pos;
+
+    bool   do_not_allocate_typed_variadic_array;
+    size_t typed_variadics_array_count;
 
     bool      is_type_cast;
     Type_Cast type_cast;

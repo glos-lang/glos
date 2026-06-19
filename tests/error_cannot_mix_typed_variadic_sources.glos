@@ -1,9 +1,0 @@
-foo :: (xs: ...i64) {
-    for i := 0; i < xs.count; i++ {
-        println(xs[i])
-    }
-}
-
-bar :: (ns: ...i64) {
-    foo(69, ...ns)
-}
