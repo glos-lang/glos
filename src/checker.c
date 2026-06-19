@@ -3374,8 +3374,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
         } else {
             n->type = (Type) {.kind = TYPE_UNKNOWN_COMPOUND};
-            if (expected_type && type_kind_eq(*expected_type, TYPE_STRUCT)) {
-                n->type = *expected_type;
+            if (expected_type) {
+                if (type_kind_eq(*expected_type, TYPE_STRUCT) || type_kind_eq(*expected_type, TYPE_ARRAY) ||
+                    type_kind_eq(*expected_type, TYPE_SLICE)) {
+                    n->type = *expected_type;
+                }
             }
         }
 

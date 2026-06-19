@@ -382,13 +382,18 @@ void arena_free(Arena *a) {
 }
 
 void *arena_alloc(Arena *a, size_t size) {
-    Arena_Region *region = NULL;
-    for (Arena_Region *it = a->head; it; it = it->next) {
-        if (it->count + size <= it->capacity) {
-            region = it;
-            break;
-        }
+    Arena_Region *region = a->head;
+    if (region && region->count + size > region->capacity) {
+        region = NULL;
     }
+
+    // TODO: The best fit model is broken
+    // for (Arena_Region *it = a->head; it; it = it->next) {
+    //     if (it->count + size <= it->capacity) {
+    //         region = it;
+    //         break;
+    //     }
+    // }
 
     size = (size + 7) & -8; // Alignment
     if (!region) {

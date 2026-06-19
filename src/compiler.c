@@ -1173,6 +1173,11 @@ static_assert(COUNT_CONST_VALUES == 9, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
+        // TODO: Pointers in constant expressions
+        if (type_is_pointer(type)) {
+            assert(value.as.integer == 0);
+            return LLVMConstNull(type.llvm);
+        }
         return LLVMConstInt(type.llvm, value.as.integer, type_is_signed(type));
 
     case CONST_VALUE_FN:
