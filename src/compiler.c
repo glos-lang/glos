@@ -1173,6 +1173,11 @@ static_assert(COUNT_CONST_VALUES == 9, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
+        // TODO: Pointers in constant expressions
+        if (type_is_pointer(type)) {
+            assert(value.as.integer == 0);
+            return LLVMConstNull(type.llvm);
+        }
         return LLVMConstInt(type.llvm, value.as.integer, type_is_signed(type));
 
     case CONST_VALUE_FN:
@@ -2784,7 +2789,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
         LLVMTypeRef  variadics_type = NULL;
         LLVMValueRef variadics_memory = NULL;
-        if (fn_spec->variadics_kind == VARIADICS_TYPED && !call->has_spread) {
+        if (fn_spec->variadics_kind == VARIADICS_TYPED && !call->do_not_allocate_typed_variadic_array) {
             // TODO: This will be all so wrong once named arguments are implemented, but that is a problem for future
             // me. Just implement something that works. It can be made rigorous and correct later.
 
@@ -2792,9 +2797,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             assert(type->kind == TYPE_SLICE);
             variadics_type = compile_type(c, type->spec.slice.element);
 
-            const size_t variadics_count = call->args_count - fn_spec->variadics_index;
-            if (variadics_count) {
-                variadics_memory = compile_alloca(c, LLVMArrayType(variadics_type, variadics_count));
+            if (call->typed_variadics_array_count) {
+                variadics_memory = compile_alloca(c, LLVMArrayType(variadics_type, call->typed_variadics_array_count));
             } else {
                 variadics_memory = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
             }
@@ -2803,7 +2807,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             LLVMBuildStore(c->llvm_builder, variadics_memory, variadics_slice);
             LLVMBuildStore(
                 c->llvm_builder,
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variadics_count, true),
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->typed_variadics_array_count, true),
                 LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, variadics_slice, 1, ""));
 
             Typed_LLVM_Value arg = {0};
@@ -2814,6 +2818,18 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
         size_t args_iota = 0;
         for (Node *arg = call->args.head; arg; arg = arg->next) {
+            if (arg->kind == NODE_BINARY && arg->token.kind == TOKEN_SET) {
+                const size_t index = arg->token.as.integer;
+
+                LLVMValueRef expr = compile_expr(c, ((Node_Binary *) arg)->rhs, false);
+                args[index].type = fn_spec->args[index].type;
+                args[index].value = expr;
+
+                // No point in advancing iota further, since the parser guarantees there will be no more positional
+                // arguments
+                continue;
+            }
+
             const size_t group_values_count_save = c->group_values.count;
 
             LLVMValueRef expr = compile_expr(c, arg, false);
@@ -2824,8 +2840,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     Typed_LLVM_Value tv = {0};
                     tv.type = group->data[i];
                     tv.value = c->group_values.data[group_values_count_save + i];
-                    if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index &&
-                        !call->has_spread) {
+                    if (variadics_memory && args_iota >= fn_spec->variadics_index) {
                         LLVMValueRef indices[] = {
                             LLVMConstInt(
                                 LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),
@@ -2843,8 +2858,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 Typed_LLVM_Value tv = {0};
                 tv.type = arg->type;
                 tv.value = expr;
-                if (fn_spec->variadics_kind == VARIADICS_TYPED && args_iota >= fn_spec->variadics_index &&
-                    !call->has_spread) {
+                if (variadics_memory && args_iota >= fn_spec->variadics_index) {
                     LLVMValueRef indices[] = {
                         LLVMConstInt(
                             LLVMInt64TypeInContext(c->llvm_context), args_iota - fn_spec->variadics_index, true),
@@ -2863,9 +2877,9 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         }
 
         LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-        for (size_t i = call->args_count; i < fn_spec->args_count; i++) {
-            if (fn_spec->variadics_kind == VARIADICS_TYPED && i >= fn_spec->variadics_index) {
-                break;
+        for (size_t i = 0; i < fn_spec->args_count; i++) {
+            if (args[i].value) {
+                continue;
             }
 
             Type_Fn_Arg *arg = &fn_spec->args[i];
@@ -2910,7 +2924,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             Typed_LLVM_Value tv = {0};
             tv.type = arg->type;
             tv.value = value;
-            args[args_iota++] = tv;
+            args[i] = tv;
         }
 
         set_debug_pos(c, n->token.pos);

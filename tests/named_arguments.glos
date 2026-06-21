@@ -1,0 +1,28 @@
+main :: () {
+    // Basics
+    {
+        foo :: (a: i64, b: i64) {
+            println("foo:")
+            println("  a = ", a)
+            println("  b = ", b)
+        }
+
+        foo(b = 420, a = 69)
+    }
+
+    // Named arguments + Typed variadics
+    {
+        bar :: (ns: ...i64, a := 0) {
+            println("bar:")
+            println("  a = ", a)
+            println("  ns = ", ns)
+        }
+
+        bar(69, 420)
+        bar(420, 1337, a = 69)
+
+        xs := []i64 {420, 1337}
+        bar(...xs, a = 69)
+        bar(a = 69, ns = xs)
+    }
+}

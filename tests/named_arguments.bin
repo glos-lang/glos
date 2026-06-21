@@ -1,0 +1,20 @@
+EXIT 0
+STDOUT 153
+foo:
+  a = 69
+  b = 420
+bar:
+  a = 0
+  ns = {69, 420}
+bar:
+  a = 69
+  ns = {420, 1337}
+bar:
+  a = 69
+  ns = {420, 1337}
+bar:
+  a = 69
+  ns = {420, 1337}
+
+STDERR 0
+
