@@ -178,7 +178,35 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
     return ch;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+Token lexer_get_string(Lexer *l, Pos pos) {
+    const size_t arena_sb_count_save = l->arena->sb.count;
+
+    Token token = {.kind = TOKEN_STRING, .pos = pos};
+    while (l->sv.count) {
+        if (*l->sv.data == '"') {
+            break;
+        }
+
+        if (*l->sv.data == '\\' && l->sv.count > 1 && l->sv.data[1] == '{') {
+            next_char(l);
+            token.kind = TOKEN_ISTRING;
+            break;
+        }
+        sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
+    }
+
+    if (!l->sv.count) {
+        error_unterminated(l->pos, "string");
+    }
+    next_char(l);
+
+    token.sv.count = l->arena->sb.count - arena_sb_count_save;
+    token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
+    l->arena->sb.count = arena_sb_count_save;
+    return token;
+}
+
+static_assert(COUNT_TOKENS == 76, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -324,28 +352,8 @@ Token lexer_iter(Lexer *l) {
         }
         break;
 
-    case '"': {
-        const size_t arena_sb_count_save = l->arena->sb.count;
-
-        token.kind = TOKEN_STRING;
-        while (l->sv.count) {
-            if (*l->sv.data == '"') {
-                break;
-            }
-
-            sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
-        }
-
-        if (!l->sv.count) {
-            error_unterminated(l->pos, "string");
-        }
-        next_char(l);
-
-        token.sv.count = l->arena->sb.count - arena_sb_count_save;
-        token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
-        l->arena->sb.count = arena_sb_count_save;
-        return token;
-    }
+    case '"':
+        return lexer_get_string(l, token.pos);
 
     case '+':
         token.kind = TOKEN_ADD;

@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -691,7 +691,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 75, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -709,6 +709,24 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_ATOM, token);
         ((Node_Atom *) node)->module = p->module_current;
         break;
+
+    case TOKEN_ISTRING: {
+        node = node_alloc(p->arena, NODE_INTERPOLATION, token);
+        Node_Interpolation *interp = (Node_Interpolation *) node;
+
+        nodes_push(&interp->children, node_alloc(p->arena, NODE_ATOM, token));
+        interp->children_count++;
+
+        while (token.kind == TOKEN_ISTRING) {
+            nodes_push(&interp->children, parse_expr(p, POWER_SET, false, true, NULL));
+            interp->children_count++;
+            expect_token(p, TOKEN_RBRACE); // This also ensures that there is nothing left in the buffer
+
+            token = lexer_get_string(&p->state.lexer, p->state.lexer.pos);
+            nodes_push(&interp->children, node_alloc(p->arena, NODE_ATOM, token));
+            interp->children_count++;
+        }
+    } break;
 
     case TOKEN_DOT: {
         node = node_alloc(p->arena, NODE_MEMBER, token);
@@ -1062,12 +1080,39 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             while (!read_token(p, TOKEN_RPAREN)) {
                 token = peek_token(p);
 
-                const bool need_to_spread = token.kind == TOKEN_SPREAD;
+                bool need_to_spread = token.kind == TOKEN_SPREAD;
                 if (need_to_spread) {
-                    call->spread_pos = next_token(p).pos;
+                    next_token(p);
                 }
 
                 Node *arg = parse_expr(p, POWER_SET, false, true, NULL);
+                if (arg->kind == NODE_INTERPOLATION) {
+                    if (need_to_spread) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Redundant %s before interpolated string\n",
+                            Pos_Arg(token.pos),
+                            token_kind_to_cstr(token.kind));
+                        exit(1);
+                    }
+
+                    need_to_spread = true;
+                }
+
+                if (need_to_spread) {
+                    if (call->spread) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Multiple typed variadic sources found\n",
+                            Pos_Arg(call->node.token.pos));
+
+                        fprintf(stderr, Pos_Fmt "... This provide one source\n", Pos_Arg(call->spread_pos));
+                        fprintf(stderr, Pos_Fmt "... This provide another\n", Pos_Arg(token.pos));
+                        exit(1);
+                    }
+
+                    call->spread_pos = token.pos;
+                }
 
                 token = peek_token(p);
                 if (token.kind == TOKEN_SET) {
@@ -1092,10 +1137,16 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     has_named_args = true;
                 } else {
                     if (call->spread) {
+                        const char *label = "variadics spread";
+                        if (call->spread->kind == NODE_INTERPOLATION) {
+                            label = "interpolated string";
+                        }
+
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Cannot have positional arguments after variadics spread\n",
-                            Pos_Arg(arg->token.pos));
+                            Pos_Fmt "ERROR: Cannot have positional arguments after %s\n",
+                            Pos_Arg(arg->token.pos),
+                            label);
                         exit(1);
                     }
 
@@ -1197,7 +1248,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

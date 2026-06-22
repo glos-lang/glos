@@ -593,7 +593,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -604,6 +604,7 @@ Node *node_alloc(Arena *arena, Node_Kind kind, Token token) {
         [NODE_ASSERT] = sizeof(Node_Assert),
         [NODE_IMPORT] = sizeof(Node_Import),
         [NODE_DISTINCT] = sizeof(Node_Distinct),
+        [NODE_INTERPOLATION] = sizeof(Node_Interpolation),
 
         // This comment is here to prevent clang-format from messing this up
         [NODE_FN] = sizeof(Node_Fn),
@@ -681,7 +682,7 @@ static void nodes_debug_impl(FILE *f, Nodes ns, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -743,6 +744,13 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
         Node_Distinct *distinct = (Node_Distinct *) n;
         fprintf(f, "Distinct {\n");
         node_debug_impl(f, distinct->value, depth + 1, "Value");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_INTERPOLATION: {
+        Node_Interpolation *interp = (Node_Interpolation *) n;
+        fprintf(f, "Interpolation {\n");
+        nodes_debug_impl(f, interp->children, depth + 1, "Children");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

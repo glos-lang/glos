@@ -2152,7 +2152,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
     return result;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -2174,7 +2174,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -2187,7 +2187,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         case TOKEN_IDENT:
             return compile_ident(c, n, (Node_Atom *) atom->definition, ref);
 
-        case TOKEN_STRING: {
+        case TOKEN_STRING:
+        case TOKEN_ISTRING: {
             LLVMValueRef memory = compile_const_value_into_memory(c, compile_string_into_const_value(c, n->token.sv));
             if (ref) {
                 return memory;
@@ -2222,7 +2223,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -2363,7 +2364,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -2411,7 +2412,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -2442,7 +2443,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 75, "");
+            static_assert(COUNT_TOKENS == 76, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -2548,7 +2549,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -2698,6 +2699,34 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_DISTINCT:
         unreachable();
+
+    case NODE_INTERPOLATION: {
+        Node_Interpolation *interp = (Node_Interpolation *) n;
+
+        assert(c->interpolated_string_type.kind == TYPE_SLICE);
+        LLVMTypeRef  element_type = compile_type(c, c->interpolated_string_type.spec.slice.element);
+        LLVMValueRef memory = compile_alloca(c, LLVMArrayType(element_type, interp->children_count));
+
+        size_t iota = 0;
+        ll_foreach(it, &interp->children) {
+            LLVMValueRef value = compile_expr(c, it, false);
+            LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), iota++, true)};
+            LLVMValueRef ptr = LLVMBuildGEP2(c->llvm_builder, element_type, memory, indices, len(indices), "");
+            LLVMBuildStore(c->llvm_builder, value, ptr);
+        }
+
+        LLVMValueRef slice = compile_alloca(c, n->type.llvm);
+        LLVMBuildStore(c->llvm_builder, memory, slice);
+        LLVMBuildStore(
+            c->llvm_builder,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), interp->children_count, true),
+            LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, slice, 1, ""));
+
+        if (ref) {
+            return slice;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
+    }
 
     case NODE_FN:
         return compile_fn(c, (Node_Fn *) n);
@@ -3262,7 +3291,7 @@ static LLVMValueRef get_type_id_from_type_info_pointer(Compiler *c, LLVMValueRef
     return phi;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

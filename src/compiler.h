@@ -28,6 +28,8 @@ typedef struct {
     Type main_fn_type;
     DA(Type_Struct_Field) struct_fields;
 
+    Type interpolated_string_type;
+
     // These are used both by the analyzer and the compiler
     Arena  *arena;
     Context context;

@@ -320,6 +320,7 @@ typedef enum {
     NODE_ASSERT,
     NODE_IMPORT,
     NODE_DISTINCT,
+    NODE_INTERPOLATION,
 
     NODE_FN,
     NODE_ENUM,
@@ -492,6 +493,13 @@ typedef struct {
     Node_Atom *defined_as;
     Node      *value;
 } Node_Distinct;
+
+typedef struct {
+    Node   node;
+    Nodes  children;
+    size_t children_count;
+    bool   is_valid;
+} Node_Interpolation;
 
 struct Node_Fn {
     Node node;

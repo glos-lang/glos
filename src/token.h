@@ -28,6 +28,7 @@ typedef enum {
     TOKEN_NULL,
     TOKEN_IDENT,
     TOKEN_STRING,
+    TOKEN_ISTRING,
 
     TOKEN_LPAREN,
     TOKEN_RPAREN,
