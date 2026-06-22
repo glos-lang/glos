@@ -948,7 +948,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             return const_value_string(n->token.sv);
 
         case TOKEN_ISTRING:
-            todo(); // TODO(@istring)
+            unreachable();
 
         case TOKEN_DIRECTIVE_MAIN:
             return const_value_fn(get_main(c));
@@ -1218,8 +1218,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         return const_value_type(n->type);
 
     case NODE_INTERPOLATION:
-        todo(); // TODO(@istring)
-        break;
+        unreachable();
 
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
