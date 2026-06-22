@@ -1,0 +1,6 @@
+main :: () {
+    whom :: () -> string {
+        return "me"
+    }
+    println("Urmom is doing \{34 + 35} with \{whom()}.")
+}

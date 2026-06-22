@@ -12,6 +12,7 @@ typedef struct {
 } Lexer;
 
 bool  lexer_open(Lexer *l, const char *path, Arena *a);
+Token lexer_get_string(Lexer *l, Pos pos);
 Token lexer_iter(Lexer *l);
 
 #endif // LEXER_H

@@ -162,11 +162,11 @@ static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -319,7 +319,7 @@ static void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_ex
 
 static bool try_auto_cast_literal(Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
-    if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR))) {
+    if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
         // NOTE: We are also checking for rawptr because distinct types exist
         n->type = expected;
         return true;
@@ -555,7 +555,7 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -618,7 +618,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -906,7 +906,7 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     if (!n) {
         return (Const_Value) {0};
@@ -920,7 +920,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -947,6 +947,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         case TOKEN_STRING:
             return const_value_string(n->token.sv);
 
+        case TOKEN_ISTRING:
+            unreachable();
+
         case TOKEN_DIRECTIVE_MAIN:
             return const_value_fn(get_main(c));
 
@@ -962,7 +965,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -1012,7 +1015,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -1213,6 +1216,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_DISTINCT:
         assert(n->type.is_meta);
         return const_value_type(n->type);
+
+    case NODE_INTERPOLATION:
+        unreachable();
 
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
@@ -1679,7 +1685,7 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     c->context.replace = replace;
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -2270,6 +2276,19 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
         args = temp_alloc(fn_type_spec->args_count * sizeof(*args));
         args_count_min = fn_type_spec->args_count_min;
         args_count_max = fn_type_spec->variadics_kind != VARIADICS_NONE ? UINT64_MAX : fn_type_spec->args_count;
+
+        if (call->spread) {
+            if (fn_type_spec->variadics_kind != VARIADICS_TYPED) {
+                if (call->spread->kind != NODE_INTERPOLATION) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot use %s in a call to a function that does not have typed variadics\n",
+                        Pos_Arg(call->spread_pos),
+                        token_kind_to_cstr(TOKEN_SPREAD));
+                    exit(1);
+                }
+            }
+        }
     }
 
     ll_foreach(arg, &call->args) {
@@ -2321,6 +2340,31 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
             it = ((Node_Binary *) it)->rhs;
         } else if (fn_type_spec) {
             expected = get_argument_type(fn_type_spec, call->args_count);
+        }
+
+        if (it->kind == NODE_INTERPOLATION && fn_type_spec->variadics_kind == VARIADICS_TYPED) {
+            bool ok = false;
+            if (it_index == fn_type_spec->variadics_index) {
+                const Type *type = &fn_type_spec->args[fn_type_spec->variadics_index].type;
+                assert(type->kind == TYPE_SLICE);
+
+                type = type->spec.slice.element;
+                if (type->kind == TYPE_ANY) {
+                    ok = true;
+                    ((Node_Interpolation *) it)->is_valid = true;
+                }
+            }
+
+            if (!ok) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Interpolated string is in the wrong position\n", Pos_Arg(it->token.pos));
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The function being called is %s\n",
+                    Pos_Arg(call->fn->token.pos),
+                    type_to_cstr(call->fn->type));
+                exit(1);
+            }
         }
 
         check_expr(c, it, REF_NONE, expected);
@@ -2544,7 +2588,7 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_type) {
     if (!n) {
         return;
@@ -2553,7 +2597,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -2577,6 +2621,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             break;
 
         case TOKEN_STRING:
+            n->type = (Type) {.kind = TYPE_STRING};
+            break;
+
+        case TOKEN_ISTRING:
             n->type = (Type) {.kind = TYPE_STRING};
             break;
 
@@ -2641,7 +2689,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -2746,7 +2794,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 75, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -3049,6 +3097,25 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         type_assert_type(distinct->value);
         n->type = distinct->value->type;
         n->type.distinct = distinct->defined_as;
+    } break;
+
+    case NODE_INTERPOLATION: {
+        Node_Interpolation *interp = (Node_Interpolation *) n;
+        if (!interp->is_valid) {
+            fprintf(
+                stderr,
+                Pos_Fmt
+                "ERROR: Cannot use interpolated string here. It can only be used as a variadic source of type 'any' in a function call\n",
+                Pos_Arg(n->token.pos));
+            exit(1);
+        }
+
+        ll_foreach(it, &interp->children) {
+            check_expr(c, it, REF_NONE, NULL);
+            type_assert(c, it, (Type) {.kind = TYPE_ANY});
+        }
+
+        n->type = c->interpolated_string_type;
     } break;
 
     case NODE_FN: {
@@ -3604,17 +3671,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             }
             const Type_Fn *fn_type_spec = fn_type.spec.fn;
 
-            if (call->spread) {
-                if (fn_type_spec->variadics_kind != VARIADICS_TYPED) {
-                    fprintf(
-                        stderr,
-                        Pos_Fmt "ERROR: Cannot use %s in a call to a function that does not have typed variadics\n",
-                        Pos_Arg(call->spread_pos),
-                        token_kind_to_cstr(TOKEN_SPREAD));
-                    exit(1);
-                }
-            }
-
             check_call_arguments(c, call, fn_type_spec);
 
             n->type = *fn_type_spec->return_type;
@@ -3835,7 +3891,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     }
 }
 
-static_assert(COUNT_NODES == 26, "");
+static_assert(COUNT_NODES == 27, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -4122,6 +4178,14 @@ void check_nodes(Compiler *c) {
         c->main_fn_type = (Type) {
             .kind = TYPE_FN,
             .spec.fn = fn_spec,
+        };
+    }
+
+    {
+        const Type any = {.kind = TYPE_ANY};
+        c->interpolated_string_type = (Type) {
+            .kind = TYPE_SLICE,
+            .spec.slice.element = arena_clone(c->arena, &any, sizeof(any)),
         };
     }
 
