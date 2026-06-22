@@ -1,5 +1,5 @@
-A :: #distinct i64
-B :: #distinct bool
+A :: distinct i64
+B :: distinct bool
 
 main :: () {
     a: A

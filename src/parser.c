@@ -751,10 +751,28 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         unary->value = parse_expr(p, POWER_REF, false, compounds_allowed, NULL);
     } break;
 
-    case TOKEN_DIRECTIVE_DISTINCT: {
+    case TOKEN_DISTINCT: {
         node = node_alloc(p->arena, NODE_DISTINCT, token);
         Node_Distinct *distinct = (Node_Distinct *) node;
         distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+
+        static_assert(COUNT_NODES == 27, "");
+        switch (distinct->value->kind) {
+        case NODE_ENUM:
+        case NODE_UNION:
+        case NODE_STRUCT:
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Redundant application of %s to %s\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind),
+                token_kind_to_cstr(distinct->value->token.kind));
+            exit(1);
+            break;
+
+        default:
+            break;
+        }
     } break;
 
     case TOKEN_LPAREN: {
@@ -986,7 +1004,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
     } break;
 
-    case TOKEN_DIRECTIVE_INLINE: {
+    case TOKEN_INLINE: {
         node = parse_expr(p, POWER_DOT, false, false, NULL);
         if (node->kind != NODE_FN) {
             fprintf(

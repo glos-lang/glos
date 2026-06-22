@@ -270,6 +270,10 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_SIZEOF;
         } else if (sv_match(token.sv, "typeof")) {
             token.kind = TOKEN_TYPEOF;
+        } else if (sv_match(token.sv, "inline")) {
+            token.kind = TOKEN_INLINE;
+        } else if (sv_match(token.sv, "distinct")) {
+            token.kind = TOKEN_DISTINCT;
         } else if (sv_match(token.sv, "if")) {
             token.kind = TOKEN_IF;
         } else if (sv_match(token.sv, "else")) {
@@ -478,10 +482,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_LIBRARY;
         } else if (sv_match(token.sv, "#main")) {
             token.kind = TOKEN_DIRECTIVE_MAIN;
-        } else if (sv_match(token.sv, "#inline")) {
-            token.kind = TOKEN_DIRECTIVE_INLINE;
-        } else if (sv_match(token.sv, "#distinct")) {
-            token.kind = TOKEN_DIRECTIVE_DISTINCT;
         } else if (sv_match(token.sv, "#platform")) {
             token.kind = TOKEN_DIRECTIVE_PLATFORM;
         } else if (sv_match(token.sv, "#caller_location")) {

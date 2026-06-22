@@ -166,6 +166,12 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_TYPEOF:
         return "'typeof'";
 
+    case TOKEN_INLINE:
+        return "'inline'";
+
+    case TOKEN_DISTINCT:
+        return "'distinct'";
+
     case TOKEN_DIRECTIVE_IF:
         return "'#if'";
 
@@ -189,12 +195,6 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_DIRECTIVE_MAIN:
         return "'#main'";
-
-    case TOKEN_DIRECTIVE_INLINE:
-        return "'#inline'";
-
-    case TOKEN_DIRECTIVE_DISTINCT:
-        return "'#distinct'";
 
     case TOKEN_DIRECTIVE_PLATFORM:
         return "'#platform'";
