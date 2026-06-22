@@ -18,8 +18,6 @@ struct Context_Fn {
     Context_Fn *outer;
 };
 
-Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name, bool only_consts);
-
 typedef struct {
     Local_Scope      locals;
     Context_Fn      *fn;

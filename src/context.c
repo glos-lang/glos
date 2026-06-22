@@ -30,7 +30,7 @@ Node_Atom *global_scope_find(Global_Scope *scope, SV name) {
     return p ? *p : NULL;
 }
 
-Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name, bool only_consts) {
+static Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV name) {
     if (!fn) {
         return NULL;
     }
@@ -39,16 +39,12 @@ Node_Atom *context_fn_find(const Context_Fn *fn, const Local_Scope *locals, SV n
     assert(fn->end <= locals->count);
     for (size_t i = fn->end; i > fn->begin; i--) {
         Node_Atom *it = locals->data[i - 1];
-        if (!it->definition_spec->is_const && only_consts) {
-            continue;
-        }
-
         if (sv_eq(it->node.token.sv, name)) {
             return it;
         }
     }
 
-    return context_fn_find(fn->outer, locals, name, true);
+    return context_fn_find(fn->outer, locals, name);
 }
 
 void context_push_fn(Context *c, Context_Fn *fn) {
@@ -79,7 +75,7 @@ void context_push_local(Context *c, Node_Atom *atom) {
 }
 
 Node_Atom *context_find_local(const Context *c, SV name) {
-    return context_fn_find(c->fn, &c->locals, name, false);
+    return context_fn_find(c->fn, &c->locals, name);
 }
 
 void context_set_end(Context *c, size_t end) {

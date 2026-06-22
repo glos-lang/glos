@@ -939,6 +939,10 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             if (!atom->definition->definition_spec->is_const) {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: Here is the variable being used\n",
+                    Pos_Arg(atom->definition->node.token.pos));
                 exit(1);
             }
 
@@ -1713,9 +1717,10 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                             }
                         }
 
-                        it->definition_spec->fn_context = c->context.fn;
                         context_push_local(&c->context, it);
                     }
+
+                    it->definition_spec->fn_context = c->context.fn;
                 } else {
                     if (get_builtin_type_kind(it->node.token.sv, NULL)) {
                         error_redefinition((Node *) it, NULL);
@@ -2071,6 +2076,16 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom *definition = NULL;
     if (atom) {
         definition = context_find_local(&c->context, token.sv);
+        if (definition && definition->definition_spec->fn_context && c->context.fn) {
+            if (definition->definition_spec->fn_context != c->context.fn && !definition->definition_spec->is_const) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot use variable from stack frame of outer function\n",
+                    Pos_Arg(n->token.pos));
+                fprintf(stderr, Pos_Fmt "NOTE: Here is the variable being used\n", Pos_Arg(definition->node.token.pos));
+                exit(1);
+            }
+        }
     }
 
     if (!definition) {
