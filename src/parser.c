@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 77, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -571,8 +571,9 @@ bool parser_import(Parser *p, Node_Import *import) {
 static Node *
 parse_define(Parser *p, Node *name, Token token, bool groups_allowed, bool spread_allowed, bool is_static) {
     Node_Define *define = (Node_Define *) node_alloc(p->arena, NODE_DEFINE, token);
-    if (spread_allowed) {
-        define->has_spread = read_token(p, TOKEN_SPREAD);
+    if (spread_allowed && peek_token(p).kind == TOKEN_SPREAD) {
+        define->has_spread = true;
+        define->spread_pos = next_token(p).pos;
     }
 
     {
@@ -691,7 +692,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 77, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -802,7 +803,31 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.fn_current = fn;
 
             if (arg) {
-                definition_lhs_setup(p, (Node_Define *) arg, false);
+                Node_Define *define = (Node_Define *) arg;
+                assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+
+                if (sv_match(define->name->token.sv, "this")) {
+                    if (fn->outer_fn) {
+                        fprintf(stderr, Pos_Fmt "ERROR: Local function cannot be a method\n", Pos_Arg(token.pos));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "NOTE: This argument is taken to be the receiver\n",
+                            Pos_Arg(define->name->token.pos));
+                        exit(1);
+                    }
+
+                    if (define->has_spread) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: The receiver of a method cannot be variadic\n",
+                            Pos_Arg(define->spread_pos));
+                        exit(1);
+                    }
+
+                    fn->is_method = true;
+                }
+
+                definition_lhs_setup(p, define, false);
             }
 
             Node *typed_variadics = NULL;
@@ -862,6 +887,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 Node *name = node_alloc(p->arena, NODE_ATOM, expect_token(p, TOKEN_IDENT));
+                if (sv_match(name->token.sv, "this")) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt
+                        "ERROR: The argument 'this' is used to describe the receiver of a method, and therefore must be the first argument\n",
+                        Pos_Arg(name->token.pos));
+                    exit(1);
+                }
+
                 arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false);
             }
 
@@ -883,6 +917,17 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (peek_token(p).kind == TOKEN_LBRACE) {
                 fn->body = parse_block(p, next_token(p));
             } else {
+                if (fn->is_method && !p->state.in_extern) {
+                    Node_Define *define = (Node_Define *) fn->args.head;
+                    assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+                    fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: This argument is taken to be the receiver\n",
+                        Pos_Arg(define->name->token.pos));
+                    exit(1);
+                }
+
                 fn->is_type = true;
             }
 
@@ -1028,37 +1073,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
 
         fn->is_inline = true;
-    } break;
-
-    case TOKEN_METHOD: {
-        if (p->state.fn_current) {
-            fprintf(stderr, Pos_Fmt "ERROR: Local function cannot be a method\n", Pos_Arg(token.pos));
-            exit(1);
-        }
-
-        node = parse_expr(p, POWER_DOT, false, false, NULL);
-        if (node->kind != NODE_FN) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Expected function literal after %s\n",
-                Pos_Arg(token.pos),
-                token_kind_to_cstr(token.kind));
-            exit(1);
-        }
-
-        Node_Fn *fn = (Node_Fn *) node;
-        if (fn->is_type) {
-            fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
-            exit(1);
-        }
-
-        if (!fn->args.head) {
-            fprintf(stderr, Pos_Fmt "ERROR: Function with no arguments cannot be a method\n", Pos_Arg(token.pos));
-            exit(1);
-        }
-
-        fn->is_method = true;
-        fn->method_keyword_pos = token.pos;
     } break;
 
     default:

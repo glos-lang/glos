@@ -2,9 +2,9 @@ Counter :: struct {
     n: i64
 }
 
-get :: method (c: &Counter) -> i64 {
-    c.n += 1
-    return c.n - 1
+get :: (this: &Counter) -> i64 {
+    this.n += 1
+    return this.n - 1
 }
 
 main :: () {

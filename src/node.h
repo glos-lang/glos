@@ -522,9 +522,7 @@ struct Node_Fn {
     bool is_type;
     bool is_extern;
     bool is_inline;
-
     bool is_method;
-    Pos  method_keyword_pos;
 
     Node_Fn *outer_fn;
 
@@ -667,6 +665,7 @@ struct Node_Define {
     Node *type;
 
     bool has_spread;
+    Pos  spread_pos;
 
     bool   is_const;
     bool   is_value_known_at_compile_time;

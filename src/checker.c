@@ -167,7 +167,7 @@ static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -921,7 +921,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -970,7 +970,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -1020,7 +1020,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Const_Value  lhs = {0};
         Const_Value  rhs = {0};
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -2700,7 +2700,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -2792,7 +2792,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -2898,7 +2898,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -3227,6 +3227,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                             } else {
                                 error_undefined(&n->token, "method", false);
                             }
+                        } else {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: There are no methods defined on %s\n",
+                                Pos_Arg(n->token.pos),
+                                type_to_cstr(receiver));
+                            exit(1);
                         }
                     }
 
@@ -3360,17 +3367,17 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 fn_type_spec->args_count += define->count;
 
                 if (fn->is_method && fn_type_spec->args_count == 1) {
+                    assert(fn_type_spec->args_count);
+                    const Type_Fn_Arg receiver = fn_type_spec->args[0];
+
                     if (!fn->defined_as) {
                         fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Anonymous function cannot be a method\n",
-                            Pos_Arg(fn->method_keyword_pos));
+                            stderr, Pos_Fmt "ERROR: Anonymous function cannot be a method\n", Pos_Arg(n->token.pos));
+                        fprintf(
+                            stderr, Pos_Fmt "NOTE: This argument is taken to be the receiver\n", Pos_Arg(receiver.pos));
                         exit(1);
                     }
                     const SV name = fn->defined_as->node.token.sv;
-
-                    assert(fn_type_spec->args_count);
-                    const Type_Fn_Arg receiver = fn_type_spec->args[0];
 
                     Node   *receiver_node = NULL;
                     Module *receiver_module = NULL;
@@ -3380,7 +3387,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         fprintf(
                             stderr,
                             Pos_Fmt "ERROR: Can only define methods on types defined in the same module\n",
-                            Pos_Arg(fn->method_keyword_pos));
+                            Pos_Arg(n->token.pos));
                         fprintf(
                             stderr, Pos_Fmt "NOTE: This argument is taken to be the receiver\n", Pos_Arg(receiver.pos));
                         exit(1);

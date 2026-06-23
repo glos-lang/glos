@@ -3,4 +3,4 @@ Foo :: enum {
     Baz
 }
 
-Baz :: method (_: Foo) {}
+Baz :: (this: Foo) {}

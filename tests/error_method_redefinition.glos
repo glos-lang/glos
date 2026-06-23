@@ -1,3 +1,3 @@
 Foo :: distinct i64
-foo :: method (n: Foo) {}
-foo :: method (n: Foo) {}
+foo :: (this: Foo) {}
+foo :: (this: Foo) {}

@@ -79,7 +79,6 @@ typedef enum {
     TOKEN_TYPEOF,
 
     TOKEN_INLINE,
-    TOKEN_METHOD,
     TOKEN_DISTINCT,
 
     TOKEN_DIRECTIVE_IF,

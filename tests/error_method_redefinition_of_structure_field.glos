@@ -2,4 +2,4 @@ Foo :: struct {
     bar: string
 }
 
-bar :: method (f: Foo) {}
+bar :: (this: Foo) {}
