@@ -3224,6 +3224,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                                 ok = true;
                                 member->method = *method;
                                 n->type = member->method->node.type;
+                            } else {
+                                error_undefined(&n->token, "method", false);
                             }
                         }
                     }
