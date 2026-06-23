@@ -1,0 +1,7 @@
+EXIT 1
+STDOUT 0
+
+STDERR 170
+tests/error_method_redefinition_of_structure_field.glos:5:1: ERROR: Redefinition of 'bar'
+tests/error_method_redefinition_of_structure_field.glos:2:5: NOTE: Defined here
+

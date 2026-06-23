@@ -212,6 +212,7 @@ typedef struct {
 uint64_t ht_hasheq_bytes(const void *a, const void *b, size_t n);
 uint64_t ht_hasheq_cstr(const void *a, const void *b, size_t n);
 uint64_t ht_hasheq_sv(const void *va, const void *vb, size_t n);
+uint64_t ht_hash_combine(uint64_t a, uint64_t b);
 
 void *ht_find_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);
 void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key);

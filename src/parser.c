@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 77, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -691,7 +691,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 77, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -1017,24 +1017,47 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         Node_Fn *fn = (Node_Fn *) node;
         if (p->state.in_extern) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot apply %s to an external function\n",
-                Pos_Arg(token.pos),
-                token_kind_to_cstr(token.kind));
+            fprintf(stderr, Pos_Fmt "ERROR: External function cannot be inlined\n", Pos_Arg(token.pos));
             exit(1);
         }
 
         if (fn->is_type) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be inlined\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        fn->is_inline = true;
+    } break;
+
+    case TOKEN_METHOD: {
+        if (p->state.fn_current) {
+            fprintf(stderr, Pos_Fmt "ERROR: Local function cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        node = parse_expr(p, POWER_DOT, false, false, NULL);
+        if (node->kind != NODE_FN) {
             fprintf(
                 stderr,
-                Pos_Fmt "ERROR: Cannot apply %s to a type\n",
+                Pos_Fmt "ERROR: Expected function literal after %s\n",
                 Pos_Arg(token.pos),
                 token_kind_to_cstr(token.kind));
             exit(1);
         }
 
-        fn->is_inline = true;
+        Node_Fn *fn = (Node_Fn *) node;
+        if (fn->is_type) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        if (!fn->args.head) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function with no arguments cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        fn->is_method = true;
+        fn->method_keyword_pos = token.pos;
     } break;
 
     default:

@@ -24,11 +24,18 @@ typedef struct {
 } Type_Info;
 
 typedef struct {
+    Node *owner;
+    SV    name;
+} Method_Spec;
+
+typedef struct {
     // These are used only by the analyzer
     Type main_fn_type;
     DA(Type_Struct_Field) struct_fields;
 
     Type interpolated_string_type;
+
+    HT(Method_Spec, Node_Fn *) methods;
 
     // These are used both by the analyzer and the compiler
     Arena  *arena;
