@@ -80,3 +80,9 @@ Type_Info_Slice :: struct {
 
 Type_Info_String :: struct {}
 Type_Info_Any :: struct {}
+
+Source_Code_Location :: struct {
+    path: string
+    row: i64
+    col: i64
+}

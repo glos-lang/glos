@@ -2941,14 +2941,23 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef value = NULL;
             if (arg->default_value_is_caller_location) {
-                const char *cstr = temp_sprintf(Pos_Fmt, Pos_Arg(call->fn->token.pos));
+                LLVMValueRef memory = compile_alloca(c, arg->type.llvm);
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    compile_string_into_const_value(c, sv_from_cstr(call->fn->token.pos.path)),
+                    memory);
 
-                SV sv = sv_from_cstr(cstr);
-                sv.count -= 1;
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->fn->token.pos.row + 1, true),
+                    LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 1, ""));
 
-                value = compile_const_value_into_memory(c, compile_string_into_const_value(c, sv));
-                value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, value, "");
-                temp_reset(cstr);
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->fn->token.pos.col + 1, true),
+                    LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 2, ""));
+
+                value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
             } else {
                 static_assert(COUNT_CONST_VALUES == 9, "");
                 switch (arg->default_value->kind) {

@@ -1949,9 +1949,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
 
         if (type_kind_eq(it_expr->type, TYPE_UNIT)) {
             if (it->definition_spec->arg_index && is_node_caller_location(it_expr)) {
-                // TODO: There should be a more sophisticated type for this, something like `Source_Code_Location`
-                // maybe?
-                it_expr->type = (Type) {.kind = TYPE_STRING};
+                it_expr->type = c->source_code_location_type;
             } else {
                 if (it->definition_spec->is_const) {
                     assert(it_expr);
@@ -2746,6 +2744,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 Pos_Arg(n->token.pos),
                 token_kind_to_cstr(n->token.kind));
             exit(1);
+            break;
 
         default:
             unreachable();
@@ -4465,6 +4464,7 @@ void check_nodes(Compiler *c) {
         }
     }
 
+    // Type info
     {
         const Const_Value value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type_Info"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
@@ -4510,6 +4510,16 @@ void check_nodes(Compiler *c) {
         c->type_info_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
         c->type_info_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
         c->type_info_variants[TYPE_ANY] = CONTRACT_TYPE_INFO_ANY;
+    }
+
+    // Source code location
+    {
+        const Const_Value value =
+            get_const_definition_value(c, c->builtin_module, sv_from_cstr("Source_Code_Location"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+
+        c->source_code_location_type = value.as.type;
+        c->source_code_location_type.is_meta = false;
     }
 
     for (Module *m = c->modules->head; m; m = m->next) {

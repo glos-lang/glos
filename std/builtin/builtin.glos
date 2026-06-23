@@ -1,13 +1,9 @@
 assert :: (cond: bool, message := "", location := #caller_location) {
     if !cond {
         if message == "" {
-            C.fprintf(C.stderr, "%.*s Assertion failed\n".data, i32(location.count), location.data)
+            eprintln("\{location} Assertion failed")
         } else {
-            C.fprintf(
-                C.stderr, "%.*s Assertion failed: %.*s\n".data,
-                i32(location.count), location.data,
-                i32(message.count), message.data,
-            )
+            eprintln("\{location} Assertion failed: \{message}")
         }
 
         C.fflush(C.stdout)
@@ -18,13 +14,9 @@ assert :: (cond: bool, message := "", location := #caller_location) {
 
 todo :: (message := "", location := #caller_location) {
     if message == "" {
-        C.fprintf(C.stderr, "%.*s TODO\n".data, i32(location.count), location.data)
+        eprintln("\{location} TODO")
     } else {
-        C.fprintf(
-            C.stderr, "%.*s TODO: %.*s\n".data,
-            i32(location.count), location.data,
-            i32(message.count), message.data,
-        )
+        eprintln("\{location} TODO: \{message}")
     }
 
     C.fflush(C.stdout)
@@ -34,13 +26,9 @@ todo :: (message := "", location := #caller_location) {
 
 unreachable :: (message := "", location := #caller_location) {
     if message == "" {
-        C.fprintf(C.stderr, "%.*s Unreachable\n".data, i32(location.count), location.data)
+        eprintln("\{location} Unreachable")
     } else {
-        C.fprintf(
-            C.stderr, "%.*s Unreachable: %.*s\n".data,
-            i32(location.count), location.data,
-            i32(message.count), message.data,
-        )
+        eprintln("\{location} Unreachable: \{message}")
     }
 
     C.fflush(C.stdout)
@@ -50,6 +38,12 @@ unreachable :: (message := "", location := #caller_location) {
 
 wprint :: (f: C.File, vs: ...any) {
     write :: (f: C.File, data: rawptr, type: Type, nested: bool) {
+        if type == Source_Code_Location {
+            l := &Source_Code_Location(data)
+            C.fprintf(f, "%.*s:%ld:%ld:".data, i32(l.path.count), l.path.data, l.row, l.col)
+            return
+        }
+
         v := type.variant
         if v == {
         case null

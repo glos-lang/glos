@@ -54,6 +54,8 @@ typedef struct {
     size_t            type_info_variants[COUNT_TYPES];
     const Type_Union *type_info_variants_union;
 
+    Type source_code_location_type;
+
     // Rest all are only used by compiler
     Cmd        *cmd;
     Link_Flags *link_flags;
