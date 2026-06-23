@@ -1,0 +1,6 @@
+Foo :: enum {
+    Bar
+    Baz
+}
+
+Baz :: method (_: Foo) {}

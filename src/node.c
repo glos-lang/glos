@@ -756,7 +756,15 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
 
     case NODE_FN: {
         Node_Fn *fn = (Node_Fn *) n;
-        fprintf(f, "Function {\n");
+        if (fn->is_inline) {
+            fprintf(f, "Inline ");
+        }
+
+        if (fn->is_method) {
+            fprintf(f, "Method {\n");
+        } else {
+            fprintf(f, "Function {\n");
+        }
         nodes_debug_impl(f, fn->args, depth + 1, "Args");
         nodes_debug_impl(f, fn->returns, depth + 1, "Returns");
         node_debug_impl(f, fn->body, depth + 1, "Body");

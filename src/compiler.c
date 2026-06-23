@@ -507,26 +507,26 @@ static LLVMValueRef undo_load(LLVMValueRef value) {
     return ptr;
 }
 
+// The ABI should be stored into the function itself to prevent recomputation on every call
 static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
     assert(!type.ref && type.kind == TYPE_FN);
     Type_Fn *spec = type.spec.fn;
-    if (!spec->llvm) {
-        const void *checkpoint = temp_alloc(0);
 
-        abi_set_return_type(c, abi, spec->return_type);
-        for (size_t i = 0; i < spec->args_count; i++) {
-            abi_set_argument_type(c, abi, i, &spec->args[i].type);
-        }
+    const void *checkpoint = temp_alloc(0);
 
-        if (spec->variadics_kind == VARIADICS_UNTYPED) {
-            abi_set_variadic_at(abi, abi->actual_args_count);
-        }
-
-        abi->actual_args = temp_alloc(abi->actual_args_count * sizeof(*abi->actual_args));
-        spec->llvm = abi_finalize(c, abi);
-
-        temp_reset(checkpoint);
+    abi_set_return_type(c, abi, spec->return_type);
+    for (size_t i = 0; i < spec->args_count; i++) {
+        abi_set_argument_type(c, abi, i, &spec->args[i].type);
     }
+
+    if (spec->variadics_kind == VARIADICS_UNTYPED) {
+        abi_set_variadic_at(abi, abi->actual_args_count);
+    }
+
+    abi->actual_args = temp_alloc(abi->actual_args_count * sizeof(*abi->actual_args));
+    spec->llvm = abi_finalize(c, abi);
+
+    temp_reset(checkpoint);
     return spec->llvm;
 }
 
@@ -1625,15 +1625,6 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
 }
 
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
-    Token token = {0};
-    if (n->kind == NODE_ATOM) {
-        token = n->token;
-    } else if (n->kind == NODE_MEMBER) {
-        token = ((Node_Member *) n)->field;
-    } else {
-        unreachable();
-    }
-
     assert(definition);
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
@@ -1654,7 +1645,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
                 return definition->definition_spec->llvm;
             }
 
-            set_debug_pos(c, token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 
         default:
@@ -1671,7 +1662,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
             return definition->ghost_llvm;
         }
 
-        set_debug_pos(c, token.pos);
+        set_debug_pos(c, n->token.pos);
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->ghost_llvm, "");
     }
 
@@ -1683,7 +1674,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
         return definition->definition_spec->llvm;
     }
 
-    set_debug_pos(c, token.pos);
+    set_debug_pos(c, n->token.pos);
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 
@@ -2174,7 +2165,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -2223,7 +2214,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -2364,7 +2355,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 77, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -2412,7 +2403,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 77, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -2443,7 +2434,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 77, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -2549,7 +2540,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -2589,6 +2580,10 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             return compile_ident(c, n, member->module_access_definition, ref);
         }
 
+        if (member->method && member->lhs->type.is_meta) {
+            return compile_fn(c, member->method);
+        }
+
         LLVMValueRef lhs = NULL;
         LLVMTypeRef  lhs_type = NULL;
 
@@ -2608,9 +2603,31 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             compile_type(c, &type);
             lhs_type = type.llvm;
         } else {
-            lhs = compile_expr(c, member->lhs, true);
+            lhs = compile_expr(c, member->lhs, !member->method);
             lhs_type = member->lhs->type.llvm;
             set_debug_pos(c, n->token.pos);
+        }
+
+        if (member->method) {
+            assert(member->method->node.type.kind == TYPE_FN);
+            const Type_Fn *spec = member->method->node.type.spec.fn;
+
+            assert(spec->args_count);
+            const size_t expected_ref = spec->args[0].type.ref;
+            const size_t actual_ref = member->lhs->type.ref;
+
+            LLVMValueRef value = lhs;
+            if (actual_ref < expected_ref) {
+                value = undo_load(value);
+            } else if (actual_ref > expected_ref) {
+                for (size_t i = expected_ref; i + 1 < actual_ref; i++) {
+                    value = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), value, "");
+                }
+                value = LLVMBuildLoad2(c->llvm_builder, member->lhs->type.llvm, value, "");
+            }
+
+            member->method_receiver_llvm = value;
+            return compile_fn(c, member->method);
         }
 
         if (member->lhs->type.kind == TYPE_ANY) {
@@ -2690,7 +2707,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         if (member->lhs->type.kind == TYPE_ANY && member->field_index == 1) {
             return ptr;
         }
-
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
     }
 
@@ -2816,12 +2832,22 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         }
         Typed_LLVM_Value *args = temp_alloc(args_count * sizeof(*args));
 
+        size_t args_iota = 0;
+        if (call->fn->kind == NODE_MEMBER) {
+            Node_Member *member = (Node_Member *) call->fn;
+            if (member->method) {
+                assert(member->method_receiver_llvm);
+                args[args_iota].value = member->method_receiver_llvm;
+
+                assert(fn_spec->args_count);
+                args[args_iota].type = fn_spec->args[0].type;
+                args_iota++;
+            }
+        }
+
         LLVMTypeRef  variadics_type = NULL;
         LLVMValueRef variadics_memory = NULL;
         if (fn_spec->variadics_kind == VARIADICS_TYPED && !call->do_not_allocate_typed_variadic_array) {
-            // TODO: This will be all so wrong once named arguments are implemented, but that is a problem for future
-            // me. Just implement something that works. It can be made rigorous and correct later.
-
             Type *type = &fn_spec->args[fn_spec->variadics_index].type;
             assert(type->kind == TYPE_SLICE);
             variadics_type = compile_type(c, type->spec.slice.element);
@@ -2845,7 +2871,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             args[fn_spec->variadics_index] = arg;
         }
 
-        size_t args_iota = 0;
         for (Node *arg = call->args.head; arg; arg = arg->next) {
             if (arg->kind == NODE_BINARY && arg->token.kind == TOKEN_SET) {
                 const size_t index = arg->token.as.integer;
@@ -3850,6 +3875,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     ht_free(&c->llvm_debug_files);
     ht_free(&c->type_info_cache);
+    ht_free(&c->methods);
     da_free(&c->context.locals);
     da_free(&c->struct_fields);
     da_free(&c->arg_values);

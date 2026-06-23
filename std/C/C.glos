@@ -1,4 +1,4 @@
-File :: #distinct rawptr
+File :: distinct rawptr
 
 extern {
     printf :: (fmt: &char, ...) -> i32

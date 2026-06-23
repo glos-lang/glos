@@ -1,0 +1,22 @@
+Counter :: struct {
+    n: i64
+}
+
+get :: method (c: &Counter) -> i64 {
+    c.n += 1
+    return c.n - 1
+}
+
+main :: () {
+    c: Counter
+    println(c.get())
+    println(c.get())
+
+    f := c.get
+    println(f(&c))
+    println(f(&c))
+
+    g :: Counter.get
+    println(g(&c))
+    println(g(&c))
+}

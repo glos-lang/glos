@@ -112,6 +112,10 @@ uint64_t ht_hasheq_sv(const void *va, const void *vb, size_t n) {
     return ht_hasheq_bytes(a.data, NULL, a.count);
 }
 
+uint64_t ht_hash_combine(uint64_t a, uint64_t b) {
+    return a ^ (b + 0x9E3779B97F4A7C15ULL + (a << 6) + (a >> 2));
+}
+
 void *ht_get_impl(void *data, size_t capacity, HT_Layout layout, HT_Hasheq hasheq, const void *key) {
     uint8_t *entry = (uint8_t *) ht_find_impl(data, capacity, layout, hasheq, key);
     return (entry && *entry == HT_OCCUPIED) ? entry + layout.value_offset : NULL;

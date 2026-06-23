@@ -47,7 +47,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 77, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -691,7 +691,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 77, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -729,9 +729,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_DOT: {
-        node = node_alloc(p->arena, NODE_MEMBER, token);
+        // TODO: Do not allow `case`
+        node = node_alloc(p->arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE));
         Node_Member *member = (Node_Member *) node;
-        member->field = expect_token(p, TOKEN_IDENT, TOKEN_CASE);
+        member->dot = token;
     } break;
 
     case TOKEN_SUB:
@@ -751,10 +752,28 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         unary->value = parse_expr(p, POWER_REF, false, compounds_allowed, NULL);
     } break;
 
-    case TOKEN_DIRECTIVE_DISTINCT: {
+    case TOKEN_DISTINCT: {
         node = node_alloc(p->arena, NODE_DISTINCT, token);
         Node_Distinct *distinct = (Node_Distinct *) node;
         distinct->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+
+        static_assert(COUNT_NODES == 27, "");
+        switch (distinct->value->kind) {
+        case NODE_ENUM:
+        case NODE_UNION:
+        case NODE_STRUCT:
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Redundant application of %s to %s\n",
+                Pos_Arg(token.pos),
+                token_kind_to_cstr(token.kind),
+                token_kind_to_cstr(distinct->value->token.kind));
+            exit(1);
+            break;
+
+        default:
+            break;
+        }
     } break;
 
     case TOKEN_LPAREN: {
@@ -986,7 +1005,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
     } break;
 
-    case TOKEN_DIRECTIVE_INLINE: {
+    case TOKEN_INLINE: {
         node = parse_expr(p, POWER_DOT, false, false, NULL);
         if (node->kind != NODE_FN) {
             fprintf(
@@ -999,24 +1018,47 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         Node_Fn *fn = (Node_Fn *) node;
         if (p->state.in_extern) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Cannot apply %s to an external function\n",
-                Pos_Arg(token.pos),
-                token_kind_to_cstr(token.kind));
+            fprintf(stderr, Pos_Fmt "ERROR: External function cannot be inlined\n", Pos_Arg(token.pos));
             exit(1);
         }
 
         if (fn->is_type) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be inlined\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        fn->is_inline = true;
+    } break;
+
+    case TOKEN_METHOD: {
+        if (p->state.fn_current) {
+            fprintf(stderr, Pos_Fmt "ERROR: Local function cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        node = parse_expr(p, POWER_DOT, false, false, NULL);
+        if (node->kind != NODE_FN) {
             fprintf(
                 stderr,
-                Pos_Fmt "ERROR: Cannot apply %s to a type\n",
+                Pos_Fmt "ERROR: Expected function literal after %s\n",
                 Pos_Arg(token.pos),
                 token_kind_to_cstr(token.kind));
             exit(1);
         }
 
-        fn->is_inline = true;
+        Node_Fn *fn = (Node_Fn *) node;
+        if (fn->is_type) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        if (!fn->args.head) {
+            fprintf(stderr, Pos_Fmt "ERROR: Function with no arguments cannot be a method\n", Pos_Arg(token.pos));
+            exit(1);
+        }
+
+        fn->is_method = true;
+        fn->method_keyword_pos = token.pos;
     } break;
 
     default:
@@ -1038,15 +1080,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            Node_Member *member = (Node_Member *) node_alloc(p->arena, NODE_MEMBER, token);
-            member->lhs = node;
+            // TODO: Do now allow `case`
+            Node_Member *member = (Node_Member *) node_alloc(
+                p->arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN));
 
-            token = expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN);
-            if (token.kind == TOKEN_LPAREN) {
+            member->lhs = node;
+            member->dot = token;
+            if (member->node.token.kind == TOKEN_LPAREN) {
                 member->rhs = parse_expr(p, POWER_SET, false, true, NULL);
                 expect_token(p, TOKEN_RPAREN);
-            } else {
-                member->field = token;
             }
             node = (Node *) member;
         } break;

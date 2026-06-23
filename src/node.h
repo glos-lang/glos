@@ -106,8 +106,7 @@ typedef struct {
 
     Type  *returns;
     size_t returns_count;
-
-    Type *return_type;
+    Type  *return_type;
 
     LLVMTypeRef llvm;
 } Type_Fn;
@@ -361,6 +360,8 @@ struct Node {
     Type      type;
     Node     *next;
 
+    bool is_memory;
+
     Type *emit_type_info;
 
     Type          *auto_cast_from;
@@ -458,8 +459,8 @@ typedef struct {
     Node  node;
     Node *lhs;
 
-    Token field; // Value.field
-    Node *rhs;   // Union.(Type)
+    Token dot;
+    Node *rhs; // Abstract.(Type)
 
     union {
         size_t field_index;
@@ -471,6 +472,9 @@ typedef struct {
     // Foo.bar
     //     ^
     Node_Atom *module_access_definition;
+
+    Node_Fn     *method;
+    LLVMValueRef method_receiver_llvm;
 
     bool is_enum;
 } Node_Member;
@@ -518,6 +522,9 @@ struct Node_Fn {
     bool is_type;
     bool is_extern;
     bool is_inline;
+
+    bool is_method;
+    Pos  method_keyword_pos;
 
     Node_Fn *outer_fn;
 
