@@ -729,9 +729,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_DOT: {
-        node = node_alloc(p->arena, NODE_MEMBER, token);
+        // TODO: Do not allow `case`
+        node = node_alloc(p->arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE));
         Node_Member *member = (Node_Member *) node;
-        member->field = expect_token(p, TOKEN_IDENT, TOKEN_CASE);
+        member->dot = token;
     } break;
 
     case TOKEN_SUB:
@@ -1079,15 +1080,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            Node_Member *member = (Node_Member *) node_alloc(p->arena, NODE_MEMBER, token);
-            member->lhs = node;
+            // TODO: Do now allow `case`
+            Node_Member *member = (Node_Member *) node_alloc(
+                p->arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN));
 
-            token = expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN);
-            if (token.kind == TOKEN_LPAREN) {
+            member->lhs = node;
+            member->dot = token;
+            if (member->node.token.kind == TOKEN_LPAREN) {
                 member->rhs = parse_expr(p, POWER_SET, false, true, NULL);
                 expect_token(p, TOKEN_RPAREN);
-            } else {
-                member->field = token;
             }
             node = (Node *) member;
         } break;

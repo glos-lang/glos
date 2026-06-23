@@ -1625,15 +1625,6 @@ static void compile_panic(Compiler *c, const char *fmt, LLVMValueRef v1, LLVMVal
 }
 
 static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref) {
-    Token token = {0};
-    if (n->kind == NODE_ATOM) {
-        token = n->token;
-    } else if (n->kind == NODE_MEMBER) {
-        token = ((Node_Member *) n)->field;
-    } else {
-        unreachable();
-    }
-
     assert(definition);
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
@@ -1654,7 +1645,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
                 return definition->definition_spec->llvm;
             }
 
-            set_debug_pos(c, token.pos);
+            set_debug_pos(c, n->token.pos);
             return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 
         default:
@@ -1671,7 +1662,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
             return definition->ghost_llvm;
         }
 
-        set_debug_pos(c, token.pos);
+        set_debug_pos(c, n->token.pos);
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->ghost_llvm, "");
     }
 
@@ -1683,7 +1674,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
         return definition->definition_spec->llvm;
     }
 
-    set_debug_pos(c, token.pos);
+    set_debug_pos(c, n->token.pos);
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, definition->definition_spec->llvm, "");
 }
 

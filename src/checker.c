@@ -214,7 +214,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         if (member->is_enum) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
             assert(type_kind_eq(expected, TYPE_ENUM));
-            member->enum_value = get_enum_value(expected.spec.enumm.definition, member->field.sv, &member->field);
+            member->enum_value = get_enum_value(expected.spec.enumm.definition, n->token.sv, &n->token);
             n->type = expected;
         } else {
             assert(member->module_access_definition); // Must be a module access
@@ -1144,9 +1144,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         case CONST_VALUE_ARRAY:
             if (member->field_index == 0) {
                 fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
-                    Pos_Arg(member->field.pos));
+                    stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
                 exit(1);
             } else if (member->field_index == 1) {
                 return const_value_int(lhs.as.array.count);
@@ -1157,9 +1155,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         case CONST_VALUE_STRING:
             if (member->field_index == 0) {
                 fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
-                    Pos_Arg(member->field.pos));
+                    stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
                 exit(1);
             } else if (member->field_index == 1) {
                 return const_value_int(lhs.as.string.count);
@@ -1188,9 +1184,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
                 return const_value_int(0);
             } else if (member->field_index == 1) {
                 fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n",
-                    Pos_Arg(member->field.pos));
+                    stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
                 exit(1);
             } else {
                 unreachable();
@@ -2075,7 +2069,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         member = (Node_Member *) n;
         assert(member->lhs->type.kind == TYPE_MODULE);
 
-        token = member->field;
+        token = n->token;
         module = member->lhs->type.spec.module;
         importing = true;
     } else {
@@ -2672,8 +2666,8 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
             exit(1);
         }
     } else {
-        if (sv_match(m->field.sv, "_")) {
-            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(m->field.pos));
+        if (sv_match(m->node.token.sv, "_")) {
+            fprintf(stderr, Pos_Fmt "ERROR: Field '_' cannot be accessed\n", Pos_Arg(m->node.token.pos));
             exit(1);
         }
     }
@@ -3045,7 +3039,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
                 const Method_Spec spec = {
                     .owner = receiver_node,
-                    .name = member->field.sv,
+                    .name = n->token.sv,
                 };
 
                 Node_Fn **method = ht_get(&c->methods, spec);
@@ -3063,7 +3057,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         fprintf(
                             stderr,
                             Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
-                            Pos_Arg(member->field.pos));
+                            Pos_Arg(n->token.pos));
                         fprintf(
                             stderr,
                             Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
@@ -3077,7 +3071,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         fprintf(
                             stderr,
                             Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
-                            Pos_Arg(member->field.pos));
+                            Pos_Arg(n->token.pos));
                         fprintf(
                             stderr,
                             Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
@@ -3100,7 +3094,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
                     check_whether_member_access_is_valid(member);
                     Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
-                    member->enum_value = get_enum_value(enumm, member->field.sv, &member->field);
+                    member->enum_value = get_enum_value(enumm, n->token.sv, &n->token);
                     member->is_enum = true;
                     n->type = member->lhs->type;
                     n->type.is_meta = false;
@@ -3112,14 +3106,14 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         n->type = member->rhs->type;
                         n->type.is_meta = false;
                     } else {
-                        if (sv_match(member->field.sv, "case")) {
+                        if (sv_match(n->token.sv, "case")) {
                             n->type = c->type_info_pointer_type;
                             member->field_index = 0;
-                        } else if (sv_match(member->field.sv, "data")) {
+                        } else if (sv_match(n->token.sv, "data")) {
                             n->type = (Type) {.kind = TYPE_RAWPTR};
                             member->field_index = 1;
                         } else {
-                            error_undefined(&member->field, "field", false);
+                            error_undefined(&n->token, "field", false);
                         }
 
                         if (ref != REF_NONE) {
@@ -3141,11 +3135,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         n->type = member->rhs->type;
                         n->type.is_meta = false;
                     } else {
-                        if (sv_match(member->field.sv, "case")) {
+                        if (sv_match(n->token.sv, "case")) {
                             n->type = (Type) {.kind = TYPE_I64};
                             member->field_index = 0;
                         } else {
-                            error_undefined(&member->field, "field or method", false);
+                            error_undefined(&n->token, "field or method", false);
                         }
                     }
                 } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
@@ -3155,7 +3149,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     Type_Struct *spec = member->lhs->type.spec.structt;
                     for (size_t i = 0; i < spec->fields_count; i++) {
                         Type_Struct_Field *it = &spec->fields[i];
-                        if (sv_eq(it->name, member->field.sv)) {
+                        if (sv_eq(it->name, n->token.sv)) {
                             definition = it;
                             member->field_index = i;
                             break;
@@ -3163,7 +3157,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
 
                     if (!definition) {
-                        error_undefined(&member->field, "field or method", true);
+                        error_undefined(&n->token, "field or method", true);
                         fprintf(
                             stderr,
                             Pos_Fmt "NOTE: Structure defined here\n",
@@ -3174,38 +3168,38 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     n->type = definition->type;
                 } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
                     check_whether_member_access_is_valid(member);
-                    if (sv_match(member->field.sv, "data")) {
+                    if (sv_match(n->token.sv, "data")) {
                         n->type = *member->lhs->type.spec.array.element;
                         n->type.ref++;
                         member->field_index = 0;
-                    } else if (sv_match(member->field.sv, "count")) {
+                    } else if (sv_match(n->token.sv, "count")) {
                         n->type = (Type) {.kind = TYPE_I64};
                         member->field_index = 1;
                     } else {
-                        error_undefined(&member->field, "field", false);
+                        error_undefined(&n->token, "field", false);
                     }
                 } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
                     check_whether_member_access_is_valid(member);
-                    if (sv_match(member->field.sv, "data")) {
+                    if (sv_match(n->token.sv, "data")) {
                         n->type = *member->lhs->type.spec.slice.element;
                         n->type.ref++;
                         member->field_index = 0;
-                    } else if (sv_match(member->field.sv, "count")) {
+                    } else if (sv_match(n->token.sv, "count")) {
                         n->type = (Type) {.kind = TYPE_I64};
                         member->field_index = 1;
                     } else {
-                        error_undefined(&member->field, "field", false);
+                        error_undefined(&n->token, "field", false);
                     }
                 } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
                     check_whether_member_access_is_valid(member);
-                    if (sv_match(member->field.sv, "data")) {
+                    if (sv_match(n->token.sv, "data")) {
                         n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
                         member->field_index = 0;
-                    } else if (sv_match(member->field.sv, "count")) {
+                    } else if (sv_match(n->token.sv, "count")) {
                         n->type = (Type) {.kind = TYPE_I64};
                         member->field_index = 1;
                     } else {
-                        error_undefined(&member->field, "field", false);
+                        error_undefined(&n->token, "field", false);
                     }
                 } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
                     check_whether_member_access_is_valid(member);
@@ -3222,7 +3216,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         if (receiver_node) {
                             const Method_Spec method_spec = {
                                 .owner = receiver_node,
-                                .name = member->field.sv,
+                                .name = n->token.sv,
                             };
 
                             Node_Fn **method = ht_get(&c->methods, method_spec);
@@ -3251,7 +3245,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             if (expected_type && type_kind_eq(*expected_type, TYPE_ENUM)) {
                 Node_Enum *enumm = expected_type->spec.enumm.definition;
-                member->enum_value = get_enum_value(enumm, member->field.sv, &member->field);
+                member->enum_value = get_enum_value(enumm, n->token.sv, &n->token);
                 n->type = *expected_type;
             }
         }

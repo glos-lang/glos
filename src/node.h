@@ -459,8 +459,8 @@ typedef struct {
     Node  node;
     Node *lhs;
 
-    Token field; // Value.field
-    Node *rhs;   // Union.(Type)
+    Token dot;
+    Node *rhs; // Abstract.(Type)
 
     union {
         size_t field_index;
