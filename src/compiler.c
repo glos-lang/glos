@@ -1531,6 +1531,8 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             } break;
 
             case 1: {
+                bool stored = false;
+
                 compile_var_def(c, it);
                 LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
                 if (type_is_compound(it->node.type)) {
@@ -1542,14 +1544,24 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
                         if (abi_size > 8) {
                             LLVMValueRef memory = compile_alloca(c, abi_type);
                             LLVMBuildStore(c->llvm_builder, value, memory);
-                            value = LLVMBuildLoad2(c->llvm_builder, var_type, memory, "");
+                            LLVMBuildMemCpy(
+                                c->llvm_builder,
+                                it->definition_spec->llvm,
+                                LLVMABIAlignmentOfType(c->llvm_target_data, var_type),
+                                memory,
+                                LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), var_size, true));
+                            stored = true;
                         } else {
                             value = LLVMBuildTrunc(
                                 c->llvm_builder, value, LLVMIntTypeInContext(c->llvm_context, var_size * 8), "");
                         }
                     }
                 }
-                LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+
+                if (!stored) {
+                    LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+                }
             } break;
 
             case 2: {
