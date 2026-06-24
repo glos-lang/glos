@@ -9,7 +9,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#include "llvm-c/Target.h"
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>
@@ -1535,11 +1534,19 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
                 compile_var_def(c, it);
                 LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
                 if (type_is_compound(it->node.type)) {
-                    const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, it->node.type.llvm);
-                    const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, LLVMTypeOf(value));
+                    LLVMTypeRef  var_type = it->node.type.llvm;
+                    const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, var_type);
+                    LLVMTypeRef  abi_type = LLVMTypeOf(value);
+                    const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
                     if (abi_size > var_size) {
-                        value = LLVMBuildTrunc(
-                            c->llvm_builder, value, LLVMIntTypeInContext(c->llvm_context, var_size * 8), "");
+                        if (abi_size > 8) {
+                            LLVMValueRef memory = compile_alloca(c, abi_type);
+                            LLVMBuildStore(c->llvm_builder, value, memory);
+                            value = LLVMBuildLoad2(c->llvm_builder, var_type, memory, "");
+                        } else {
+                            value = LLVMBuildTrunc(
+                                c->llvm_builder, value, LLVMIntTypeInContext(c->llvm_context, var_size * 8), "");
+                        }
                     }
                 }
                 LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
@@ -2026,13 +2033,26 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
             if (type_is_compound(arg->type)) {
                 LLVMTypeRef  abi_type = arg_info.direct_types[0];
                 const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
-                const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, LLVMTypeOf(expr));
+                LLVMTypeRef  expr_type = LLVMTypeOf(expr);
+                const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, expr_type);
 
                 expr = undo_load(expr);
                 if (abi_size > expr_size) {
-                    expr =
-                        LLVMBuildLoad2(c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
-                    expr = LLVMBuildZExt(c->llvm_builder, expr, abi_type, "");
+                    if (abi_size > 8) {
+                        LLVMValueRef memory = compile_alloca(c, abi_type);
+                        LLVMBuildMemCpy(
+                            c->llvm_builder,
+                            memory,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                            expr,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, expr_type),
+                            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), expr_size, true));
+                        expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
+                    } else {
+                        expr = LLVMBuildLoad2(
+                            c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
+                        expr = LLVMBuildZExt(c->llvm_builder, expr, abi_type, "");
+                    }
                 } else {
                     expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
                 }
@@ -3907,3 +3927,5 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->defers);
     temp_reset(checkpoint);
 }
+
+// TODO: Link name for methods
