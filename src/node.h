@@ -448,7 +448,8 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
-    Node_Fn *overload;
+    Node_Fn  *overload;
+    Node_Fn **overloads;
 
     Node *any_check;
     Type *any_check_type;
@@ -507,6 +508,27 @@ typedef struct {
     bool   is_valid;
 } Node_Interpolation;
 
+typedef enum {
+    OPERATOR_NONE,
+
+    OPERATOR_ADD,
+    OPERATOR_SUB,
+    OPERATOR_MUL,
+    OPERATOR_DIV,
+    OPERATOR_MOD,
+
+    OPERATOR_GT,
+    OPERATOR_GE,
+    OPERATOR_LT,
+    OPERATOR_LE,
+    OPERATOR_EQ,
+    OPERATOR_NE,
+
+    COUNT_OPERATORS
+} Operator_Kind;
+
+SV operator_name_from_operator_kind(Operator_Kind op);
+
 struct Node_Fn {
     Node node;
 
@@ -526,7 +548,7 @@ struct Node_Fn {
     bool is_inline;
     bool is_method;
 
-    Token_Kind operator_overload;
+    Operator_Kind operator_kind;
 
     Node_Fn *outer_fn;
 

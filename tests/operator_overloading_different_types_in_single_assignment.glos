@@ -1,0 +1,31 @@
+main :: () {
+    a := Vec2 {34, 200}
+    b := Vec2 {35, 220}
+    c := Vec3 {34, 200, 600}
+    d := Vec3 {35, 220, 737}
+
+    a, c += b, d
+    println(a)
+    println(c)
+}
+
+Vec2 :: struct {
+    x, y: i32
+}
+
+Vec3 :: struct {
+    x, y, z: i32
+}
+
+operator + :: (this: Vec2, that: Vec2) -> Vec2 {
+    this.x += that.x
+    this.y += that.y
+    return this
+}
+
+operator + :: (this: Vec3, that: Vec3) -> Vec3 {
+    this.x += that.x
+    this.y += that.y
+    this.z += that.z
+    return this
+}

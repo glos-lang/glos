@@ -2143,6 +2143,37 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
     return result;
 }
 
+static LLVMValueRef compile_binary_with_overloaded_operator(
+    Compiler *c, Node_Binary *binary, size_t index, LLVMValueRef lhs, LLVMValueRef rhs) //
+{
+    Type     lhs_type = binary->lhs->type;
+    Type     rhs_type = binary->rhs->type;
+    Node_Fn *overload = binary->overload;
+    if (binary->overloads) {
+        overload = binary->overloads[index];
+
+        assert(lhs_type.kind == TYPE_GROUP && index < lhs_type.spec.group.count);
+        lhs_type = lhs_type.spec.group.data[index];
+
+        assert(rhs_type.kind == TYPE_GROUP && index < rhs_type.spec.group.count);
+        rhs_type = rhs_type.spec.group.data[index];
+    }
+
+    Typed_LLVM_Value fn = {0};
+    fn.value = compile_fn(c, overload);
+    fn.type = overload->node.type;
+
+    Typed_LLVM_Value args[2] = {0};
+    args[0].value = lhs;
+    args[0].type = lhs_type;
+
+    args[1].value = rhs;
+    args[1].type = rhs_type;
+
+    set_debug_pos(c, binary->node.token.pos);
+    return compile_call(c, fn, args, len(args), false);
+}
+
 static_assert(COUNT_NODES == 27, "");
 static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -2359,17 +2390,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 set_debug_pos(c, n->token.pos);
                 if (binary->overload) {
-                    Typed_LLVM_Value fn = {0};
-                    fn.value = compile_fn(c, binary->overload);
-                    fn.type = binary->overload->node.type;
-
-                    Typed_LLVM_Value args[2] = {0};
-                    args[0].value = lhs;
-                    args[0].type = binary->lhs->type;
-
-                    args[1].value = rhs;
-                    args[1].type = binary->rhs->type;
-                    result = compile_call(c, fn, args, len(args), false);
+                    result = compile_binary_with_overloaded_operator(c, binary, 0, lhs, rhs);
                 } else if (op.u && !type_is_signed(binary->lhs->type)) {
                     result = op.u(c->llvm_builder, lhs, rhs, "");
                 } else {
@@ -2407,17 +2428,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 set_debug_pos(c, n->token.pos);
                 if (binary->overload) {
-                    Typed_LLVM_Value fn = {0};
-                    fn.value = compile_fn(c, binary->overload);
-                    fn.type = binary->overload->node.type;
-
-                    Typed_LLVM_Value args[2] = {0};
-                    args[0].value = lhs;
-                    args[0].type = binary->lhs->type;
-
-                    args[1].value = rhs;
-                    args[1].type = binary->rhs->type;
-                    return compile_call(c, fn, args, len(args), false);
+                    return compile_binary_with_overloaded_operator(c, binary, 0, lhs, rhs);
                 } else if (op.u && !type_is_signed(binary->lhs->type)) {
                     return LLVMBuildICmp(c->llvm_builder, op.u, lhs, rhs, "");
                 } else {
@@ -2509,7 +2520,9 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                         LLVMValueRef rhs = c->group_values.data[group_values_rhs_start + i];
 
                         LLVMValueRef result = NULL;
-                        if (op.u && !type_is_signed(binary->lhs->type)) {
+                        if (binary->overloads[i]) {
+                            result = compile_binary_with_overloaded_operator(c, binary, i, lhs, rhs);
+                        } else if (op.u && !type_is_signed(binary->lhs->type)) {
                             result = op.u(c->llvm_builder, lhs, rhs, "");
                         } else {
                             result = op.i(c->llvm_builder, lhs, rhs, "");
@@ -2522,7 +2535,9 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     }
                 } else {
                     LLVMValueRef result = NULL;
-                    if (op.u && !type_is_signed(binary->lhs->type)) {
+                    if (binary->overload) {
+                        result = compile_binary_with_overloaded_operator(c, binary, 0, lhs, rhs);
+                    } else if (op.u && !type_is_signed(binary->lhs->type)) {
                         result = op.u(c->llvm_builder, lhs, rhs, "");
                     } else {
                         result = op.i(c->llvm_builder, lhs, rhs, "");

@@ -2228,17 +2228,124 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
+static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *spec, Module *defining_in_module) {
+    if (spec) {
+        spec->name = name;
+    }
+
+    if (type_kind_eq(receiver, TYPE_ENUM)) {
+        if (spec) {
+            spec->uid = (uintptr_t) receiver.spec.enumm.definition;
+        }
+
+        if (defining_in_module) {
+            return defining_in_module == receiver.spec.enumm.definition->module;
+        }
+        return true;
+    } else if (type_kind_eq(receiver, TYPE_UNION)) {
+        if (spec) {
+            spec->uid = (uintptr_t) receiver.spec.unionn->definition;
+        }
+
+        if (defining_in_module) {
+            return defining_in_module == receiver.spec.unionn->definition->module;
+        }
+        return true;
+    } else if (type_kind_eq(receiver, TYPE_STRUCT)) {
+        if (spec) {
+            spec->uid = (uintptr_t) receiver.spec.structt->definition;
+        }
+
+        if (defining_in_module) {
+            return defining_in_module == receiver.spec.structt->definition->module;
+        }
+        return true;
+    } else if (receiver.distinct) {
+        if (spec) {
+            spec->uid = (uintptr_t) receiver.distinct;
+        }
+
+        if (defining_in_module) {
+            return defining_in_module == receiver.distinct->module;
+        }
+        return true;
+    }
+
+    static const Type string_type = {.kind = TYPE_STRING};
+    if (type_eq(receiver, string_type)) {
+        if (spec) {
+            spec->uid = (uintptr_t) &string_type;
+        }
+
+        if (defining_in_module) {
+            return defining_in_module == c->builtin_module;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+static Node_Fn *get_operator_overload(Compiler *c, SV operator, Node *receiver, Pos *pos) {
+    Method_Spec spec = {0};
+    if (get_method_spec(c, receiver->type, operator, &spec, NULL)) {
+        Node_Fn **fn = ht_get(&c->methods_table, spec);
+        if (fn) {
+            return *fn;
+        }
+    }
+
+    check_that_type_is_known(receiver);
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Operator '" SV_Fmt "' is not defined for %s\n",
+        Pos_Arg(*pos),
+        SV_Arg(spec.name),
+        type_to_cstr(receiver->type));
+    exit(1);
+}
+
+static SV operator_name_from_token_kind(Token_Kind kind) {
+    static const char *names[COUNT_TOKENS] = {
+        [TOKEN_ADD] = "+",
+        [TOKEN_SUB] = "-",
+        [TOKEN_MUL] = "*",
+        [TOKEN_DIV] = "/",
+        [TOKEN_MOD] = "%",
+
+        [TOKEN_GT] = ">",
+        [TOKEN_GE] = ">=",
+        [TOKEN_LT] = "<",
+        [TOKEN_LE] = "<=",
+        [TOKEN_EQ] = "==",
+        [TOKEN_NE] = "!=",
+
+        [TOKEN_ADD_SET] = "+",
+        [TOKEN_SUB_SET] = "-",
+        [TOKEN_MUL_SET] = "*",
+        [TOKEN_DIV_SET] = "/",
+        [TOKEN_MOD_SET] = "%",
+    };
+
+    assert(kind > TOKEN_EOF && kind < COUNT_TOKENS);
+    return sv_from_cstr(names[kind]);
+}
+
+static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token_Kind op) {
     switch (op) {
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:
-        type_assert_numeric(n, true);
+        if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
+            return get_operator_overload(c, operator_name_from_token_kind(op), n, &n->token.pos);
+        }
         break;
 
     case TOKEN_MUL_SET:
     case TOKEN_DIV_SET:
     case TOKEN_MOD_SET:
-        type_assert_numeric(n, false);
+        if (!type_is_numeric(n->type)) {
+            return get_operator_overload(c, operator_name_from_token_kind(op), n, &n->token.pos);
+        }
         break;
 
     case TOKEN_SHL_SET:
@@ -2252,6 +2359,8 @@ static void check_assignment_lhs_for_arithmetics(Node *n, Token_Kind op) {
         // Pass
         break;
     }
+
+    return NULL;
 }
 
 static void check_assignment(Compiler *c, Node_Binary *binary) {
@@ -2268,6 +2377,10 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
     }
 
     if (is_lhs_group) {
+        if (binary->node.token.kind != TOKEN_SET) {
+            binary->overloads = arena_alloc(c->arena, lhs_count * sizeof(*binary->overloads));
+        }
+
         assert(is_rhs_group);
         for (size_t i = 0; i < lhs_count; i++) {
             i64   lhs_group_index = -1;
@@ -2275,11 +2388,14 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
             i64   rhs_group_index = -1;
             Node *rhs = get_node_from_group(binary->rhs, i, &rhs_group_index);
             type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
-            check_assignment_lhs_for_arithmetics(lhs, binary->node.token.kind);
+
+            if (binary->overloads) {
+                binary->overloads[i] = check_assignment_lhs_for_arithmetics(c, lhs, binary->node.token.kind);
+            }
         }
     } else {
         type_assert(c, binary->rhs, binary->lhs->type);
-        check_assignment_lhs_for_arithmetics(binary->lhs, binary->node.token.kind);
+        binary->overload = check_assignment_lhs_for_arithmetics(c, binary->lhs, binary->node.token.kind);
     }
 
     binary->node.type = (Type) {.kind = TYPE_UNIT};
@@ -2698,83 +2814,7 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     }
 }
 
-static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *spec, Module *defining_in_module) {
-    if (spec) {
-        spec->name = name;
-    }
-
-    if (type_kind_eq(receiver, TYPE_ENUM)) {
-        if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.enumm.definition;
-        }
-
-        if (defining_in_module) {
-            return defining_in_module == receiver.spec.enumm.definition->module;
-        }
-        return true;
-    } else if (type_kind_eq(receiver, TYPE_UNION)) {
-        if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.unionn->definition;
-        }
-
-        if (defining_in_module) {
-            return defining_in_module == receiver.spec.unionn->definition->module;
-        }
-        return true;
-    } else if (type_kind_eq(receiver, TYPE_STRUCT)) {
-        if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.structt->definition;
-        }
-
-        if (defining_in_module) {
-            return defining_in_module == receiver.spec.structt->definition->module;
-        }
-        return true;
-    } else if (receiver.distinct) {
-        if (spec) {
-            spec->uid = (uintptr_t) receiver.distinct;
-        }
-
-        if (defining_in_module) {
-            return defining_in_module == receiver.distinct->module;
-        }
-        return true;
-    }
-
-    static const Type string_type = {.kind = TYPE_STRING};
-    if (type_eq(receiver, string_type)) {
-        if (spec) {
-            spec->uid = (uintptr_t) &string_type;
-        }
-
-        if (defining_in_module) {
-            return defining_in_module == c->builtin_module;
-        }
-        return true;
-    }
-
-    return false;
-}
-
-static Node_Fn *get_operator_overload(Compiler *c, Node *n, Node *receiver) {
-    Method_Spec spec = {0};
-    if (get_method_spec(c, receiver->type, n->token.sv, &spec, NULL)) {
-        Node_Fn **fn = ht_get(&c->methods_table, spec);
-        if (fn) {
-            return *fn;
-        }
-    }
-
-    check_that_type_is_known(receiver);
-    fprintf(
-        stderr,
-        Pos_Fmt "ERROR: Operator '" SV_Fmt "' is not defined for %s\n",
-        Pos_Arg(n->token.pos),
-        SV_Arg(spec.name),
-        type_to_cstr(receiver->type));
-    exit(1);
-}
-
+static_assert(COUNT_OPERATORS == 12, "");
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
 static_assert(COUNT_NODES == 27, "");
@@ -2993,7 +3033,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, expected_type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
-                binary->overload = get_operator_overload(c, n, binary->lhs);
+                binary->overload =
+                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
             }
             n->type = binary->lhs->type;
             break;
@@ -3005,7 +3046,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, expected_type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type)) {
-                binary->overload = get_operator_overload(c, n, binary->lhs);
+                binary->overload =
+                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
             }
             n->type = binary->lhs->type;
             break;
@@ -3028,7 +3070,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, &binary->lhs->type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
-                binary->overload = get_operator_overload(c, n, binary->lhs);
+                binary->overload =
+                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
             }
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
@@ -3069,7 +3112,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 if (try_auto_cast_type_to_rtti(c, binary->lhs, c->type_info_pointer_type)) {
                     assert(try_auto_cast_type_to_rtti(c, binary->rhs, c->type_info_pointer_type));
                 } else if (!type_is_scalar(binary->lhs->type)) {
-                    binary->overload = get_operator_overload(c, n, binary->lhs);
+                    binary->overload = get_operator_overload(
+                        c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
                 }
             }
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -3483,14 +3527,14 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 fn->defined_as->definition_spec->check_status = CHECKED;
             }
 
-            if (fn->operator_overload) {
+            if (fn->operator_kind) {
                 static_assert(COUNT_TOKENS == 77, "");
-                switch (fn->operator_overload) {
-                case TOKEN_ADD:
-                case TOKEN_SUB:
-                case TOKEN_MUL:
-                case TOKEN_DIV:
-                case TOKEN_MOD: {
+                switch (fn->operator_kind) {
+                case OPERATOR_ADD:
+                case OPERATOR_SUB:
+                case OPERATOR_MUL:
+                case OPERATOR_DIV:
+                case OPERATOR_MOD: {
                     if (fn_spec->args_count != 2) {
                         fprintf(
                             stderr,
@@ -3528,12 +3572,12 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
                 } break;
 
-                case TOKEN_GT:
-                case TOKEN_GE:
-                case TOKEN_LT:
-                case TOKEN_LE:
-                case TOKEN_EQ:
-                case TOKEN_NE: {
+                case OPERATOR_GT:
+                case OPERATOR_GE:
+                case OPERATOR_LT:
+                case OPERATOR_LE:
+                case OPERATOR_EQ:
+                case OPERATOR_NE: {
                     if (fn_spec->args_count != 2) {
                         fprintf(
                             stderr,

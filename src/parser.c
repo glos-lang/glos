@@ -1475,20 +1475,51 @@ static Node *parse_stmt(Parser *p) {
         local_assert(p, false, token, NULL);
         token = next_token(p);
 
+        Operator_Kind op = OPERATOR_NONE;
         static_assert(COUNT_TOKENS == 77, "");
         switch (token.kind) {
         case TOKEN_ADD:
+            op = OPERATOR_ADD;
+            break;
+
         case TOKEN_SUB:
+            op = OPERATOR_SUB;
+            break;
+
         case TOKEN_MUL:
+            op = OPERATOR_MUL;
+            break;
+
         case TOKEN_DIV:
+            op = OPERATOR_DIV;
+            break;
+
         case TOKEN_MOD:
+            op = OPERATOR_MOD;
+            break;
 
         case TOKEN_GT:
+            op = OPERATOR_GT;
+            break;
+
         case TOKEN_GE:
+            op = OPERATOR_GE;
+            break;
+
         case TOKEN_LT:
+            op = OPERATOR_LT;
+            break;
+
         case TOKEN_LE:
+            op = OPERATOR_LE;
+            break;
+
         case TOKEN_EQ:
+            op = OPERATOR_EQ;
+            break;
+
         case TOKEN_NE:
+            op = OPERATOR_NE;
             break;
 
         default:
@@ -1497,9 +1528,11 @@ static Node *parse_stmt(Parser *p) {
             break;
         }
 
+        token.kind = TOKEN_IDENT;
+        token.sv = operator_name_from_operator_kind(op);
+
         Node_Atom *name = (Node_Atom *) node_alloc(p->arena, NODE_ATOM, token);
         name->module = p->module_current;
-        name->node.token.kind = TOKEN_IDENT;
 
         node = parse_define(p, (Node *) name, expect_token(p, TOKEN_COLON), false, false, false);
         Node_Define *define = (Node_Define *) node;
@@ -1531,7 +1564,7 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        fn->operator_overload = token.kind;
+        fn->operator_kind = op;
     } break;
 
     case TOKEN_IF:
