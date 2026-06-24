@@ -220,3 +220,17 @@ eprint :: (vs: ...any) {
 eprintln :: (vs: ...any) {
     wprintln(C.stderr, ...vs)
 }
+
+// TODO: Logical (||), (&&)
+operator == :: inline (this: string, that: string) -> bool {
+    if this.count != that.count {
+        return false
+    }
+
+    return C.memcmp(rawptr(this.data), rawptr(that.data), this.count) == 0
+}
+
+// TODO: Infer !(==) overload
+operator != :: inline (this: string, that: string) -> bool {
+    return !(this == that)
+}

@@ -8,16 +8,6 @@ panic_handler :: (fmt: &char, v1: i64, v2: i64, v3: i64) {
     C.abort()
 }
 
-// TODO: There should be proper operator overloading
-// TODO: Logical (||), (&&)
-string_eq :: inline (a: &string, b: &string) -> bool {
-    if a.count != b.count {
-        return false
-    }
-
-    return C.memcmp(rawptr(a.data), rawptr(b.data), a.count) == 0
-}
-
 #link "main"
 main :: () -> i32 {
     #if PLATFORM == .Windows {

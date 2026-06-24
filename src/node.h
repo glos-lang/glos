@@ -448,6 +448,8 @@ typedef struct {
     Node *lhs;
     Node *rhs;
 
+    Node_Fn *overload;
+
     Node *any_check;
     Type *any_check_type;
 
@@ -523,6 +525,8 @@ struct Node_Fn {
     bool is_extern;
     bool is_inline;
     bool is_method;
+
+    Token_Kind operator_overload;
 
     Node_Fn *outer_fn;
 

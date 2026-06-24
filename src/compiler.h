@@ -24,8 +24,8 @@ typedef struct {
 } Type_Info;
 
 typedef struct {
-    Node *owner;
-    SV    name;
+    uintptr_t uid;
+    SV        name;
 } Method_Spec;
 
 typedef struct {
