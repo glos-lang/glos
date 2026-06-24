@@ -2686,20 +2686,50 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     }
 }
 
-static void get_receiver_node_and_module(Type receiver, Node **receiver_node, Module **receiver_module) {
-    if (type_kind_eq(receiver, TYPE_ENUM)) {
-        if (receiver_node) *receiver_node = (Node *) receiver.spec.enumm.definition;
-        if (receiver_module) *receiver_module = receiver.spec.enumm.definition->module;
-    } else if (type_kind_eq(receiver, TYPE_UNION)) {
-        if (receiver_node) *receiver_node = (Node *) receiver.spec.unionn->definition;
-        if (receiver_module) *receiver_module = receiver.spec.unionn->definition->module;
-    } else if (type_kind_eq(receiver, TYPE_STRUCT)) {
-        if (receiver_node) *receiver_node = (Node *) receiver.spec.structt->definition;
-        if (receiver_module) *receiver_module = receiver.spec.structt->definition->module;
-    } else if (receiver.distinct) {
-        if (receiver_node) *receiver_node = (Node *) receiver.distinct;
-        if (receiver_module) *receiver_module = receiver.distinct->module;
+static bool get_method_spec(Type receiver, SV name, Method_Spec *spec, Module *expected_module) {
+    if (spec) {
+        spec->name = name;
     }
+
+    if (type_kind_eq(receiver, TYPE_ENUM)) {
+        if (spec) {
+            spec->owner = (Node *) receiver.spec.enumm.definition;
+        }
+
+        if (expected_module) {
+            return expected_module == receiver.spec.enumm.definition->module;
+        }
+        return true;
+    } else if (type_kind_eq(receiver, TYPE_UNION)) {
+        if (spec) {
+            spec->owner = (Node *) receiver.spec.unionn->definition;
+        }
+
+        if (expected_module) {
+            return expected_module == receiver.spec.unionn->definition->module;
+        }
+        return true;
+    } else if (type_kind_eq(receiver, TYPE_STRUCT)) {
+        if (spec) {
+            spec->owner = (Node *) receiver.spec.structt->definition;
+        }
+
+        if (expected_module) {
+            return expected_module == receiver.spec.structt->definition->module;
+        }
+        return true;
+    } else if (receiver.distinct) {
+        if (spec) {
+            spec->owner = (Node *) receiver.distinct;
+        }
+
+        if (expected_module) {
+            return expected_module == receiver.distinct->module;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
@@ -3048,62 +3078,57 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
             // Method
             {
-                Node *receiver_node = NULL;
-                get_receiver_node_and_module(member->lhs->type, &receiver_node, NULL);
+                Method_Spec spec = {0};
+                if (get_method_spec(member->lhs->type, n->token.sv, &spec, NULL)) {
+                    Node_Fn **method = ht_get(&c->methods_table, spec);
+                    if (method) {
+                        member->method = *method;
+                        if (member->method->node.type.kind != TYPE_FN) {
+                            assert(member->method->defined_as);
+                            check_definition_if_needed(c, member->method->defined_as, REF_NONE);
+                        }
 
-                const Method_Spec spec = {
-                    .owner = receiver_node,
-                    .name = n->token.sv,
-                };
+                        n->type = member->method->node.type;
+                        assert(n->type.kind == TYPE_FN);
 
-                Node_Fn **method = ht_get(&c->methods_table, spec);
-                if (method) {
-                    member->method = *method;
-                    if (member->method->node.type.kind != TYPE_FN) {
-                        assert(member->method->defined_as);
-                        check_definition_if_needed(c, member->method->defined_as, REF_NONE);
+                        const Type_Fn *method_spec = n->type.spec.fn;
+                        assert(method_spec->args_count);
+
+                        const Type receiver_type = method_spec->args[0].type;
+                        if (receiver_type.ref > member->lhs->type.ref + 1) {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
+                                Pos_Arg(n->token.pos));
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
+                                Pos_Arg(member->lhs->token.pos),
+                                type_to_cstr(member->lhs->type),
+                                type_to_cstr(receiver_type));
+                            exit(1);
+                        }
+
+                        if (receiver_type.ref > member->lhs->type.ref && !member->lhs->is_memory) {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
+                                Pos_Arg(n->token.pos));
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
+                                Pos_Arg(member->lhs->token.pos),
+                                type_to_cstr(member->lhs->type),
+                                type_to_cstr(receiver_type));
+                            fprintf(
+                                stderr,
+                                Pos_Fmt
+                                "NOTE: This value does not exist in memory, therefore cannot take reference to it\n",
+                                Pos_Arg(member->lhs->token.pos));
+                            exit(1);
+                        }
+                        is_ref_valid = ref == REF_NONE;
                     }
-
-                    n->type = member->method->node.type;
-                    assert(n->type.kind == TYPE_FN);
-
-                    const Type_Fn *method_spec = n->type.spec.fn;
-                    assert(method_spec->args_count);
-
-                    const Type receiver_type = method_spec->args[0].type;
-                    if (receiver_type.ref > member->lhs->type.ref + 1) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
-                            Pos_Arg(n->token.pos));
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
-                            Pos_Arg(member->lhs->token.pos),
-                            type_to_cstr(member->lhs->type),
-                            type_to_cstr(receiver_type));
-                        exit(1);
-                    }
-
-                    if (receiver_type.ref > member->lhs->type.ref && !member->lhs->is_memory) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n",
-                            Pos_Arg(n->token.pos));
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
-                            Pos_Arg(member->lhs->token.pos),
-                            type_to_cstr(member->lhs->type),
-                            type_to_cstr(receiver_type));
-                        fprintf(
-                            stderr,
-                            Pos_Fmt
-                            "NOTE: This value does not exist in memory, therefore cannot take reference to it\n",
-                            Pos_Arg(member->lhs->token.pos));
-                        exit(1);
-                    }
-                    is_ref_valid = ref == REF_NONE;
                 }
             }
 
@@ -3228,16 +3253,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         Type receiver = member->lhs->type;
                         receiver.is_meta = false;
 
-                        Node *receiver_node = NULL;
-                        get_receiver_node_and_module(receiver, &receiver_node, NULL);
-
-                        if (receiver_node) {
-                            const Method_Spec method_spec = {
-                                .owner = receiver_node,
-                                .name = n->token.sv,
-                            };
-
-                            Node_Fn **method = ht_get(&c->methods_table, method_spec);
+                        Method_Spec spec = {0};
+                        if (get_method_spec(receiver, n->token.sv, &spec, NULL)) {
+                            Node_Fn **method = ht_get(&c->methods_table, spec);
                             if (method) {
                                 ok = true;
                                 member->method = *method;
@@ -4508,13 +4526,31 @@ void check_nodes(Compiler *c) {
             check_expr(c, define->type, REF_NONE, NULL);
             type_assert_type(define->type);
             define->type->type.is_meta = false;
-
             const Type receiver_type = define->type->type;
-            Node      *receiver_node = NULL;
-            Module    *receiver_module = NULL;
-            get_receiver_node_and_module(receiver_type, &receiver_node, &receiver_module);
 
-            if (receiver_module != fn->module) {
+            Method_Spec spec = {0};
+            if (get_method_spec(receiver_type, name, &spec, fn->module)) {
+                if (type_kind_eq(receiver_type, TYPE_ENUM)) {
+                    ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
+                        if (sv_eq(it->token.sv, name)) {
+                            error_redefinition((Node *) fn->defined_as, &it->token.pos);
+                        }
+                    }
+                } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
+                    for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {
+                        const Type_Struct_Field it = receiver_type.spec.structt->fields[i];
+                        if (sv_eq(it.name, name)) {
+                            error_redefinition((Node *) fn->defined_as, &it.pos);
+                        }
+                    }
+                }
+
+                Node_Fn **previous = ht_get(&c->methods_table, spec);
+                if (previous) {
+                    error_redefinition((Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
+                }
+                ht_set(&c->methods_table, spec, fn);
+            } else {
                 fprintf(
                     stderr,
                     Pos_Fmt "ERROR: Can only define methods on types defined in the same module\n",
@@ -4525,32 +4561,6 @@ void check_nodes(Compiler *c) {
                     Pos_Arg(define->name->token.pos));
                 exit(1);
             }
-
-            if (type_kind_eq(receiver_type, TYPE_ENUM)) {
-                ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
-                    if (sv_eq(it->token.sv, name)) {
-                        error_redefinition((Node *) fn->defined_as, &it->token.pos);
-                    }
-                }
-            } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
-                for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {
-                    const Type_Struct_Field it = receiver_type.spec.structt->fields[i];
-                    if (sv_eq(it.name, name)) {
-                        error_redefinition((Node *) fn->defined_as, &it.pos);
-                    }
-                }
-            }
-
-            const Method_Spec spec = {
-                .owner = receiver_node,
-                .name = name,
-            };
-
-            Node_Fn **previous = ht_get(&c->methods_table, spec);
-            if (previous) {
-                error_redefinition((Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
-            }
-            ht_set(&c->methods_table, spec, fn);
         }
     }
 
