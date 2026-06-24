@@ -2120,10 +2120,29 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
             LLVMAddCallSiteAttribute(result, args_iota, sret);
         } break;
 
-        case 1:
+        case 1: {
             memory = compile_alloca(c, fn_spec->return_type->llvm);
-            LLVMBuildStore(c->llvm_builder, result, memory);
-            break;
+
+            LLVMTypeRef  abi_type = return_info.direct_types[0];
+            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+
+            LLVMTypeRef  expr_type = fn_spec->return_type->llvm;
+            const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, expr_type);
+            if (abi_size > expr_size) {
+                assert(abi_size > 8); // The promotion of <8 bytes to 8 bytes only occurs for arguments in macOS
+                LLVMValueRef expr = compile_alloca(c, abi_type);
+                LLVMBuildStore(c->llvm_builder, result, expr);
+                LLVMBuildMemCpy(
+                    c->llvm_builder,
+                    memory,
+                    LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                    expr,
+                    LLVMABIAlignmentOfType(c->llvm_target_data, expr_type),
+                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), expr_size, true));
+            } else {
+                LLVMBuildStore(c->llvm_builder, result, memory);
+            }
+        } break;
 
         case 2: {
             memory = compile_alloca(c, fn_spec->return_type->llvm);
@@ -3713,13 +3732,37 @@ static void compile_stmt(Compiler *c, Node *n) {
                 LLVMBuildRetVoid(c->llvm_builder);
                 break;
 
-            case 1:
+            case 1: {
+                LLVMTypeRef  abi_type = abi.direct_types[0];
+                const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+
+                LLVMTypeRef  value_type = LLVMTypeOf(value);
+                const size_t value_size = LLVMABISizeOfType(c->llvm_target_data, value_type);
+
                 value = undo_load(value);
-                value = LLVMBuildLoad2(c->llvm_builder, abi.direct_types[0], value, "");
+                if (abi_size > value_size) {
+                    if (abi_size > 8) {
+                        LLVMValueRef memory = compile_alloca(c, abi_type);
+                        LLVMBuildMemCpy(
+                            c->llvm_builder,
+                            memory,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                            value,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, value_type),
+                            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value_size, true));
+                        value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+                    } else {
+                        value = LLVMBuildLoad2(
+                            c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, value_size * 8), value, "");
+                        value = LLVMBuildZExt(c->llvm_builder, value, abi_type, "");
+                    }
+                } else {
+                    value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+                }
                 compile_defers(c, c->defers_start, false);
                 set_debug_pos(c, n->token.pos);
                 LLVMBuildRet(c->llvm_builder, value);
-                break;
+            } break;
 
             case 2: {
                 LLVMTypeRef type =
