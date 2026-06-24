@@ -2059,7 +2059,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
                             expr,
                             LLVMABIAlignmentOfType(c->llvm_target_data, expr_type),
                             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), expr_size, true));
-                        expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
+                        expr = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
                     } else {
                         expr = LLVMBuildLoad2(
                             c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
@@ -3750,7 +3750,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                             value,
                             LLVMABIAlignmentOfType(c->llvm_target_data, value_type),
                             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value_size, true));
-                        value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+                        value = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
                     } else {
                         value = LLVMBuildLoad2(
                             c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, value_size * 8), value, "");
