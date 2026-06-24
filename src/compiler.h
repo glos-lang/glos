@@ -35,7 +35,8 @@ typedef struct {
 
     Type interpolated_string_type;
 
-    HT(Method_Spec, Node_Fn *) methods;
+    HT(Method_Spec, Node_Fn *) methods_table;
+    DA(Node_Fn *) methods_list;
 
     // These are used both by the analyzer and the compiler
     Arena  *arena;

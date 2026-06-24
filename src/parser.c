@@ -824,6 +824,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                         exit(1);
                     }
 
+                    if (define->expr) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: The receiver of a method cannot have a default value\n",
+                            Pos_Arg(define->expr->token.pos));
+                        exit(1);
+                    }
+
                     fn->is_method = true;
                 }
 

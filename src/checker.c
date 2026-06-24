@@ -1725,14 +1725,17 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                         error_redefinition((Node *) it, NULL);
                     }
 
-                    bool push_to_global_scope = true;
+                    bool is_method = false;
                     if (it->definition_spec->assignment_node && it->definition_spec->assignment_node->kind == NODE_FN) {
-                        if (((Node_Fn *) it->definition_spec->assignment_node)->is_method) {
-                            push_to_global_scope = false;
+                        Node_Fn *fn = (Node_Fn *) it->definition_spec->assignment_node;
+                        is_method = fn->is_method;
+
+                        if (is_method) {
+                            da_push(&c->methods_list, fn);
                         }
                     }
 
-                    if (push_to_global_scope) {
+                    if (!is_method) {
                         Node_Atom *previous = global_scope_find(&it->module->globals, it->node.token.sv);
                         if (previous) {
                             error_redefinition((Node *) it, &previous->node.token.pos);
@@ -2052,36 +2055,69 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
     it->definition_spec->check_status = CHECKED;
 }
 
+static void check_definition_if_needed(Compiler *c, Node_Atom *definition, Ref_Kind ref) {
+    switch (definition->definition_spec->check_status) {
+    case UNCHECKED: {
+        Context_Fn *context_fn_save = c->context.fn;
+        c->context.fn = definition->definition_spec->fn_context;
+
+        Context_Replace *context_replace_save = c->context.replace;
+        c->context.replace = definition->definition_spec->replace_context;
+
+        // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
+        assert(definition->definition_spec->definition_node->is_value_known_at_compile_time);
+
+        check_definition(
+            c,
+            definition,
+            definition->definition_spec->assignment_node,
+            definition->definition_spec->definition_node->type);
+
+        context_restore_fn(&c->context, context_fn_save);
+        c->context.replace = context_replace_save;
+    } break;
+
+    case CHECKING:
+        if (ref == REF_ADDR && definition->node.type.is_meta) {
+            // Reference to incomplete type definition is allowed
+        } else {
+            fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
+            exit(1);
+        }
+        break;
+
+    case CHECKED:
+        // Pass
+        break;
+    }
+}
+
 static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     Node_Atom   *atom = NULL;
     Node_Member *member = NULL;
 
-    Token   token = {0};
     Module *module = NULL;
     bool    importing = false;
     if (n->kind == NODE_ATOM) {
         atom = (Node_Atom *) n;
-        token = n->token;
         module = atom->module;
     } else if (n->kind == NODE_MEMBER) {
         member = (Node_Member *) n;
         assert(member->lhs->type.kind == TYPE_MODULE);
-
-        token = n->token;
         module = member->lhs->type.spec.module;
         importing = true;
     } else {
         unreachable();
     }
 
-    if (sv_match(token.sv, "_")) {
-        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(token.pos));
+    if (sv_match(n->token.sv, "_")) {
+        fprintf(stderr, Pos_Fmt "ERROR: Identifier '_' cannot be used as a value\n", Pos_Arg(n->token.pos));
         exit(1);
     }
 
     Node_Atom *definition = NULL;
     if (atom) {
-        definition = context_find_local(&c->context, token.sv);
+        definition = context_find_local(&c->context, n->token.sv);
         if (definition && definition->definition_spec->fn_context && c->context.fn) {
             if (definition->definition_spec->fn_context != c->context.fn && !definition->definition_spec->is_const) {
                 fprintf(
@@ -2095,11 +2131,11 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 
     if (!definition) {
-        definition = global_scope_find(&module->globals, token.sv);
+        definition = global_scope_find(&module->globals, n->token.sv);
         if (!definition && atom) {
             module = c->builtin_module;
             importing = true;
-            definition = global_scope_find(&module->globals, token.sv);
+            definition = global_scope_find(&module->globals, n->token.sv);
         }
 
         if (definition && definition->definition_spec->is_private && importing) {
@@ -2123,40 +2159,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 
     if (definition) {
-        switch (definition->definition_spec->check_status) {
-        case UNCHECKED: {
-            Context_Fn *context_fn_save = c->context.fn;
-            c->context.fn = definition->definition_spec->fn_context;
-
-            Context_Replace *context_replace_save = c->context.replace;
-            c->context.replace = definition->definition_spec->replace_context;
-
-            // Only orderless definitions can be uninffered, and the assignment of such definitions must be constant
-            assert(definition->definition_spec->definition_node->is_value_known_at_compile_time);
-
-            check_definition(
-                c,
-                definition,
-                definition->definition_spec->assignment_node,
-                definition->definition_spec->definition_node->type);
-
-            context_restore_fn(&c->context, context_fn_save);
-            c->context.replace = context_replace_save;
-        } break;
-
-        case CHECKING:
-            if (ref == REF_ADDR && definition->node.type.is_meta) {
-                // Reference to incomplete type definition is allowed
-            } else {
-                fprintf(stderr, Pos_Fmt "ERROR: Cyclic definition\n", Pos_Arg(definition->node.token.pos));
-                exit(1);
-            }
-            break;
-
-        case CHECKED:
-            // Pass
-            break;
-        }
+        check_definition_if_needed(c, definition, ref);
 
         n->type = definition->node.type;
         n->is_memory = !definition->definition_spec->is_const;
@@ -2171,7 +2174,7 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
-                        Pos_Arg(token.pos));
+                        Pos_Arg(n->token.pos));
                     exit(1);
                 }
                 break;
@@ -2181,20 +2184,20 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                     fprintf(
                         stderr,
                         Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
-                        Pos_Arg(token.pos));
+                        Pos_Arg(n->token.pos));
                     exit(1);
                 }
                 break;
 
             case REF_ASSIGN:
-                fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(token.pos));
+                fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
                 exit(1);
                 break;
 
             case REF_ASSIGN_MEMBER:
                 if (!type_kind_eq(definition->node.type, TYPE_MODULE)) {
                     fprintf(
-                        stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(token.pos));
+                        stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
                     exit(1);
                 }
                 break;
@@ -2203,13 +2206,13 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     } else {
         if (atom) {
             Type_Kind kind;
-            if (get_builtin_type_kind(token.sv, &kind)) {
+            if (get_builtin_type_kind(n->token.sv, &kind)) {
                 n->type = (Type) {.kind = kind, .is_meta = true};
                 return;
             }
         }
 
-        error_undefined(&token, "identifier", false);
+        error_undefined(&n->token, "identifier", false);
     }
 }
 
@@ -2322,7 +2325,15 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                 assert(member->lhs);
 
                 is_method = true;
-                args[call->args_count++].node = call->fn;
+
+                // The reference level has already been checked.
+                // Technically the type has also been checked, and right now this is redundant. But later when compile
+                // time polymorphism will be implemented, this will be important.
+                Type expected = fn_spec->args[call->args_count].type;
+                expected.ref = member->lhs->type.ref;
+                type_assert(c, member->lhs, expected);
+
+                args[call->args_count++].node = member->lhs;
             }
         }
 
@@ -2477,8 +2488,9 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                                 if (variadic_arg->node == call->spread) {
                                     fprintf(
                                         stderr,
-                                        Pos_Fmt "... This spread provide one source\n",
-                                        Pos_Arg(call->spread_pos));
+                                        Pos_Fmt "... This %s provide one source\n",
+                                        Pos_Arg(call->spread_pos),
+                                        call->spread->kind == NODE_INTERPOLATION ? "interpolated string" : "spread");
                                 } else {
                                     bool following = false;
                                     if (variadic_arg->node->next) {
@@ -2532,7 +2544,10 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                                 following ? " and its following positional arguments" : "");
 
                             fprintf(
-                                stderr, Pos_Fmt "... But this spread provides another\n", Pos_Arg(call->spread_pos));
+                                stderr,
+                                Pos_Fmt "... But this %s provides another\n",
+                                Pos_Arg(call->spread_pos),
+                                call->spread->kind == NODE_INTERPOLATION ? "interpolated string" : "spread");
                             exit(1);
                         }
 
@@ -3041,9 +3056,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     .name = n->token.sv,
                 };
 
-                Node_Fn **method = ht_get(&c->methods, spec);
+                Node_Fn **method = ht_get(&c->methods_table, spec);
                 if (method) {
                     member->method = *method;
+                    if (member->method->node.type.kind != TYPE_FN) {
+                        assert(member->method->defined_as);
+                        check_definition_if_needed(c, member->method->defined_as, REF_NONE);
+                    }
 
                     n->type = member->method->node.type;
                     assert(n->type.kind == TYPE_FN);
@@ -3218,7 +3237,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                                 .name = n->token.sv,
                             };
 
-                            Node_Fn **method = ht_get(&c->methods, method_spec);
+                            Node_Fn **method = ht_get(&c->methods_table, method_spec);
                             if (method) {
                                 ok = true;
                                 member->method = *method;
@@ -3364,61 +3383,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 }
                 fn_type_spec->args[fn_type_spec->args_count].type = it->node.type;
                 fn_type_spec->args_count += define->count;
-
-                if (fn->is_method && fn_type_spec->args_count == 1) {
-                    assert(fn_type_spec->args_count);
-                    const Type_Fn_Arg receiver = fn_type_spec->args[0];
-
-                    if (!fn->defined_as) {
-                        fprintf(
-                            stderr, Pos_Fmt "ERROR: Anonymous function cannot be a method\n", Pos_Arg(n->token.pos));
-                        fprintf(
-                            stderr, Pos_Fmt "NOTE: This argument is taken to be the receiver\n", Pos_Arg(receiver.pos));
-                        exit(1);
-                    }
-                    const SV name = fn->defined_as->node.token.sv;
-
-                    Node   *receiver_node = NULL;
-                    Module *receiver_module = NULL;
-                    get_receiver_node_and_module(receiver.type, &receiver_node, &receiver_module);
-
-                    if (receiver_module != fn->module) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Can only define methods on types defined in the same module\n",
-                            Pos_Arg(n->token.pos));
-                        fprintf(
-                            stderr, Pos_Fmt "NOTE: This argument is taken to be the receiver\n", Pos_Arg(receiver.pos));
-                        exit(1);
-                    }
-
-                    if (type_kind_eq(receiver.type, TYPE_ENUM)) {
-                        ll_foreach(it, &receiver.type.spec.enumm.definition->values) {
-                            if (sv_eq(it->token.sv, name)) {
-                                error_redefinition((Node *) fn->defined_as, &it->token.pos);
-                            }
-                        }
-                    } else if (type_kind_eq(receiver.type, TYPE_STRUCT)) {
-                        for (size_t i = 0; i < receiver.type.spec.structt->fields_count; i++) {
-                            const Type_Struct_Field it = receiver.type.spec.structt->fields[i];
-                            if (sv_eq(it.name, name)) {
-                                error_redefinition((Node *) fn->defined_as, &it.pos);
-                            }
-                        }
-                    }
-
-                    const Method_Spec spec = {
-                        .owner = receiver_node,
-                        .name = name,
-                    };
-
-                    Node_Fn **previous = ht_get(&c->methods, spec);
-                    if (previous) {
-                        error_redefinition((Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
-                    }
-
-                    ht_set(&c->methods, spec, fn);
-                }
             }
 
             if (fn->returns.head) {
@@ -4436,7 +4400,7 @@ void check_nodes(Compiler *c) {
     assert(c->main_module);
     assert(c->builtin_module);
 
-    c->methods.hasheq = ht_hasheq_method_spec;
+    c->methods_table.hasheq = ht_hasheq_method_spec;
 
     {
         Type_Fn *fn_spec = arena_alloc(c->arena, sizeof(*fn_spec));
@@ -4520,6 +4484,74 @@ void check_nodes(Compiler *c) {
 
         c->source_code_location_type = value.as.type;
         c->source_code_location_type.is_meta = false;
+    }
+
+    // Define the methods
+    {
+        for (size_t i = 0; i < c->methods_list.count; i++) {
+            Node_Fn *fn = c->methods_list.data[i];
+            assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
+
+            Node_Define *define = (Node_Define *) fn->args.head;
+            assert(define->name->kind == NODE_ATOM && define->type); // Guaranteed by the parser
+
+            if (!fn->defined_as) {
+                fprintf(stderr, Pos_Fmt "ERROR: Anonymous function cannot be a method\n", Pos_Arg(fn->node.token.pos));
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: This argument is taken to be the receiver\n",
+                    Pos_Arg(define->name->token.pos));
+                exit(1);
+            }
+            const SV name = fn->defined_as->node.token.sv;
+
+            check_expr(c, define->type, REF_NONE, NULL);
+            type_assert_type(define->type);
+            define->type->type.is_meta = false;
+
+            const Type receiver_type = define->type->type;
+            Node      *receiver_node = NULL;
+            Module    *receiver_module = NULL;
+            get_receiver_node_and_module(receiver_type, &receiver_node, &receiver_module);
+
+            if (receiver_module != fn->module) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Can only define methods on types defined in the same module\n",
+                    Pos_Arg(fn->node.token.pos));
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: This argument is taken to be the receiver\n",
+                    Pos_Arg(define->name->token.pos));
+                exit(1);
+            }
+
+            if (type_kind_eq(receiver_type, TYPE_ENUM)) {
+                ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
+                    if (sv_eq(it->token.sv, name)) {
+                        error_redefinition((Node *) fn->defined_as, &it->token.pos);
+                    }
+                }
+            } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
+                for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {
+                    const Type_Struct_Field it = receiver_type.spec.structt->fields[i];
+                    if (sv_eq(it.name, name)) {
+                        error_redefinition((Node *) fn->defined_as, &it.pos);
+                    }
+                }
+            }
+
+            const Method_Spec spec = {
+                .owner = receiver_node,
+                .name = name,
+            };
+
+            Node_Fn **previous = ht_get(&c->methods_table, spec);
+            if (previous) {
+                error_redefinition((Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
+            }
+            ht_set(&c->methods_table, spec, fn);
+        }
     }
 
     for (Module *m = c->modules->head; m; m = m->next) {

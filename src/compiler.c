@@ -3884,7 +3884,8 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     ht_free(&c->llvm_debug_files);
     ht_free(&c->type_info_cache);
-    ht_free(&c->methods);
+    ht_free(&c->methods_table);
+    da_free(&c->methods_list);
     da_free(&c->context.locals);
     da_free(&c->struct_fields);
     da_free(&c->arg_values);
