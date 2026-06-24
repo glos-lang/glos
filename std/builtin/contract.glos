@@ -86,3 +86,9 @@ Source_Code_Location :: struct {
     row: i64
     col: i64
 }
+
+Comparison :: enum {
+    LT = -1
+    EQ =  0
+    GT =  1
+}

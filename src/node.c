@@ -929,27 +929,6 @@ static void node_debug_impl(FILE *f, Node *n, int depth, const char *label) {
     }
 }
 
-static_assert(COUNT_OPERATORS == 12, "");
-SV operator_name_from_operator_kind(Operator_Kind op) {
-    static const char *names[COUNT_OPERATORS] = {
-        [OPERATOR_ADD] = "+",
-        [OPERATOR_SUB] = "-",
-        [OPERATOR_MUL] = "*",
-        [OPERATOR_DIV] = "/",
-        [OPERATOR_MOD] = "%",
-
-        [OPERATOR_GT] = ">",
-        [OPERATOR_GE] = ">=",
-        [OPERATOR_LT] = "<",
-        [OPERATOR_LE] = "<=",
-        [OPERATOR_EQ] = "==",
-        [OPERATOR_NE] = "!=",
-    };
-
-    assert(op > OPERATOR_NONE && op < COUNT_OPERATORS);
-    return sv_from_cstr(names[op]);
-}
-
 void node_debug(FILE *f, Node *n) {
     node_debug_impl(f, n, 0, NULL);
 }

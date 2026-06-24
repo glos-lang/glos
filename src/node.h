@@ -508,27 +508,6 @@ typedef struct {
     bool   is_valid;
 } Node_Interpolation;
 
-typedef enum {
-    OPERATOR_NONE,
-
-    OPERATOR_ADD,
-    OPERATOR_SUB,
-    OPERATOR_MUL,
-    OPERATOR_DIV,
-    OPERATOR_MOD,
-
-    OPERATOR_GT,
-    OPERATOR_GE,
-    OPERATOR_LT,
-    OPERATOR_LE,
-    OPERATOR_EQ,
-    OPERATOR_NE,
-
-    COUNT_OPERATORS
-} Operator_Kind;
-
-SV operator_name_from_operator_kind(Operator_Kind op);
-
 struct Node_Fn {
     Node node;
 
@@ -548,7 +527,9 @@ struct Node_Fn {
     bool is_inline;
     bool is_method;
 
-    Operator_Kind operator_kind;
+    // compare :: (this: $T, that: T) -> bool // Partial, only implements equality
+    // compare :: (this: $T, that: T) -> i32  // Complete, implements equality AND ordering
+    bool is_compare_operator_complete;
 
     Node_Fn *outer_fn;
 

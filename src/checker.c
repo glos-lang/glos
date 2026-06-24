@@ -167,7 +167,7 @@ static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -921,7 +921,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -970,7 +970,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Node_Unary *unary = (Node_Unary *) n;
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -1032,7 +1032,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Const_Value lhs = {0};
         Const_Value rhs = {0};
 
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -2286,49 +2286,64 @@ static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *sp
     return false;
 }
 
-static Node_Fn *get_operator_overload(Compiler *c, SV operator, Node *receiver, Pos *pos) {
+static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos) {
     Method_Spec spec = {0};
-    if (get_method_spec(c, receiver->type, operator, &spec, NULL)) {
+    if (get_method_spec(c, receiver->type, sv_from_cstr(operator), &spec, NULL)) {
         Node_Fn **fn = ht_get(&c->methods_table, spec);
         if (fn) {
-            return *fn;
+            Node_Fn *method = *fn;
+            if (method->node.type.kind != TYPE_FN) {
+                assert(method->defined_as);
+                check_definition_if_needed(c, method->defined_as, REF_NONE);
+            }
+            return method;
         }
     }
 
     check_that_type_is_known(receiver);
     fprintf(
         stderr,
-        Pos_Fmt "ERROR: Operator '" SV_Fmt "' is not defined for %s\n",
+        Pos_Fmt "ERROR: Method '" SV_Fmt "' is not defined for %s\n",
         Pos_Arg(*pos),
         SV_Arg(spec.name),
         type_to_cstr(receiver->type));
     exit(1);
 }
 
-static SV operator_name_from_token_kind(Token_Kind kind) {
-    static const char *names[COUNT_TOKENS] = {
-        [TOKEN_ADD] = "+",
-        [TOKEN_SUB] = "-",
-        [TOKEN_MUL] = "*",
-        [TOKEN_DIV] = "/",
-        [TOKEN_MOD] = "%",
+static_assert(COUNT_TOKENS == 76, "");
+static const char *operator_method_name_from_token_kind(Token_Kind kind) {
+    switch (kind) {
+    case TOKEN_ADD:
+    case TOKEN_ADD_SET:
+        return "add";
 
-        [TOKEN_GT] = ">",
-        [TOKEN_GE] = ">=",
-        [TOKEN_LT] = "<",
-        [TOKEN_LE] = "<=",
-        [TOKEN_EQ] = "==",
-        [TOKEN_NE] = "!=",
+    case TOKEN_SUB:
+    case TOKEN_SUB_SET:
+        return "sub";
 
-        [TOKEN_ADD_SET] = "+",
-        [TOKEN_SUB_SET] = "-",
-        [TOKEN_MUL_SET] = "*",
-        [TOKEN_DIV_SET] = "/",
-        [TOKEN_MOD_SET] = "%",
-    };
+    case TOKEN_MUL:
+    case TOKEN_MUL_SET:
+        return "mul";
 
-    assert(kind > TOKEN_EOF && kind < COUNT_TOKENS);
-    return sv_from_cstr(names[kind]);
+    case TOKEN_DIV:
+    case TOKEN_DIV_SET:
+        return "div";
+
+    case TOKEN_MOD:
+    case TOKEN_MOD_SET:
+        return "mod";
+
+    case TOKEN_GT:
+    case TOKEN_GE:
+    case TOKEN_LT:
+    case TOKEN_LE:
+    case TOKEN_EQ:
+    case TOKEN_NE:
+        return "compare";
+
+    default:
+        unreachable();
+    }
 }
 
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token_Kind op) {
@@ -2336,7 +2351,7 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:
         if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
-            return get_operator_overload(c, operator_name_from_token_kind(op), n, &n->token.pos);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos);
         }
         break;
 
@@ -2344,7 +2359,7 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token
     case TOKEN_DIV_SET:
     case TOKEN_MOD_SET:
         if (!type_is_numeric(n->type)) {
-            return get_operator_overload(c, operator_name_from_token_kind(op), n, &n->token.pos);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos);
         }
         break;
 
@@ -2814,7 +2829,6 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     }
 }
 
-static_assert(COUNT_OPERATORS == 12, "");
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
 static_assert(COUNT_NODES == 27, "");
@@ -2826,7 +2840,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -2919,7 +2933,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
@@ -3025,7 +3039,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-        static_assert(COUNT_TOKENS == 77, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
         case TOKEN_SUB:
@@ -3033,8 +3047,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, expected_type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
-                binary->overload =
-                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                binary->overload = get_operator_overload(
+                    c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
             }
             n->type = binary->lhs->type;
             break;
@@ -3046,8 +3060,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, expected_type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type)) {
-                binary->overload =
-                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                binary->overload = get_operator_overload(
+                    c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
             }
             n->type = binary->lhs->type;
             break;
@@ -3070,8 +3084,26 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
             check_expr(c, binary->rhs, REF_NONE, &binary->lhs->type);
             type_assert_node(c, binary->rhs, binary->lhs);
             if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
-                binary->overload =
-                    get_operator_overload(c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                binary->overload = get_operator_overload(
+                    c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+
+                if (!binary->overload->is_compare_operator_complete) {
+                    assert(binary->overload->returns.head);
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Type %s does not implement ordered comparisons\n",
+                        Pos_Arg(n->token.pos),
+                        type_to_cstr(binary->lhs->type));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: The method '" SV_Fmt
+                                "' only implements equality checking since its return type is %s, not %s\n",
+                        Pos_Arg(binary->overload->returns.head->token.pos),
+                        SV_Arg(binary->overload->defined_as->node.token.sv),
+                        type_to_cstr(*binary->overload->node.type.spec.fn->return_type),
+                        type_to_cstr(c->comparison_type));
+                    exit(1);
+                }
             }
             n->type = (Type) {.kind = TYPE_BOOL};
             break;
@@ -3113,7 +3145,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     assert(try_auto_cast_type_to_rtti(c, binary->rhs, c->type_info_pointer_type));
                 } else if (!type_is_scalar(binary->lhs->type)) {
                     binary->overload = get_operator_overload(
-                        c, operator_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                        c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
                 }
             }
             n->type = (Type) {.kind = TYPE_BOOL};
@@ -3527,18 +3559,22 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 fn->defined_as->definition_spec->check_status = CHECKED;
             }
 
-            if (fn->operator_kind) {
-                static_assert(COUNT_TOKENS == 77, "");
-                switch (fn->operator_kind) {
-                case OPERATOR_ADD:
-                case OPERATOR_SUB:
-                case OPERATOR_MUL:
-                case OPERATOR_DIV:
-                case OPERATOR_MOD: {
+            if (fn->is_method) {
+                assert(fn->defined_as);
+                const SV name = fn->defined_as->node.token.sv;
+                if (sv_match(name, "add") || sv_match(name, "sub") || sv_match(name, "mul") || sv_match(name, "div") ||
+                    sv_match(name, "mod")) //
+                {
                     if (fn_spec->args_count != 2) {
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Expected 2 arguments, got %zu\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
                             Pos_Arg(n->token.pos),
                             fn_spec->args_count);
                         exit(1);
@@ -3546,42 +3582,52 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
                     const Type lhs_type = fn_spec->args[0].type;
                     const Type rhs_type = fn_spec->args[1].type;
-                    if (!type_eq(lhs_type, rhs_type)) {
+                    if (!type_eq(rhs_type, lhs_type)) {
                         Node *second = fn->args.head->next;
                         assert(second && second->kind == NODE_DEFINE);
 
                         Node_Define *define = (Node_Define *) second;
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Operand types must be same: Expected %s, got %s\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
                             Pos_Arg(define->type->token.pos),
                             type_to_cstr(lhs_type),
                             type_to_cstr(rhs_type));
                         exit(1);
                     }
 
-                    if (!type_eq(lhs_type, *fn_spec->return_type)) {
+                    if (!type_eq(*fn_spec->return_type, lhs_type)) {
                         fprintf(
                             stderr,
-                            Pos_Fmt
-                            "ERROR: Operand types and return type must be same: Expected to return %s, got %s\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Operand types and return type must be same: Expected to return %s, got %s\n",
                             Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
                             type_to_cstr(lhs_type),
                             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
                         exit(1);
                     }
-                } break;
-
-                case OPERATOR_GT:
-                case OPERATOR_GE:
-                case OPERATOR_LT:
-                case OPERATOR_LE:
-                case OPERATOR_EQ:
-                case OPERATOR_NE: {
+                } else if (sv_match(name, "compare")) {
                     if (fn_spec->args_count != 2) {
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Expected 2 arguments, got %zu\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
                             Pos_Arg(n->token.pos),
                             fn_spec->args_count);
                         exit(1);
@@ -3589,35 +3635,46 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
                     const Type lhs_type = fn_spec->args[0].type;
                     const Type rhs_type = fn_spec->args[1].type;
-                    if (!type_eq(lhs_type, rhs_type)) {
+                    if (!type_eq(rhs_type, lhs_type)) {
                         Node *second = fn->args.head->next;
                         assert(second && second->kind == NODE_DEFINE);
 
                         Node_Define *define = (Node_Define *) second;
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Operand types must be same: Expected %s, got %s\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
                             Pos_Arg(define->type->token.pos),
                             type_to_cstr(lhs_type),
                             type_to_cstr(rhs_type));
                         exit(1);
                     }
 
-                    const Type bool_type = {.kind = TYPE_BOOL};
-                    if (!type_eq(bool_type, *fn_spec->return_type)) {
+                    if (!type_eq(*fn_spec->return_type, (Type) {.kind = TYPE_BOOL}) &&
+                        !type_eq(*fn_spec->return_type, c->comparison_type)) //
+                    {
                         fprintf(
                             stderr,
-                            Pos_Fmt "ERROR: Expected to return %s, got %s\n",
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected to return %s or %s, got %s\n",
                             Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
-                            type_to_cstr(bool_type),
+                            type_to_cstr((Type) {.kind = TYPE_BOOL}),
+                            type_to_cstr(c->comparison_type),
                             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
                         exit(1);
                     }
-                } break;
 
-                default:
-                    unreachable();
-                    break;
+                    fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->comparison_type);
                 }
             }
 
@@ -4675,6 +4732,13 @@ void check_nodes(Compiler *c) {
         c->type_info_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
         c->type_info_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
         c->type_info_variants[TYPE_ANY] = CONTRACT_TYPE_INFO_ANY;
+    }
+
+    {
+        const Const_Value value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Comparison"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+        c->comparison_type = value.as.type;
+        c->comparison_type.is_meta = false;
     }
 
     // Source code location

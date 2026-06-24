@@ -45,51 +45,39 @@ Int32 :: struct {
     x: i32
 }
 
-operator + :: (this: Int32, that: Int32) -> Int32 {
+add :: (this: Int32, that: Int32) -> Int32 {
     this.x += that.x
     return this
 }
 
-operator - :: (this: Int32, that: Int32) -> Int32 {
+sub :: (this: Int32, that: Int32) -> Int32 {
     this.x -= that.x
     return this
 }
 
-operator * :: (this: Int32, that: Int32) -> Int32 {
+mul :: (this: Int32, that: Int32) -> Int32 {
     this.x *= that.x
     return this
 }
 
-operator / :: (this: Int32, that: Int32) -> Int32 {
+div :: (this: Int32, that: Int32) -> Int32 {
     this.x /= that.x
     return this
 }
 
-operator % :: (this: Int32, that: Int32) -> Int32 {
+mod :: (this: Int32, that: Int32) -> Int32 {
     this.x %= that.x
     return this
 }
 
-operator > :: (this: Int32, that: Int32) -> bool {
-    return this.x > that.x
-}
+compare :: (this: Int32, that: Int32) -> Comparison {
+    if this.x < that.x {
+        return .LT
+    }
 
-operator >= :: (this: Int32, that: Int32) -> bool {
-    return this.x >= that.x
-}
+    if this.x > that.x {
+        return .GT
+    }
 
-operator < :: (this: Int32, that: Int32) -> bool {
-    return this.x < that.x
-}
-
-operator <= :: (this: Int32, that: Int32) -> bool {
-    return this.x <= that.x
-}
-
-operator == :: (this: Int32, that: Int32) -> bool {
-    return this.x == that.x
-}
-
-operator != :: (this: Int32, that: Int32) -> bool {
-    return this.x != that.x
+    return .EQ
 }

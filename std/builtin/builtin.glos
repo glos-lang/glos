@@ -221,16 +221,28 @@ eprintln :: (vs: ...any) {
     wprintln(C.stderr, ...vs)
 }
 
-// TODO: Logical (||), (&&)
-operator == :: inline (this: string, that: string) -> bool {
-    if this.count != that.count {
-        return false
+compare :: (this: string, that: string) -> Comparison {
+    n := this.count
+    if n > that.count {
+        n = that.count
     }
 
-    return C.memcmp(rawptr(this.data), rawptr(that.data), this.count) == 0
-}
+    diff := C.memcmp(rawptr(this.data), rawptr(that.data), this.count)
+    if diff < 0 {
+        return .LT
+    }
 
-// TODO: Infer !(==) overload
-operator != :: inline (this: string, that: string) -> bool {
-    return !(this == that)
+    if diff > 0 {
+        return .GT
+    }
+
+    if this.count < that.count {
+        return .LT
+    }
+
+    if this.count > that.count {
+        return .GT
+    }
+
+    return .EQ
 }

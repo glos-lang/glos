@@ -48,7 +48,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 77, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -693,7 +693,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 77, "");
+static_assert(COUNT_TOKENS == 76, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
@@ -1470,102 +1470,6 @@ static Node *parse_stmt(Parser *p) {
         local_assert(p, true, token, NULL);
         node = parse_block(p, token);
         break;
-
-    case TOKEN_OPERATOR: {
-        local_assert(p, false, token, NULL);
-        token = next_token(p);
-
-        Operator_Kind op = OPERATOR_NONE;
-        static_assert(COUNT_TOKENS == 77, "");
-        switch (token.kind) {
-        case TOKEN_ADD:
-            op = OPERATOR_ADD;
-            break;
-
-        case TOKEN_SUB:
-            op = OPERATOR_SUB;
-            break;
-
-        case TOKEN_MUL:
-            op = OPERATOR_MUL;
-            break;
-
-        case TOKEN_DIV:
-            op = OPERATOR_DIV;
-            break;
-
-        case TOKEN_MOD:
-            op = OPERATOR_MOD;
-            break;
-
-        case TOKEN_GT:
-            op = OPERATOR_GT;
-            break;
-
-        case TOKEN_GE:
-            op = OPERATOR_GE;
-            break;
-
-        case TOKEN_LT:
-            op = OPERATOR_LT;
-            break;
-
-        case TOKEN_LE:
-            op = OPERATOR_LE;
-            break;
-
-        case TOKEN_EQ:
-            op = OPERATOR_EQ;
-            break;
-
-        case TOKEN_NE:
-            op = OPERATOR_NE;
-            break;
-
-        default:
-            fprintf(stderr, Pos_Fmt "ERROR: Cannot overload %s\n", Pos_Arg(token.pos), token_kind_to_cstr(token.kind));
-            exit(1);
-            break;
-        }
-
-        token.kind = TOKEN_IDENT;
-        token.sv = operator_name_from_operator_kind(op);
-
-        Node_Atom *name = (Node_Atom *) node_alloc(p->arena, NODE_ATOM, token);
-        name->module = p->module_current;
-
-        node = parse_define(p, (Node *) name, expect_token(p, TOKEN_COLON), false, false, false);
-        Node_Define *define = (Node_Define *) node;
-
-        if (!define->is_const) {
-            fprintf(
-                stderr, Pos_Fmt "ERROR: Operator overload has to be a constant definition\n", Pos_Arg(node->token.pos));
-            exit(1);
-        }
-
-        if (define->expr->kind != NODE_FN) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Operator overload has to be defined as a method literal\n",
-                Pos_Arg(define->expr->token.pos));
-            exit(1);
-        }
-
-        Node_Fn *fn = (Node_Fn *) define->expr;
-        if (!fn->is_method) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Operator overload has to be defined as a method, but this is a function\n",
-                Pos_Arg(define->expr->token.pos));
-            fprintf(
-                stderr,
-                Pos_Fmt "HINT: It should have the first argument named as 'this' to be considered a method\n",
-                Pos_Arg(define->expr->token.pos));
-            exit(1);
-        }
-
-        fn->operator_kind = op;
-    } break;
 
     case TOKEN_IF:
         not_in_extern_assert(p, token);
