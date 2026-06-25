@@ -5,6 +5,7 @@ extern {
     fprintf :: (f: File, fmt: &char, ...) -> i32
     fflush :: (f: File)
     abort :: ()
+    exit :: (code: i32)
     memcmp :: (a: rawptr, b: rawptr, n: i64) -> i32
 }
 

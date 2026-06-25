@@ -1,0 +1,10 @@
+Foo :: distinct i64
+
+range :: (this: Foo, a: i64, b: i64) -> bool {
+    return true
+}
+
+main :: () {
+    f: Foo
+    f[..]
+}

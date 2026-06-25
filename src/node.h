@@ -157,11 +157,6 @@ typedef struct {
     LLVMMetadataRef debug;
 } Type_Group;
 
-typedef struct {
-    Type  *children;
-    size_t count;
-} Type_Unknown_Compound;
-
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -183,8 +178,6 @@ struct Type {
 
         Type_Group group;
         Module    *module;
-
-        Type_Unknown_Compound unknown_compound;
     } spec;
 
     LLVMTypeRef llvm;
@@ -200,8 +193,9 @@ struct Type_Fn_Arg {
     // For default arguments
     Const_Value *default_value;
     LLVMValueRef default_value_llvm;
+    bool         default_value_is_caller_location;
 
-    bool default_value_is_caller_location;
+    bool has_default_value;
 };
 
 struct Type_Union_Variant {
@@ -441,12 +435,17 @@ typedef struct {
     Node  node;
     Node *value;
     bool  is_postfix; // For '++' and '--'
+
+    Node_Fn *overload;
 } Node_Unary;
 
 typedef struct {
     Node  node;
     Node *lhs;
     Node *rhs;
+
+    Node_Fn  *overload;
+    Node_Fn **overloads;
 
     Node *any_check;
     Type *any_check_type;
@@ -511,6 +510,7 @@ struct Node_Fn {
     Nodes  args;
     size_t args_count;     // Actual
     size_t args_count_min; // Minimum
+    Pos    args_end_pos;
 
     Variadics_Kind variadics_kind;
 
@@ -523,6 +523,10 @@ struct Node_Fn {
     bool is_extern;
     bool is_inline;
     bool is_method;
+
+    // compare :: (this: $T, that: T) -> bool // Partial, only implements equality
+    // compare :: (this: $T, that: T) -> i32  // Complete, implements equality AND ordering
+    bool is_compare_operator_complete;
 
     Node_Fn *outer_fn;
 
@@ -605,6 +609,10 @@ typedef struct {
     //     lhs = <value>
     // }
     bool is_designated;
+
+    // Untyped compound literals are type checked in two phases. This notes that the first phase is complete, ie, the
+    // individual child nodes are checked.
+    bool are_children_checked;
 } Node_Compound;
 
 typedef enum {
@@ -648,6 +656,9 @@ typedef struct {
     Node *a;
     Node *b;
     bool  is_ranged;
+    bool  is_assign;
+
+    Node_Fn *overload;
 } Node_Index;
 
 // This represents a type

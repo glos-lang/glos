@@ -1,0 +1,39 @@
+Table :: struct {
+    items: [64]struct {
+        key:   string
+        value: i64
+    }
+    count: i64
+}
+
+main :: () {
+    xs: Table
+    xs["Foo"] = 69
+    println(xs["Foo"])
+    println(xs["Bar"])
+}
+
+index :: (this: &Table, key: string, assign: bool, location := #caller_location) -> &i64 {
+    for i := 0; i < this.count; i++ {
+        it := &this.items[i]
+        if it.key == key {
+            return &it.value
+        }
+    }
+
+    if !assign {
+        eprintln("\{location} Key '\{key}' does not exist")
+        C.exit(1)
+    }
+
+    if this.count >= this.items.count {
+        eprintln("\{location} Table is out of memory")
+        C.exit(1)
+    }
+
+    it := &this.items[this.count++]
+    it.key = key
+    return &it.value
+
+    C :: #import "C"
+}

@@ -22,4 +22,10 @@ enum {
     CONTRACT_TYPE_INFO_ANY,
 };
 
+enum {
+    CONTRACT_COMPARISON_LT = -1,
+    CONTRACT_COMPARISON_EQ = 0,
+    CONTRACT_COMPARISON_GT = 1,
+};
+
 #endif // CONTRACT_H

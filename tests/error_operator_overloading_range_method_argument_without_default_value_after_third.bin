@@ -1,0 +1,14 @@
+EXIT 1
+STDOUT 0
+
+STDERR 516
+tests/error_operator_overloading_range_method_argument_without_default_value_after_third.glos:2:1: ERROR: The method 'range' implements an operator overload and thus must have a particular signature
+
+```
+range :: (this: T, begin: A, end: A) -> V
+```
+
+It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
+
+tests/error_operator_overloading_range_method_argument_without_default_value_after_third.glos:2:38: INFO: All arguments after the 3rd argument must be optional
+

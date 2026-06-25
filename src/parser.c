@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "node.h"
 #include "token.h"
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -779,6 +780,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_LPAREN: {
         bool is_fn = false;
+        Pos  fn_args_end_pos = {0};
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
         } else {
@@ -787,7 +789,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 is_fn = true;
                 node = parse_define(p, node, next_token(p), false, true, false);
             } else {
-                expect_token(p, TOKEN_RPAREN);
+                fn_args_end_pos = expect_token(p, TOKEN_RPAREN).pos;
             }
         }
 
@@ -884,13 +886,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     fn->args_count_min += define->count;
                 }
 
-                if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                token = expect_token(p, TOKEN_COMMA, TOKEN_RPAREN);
+                if (token.kind != TOKEN_COMMA) {
+                    fn_args_end_pos = token.pos;
                     break;
                 }
 
                 if (read_token(p, TOKEN_SPREAD)) {
                     fn->variadics_kind = VARIADICS_UNTYPED;
-                    expect_token(p, TOKEN_RPAREN);
+                    fn_args_end_pos = expect_token(p, TOKEN_RPAREN).pos;
                     break;
                 }
 
@@ -906,6 +910,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false);
             }
+
+            fn->args_end_pos = fn_args_end_pos;
 
             if (read_token(p, TOKEN_ARROW)) {
                 if (read_token(p, TOKEN_LPAREN)) {
@@ -928,7 +934,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 if (fn->is_method && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
                     assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-                    fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
+                    fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(fn->node.token.pos));
                     fprintf(
                         stderr,
                         Pos_Fmt "NOTE: This argument is taken to be the receiver\n",

@@ -1,9 +1,10 @@
-assert :: (cond: bool, message := "", location := #caller_location) {
+assert :: (cond: bool, message: ...any, location := #caller_location) {
     if !cond {
-        if message == "" {
+        if message.count == 0 {
             eprintln("\{location} Assertion failed")
         } else {
-            eprintln("\{location} Assertion failed: \{message}")
+            eprint("\{location} Assertion failed: ")
+            eprintln(...message)
         }
 
         C.fflush(C.stdout)
@@ -12,11 +13,12 @@ assert :: (cond: bool, message := "", location := #caller_location) {
     }
 }
 
-todo :: (message := "", location := #caller_location) {
-    if message == "" {
+todo :: (message: ...any, location := #caller_location) {
+    if message.count == 0 {
         eprintln("\{location} TODO")
     } else {
-        eprintln("\{location} TODO: \{message}")
+        eprint("\{location} TODO: ")
+        eprintln(...message)
     }
 
     C.fflush(C.stdout)
@@ -24,11 +26,12 @@ todo :: (message := "", location := #caller_location) {
     C.abort()
 }
 
-unreachable :: (message := "", location := #caller_location) {
-    if message == "" {
+unreachable :: (message: ...any, location := #caller_location) {
+    if message.count == 0 {
         eprintln("\{location} Unreachable")
     } else {
-        eprintln("\{location} Unreachable: \{message}")
+        eprint("\{location} Unreachable: ")
+        eprintln(...message)
     }
 
     C.fflush(C.stdout)
@@ -36,6 +39,7 @@ unreachable :: (message := "", location := #caller_location) {
     C.abort()
 }
 
+// TODO: Print types separately
 wprint :: (f: C.File, vs: ...any) {
     write :: (f: C.File, data: rawptr, type: Type, nested: bool) {
         if type == Source_Code_Location {
@@ -219,4 +223,30 @@ eprint :: (vs: ...any) {
 
 eprintln :: (vs: ...any) {
     wprintln(C.stderr, ...vs)
+}
+
+compare :: (this: string, that: string) -> Comparison {
+    n := this.count
+    if n > that.count {
+        n = that.count
+    }
+
+    diff := C.memcmp(rawptr(this.data), rawptr(that.data), this.count)
+    if diff < 0 {
+        return .LT
+    }
+
+    if diff > 0 {
+        return .GT
+    }
+
+    if this.count < that.count {
+        return .LT
+    }
+
+    if this.count > that.count {
+        return .GT
+    }
+
+    return .EQ
 }

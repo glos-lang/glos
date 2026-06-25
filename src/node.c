@@ -246,23 +246,9 @@ const char *type_to_cstr_raw(Type type) {
         temp_sprintf("unknown enum");
         break;
 
-    case TYPE_UNKNOWN_COMPOUND: {
-        const Type_Unknown_Compound spec = type.spec.unknown_compound;
-        temp_sprintf("{");
-
-        for (size_t i = 0; i < spec.count; i++) {
-            if (i) {
-                temp_remove_null();
-                temp_sprintf(", ");
-            }
-
-            temp_remove_null();
-            type_to_cstr_raw(spec.children[i]);
-        }
-
-        temp_remove_null();
-        temp_sprintf("}");
-    } break;
+    case TYPE_UNKNOWN_COMPOUND:
+        temp_sprintf("unknown compound");
+        break;
 
     default:
         unreachable();
@@ -407,7 +393,7 @@ bool type_eq(Type a, Type b) {
         return true;
 
     case TYPE_UNKNOWN_COMPOUND:
-        return false;
+        return true;
 
     default:
         return true;
@@ -424,7 +410,8 @@ bool type_kind_eq(Type type, Type_Kind kind) {
 }
 
 bool type_is_numeric(Type type) {
-    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM);
+    return type_is_integer(type) || type_kind_eq(type, TYPE_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_ENUM) ||
+           type_kind_eq(type, TYPE_UNKNOWN_COMPOUND);
 }
 
 static_assert(COUNT_TYPES == 25, "");
