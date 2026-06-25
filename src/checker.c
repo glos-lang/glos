@@ -2346,7 +2346,9 @@ static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *r
             const Type_Fn *method_spec = method->node.type.spec.fn;
 
             const Type receiver_type = method_spec->args[0].type;
-            if (receiver_type.ref > receiver->type.ref + 1) {
+            if ((receiver_type.ref > receiver->type.ref + 1) ||
+                (receiver_type.ref > receiver->type.ref && !receiver->is_memory)) //
+            {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n", Pos_Arg(*pos));
                 fprintf(

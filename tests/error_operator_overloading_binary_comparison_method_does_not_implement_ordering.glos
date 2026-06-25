@@ -1,0 +1,11 @@
+Foo :: struct {}
+
+compare :: (this: Foo, that: Foo) -> bool {
+    return true
+}
+
+main :: () {
+    a: Foo
+    b: Foo
+    println(a < b)
+}

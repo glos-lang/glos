@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 705
+tests/error_operator_overloading_binary_comparison_method_no_return.glos:2:1: ERROR: The method 'compare' implements an operator overload and thus must have a particular signature
+
+```
+compare :: (this: T, that: T) -> bool | Comparison
+```
+
+Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.
+Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.
+
+It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
+
+tests/error_operator_overloading_binary_comparison_method_no_return.glos:2:35: INFO: Expected to return 'bool' or 'Comparison', got nothing
+

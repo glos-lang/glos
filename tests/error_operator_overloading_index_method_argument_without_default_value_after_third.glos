@@ -1,0 +1,2 @@
+Foo :: distinct i64
+index :: (this: Foo, index: i64, assign: bool, other: string) {}
