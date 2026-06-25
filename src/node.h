@@ -516,6 +516,7 @@ struct Node_Fn {
     Nodes  args;
     size_t args_count;     // Actual
     size_t args_count_min; // Minimum
+    Pos    args_end_pos;
 
     Variadics_Kind variadics_kind;
 

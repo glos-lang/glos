@@ -2194,9 +2194,75 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
     return result;
 }
 
+static void
+compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *fn_spec, Pos caller_location) {
+    LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+
+    for (size_t i = 0; i < fn_spec->args_count; i++) {
+        if (args[i].value) {
+            continue;
+        }
+
+        Type_Fn_Arg *arg = &fn_spec->args[i];
+        compile_type(c, &arg->type);
+
+        LLVMValueRef value = NULL;
+        if (arg->default_value_is_caller_location) {
+            LLVMValueRef memory = compile_alloca(c, arg->type.llvm);
+            LLVMBuildStore(
+                c->llvm_builder, compile_string_into_const_value(c, sv_from_cstr(caller_location.path)), memory);
+
+            LLVMBuildStore(
+                c->llvm_builder,
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), caller_location.row + 1, true),
+                LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 1, ""));
+
+            LLVMBuildStore(
+                c->llvm_builder,
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), caller_location.col + 1, true),
+                LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 2, ""));
+
+            value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
+        } else {
+            static_assert(COUNT_CONST_VALUES == 9, "");
+            switch (arg->default_value->kind) {
+            case CONST_VALUE_UNION:
+            case CONST_VALUE_STRUCT:
+            case CONST_VALUE_ARRAY:
+            case CONST_VALUE_STRING:
+            case CONST_VALUE_ANY:
+                if (!arg->default_value_llvm) {
+                    arg->default_value_llvm =
+                        compile_const_value_into_memory(c, compile_const_value(c, *arg->default_value, arg->type));
+                }
+
+                value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, arg->default_value_llvm, "");
+                break;
+
+            default:
+                if (!arg->default_value_llvm) {
+                    arg->default_value_llvm = compile_const_value(c, *arg->default_value, arg->type);
+                }
+
+                value = arg->default_value_llvm;
+                break;
+            }
+        }
+
+        Typed_LLVM_Value tv = {0};
+        tv.type = arg->type;
+        tv.value = value;
+        args[i] = tv;
+    }
+
+    set_debug_pos(c, caller_location);
+}
+
 static LLVMValueRef compile_binary_with_overloaded_operator(
     Compiler *c, Node_Binary *binary, size_t index, LLVMValueRef lhs, LLVMValueRef rhs) //
 {
+    const void *checkpoint = temp_alloc(0);
+
     Type     lhs_type = binary->lhs->type;
     Type     rhs_type = binary->rhs->type;
     Node_Fn *overload = binary->overload;
@@ -2214,15 +2280,19 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     fn.value = compile_fn(c, overload);
     fn.type = overload->node.type;
 
-    Typed_LLVM_Value args[2] = {0};
+    const Type_Fn    *fn_spec = fn.type.spec.fn;
+    Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
     args[0].value = lhs;
     args[0].type = lhs_type;
 
     args[1].value = rhs;
     args[1].type = rhs_type;
 
-    set_debug_pos(c, binary->node.token.pos);
-    return compile_call(c, fn, args, len(args), false);
+    compile_optional_arguments(c, args, fn_spec, binary->node.token.pos);
+    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
+
+    temp_reset(checkpoint);
+    return result;
 }
 
 static_assert(COUNT_NODES == 27, "");
@@ -2303,16 +2373,22 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             set_debug_pos(c, n->token.pos);
 
             if (unary->overload) {
+                const void *checkpoint = temp_alloc(0);
+
                 Typed_LLVM_Value fn = {0};
                 fn.value = compile_fn(c, unary->overload);
                 fn.type = unary->overload->node.type;
 
-                Typed_LLVM_Value args[1] = {0};
+                const Type_Fn    *fn_spec = fn.type.spec.fn;
+                Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
                 args[0].value = value;
                 args[0].type = unary->value->type;
 
-                set_debug_pos(c, n->token.pos);
-                return compile_call(c, fn, args, len(args), false);
+                compile_optional_arguments(c, args, fn_spec, n->token.pos);
+                LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
+
+                temp_reset(checkpoint);
+                return result;
             }
 
             return LLVMBuildNeg(c->llvm_builder, value, "");
@@ -3018,67 +3094,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             c->group_values.count = group_values_count_save;
         }
 
-        LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-        for (size_t i = 0; i < fn_spec->args_count; i++) {
-            if (args[i].value) {
-                continue;
-            }
-
-            Type_Fn_Arg *arg = &fn_spec->args[i];
-            compile_type(c, &arg->type);
-
-            LLVMValueRef value = NULL;
-            if (arg->default_value_is_caller_location) {
-                LLVMValueRef memory = compile_alloca(c, arg->type.llvm);
-                LLVMBuildStore(
-                    c->llvm_builder,
-                    compile_string_into_const_value(c, sv_from_cstr(call->fn->token.pos.path)),
-                    memory);
-
-                LLVMBuildStore(
-                    c->llvm_builder,
-                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->fn->token.pos.row + 1, true),
-                    LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 1, ""));
-
-                LLVMBuildStore(
-                    c->llvm_builder,
-                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), call->fn->token.pos.col + 1, true),
-                    LLVMBuildStructGEP2(c->llvm_builder, arg->type.llvm, memory, 2, ""));
-
-                value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
-            } else {
-                static_assert(COUNT_CONST_VALUES == 9, "");
-                switch (arg->default_value->kind) {
-                case CONST_VALUE_UNION:
-                case CONST_VALUE_STRUCT:
-                case CONST_VALUE_ARRAY:
-                case CONST_VALUE_STRING:
-                case CONST_VALUE_ANY:
-                    if (!arg->default_value_llvm) {
-                        arg->default_value_llvm =
-                            compile_const_value_into_memory(c, compile_const_value(c, *arg->default_value, arg->type));
-                    }
-
-                    value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, arg->default_value_llvm, "");
-                    break;
-
-                default:
-                    if (!arg->default_value_llvm) {
-                        arg->default_value_llvm = compile_const_value(c, *arg->default_value, arg->type);
-                    }
-
-                    value = arg->default_value_llvm;
-                    break;
-                }
-            }
-
-            Typed_LLVM_Value tv = {0};
-            tv.type = arg->type;
-            tv.value = value;
-            args[i] = tv;
-        }
-
-        set_debug_pos(c, n->token.pos);
+        compile_optional_arguments(c, args, fn_spec, call->fn->token.pos);
 
         const bool   is_group = n->type.kind == TYPE_GROUP;
         LLVMValueRef result = compile_call(c, fn, args, args_count, ref || is_group);

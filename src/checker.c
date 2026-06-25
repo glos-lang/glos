@@ -392,6 +392,22 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
     exit(1);
 }
 
+static const char *order_postfix(size_t n) {
+    switch (n % 10) {
+    case 1:
+        return "st";
+
+    case 2:
+        return "nd";
+
+    case 3:
+        return "rd";
+
+    default:
+        return "th";
+    }
+}
+
 static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Pos *requirement) {
     Type actual = n->type;
 
@@ -420,22 +436,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
         maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(n, expected);
     } else {
         check_that_type_is_known(n);
-
-        const char *postfix = "th";
-        switch ((group_index + 1) % 10) {
-        case 1:
-            postfix = "st";
-            break;
-
-        case 2:
-            postfix = "nd";
-            break;
-
-        case 3:
-            postfix = "rd";
-            break;
-        }
-
+        const char *postfix = order_postfix(group_index + 1);
         fprintf(
             stderr,
             Pos_Fmt "ERROR: Expected %zd%s value of this to be %s, got %s. The type of this entire expression is %s\n",
@@ -2841,7 +2842,7 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     }
 }
 
-static void error_special_method_wrong_signature(Token name, const char *signature, const char *extra) {
+static void error_special_method_wrong_signature(Token name, const char *signature, const char *note) {
     fprintf(
         stderr,
         Pos_Fmt "ERROR: The method '" SV_Fmt
@@ -2857,12 +2858,46 @@ static void error_special_method_wrong_signature(Token name, const char *signatu
         "\n"
         "%s"
         "%s"
-        "It can have other optional arguments at the end, but this is the bare minimum that must be conformed to.\n"
+        "It may have other optional arguments at the end, but this is the bare minimum that must be implemented.\n"
         "\n",
         SV_Arg(name.sv),
         signature,
-        extra ? extra : "",
-        (extra && *extra) ? "\n" : "");
+        note ? note : "",
+        (note && *note) ? "\n" : "");
+}
+
+static void check_special_method_signature_args_count(
+    Node_Fn *fn, const size_t args_count, const char *signature, const char *note) {
+    assert(fn->node.type.kind == TYPE_FN);
+    const Type_Fn *fn_spec = fn->node.type.spec.fn;
+
+    if (fn_spec->args_count < args_count) {
+        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+        fprintf(
+            stderr,
+            Pos_Fmt "INFO: Expected at least %zu arguments, got %zu\n",
+            Pos_Arg(fn->args_end_pos),
+            args_count,
+            fn_spec->args_count);
+        exit(1);
+    }
+
+    for (size_t i = 0; i < fn_spec->args_count; i++) {
+        const Type_Fn_Arg *it = &fn_spec->args[i];
+        if ((!it->default_value && !it->default_value_is_caller_location) && i >= args_count) {
+            error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+            fprintf(
+                stderr,
+                Pos_Fmt "INFO: All arguments after the %zu%s argument must be optional\n",
+                Pos_Arg(fn_spec->args[i].pos),
+                (size_t) args_count,
+                order_postfix(args_count));
+            exit(1);
+        }
+    }
+
+    // The previous loop guarantees this
+    assert(fn_spec->args_count_min <= args_count);
 }
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
@@ -3604,38 +3639,25 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 if (sv_match(name, "add") || sv_match(name, "sub") || sv_match(name, "mul") || sv_match(name, "div") ||
                     sv_match(name, "mod")) //
                 {
-                    if (fn_spec->args_count != 2) {
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
-                            Pos_Arg(n->token.pos),
-                            fn_spec->args_count);
-                        exit(1);
-                    }
+                    const char *signature = "(this: T, that: T) -> T";
+                    const char *note = NULL;
+                    check_special_method_signature_args_count(fn, 2, signature, note);
 
                     const Type lhs_type = fn_spec->args[0].type;
                     const Type rhs_type = fn_spec->args[1].type;
                     if (!type_eq(rhs_type, lhs_type)) {
-                        Node *second = fn->args.head->next;
-                        assert(second && second->kind == NODE_DEFINE);
-
-                        Node_Define *define = (Node_Define *) second;
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
-                            Pos_Arg(define->type->token.pos),
+                            Pos_Arg(fn_spec->args[1].pos),
                             type_to_cstr(lhs_type),
                             type_to_cstr(rhs_type));
                         exit(1);
                     }
 
                     if (!type_eq(*fn_spec->return_type, lhs_type)) {
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types and return type must be same: Expected to return %s, got %s\n",
@@ -3645,19 +3667,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         exit(1);
                     }
                 } else if (sv_match(name, "neg")) {
-                    if (fn_spec->args_count != 1) {
-                        error_special_method_wrong_signature(fn->defined_as->node.token, "(this: T) -> T", NULL);
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "INFO: Expected 1 argument, got %zu\n",
-                            Pos_Arg(n->token.pos),
-                            fn_spec->args_count);
-                        exit(1);
-                    }
+                    const char *signature = "(this: T) -> T";
+                    const char *note = NULL;
+                    check_special_method_signature_args_count(fn, 1, signature, note);
 
                     const Type operand_type = fn_spec->args[0].type;
                     if (!type_eq(*fn_spec->return_type, operand_type)) {
-                        error_special_method_wrong_signature(fn->defined_as->node.token, "(this: T) -> T", NULL);
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand type and return type must be same: Expected to return %s, got %s\n",
@@ -3667,36 +3683,20 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         exit(1);
                     }
                 } else if (sv_match(name, "compare")) {
-                    if (fn_spec->args_count != 2) {
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token,
-                            "(this: T, that: T) -> bool | Comparison",
-                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
-                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
-                            Pos_Arg(n->token.pos),
-                            fn_spec->args_count);
-                        exit(1);
-                    }
+                    const char *signature = "(this: T, that: T) -> bool | Comparison";
+                    const char *note =
+                        "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
+                        "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n";
+                    check_special_method_signature_args_count(fn, 2, signature, note);
 
                     const Type lhs_type = fn_spec->args[0].type;
                     const Type rhs_type = fn_spec->args[1].type;
                     if (!type_eq(rhs_type, lhs_type)) {
-                        Node *second = fn->args.head->next;
-                        assert(second && second->kind == NODE_DEFINE);
-
-                        Node_Define *define = (Node_Define *) second;
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token,
-                            "(this: T, that: T) -> bool | Comparison",
-                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
-                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
-                            Pos_Arg(define->type->token.pos),
+                            Pos_Arg(fn_spec->args[1].pos),
                             type_to_cstr(lhs_type),
                             type_to_cstr(rhs_type));
                         exit(1);
@@ -3705,11 +3705,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     if (!type_eq(*fn_spec->return_type, (Type) {.kind = TYPE_BOOL}) &&
                         !type_eq(*fn_spec->return_type, c->comparison_type)) //
                     {
-                        error_special_method_wrong_signature(
-                            fn->defined_as->node.token,
-                            "(this: T, that: T) -> bool | Comparison",
-                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
-                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected to return %s or %s, got %s\n",
@@ -4868,3 +4864,4 @@ void check_nodes(Compiler *c) {
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
 // TODO: Private methods
+// TODO: Print "atleast" as "atmost"

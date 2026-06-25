@@ -780,6 +780,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_LPAREN: {
         bool is_fn = false;
+        Pos  fn_args_end_pos = {0};
         if (read_token(p, TOKEN_RPAREN)) {
             is_fn = true;
         } else {
@@ -788,7 +789,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 is_fn = true;
                 node = parse_define(p, node, next_token(p), false, true, false);
             } else {
-                expect_token(p, TOKEN_RPAREN);
+                fn_args_end_pos = expect_token(p, TOKEN_RPAREN).pos;
             }
         }
 
@@ -885,13 +886,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     fn->args_count_min += define->count;
                 }
 
-                if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
+                token = expect_token(p, TOKEN_COMMA, TOKEN_RPAREN);
+                if (token.kind != TOKEN_COMMA) {
+                    fn_args_end_pos = token.pos;
                     break;
                 }
 
                 if (read_token(p, TOKEN_SPREAD)) {
                     fn->variadics_kind = VARIADICS_UNTYPED;
-                    expect_token(p, TOKEN_RPAREN);
+                    fn_args_end_pos = expect_token(p, TOKEN_RPAREN).pos;
                     break;
                 }
 
@@ -907,6 +910,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false);
             }
+
+            fn->args_end_pos = fn_args_end_pos;
 
             if (read_token(p, TOKEN_ARROW)) {
                 if (read_token(p, TOKEN_LPAREN)) {
