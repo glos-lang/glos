@@ -2841,6 +2841,30 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     }
 }
 
+static void error_special_method_wrong_signature(Token name, const char *signature, const char *extra) {
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: The method '" SV_Fmt
+                "' implements an operator overload and thus must have a particular signature\n",
+        Pos_Arg(name.pos),
+        SV_Arg(name.sv));
+    fprintf(
+        stderr,
+        "\n"
+        "```\n" //
+        SV_Fmt " :: %s\n"
+        "```\n"
+        "\n"
+        "%s"
+        "%s"
+        "It can have other optional arguments at the end, but this is the bare minimum that must be conformed to.\n"
+        "\n",
+        SV_Arg(name.sv),
+        signature,
+        extra ? extra : "",
+        (extra && *extra) ? "\n" : "");
+}
+
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
 static_assert(COUNT_NODES == 27, "");
@@ -3581,12 +3605,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     sv_match(name, "mod")) //
                 {
                     if (fn_spec->args_count != 2) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
@@ -3602,12 +3622,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         assert(second && second->kind == NODE_DEFINE);
 
                         Node_Define *define = (Node_Define *) second;
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
@@ -3618,12 +3634,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
 
                     if (!type_eq(*fn_spec->return_type, lhs_type)) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token, "(this: T, that: T) -> T", NULL);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types and return type must be same: Expected to return %s, got %s\n",
@@ -3634,12 +3646,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
                 } else if (sv_match(name, "neg")) {
                     if (fn_spec->args_count != 1) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(fn->defined_as->node.token, "(this: T) -> T", NULL);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected 1 argument, got %zu\n",
@@ -3650,12 +3657,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
 
                     const Type operand_type = fn_spec->args[0].type;
                     if (!type_eq(*fn_spec->return_type, operand_type)) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(fn->defined_as->node.token, "(this: T) -> T", NULL);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand type and return type must be same: Expected to return %s, got %s\n",
@@ -3666,12 +3668,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
                 } else if (sv_match(name, "compare")) {
                     if (fn_spec->args_count != 2) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token,
+                            "(this: T, that: T) -> bool | Comparison",
+                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
+                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected 2 arguments, got %zu\n",
@@ -3687,12 +3688,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         assert(second && second->kind == NODE_DEFINE);
 
                         Node_Define *define = (Node_Define *) second;
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token,
+                            "(this: T, that: T) -> bool | Comparison",
+                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
+                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Operand types must be same: Expected %s, got %s\n",
@@ -3705,12 +3705,11 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     if (!type_eq(*fn_spec->return_type, (Type) {.kind = TYPE_BOOL}) &&
                         !type_eq(*fn_spec->return_type, c->comparison_type)) //
                     {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: The method '" SV_Fmt
-                                    "' implements an operator overload and thus must have a particular signature\n",
-                            Pos_Arg(fn->defined_as->node.token.pos),
-                            SV_Arg(name));
+                        error_special_method_wrong_signature(
+                            fn->defined_as->node.token,
+                            "(this: T, that: T) -> bool | Comparison",
+                            "Return 'Comparison' if you want this method to implement both equality checking as well as ordered comparisons.\n"
+                            "Otherwise return 'bool' to implement just equality checking. Do NOT return 'Comparison | bool' literally.\n");
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected to return %s or %s, got %s\n",
