@@ -934,7 +934,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 if (fn->is_method && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
                     assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-                    fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(token.pos));
+                    fprintf(stderr, Pos_Fmt "ERROR: Function type cannot be a method\n", Pos_Arg(fn->node.token.pos));
                     fprintf(
                         stderr,
                         Pos_Fmt "NOTE: This argument is taken to be the receiver\n",

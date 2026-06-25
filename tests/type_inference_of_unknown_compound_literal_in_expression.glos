@@ -1,0 +1,13 @@
+Vec2 :: struct {
+    x: i32
+    y: i32
+}
+
+add :: (this: Vec2, that: Vec2) -> Vec2 {
+    return { this.x + that.x, this.y + that.y }
+}
+
+main :: () {
+    v: Vec2 = {34, 200} + {35, 220}
+    println(v)
+}

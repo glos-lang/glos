@@ -157,11 +157,6 @@ typedef struct {
     LLVMMetadataRef debug;
 } Type_Group;
 
-typedef struct {
-    Type  *children;
-    size_t count;
-} Type_Unknown_Compound;
-
 struct Type {
     Type_Kind kind;
     size_t    ref;
@@ -183,8 +178,6 @@ struct Type {
 
         Type_Group group;
         Module    *module;
-
-        Type_Unknown_Compound unknown_compound;
     } spec;
 
     LLVMTypeRef llvm;
@@ -616,6 +609,10 @@ typedef struct {
     //     lhs = <value>
     // }
     bool is_designated;
+
+    // Untyped compound literals are type checked in two phases. This notes that the first phase is complete, ie, the
+    // individual child nodes are checked.
+    bool are_children_checked;
 } Node_Compound;
 
 typedef enum {

@@ -39,6 +39,7 @@ unreachable :: (message: ...any, location := #caller_location) {
     C.abort()
 }
 
+// TODO: Print types separately
 wprint :: (f: C.File, vs: ...any) {
     write :: (f: C.File, data: rawptr, type: Type, nested: bool) {
         if type == Source_Code_Location {
