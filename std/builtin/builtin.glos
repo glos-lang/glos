@@ -1,9 +1,10 @@
-assert :: (cond: bool, message := "", location := #caller_location) {
+assert :: (cond: bool, message: ...any, location := #caller_location) {
     if !cond {
-        if message == "" {
+        if message.count == 0 {
             eprintln("\{location} Assertion failed")
         } else {
-            eprintln("\{location} Assertion failed: \{message}")
+            eprint("\{location} Assertion failed: ")
+            eprintln(...message)
         }
 
         C.fflush(C.stdout)
@@ -12,11 +13,12 @@ assert :: (cond: bool, message := "", location := #caller_location) {
     }
 }
 
-todo :: (message := "", location := #caller_location) {
-    if message == "" {
+todo :: (message: ...any, location := #caller_location) {
+    if message.count == 0 {
         eprintln("\{location} TODO")
     } else {
-        eprintln("\{location} TODO: \{message}")
+        eprint("\{location} TODO: ")
+        eprintln(...message)
     }
 
     C.fflush(C.stdout)
@@ -24,11 +26,12 @@ todo :: (message := "", location := #caller_location) {
     C.abort()
 }
 
-unreachable :: (message := "", location := #caller_location) {
-    if message == "" {
+unreachable :: (message: ...any, location := #caller_location) {
+    if message.count == 0 {
         eprintln("\{location} Unreachable")
     } else {
-        eprintln("\{location} Unreachable: \{message}")
+        eprint("\{location} Unreachable: ")
+        eprintln(...message)
     }
 
     C.fflush(C.stdout)

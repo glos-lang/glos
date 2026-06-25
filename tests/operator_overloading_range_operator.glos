@@ -1,0 +1,37 @@
+Array :: struct {
+    items: [64]i64
+}
+
+main :: () {
+    xs: Array
+    xs[0] = 69
+    println(xs[..3])
+}
+
+index :: (this: &Array, index: i64, assign: bool, location := #caller_location) -> &i64 {
+    assert(
+        index < this.items.count,
+        "Index \{index} is out of bounds in Array of length of \{this.items.count}",
+        location = location
+    )
+    return &this.items[index]
+}
+
+range :: (this: &Array, begin := 0, end := -1, location := #caller_location) -> []i64 {
+    if end == -1 {
+        end = this.items.count
+    }
+
+    assert(
+        begin <= end,
+        "Range (\{begin}..\{end}) is invalid: Beginning of range is more than end",
+        location = location
+    )
+
+    assert(
+        end <= this.items.count,
+        "Range (\{begin}..\{end}) is out of bounds in Array of length \{this.items.count}",
+        location = location
+    )
+    return this.items[begin..end]
+}

@@ -200,8 +200,9 @@ struct Type_Fn_Arg {
     // For default arguments
     Const_Value *default_value;
     LLVMValueRef default_value_llvm;
+    bool         default_value_is_caller_location;
 
-    bool default_value_is_caller_location;
+    bool has_default_value;
 };
 
 struct Type_Union_Variant {

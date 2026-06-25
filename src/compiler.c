@@ -3113,36 +3113,47 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
         if (index->overload) {
-            if (index->is_ranged) {
-                todo();
-            } else {
-                const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = temp_alloc(0);
 
-                LLVMValueRef lhs = compile_expr(c, index->lhs, false);
-                LLVMValueRef a = compile_expr(c, index->a, false);
+            LLVMValueRef lhs = compile_expr(c, index->lhs, false);
+            LLVMValueRef a = compile_expr(c, index->a, false);
+            LLVMValueRef b = compile_expr(c, index->b, false);
 
-                Typed_LLVM_Value fn = {0};
-                fn.value = compile_fn(c, index->overload);
-                fn.type = index->overload->node.type;
+            Typed_LLVM_Value fn = {0};
+            fn.value = compile_fn(c, index->overload);
+            fn.type = index->overload->node.type;
 
-                const Type_Fn    *fn_spec = fn.type.spec.fn;
-                Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
-                if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
-                    lhs = undo_load(lhs);
-                }
+            const Type_Fn    *fn_spec = fn.type.spec.fn;
+            Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+            if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
+                lhs = undo_load(lhs);
+            }
 
-                args[0].value = lhs;
-                args[0].type = fn_spec->args[0].type;
+            args[0].value = lhs;
+            args[0].type = fn_spec->args[0].type;
 
+            if (a) {
                 args[1].value = a;
                 args[1].type = fn_spec->args[1].type;
+            }
 
+            if (index->is_ranged) {
+                if (b) {
+                    args[2].value = b;
+                    args[2].type = fn_spec->args[2].type;
+                }
+            } else {
                 args[2].value = LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), index->is_assign, true);
                 args[2].type = fn_spec->args[2].type;
+            }
 
-                compile_optional_arguments(c, args, fn_spec, n->token.pos);
+            compile_optional_arguments(c, args, fn_spec, n->token.pos);
+            if (index->is_ranged) {
+                LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, ref);
+                temp_reset(checkpoint);
+                return value;
+            } else {
                 LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false);
-
                 temp_reset(checkpoint);
                 if (ref) {
                     return ptr;

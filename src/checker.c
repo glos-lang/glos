@@ -2577,7 +2577,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                 const Type_Fn_Arg *arg = &fn_spec->args[i];
                 if (sv_eq(arg->name, it_name->token.sv)) {
                     it_index = i;
-                    expected = get_argument_type(fn_spec, i);
+                    expected = &arg->type;
                     break;
                 }
             }
@@ -2802,7 +2802,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                 }
 
                 const Type_Fn_Arg *it = &fn_spec->args[i];
-                if (!args[i].node && !it->default_value && !it->default_value_is_caller_location) {
+                if (!args[i].node && !it->has_default_value) {
                     not_provided_count++;
                     if (not_provided_count == 1) {
                         not_provided_name = it->name;
@@ -2933,7 +2933,7 @@ static void check_special_method_signature_args_count(
 
     for (size_t i = 0; i < fn_spec->args_count; i++) {
         const Type_Fn_Arg *it = &fn_spec->args[i];
-        if ((!it->default_value && !it->default_value_is_caller_location) && i >= args_count) {
+        if (!it->has_default_value && i >= args_count) {
             error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
             fprintf(
                 stderr,
@@ -3642,6 +3642,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                         it->definition_spec->const_value = eval_const_expr(c, define->expr);
                         fn_spec->args[fn_spec->args_count].default_value = &it->definition_spec->const_value;
                     }
+                    fn_spec->args[fn_spec->args_count].has_default_value = true;
                 }
                 fn_spec->args[fn_spec->args_count].type = it->node.type;
                 fn_spec->args_count += define->count;
@@ -3771,15 +3772,15 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     const char *note = NULL;
                     check_special_method_signature_args_count(fn, 3, signature, note);
 
-                    const Type key_type = fn_spec->args[2].type;
-                    if (!type_eq(key_type, (Type) {.kind = TYPE_BOOL})) {
+                    const Type assign_type = fn_spec->args[2].type;
+                    if (!type_eq(assign_type, (Type) {.kind = TYPE_BOOL})) {
                         error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
                         fprintf(
                             stderr,
                             Pos_Fmt "INFO: Expected the third argument to be %s, got %s\n",
                             Pos_Arg(fn_spec->args[2].pos),
                             type_to_cstr((Type) {.kind = TYPE_BOOL}),
-                            type_to_cstr(key_type));
+                            type_to_cstr(assign_type));
                         exit(1);
                     }
 
@@ -3790,6 +3791,33 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                             Pos_Fmt "INFO: Expected to return a pointer, got %s\n",
                             Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
                             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+                        exit(1);
+                    }
+                } else if (sv_match(name, "range")) {
+                    const char *signature = "(this: T, begin: A, end: A) -> V";
+                    const char *note = NULL;
+                    check_special_method_signature_args_count(fn, 3, signature, note);
+
+                    const Type begin_type = fn_spec->args[1].type;
+                    const Type end_type = fn_spec->args[2].type;
+                    if (!type_eq(end_type, begin_type)) {
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Types of range beginning and end must be same: Expected %s, got %s\n",
+                            Pos_Arg(fn_spec->args[2].pos),
+                            type_to_cstr(begin_type),
+                            type_to_cstr(end_type));
+                        exit(1);
+                    }
+
+                    if (fn_spec->returns_count != 1) {
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: The range operator cannot return %zu values\n",
+                            Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
+                            fn_spec->returns_count);
                         exit(1);
                     }
                 }
@@ -4325,7 +4353,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 };
             } else if (
                 type_kind_eq(index->lhs->type, TYPE_ARRAY) || type_kind_eq(index->lhs->type, TYPE_SLICE) ||
-                type_kind_eq(index->lhs->type, TYPE_STRING)) {
+                type_kind_eq(index->lhs->type, TYPE_STRING)) //
+            {
                 // The beginning can be inferred to be the beginning of the slice
                 if (index->a) {
                     check_expr(c, index->a, REF_NONE, NULL);
@@ -4343,13 +4372,43 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     n->type.kind = TYPE_SLICE;
                 }
             } else {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot take slice into %s\n",
-                    Pos_Arg(index->lhs->token.pos),
-                    type_to_cstr(index->lhs->type));
+                index->overload = get_operator_overload(c, "range", index->lhs, &n->token.pos);
+                assert(index->overload->node.type.kind == TYPE_FN);
+                const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
 
-                exit(1);
+                if (index->a) {
+                    check_expr(c, index->a, REF_NONE, NULL);
+                    type_assert(c, index->a, fn_spec->args[1].type);
+                } else if (!fn_spec->args[1].has_default_value) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot infer beginning of range from %s\n",
+                        Pos_Arg(index->lhs->token.pos),
+                        type_to_cstr(index->lhs->type));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: The method 'range' does not have a default value for its beginning argument\n",
+                        Pos_Arg(fn_spec->args[1].pos));
+                    exit(1);
+                }
+
+                if (index->b) {
+                    check_expr(c, index->b, REF_NONE, NULL);
+                    type_assert(c, index->b, fn_spec->args[2].type);
+                } else if (!fn_spec->args[2].has_default_value) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot infer end of range from %s\n",
+                        Pos_Arg(index->lhs->token.pos),
+                        type_to_cstr(index->lhs->type));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: The method 'range' does not have a default value for its end argument\n",
+                        Pos_Arg(fn_spec->args[2].pos));
+                    exit(1);
+                }
+
+                n->type = *fn_spec->return_type;
             }
 
             is_ref_valid = ref == REF_NONE;
