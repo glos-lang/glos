@@ -1324,7 +1324,19 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     } break;
 
     case NODE_INDEX: {
-        Node_Index       *index = (Node_Index *) n;
+        Node_Index *index = (Node_Index *) n;
+        if (index->overload) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot call operator overload in compile time expressions\n",
+                Pos_Arg(n->token.pos));
+            fprintf(
+                stderr,
+                Pos_Fmt "NOTE: This is the overload used\n",
+                Pos_Arg(index->overload->defined_as->node.token.pos));
+            exit(1);
+        }
+
         const Const_Value lhs = eval_const_expr(c, index->lhs);
         if (index->is_ranged) {
             static_assert(COUNT_CONST_VALUES == 9, "");
@@ -2299,6 +2311,27 @@ static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *sp
     return false;
 }
 
+static bool is_indexable(Compiler *c, Type type) {
+    if (type_kind_eq(type, TYPE_ARRAY) || type_kind_eq(type, TYPE_SLICE) || type_kind_eq(type, TYPE_STRING)) {
+        return true;
+    }
+
+    Method_Spec spec = {0};
+    if (get_method_spec(c, type, sv_from_cstr("index"), &spec, NULL)) {
+        Node_Fn **fn = ht_get(&c->methods_table, spec);
+        if (fn) {
+            Node_Fn *method = *fn;
+            if (method->node.type.kind != TYPE_FN) {
+                assert(method->defined_as);
+                check_definition_if_needed(c, method->defined_as, REF_NONE);
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos) {
     Method_Spec spec = {0};
     if (get_method_spec(c, receiver->type, sv_from_cstr(operator), &spec, NULL)) {
@@ -2309,6 +2342,22 @@ static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *r
                 assert(method->defined_as);
                 check_definition_if_needed(c, method->defined_as, REF_NONE);
             }
+
+            const Type_Fn *method_spec = method->node.type.spec.fn;
+
+            const Type receiver_type = method_spec->args[0].type;
+            if (receiver_type.ref > receiver->type.ref + 1) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Too many levels of pointer indirection in method call\n", Pos_Arg(*pos));
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: This is of type %s, but the receiver is expected to be %s\n",
+                    Pos_Arg(receiver->token.pos),
+                    type_to_cstr(receiver->type),
+                    type_to_cstr(receiver_type));
+                exit(1);
+            }
+
             return method;
         }
     }
@@ -3717,6 +3766,32 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                     }
 
                     fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->comparison_type);
+                } else if (sv_match(name, "index")) {
+                    const char *signature = "(this: T, key: K, assign: bool) -> &V";
+                    const char *note = NULL;
+                    check_special_method_signature_args_count(fn, 3, signature, note);
+
+                    const Type key_type = fn_spec->args[2].type;
+                    if (!type_eq(key_type, (Type) {.kind = TYPE_BOOL})) {
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected the third argument to be %s, got %s\n",
+                            Pos_Arg(fn_spec->args[2].pos),
+                            type_to_cstr((Type) {.kind = TYPE_BOOL}),
+                            type_to_cstr(key_type));
+                        exit(1);
+                    }
+
+                    if (!type_is_pointer(*fn_spec->return_type)) {
+                        error_special_method_wrong_signature(fn->defined_as->node.token, signature, note);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected to return a pointer, got %s\n",
+                            Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
+                            fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+                        exit(1);
+                    }
                 }
             }
 
@@ -4207,7 +4282,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         Node_Index *index = (Node_Index *) n;
         check_expr(c, index->lhs, ref, NULL);
         check_that_type_is_known(index->lhs);
+
         is_ref_valid = true; // check_node() has already determined that the reference is valid
+        index->is_assign = ref == REF_ASSIGN || ref == REF_ASSIGN_MEMBER;
         if (index->is_ranged) {
             if (index->lhs->type.is_meta) {
                 fprintf(
@@ -4291,34 +4368,38 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                 type_assert_numeric(index->a, false);
                 n->type = (Type) {.kind = TYPE_CHAR};
             } else {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Cannot index into %s",
-                    Pos_Arg(index->lhs->token.pos),
-                    type_to_cstr(index->lhs->type));
-
                 if (index->lhs->type.ref) {
                     fprintf(
                         stderr,
-                        ". Pointers must be converted into slices before they can be indexed\n"
-                        "\n"
-                        "```\n"
-                        "slice := pointer[begin..end];\n"
-                        "slice[index];\n"
-                        "```\n");
+                        Pos_Fmt "ERROR: Pointers must be converted into slices before they can be indexed\n"
+                                "\n"
+                                "```\n"
+                                "slice := pointer[begin..end];\n"
+                                "slice[index];\n"
+                                "```\n",
+                        Pos_Arg(index->lhs->token.pos));
 
-                    if (type_kind_eq(index->lhs->type, TYPE_SLICE) || type_kind_eq(index->lhs->type, TYPE_STRING)) {
+                    if (is_indexable(c, index->lhs->type)) {
                         fprintf(
                             stderr,
                             "\n"
                             "NOTE: Here the value is a %s. Perhaps it was meant to be dereferenced before indexing?\n",
                             type_to_cstr(index->lhs->type));
                     }
-                } else {
-                    fprintf(stderr, "\n");
+                    exit(1);
                 }
 
-                exit(1);
+                index->overload = get_operator_overload(c, "index", index->lhs, &n->token.pos);
+
+                assert(index->overload->node.type.kind == TYPE_FN);
+                const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
+
+                check_expr(c, index->a, REF_NONE, NULL);
+                type_assert(c, index->a, fn_spec->args[1].type);
+
+                n->type = *fn_spec->return_type;
+                assert(n->type.ref);
+                n->type.ref--;
             }
         }
     } break;

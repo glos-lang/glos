@@ -658,6 +658,9 @@ typedef struct {
     Node *a;
     Node *b;
     bool  is_ranged;
+    bool  is_assign;
+
+    Node_Fn *overload;
 } Node_Index;
 
 // This represents a type

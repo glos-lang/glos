@@ -2263,18 +2263,7 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
 {
     const void *checkpoint = temp_alloc(0);
 
-    Type     lhs_type = binary->lhs->type;
-    Type     rhs_type = binary->rhs->type;
-    Node_Fn *overload = binary->overload;
-    if (binary->overloads) {
-        overload = binary->overloads[index];
-
-        assert(lhs_type.kind == TYPE_GROUP && index < lhs_type.spec.group.count);
-        lhs_type = lhs_type.spec.group.data[index];
-
-        assert(rhs_type.kind == TYPE_GROUP && index < rhs_type.spec.group.count);
-        rhs_type = rhs_type.spec.group.data[index];
-    }
+    Node_Fn *overload = binary->overloads ? binary->overloads[index] : binary->overload;
 
     Typed_LLVM_Value fn = {0};
     fn.value = compile_fn(c, overload);
@@ -2282,11 +2271,15 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
 
     const Type_Fn    *fn_spec = fn.type.spec.fn;
     Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+    if (fn_spec->args[0].type.ref > binary->lhs->type.ref) {
+        lhs = undo_load(lhs);
+    }
+
     args[0].value = lhs;
-    args[0].type = lhs_type;
+    args[0].type = fn_spec->args[0].type;
 
     args[1].value = rhs;
-    args[1].type = rhs_type;
+    args[1].type = fn_spec->args[1].type;
 
     compile_optional_arguments(c, args, fn_spec, binary->node.token.pos);
     LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
@@ -2381,8 +2374,12 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 const Type_Fn    *fn_spec = fn.type.spec.fn;
                 Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+                if (fn_spec->args[0].type.ref > unary->value->type.ref) {
+                    value = undo_load(value);
+                }
+
                 args[0].value = value;
-                args[0].type = unary->value->type;
+                args[0].type = fn_spec->args[0].type;
 
                 compile_optional_arguments(c, args, fn_spec, n->token.pos);
                 LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
@@ -3115,6 +3112,44 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
+        if (index->overload) {
+            if (index->is_ranged) {
+                todo();
+            } else {
+                const void *checkpoint = temp_alloc(0);
+
+                LLVMValueRef lhs = compile_expr(c, index->lhs, false);
+                LLVMValueRef a = compile_expr(c, index->a, false);
+
+                Typed_LLVM_Value fn = {0};
+                fn.value = compile_fn(c, index->overload);
+                fn.type = index->overload->node.type;
+
+                const Type_Fn    *fn_spec = fn.type.spec.fn;
+                Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+                if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
+                    lhs = undo_load(lhs);
+                }
+
+                args[0].value = lhs;
+                args[0].type = fn_spec->args[0].type;
+
+                args[1].value = a;
+                args[1].type = fn_spec->args[1].type;
+
+                args[2].value = LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), index->is_assign, true);
+                args[2].type = fn_spec->args[2].type;
+
+                compile_optional_arguments(c, args, fn_spec, n->token.pos);
+                LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false);
+
+                temp_reset(checkpoint);
+                if (ref) {
+                    return ptr;
+                }
+                return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
+            }
+        }
 
         Type  element_type_buffer = {0};
         Type *element_type = &element_type_buffer;
