@@ -2301,6 +2301,20 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
             set_debug_pos(c, n->token.pos);
+
+            if (unary->overload) {
+                Typed_LLVM_Value fn = {0};
+                fn.value = compile_fn(c, unary->overload);
+                fn.type = unary->overload->node.type;
+
+                Typed_LLVM_Value args[1] = {0};
+                args[0].value = value;
+                args[0].type = unary->value->type;
+
+                set_debug_pos(c, n->token.pos);
+                return compile_call(c, fn, args, len(args), false);
+            }
+
             return LLVMBuildNeg(c->llvm_builder, value, "");
 
         case TOKEN_MUL:

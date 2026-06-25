@@ -968,6 +968,18 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
+        if (unary->overload) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Cannot call operator overload in compile time expressions\n",
+                Pos_Arg(n->token.pos));
+            fprintf(
+                stderr,
+                Pos_Fmt "NOTE: This is the overload used\n",
+                Pos_Arg(unary->overload->defined_as->node.token.pos));
+            exit(1);
+        }
+
         Const_Value value = {0};
 
         static_assert(COUNT_TOKENS == 76, "");
@@ -2937,7 +2949,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE, expected_type);
-            n->type = type_assert_numeric(unary->value, false);
+            if (!type_is_numeric(unary->value->type) && !type_is_pointer(unary->value->type)) {
+                unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos);
+            }
+            n->type = unary->value->type;
             break;
 
         case TOKEN_MUL: {
@@ -3614,6 +3629,38 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref, const Type *expected_
                             Pos_Fmt "INFO: Operand types and return type must be same: Expected to return %s, got %s\n",
                             Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
                             type_to_cstr(lhs_type),
+                            fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+                        exit(1);
+                    }
+                } else if (sv_match(name, "neg")) {
+                    if (fn_spec->args_count != 1) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Expected 1 argument, got %zu\n",
+                            Pos_Arg(n->token.pos),
+                            fn_spec->args_count);
+                        exit(1);
+                    }
+
+                    const Type operand_type = fn_spec->args[0].type;
+                    if (!type_eq(*fn_spec->return_type, operand_type)) {
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: The method '" SV_Fmt
+                                    "' implements an operator overload and thus must have a particular signature\n",
+                            Pos_Arg(fn->defined_as->node.token.pos),
+                            SV_Arg(name));
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "INFO: Operand type and return type must be same: Expected to return %s, got %s\n",
+                            Pos_Arg(fn->returns.head ? fn->returns.head->token.pos : fn->body->token.pos),
+                            type_to_cstr(operand_type),
                             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
                         exit(1);
                     }

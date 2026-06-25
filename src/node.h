@@ -441,6 +441,8 @@ typedef struct {
     Node  node;
     Node *value;
     bool  is_postfix; // For '++' and '--'
+
+    Node_Fn *overload;
 } Node_Unary;
 
 typedef struct {
