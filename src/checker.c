@@ -2306,36 +2306,53 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *spec, Module *defining_in_module) {
+static bool
+get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *spec, Module *defining_in_module, bool *is_named) //
+{
     if (spec) {
         spec->name = name;
     }
 
     if (type_kind_eq(receiver, TYPE_ENUM)) {
+        Node_Enum *definition = receiver.spec.enumm.definition;
         if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.enumm.definition;
+            spec->uid = (uintptr_t) definition;
         }
 
         if (defining_in_module) {
-            return defining_in_module == receiver.spec.enumm.definition->module;
+            if (is_named) {
+                *is_named = definition->defined_as != NULL;
+            }
+
+            return defining_in_module == definition->module;
         }
         return true;
     } else if (type_kind_eq(receiver, TYPE_UNION)) {
+        Node_Union *definition = receiver.spec.unionn->definition;
         if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.unionn->definition;
+            spec->uid = (uintptr_t) definition;
         }
 
         if (defining_in_module) {
-            return defining_in_module == receiver.spec.unionn->definition->module;
+            if (is_named) {
+                *is_named = definition->defined_as != NULL;
+            }
+
+            return defining_in_module == definition->module;
         }
         return true;
     } else if (type_kind_eq(receiver, TYPE_STRUCT)) {
+        Node_Struct *definition = receiver.spec.structt->definition;
         if (spec) {
-            spec->uid = (uintptr_t) receiver.spec.structt->definition;
+            spec->uid = (uintptr_t) definition;
         }
 
         if (defining_in_module) {
-            return defining_in_module == receiver.spec.structt->definition->module;
+            if (is_named) {
+                *is_named = definition->defined_as != NULL;
+            }
+
+            return defining_in_module == definition->module;
         }
         return true;
     } else if (receiver.distinct) {
@@ -2344,6 +2361,10 @@ static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *sp
         }
 
         if (defining_in_module) {
+            if (is_named) {
+                *is_named = true;
+            }
+
             return defining_in_module == receiver.distinct->module;
         }
         return true;
@@ -2356,6 +2377,10 @@ static bool get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *sp
         }
 
         if (defining_in_module) {
+            if (is_named) {
+                *is_named = true;
+            }
+
             return defining_in_module == c->builtin_module;
         }
         return true;
@@ -2370,7 +2395,7 @@ static bool is_indexable(Compiler *c, Type type) {
     }
 
     Method_Spec spec = {0};
-    if (get_method_spec(c, type, sv_from_cstr("index"), &spec, NULL)) {
+    if (get_method_spec(c, type, sv_from_cstr("index"), &spec, NULL, NULL)) {
         Node_Fn **fn = ht_get(&c->methods_table, spec);
         if (fn) {
             Node_Fn *method = *fn;
@@ -2387,7 +2412,7 @@ static bool is_indexable(Compiler *c, Type type) {
 
 static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos) {
     Method_Spec spec = {0};
-    if (get_method_spec(c, receiver->type, sv_from_cstr(operator), &spec, NULL)) {
+    if (get_method_spec(c, receiver->type, sv_from_cstr(operator), &spec, NULL, NULL)) {
         Node_Fn **fn = ht_get(&c->methods_table, spec);
         if (fn) {
             Node_Fn *method = *fn;
@@ -3497,7 +3522,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             // Method
             {
                 Method_Spec spec = {0};
-                if (get_method_spec(c, member->lhs->type, n->token.sv, &spec, NULL)) {
+                if (get_method_spec(c, member->lhs->type, n->token.sv, &spec, NULL, NULL)) {
                     Node_Fn **method = ht_get(&c->methods_table, spec);
                     if (method) {
                         member->method = *method;
@@ -3672,7 +3697,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                         receiver.is_meta = false;
 
                         Method_Spec spec = {0};
-                        if (get_method_spec(c, receiver, n->token.sv, &spec, NULL)) {
+                        if (get_method_spec(c, receiver, n->token.sv, &spec, NULL, NULL)) {
                             Node_Fn **method = ht_get(&c->methods_table, spec);
                             if (method) {
                                 ok = true;
@@ -4997,8 +5022,21 @@ void check_nodes(Compiler *c) {
             define->type->type.is_meta = false;
             const Type receiver_type = define->type->type;
 
+            bool        is_named = false;
             Method_Spec spec = {0};
-            if (get_method_spec(c, receiver_type, name, &spec, fn->module)) {
+            if (get_method_spec(c, receiver_type, name, &spec, fn->module, &is_named)) {
+                if (!is_named) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: The receiver of a method cannot have an anonymous type\n",
+                        Pos_Arg(fn->defined_as->node.token.pos));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: This argument is taken to be the receiver\n",
+                        Pos_Arg(define->name->token.pos));
+                    exit(1);
+                }
+
                 if (type_kind_eq(receiver_type, TYPE_ENUM)) {
                     ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
                         if (sv_eq(it->token.sv, name)) {

@@ -541,6 +541,21 @@ static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *mo
     const char *name = temp_emit_nested_fn_name(c, fn->outer_fn, module);
     temp_remove_null();
 
+    if (fn->is_method) {
+        assert(fn->defined_as);
+        assert(!fn->outer_fn);
+
+        assert(fn->node.type.kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn->node.type.spec.fn;
+
+        assert(fn_spec->args_count);
+        temp_sprintf(".");
+        temp_remove_null();
+
+        type_to_cstr_raw(fn_spec->args[0].type);
+        temp_remove_null();
+    }
+
     if (fn->defined_as) {
         temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
     } else {
@@ -2033,7 +2048,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
 #ifdef PLATFORM_X86_64_LINUX
             expr = undo_load(expr);
 #else
-            LLVMValueRef temp = compile_alloca(c, arg->type.llvm);
+            LLVMValueRef temp = compile_alloca(c, arg->type->llvm);
             LLVMBuildStore(c->llvm_builder, expr, temp);
             expr = temp;
 #endif // PLATFORM_X86_64_LINUX
@@ -4081,5 +4096,3 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->defers);
     temp_reset(checkpoint);
 }
-
-// TODO: Link name for methods
