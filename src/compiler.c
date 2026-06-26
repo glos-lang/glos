@@ -1991,7 +1991,7 @@ static LLVMValueRef compile_load_if_not_null(Compiler *c, LLVMValueRef ptr, LLVM
 }
 
 typedef struct {
-    Type         type;
+    Type        *type;
     LLVMValueRef value;
 } Typed_LLVM_Value;
 
@@ -2000,16 +2000,16 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
     LLVMMetadataRef debug_pos = LLVMGetCurrentDebugLocation2(c->llvm_builder);
 
     const void *checkpoint = temp_alloc(0);
-    assert(fn.type.kind == TYPE_FN);
+    assert(fn.type->kind == TYPE_FN);
 
-    const Type_Fn *fn_spec = fn.type.spec.fn;
+    const Type_Fn *fn_spec = fn.type->spec.fn;
     if (!fn_spec->llvm) {
         ABI abi = {0};
         abi.args_count = fn_spec->args_count;
         abi.args = temp_alloc(abi.args_count * sizeof(*abi.args));
-        compile_fn_type(c, fn.type, &abi);
+        compile_fn_type(c, *fn.type, &abi);
     }
-    fn.type.llvm = fn_spec->llvm;
+    fn.type->llvm = fn_spec->llvm;
 
     const size_t arg_values_count_save = c->arg_values.count;
 
@@ -2024,7 +2024,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
         Typed_LLVM_Value *arg = &args[i];
         LLVMValueRef      expr = arg->value;
 
-        const ABI_Info arg_info = get_abi_info_for_type(c, &arg->type, true);
+        const ABI_Info arg_info = get_abi_info_for_type(c, arg->type, true);
         args_info[i] = arg_info;
 
         static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
@@ -2042,7 +2042,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
         } break;
 
         case 1: {
-            if (type_is_compound(arg->type)) {
+            if (type_is_compound(*arg->type)) {
                 LLVMTypeRef  abi_type = arg_info.direct_types[0];
                 const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
                 LLVMTypeRef  expr_type = LLVMTypeOf(expr);
@@ -2070,11 +2070,11 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
                 }
             } else {
                 if (fn_spec->variadics_kind == VARIADICS_UNTYPED) {
-                    const size_t size = compile_sizeof(c, &arg->type);
+                    const size_t size = compile_sizeof(c, arg->type);
                     if (size < 4) {
                         // Promote values smaller than i32 into i32
                         expr =
-                            compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), type_is_signed(arg->type));
+                            compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), type_is_signed(*arg->type));
                     }
                 }
             }
@@ -2101,7 +2101,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
     LLVMSetCurrentDebugLocation2(c->llvm_builder, debug_pos);
     LLVMValueRef result = LLVMBuildCall2(
         c->llvm_builder,
-        fn.type.llvm,
+        fn.type->llvm,
         fn.value,
         &c->arg_values.data[arg_values_count_save],
         c->arg_values.count - arg_values_count_save,
@@ -2250,7 +2250,7 @@ compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *f
         }
 
         Typed_LLVM_Value tv = {0};
-        tv.type = arg->type;
+        tv.type = &arg->type;
         tv.value = value;
         args[i] = tv;
     }
@@ -2267,19 +2267,19 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
 
     Typed_LLVM_Value fn = {0};
     fn.value = compile_fn(c, overload);
-    fn.type = overload->node.type;
+    fn.type = &overload->node.type;
 
-    const Type_Fn    *fn_spec = fn.type.spec.fn;
+    const Type_Fn    *fn_spec = fn.type->spec.fn;
     Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
     if (fn_spec->args[0].type.ref > binary->lhs->type.ref) {
         lhs = undo_load(lhs);
     }
 
     args[0].value = lhs;
-    args[0].type = fn_spec->args[0].type;
+    args[0].type = &fn_spec->args[0].type;
 
     args[1].value = rhs;
-    args[1].type = fn_spec->args[1].type;
+    args[1].type = &fn_spec->args[1].type;
 
     compile_optional_arguments(c, args, fn_spec, binary->node.token.pos);
     LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
@@ -2370,16 +2370,16 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 Typed_LLVM_Value fn = {0};
                 fn.value = compile_fn(c, unary->overload);
-                fn.type = unary->overload->node.type;
+                fn.type = &unary->overload->node.type;
 
-                const Type_Fn    *fn_spec = fn.type.spec.fn;
+                const Type_Fn    *fn_spec = fn.type->spec.fn;
                 Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
                 if (fn_spec->args[0].type.ref > unary->value->type.ref) {
                     value = undo_load(value);
                 }
 
                 args[0].value = value;
-                args[0].type = fn_spec->args[0].type;
+                args[0].type = &fn_spec->args[0].type;
 
                 compile_optional_arguments(c, args, fn_spec, n->token.pos);
                 LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
@@ -2998,8 +2998,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
         Typed_LLVM_Value fn = {0};
         fn.value = compile_expr(c, call->fn, false);
-        fn.type = call->fn->type;
-        const Type_Fn *fn_spec = fn.type.spec.fn;
+        fn.type = &call->fn->type;
+        const Type_Fn *fn_spec = fn.type->spec.fn;
 
         size_t args_count = fn_spec->args_count;
         if (fn_spec->variadics_kind == VARIADICS_UNTYPED) {
@@ -3015,7 +3015,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 args[args_iota].value = member->method_receiver_llvm;
 
                 assert(fn_spec->args_count);
-                args[args_iota].type = fn_spec->args[0].type;
+                args[args_iota].type = &fn_spec->args[0].type;
                 args_iota++;
             }
         }
@@ -3041,7 +3041,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, variadics_slice, 1, ""));
 
             Typed_LLVM_Value arg = {0};
-            arg.type = *type;
+            arg.type = type;
             arg.value = LLVMBuildLoad2(c->llvm_builder, c->llvm_slice_type, variadics_slice, "");
             args[fn_spec->variadics_index] = arg;
         }
@@ -3051,7 +3051,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 const size_t index = arg->token.as.integer;
 
                 LLVMValueRef expr = compile_expr(c, ((Node_Binary *) arg)->rhs, false);
-                args[index].type = fn_spec->args[index].type;
+                args[index].type = &fn_spec->args[index].type;
                 args[index].value = expr;
 
                 // No point in advancing iota further, since the parser guarantees there will be no more positional
@@ -3067,7 +3067,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 assert(c->group_values.count == group_values_count_save + group->count);
                 for (size_t i = 0; i < group->count; i++) {
                     Typed_LLVM_Value tv = {0};
-                    tv.type = group->data[i];
+                    tv.type = &group->data[i];
                     tv.value = c->group_values.data[group_values_count_save + i];
                     if (variadics_memory && args_iota >= fn_spec->variadics_index) {
                         LLVMValueRef indices[] = {
@@ -3085,7 +3085,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 }
             } else {
                 Typed_LLVM_Value tv = {0};
-                tv.type = arg->type;
+                tv.type = &arg->type;
                 tv.value = expr;
                 if (variadics_memory && args_iota >= fn_spec->variadics_index) {
                     LLVMValueRef indices[] = {
@@ -3135,30 +3135,30 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             Typed_LLVM_Value fn = {0};
             fn.value = compile_fn(c, index->overload);
-            fn.type = index->overload->node.type;
+            fn.type = &index->overload->node.type;
 
-            const Type_Fn    *fn_spec = fn.type.spec.fn;
+            const Type_Fn    *fn_spec = fn.type->spec.fn;
             Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
             if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
                 lhs = undo_load(lhs);
             }
 
             args[0].value = lhs;
-            args[0].type = fn_spec->args[0].type;
+            args[0].type = &fn_spec->args[0].type;
 
             if (a) {
                 args[1].value = a;
-                args[1].type = fn_spec->args[1].type;
+                args[1].type = &fn_spec->args[1].type;
             }
 
             if (index->is_ranged) {
                 if (b) {
                     args[2].value = b;
-                    args[2].type = fn_spec->args[2].type;
+                    args[2].type = &fn_spec->args[2].type;
                 }
             } else {
                 args[2].value = LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), index->is_assign, true);
-                args[2].type = fn_spec->args[2].type;
+                args[2].type = &fn_spec->args[2].type;
             }
 
             compile_optional_arguments(c, args, fn_spec, n->token.pos);
