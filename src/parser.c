@@ -680,6 +680,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
             Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, p->state.ahead);
             binary->lhs = child;
             binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+            binary->module = p->module_current;
             child = (Node *) binary;
             child_is_designated = true;
         }
@@ -751,6 +752,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE));
         Node_Member *member = (Node_Member *) node;
         member->dot = token;
+        member->module = p->module_current;
     } break;
 
     case TOKEN_SUB:
@@ -760,12 +762,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
+        unary->module = p->module_current;
     } break;
 
     case TOKEN_BAND: {
         node = node_alloc(p->arena, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_REF, false, compounds_allowed, NULL);
+        unary->module = p->module_current;
     } break;
 
     case TOKEN_DISTINCT: {
@@ -999,6 +1003,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (read_token(p, TOKEN_SET)) {
                 Node_Unary *unary = (Node_Unary *) it;
                 unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+                unary->module = p->module_current;
             }
 
             nodes_push(&enumm->values, it);
@@ -1033,6 +1038,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (token.kind == TOKEN_SPREAD) {
                 Node_Unary *spread = (Node_Unary *) node_alloc(p->arena, NODE_UNARY, next_token(p));
                 spread->value = parse_expr(p, POWER_PRE, false, false, NULL);
+                spread->module = p->module_current;
                 nodes_push(&structt->fields, (Node *) spread);
             } else {
                 Node *field = parse_expr(p, POWER_NIL, true, true, NULL);
@@ -1065,6 +1071,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
         unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+        unary->module = p->module_current;
         expect_token(p, TOKEN_RPAREN);
     } break;
 
@@ -1128,6 +1135,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
             member->lhs = node;
             member->dot = token;
+            member->module = p->module_current;
             if (member->node.token.kind == TOKEN_LPAREN) {
                 member->rhs = parse_expr(p, POWER_SET, false, true, NULL);
                 expect_token(p, TOKEN_RPAREN);
@@ -1217,6 +1225,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, next_token(p));
                     binary->lhs = arg;
                     binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                    binary->module = p->module_current;
                     arg = (Node *) binary;
                     has_named_args = true;
                 } else {
@@ -1270,6 +1279,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         case TOKEN_LBRACKET: {
             Node_Index *index = (Node_Index *) node_alloc(p->arena, NODE_INDEX, token);
             index->lhs = node;
+            index->module = p->module_current;
 
             if (peek_token(p).kind != TOKEN_RANGE) {
                 index->a = parse_expr(p, POWER_SET, false, true, NULL);
@@ -1295,6 +1305,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 Node_Binary *binary = (Node_Binary *) node_alloc(p->arena, NODE_BINARY, token);
                 binary->lhs = node;
                 binary->rhs = parse_expr(p, lbp, groups_allowed, compounds_allowed, NULL);
+                binary->module = p->module_current;
                 node = (Node *) binary;
                 if (lbp == POWER_SET) {
                     return node;

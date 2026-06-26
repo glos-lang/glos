@@ -432,9 +432,11 @@ typedef struct {
 } Node_Group;
 
 typedef struct {
-    Node     node;
-    Node    *value;
+    Node  node;
+    Node *value;
+
     Node_Fn *overload;
+    Module  *module;
 } Node_Unary;
 
 typedef struct {
@@ -444,6 +446,7 @@ typedef struct {
 
     Node_Fn  *overload;
     Node_Fn **overloads;
+    Module   *module;
 
     Node *any_check;
     Type *any_check_type;
@@ -474,6 +477,8 @@ typedef struct {
     LLVMValueRef method_receiver_llvm;
 
     bool is_enum;
+
+    Module *module;
 } Node_Member;
 
 typedef struct {
@@ -658,6 +663,7 @@ typedef struct {
     bool  is_assign;
 
     Node_Fn *overload;
+    Module  *module;
 } Node_Index;
 
 // This represents a type

@@ -165,7 +165,7 @@ static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
 
 static void     check_compound_expr(Compiler *c, Node_Compound *compound);
 static void     check_binary_expr(Compiler *c, Node_Binary *binary, bool check_children);
-static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos);
+static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos, Module *module);
 
 static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
@@ -209,7 +209,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
                         exit(1);
                     }
                 } else {
-                    unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos);
+                    unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos, unary->module);
                 }
             }
         }
@@ -2399,38 +2399,44 @@ get_method_spec(Compiler *c, Type receiver, SV name, Method_Spec *spec, Module *
     return false;
 }
 
-static bool is_indexable(Compiler *c, Type type) {
+static Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
+    Node_Fn **fn = ht_get(&c->methods_table, spec);
+    if (!fn) {
+        return NULL;
+    }
+
+    Node_Fn *method = *fn;
+    assert(method->defined_as);
+
+    if (method->module != module && method->defined_as->definition_spec->is_private) {
+        return NULL;
+    }
+
+    if (method->node.type.kind != TYPE_FN) {
+        check_definition_if_needed(c, method->defined_as, REF_NONE);
+    }
+
+    return method;
+}
+
+static bool is_indexable(Compiler *c, Type type, Module *module) {
     if (type_kind_eq(type, TYPE_ARRAY) || type_kind_eq(type, TYPE_SLICE) || type_kind_eq(type, TYPE_STRING)) {
         return true;
     }
 
     Method_Spec spec = {0};
     if (get_method_spec(c, type, sv_from_cstr("index"), &spec, NULL, NULL)) {
-        Node_Fn **fn = ht_get(&c->methods_table, spec);
-        if (fn) {
-            Node_Fn *method = *fn;
-            if (method->node.type.kind != TYPE_FN) {
-                assert(method->defined_as);
-                check_definition_if_needed(c, method->defined_as, REF_NONE);
-            }
-            return true;
-        }
+        return get_method(c, spec, module) != NULL;
     }
 
     return false;
 }
 
-static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos) {
+static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos, Module *module) {
     Method_Spec spec = {0};
     if (get_method_spec(c, receiver->type, sv_from_cstr(operator), &spec, NULL, NULL)) {
-        Node_Fn **fn = ht_get(&c->methods_table, spec);
-        if (fn) {
-            Node_Fn *method = *fn;
-            if (method->node.type.kind != TYPE_FN) {
-                assert(method->defined_as);
-                check_definition_if_needed(c, method->defined_as, REF_NONE);
-            }
-
+        Node_Fn *method = get_method(c, spec, module);
+        if (method) {
             const Type_Fn *method_spec = method->node.type.spec.fn;
 
             const Type receiver_type = method_spec->args[0].type;
@@ -2498,12 +2504,12 @@ static const char *operator_method_name_from_token_kind(Token_Kind kind) {
     }
 }
 
-static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token_Kind op) {
+static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token_Kind op, Module *module) {
     switch (op) {
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:
         if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
-            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, module);
         }
         break;
 
@@ -2511,7 +2517,7 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token
     case TOKEN_DIV_SET:
     case TOKEN_MOD_SET:
         if (!type_is_numeric(n->type)) {
-            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, module);
         }
         break;
 
@@ -2557,12 +2563,14 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
             type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
 
             if (binary->overloads) {
-                binary->overloads[i] = check_assignment_lhs_for_arithmetics(c, lhs, binary->node.token.kind);
+                binary->overloads[i] =
+                    check_assignment_lhs_for_arithmetics(c, lhs, binary->node.token.kind, binary->module);
             }
         }
     } else {
         type_assert(c, binary->rhs, binary->lhs->type);
-        binary->overload = check_assignment_lhs_for_arithmetics(c, binary->lhs, binary->node.token.kind);
+        binary->overload =
+            check_assignment_lhs_for_arithmetics(c, binary->lhs, binary->node.token.kind, binary->module);
     }
 
     binary->node.type = (Type) {.kind = TYPE_UNIT};
@@ -2615,7 +2623,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
         if (call->fn->kind == NODE_MEMBER) {
             Node_Member *member = (Node_Member *) call->fn;
-            if (member->method) {
+            if (member->method && !member->lhs->type.is_meta) {
                 assert(member->lhs);
 
                 is_method = true;
@@ -3186,7 +3194,7 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
 
         if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
             binary->overload = get_operator_overload(
-                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos, binary->module);
         }
         n->type = binary->lhs->type;
         break;
@@ -3202,7 +3210,7 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
 
         if (!type_is_numeric(binary->lhs->type)) {
             binary->overload = get_operator_overload(
-                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos, binary->module);
         }
         n->type = binary->lhs->type;
         break;
@@ -3241,7 +3249,7 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
         type_assert_node(c, binary->rhs, binary->lhs);
         if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
             binary->overload = get_operator_overload(
-                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos, binary->module);
 
             if (!binary->overload->is_compare_operator_complete) {
                 assert(binary->overload->returns.head);
@@ -3300,7 +3308,7 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
                 assert(try_auto_cast_type_to_rtti(c, binary->rhs, c->type_info_pointer_type));
             } else if (!type_is_scalar(binary->lhs->type)) {
                 binary->overload = get_operator_overload(
-                    c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos);
+                    c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos, binary->module);
             }
         }
         n->type = (Type) {.kind = TYPE_BOOL};
@@ -3425,7 +3433,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE);
             if (!type_is_numeric(unary->value->type) && !type_is_pointer(unary->value->type)) {
-                unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos);
+                unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos, unary->module);
             }
             n->type = unary->value->type;
             break;
@@ -3529,17 +3537,13 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             is_ref_valid = true; // check_node() has already determined that the reference is valid
 
             // Method
+            bool can_have_methods = false;
             {
                 Method_Spec spec = {0};
                 if (get_method_spec(c, member->lhs->type, n->token.sv, &spec, NULL, NULL)) {
-                    Node_Fn **method = ht_get(&c->methods_table, spec);
-                    if (method) {
-                        member->method = *method;
-                        if (member->method->node.type.kind != TYPE_FN) {
-                            assert(member->method->defined_as);
-                            check_definition_if_needed(c, member->method->defined_as, REF_NONE);
-                        }
-
+                    can_have_methods = true;
+                    member->method = get_method(c, spec, member->module);
+                    if (member->method) {
                         n->type = member->method->node.type;
                         assert(n->type.kind == TYPE_FN);
 
@@ -3707,10 +3711,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
                         Method_Spec spec = {0};
                         if (get_method_spec(c, receiver, n->token.sv, &spec, NULL, NULL)) {
-                            Node_Fn **method = ht_get(&c->methods_table, spec);
-                            if (method) {
+                            member->method = get_method(c, spec, member->module);
+                            if (member->method) {
                                 ok = true;
-                                member->method = *method;
                                 n->type = member->method->node.type;
                             } else {
                                 error_undefined(&n->token, "method", false);
@@ -3726,11 +3729,19 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     }
 
                     if (!ok) {
-                        fprintf(
-                            stderr,
-                            Pos_Fmt "ERROR: Cannot access field of %s\n",
-                            Pos_Arg(n->token.pos),
-                            type_to_cstr(member->lhs->type));
+                        if (can_have_methods) {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: Undefined method '" SV_Fmt "'\n",
+                                Pos_Arg(n->token.pos),
+                                SV_Arg(n->token.sv));
+                        } else {
+                            fprintf(
+                                stderr,
+                                Pos_Fmt "ERROR: Cannot access field of %s\n",
+                                Pos_Arg(n->token.pos),
+                                type_to_cstr(member->lhs->type));
+                        }
                         exit(1);
                     }
                 }
@@ -4453,7 +4464,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     n->type.kind = TYPE_SLICE;
                 }
             } else {
-                index->overload = get_operator_overload(c, "range", index->lhs, &n->token.pos);
+                index->overload = get_operator_overload(c, "range", index->lhs, &n->token.pos, index->module);
                 assert(index->overload->node.type.kind == TYPE_FN);
                 const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
 
@@ -4519,7 +4530,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                                 "```\n",
                         Pos_Arg(index->lhs->token.pos));
 
-                    if (is_indexable(c, index->lhs->type)) {
+                    if (is_indexable(c, index->lhs->type, index->module)) {
                         fprintf(
                             stderr,
                             "\n"
@@ -4529,7 +4540,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     exit(1);
                 }
 
-                index->overload = get_operator_overload(c, "index", index->lhs, &n->token.pos);
+                index->overload = get_operator_overload(c, "index", index->lhs, &n->token.pos, index->module);
 
                 assert(index->overload->node.type.kind == TYPE_FN);
                 const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
@@ -5097,6 +5108,5 @@ void check_nodes(Compiler *c) {
 }
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
-// TODO: Private methods
 // TODO: Print "atleast" as "atmost"
 // TODO: Auto cast group to any

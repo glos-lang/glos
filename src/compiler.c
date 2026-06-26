@@ -3042,7 +3042,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         size_t args_iota = 0;
         if (call->fn->kind == NODE_MEMBER) {
             Node_Member *member = (Node_Member *) call->fn;
-            if (member->method) {
+            if (member->method && !member->lhs->type.is_meta) {
                 assert(member->method_receiver_llvm);
                 args[args_iota].value = member->method_receiver_llvm;
 
