@@ -37,6 +37,7 @@ typedef enum {
     POWER_NIL,
     POWER_SET,
     POWER_TUP,
+    POWER_LOR,
     POWER_CMP,
     POWER_SHL,
     POWER_ADD,
@@ -48,7 +49,7 @@ typedef enum {
     POWER_DOT,
 } Power;
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 78, "");
 static Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:
@@ -81,6 +82,10 @@ static Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_BOR:
     case TOKEN_BAND:
         return POWER_BOR;
+
+    case TOKEN_LOR:
+    case TOKEN_LAND:
+        return POWER_LOR;
 
     case TOKEN_SET:
     case TOKEN_ADD_SET:
@@ -164,6 +169,18 @@ static Token peek_token(Parser *p) {
 
     buffer_token(p, lexer_iter(&p->state.lexer));
     return p->state.ahead;
+}
+
+static void split_logical_and(Parser *p, Token *token) {
+    assert(token->kind == TOKEN_LAND);
+    token->kind = TOKEN_BAND;
+    token->sv.count--;
+
+    assert(!p->state.peeked);
+    Token next = *token;
+    next.sv.data++;
+    next.pos.col++;
+    buffer_token(p, next);
 }
 
 static bool read_token(Parser *p, Token_Kind kind) {
@@ -693,10 +710,13 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 78, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node *node = NULL;
     Token token = next_token(p);
+    if (token.kind == TOKEN_LAND) {
+        split_logical_and(p, &token);
+    }
 
     switch (token.kind) {
     case TOKEN_INT:

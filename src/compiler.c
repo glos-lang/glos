@@ -2310,7 +2310,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 78, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -2359,7 +2359,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         Node_Unary  *unary = (Node_Unary *) n;
         LLVMValueRef value = NULL;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 78, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = compile_expr(c, unary->value, false);
@@ -2499,7 +2499,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 78, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB] = {.i = LLVMBuildSub},
@@ -2549,7 +2549,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMIntPredicate u;
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 78, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT},
                 [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE},
@@ -2591,7 +2591,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMValueRef (*u)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
             } Op;
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 78, "");
             static const Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD_SET] = {.i = LLVMBuildAdd},
                 [TOKEN_SUB_SET] = {.i = LLVMBuildSub},
@@ -2701,7 +2701,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 78, "");
         switch (n->token.kind) {
         case TOKEN_SET: {
             const size_t group_values_count_save = c->group_values.count;
@@ -2724,6 +2724,58 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             c->group_values.count = group_values_count_save;
             return NULL;
+        }
+
+        case TOKEN_LOR: {
+            LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
+
+            LLVMBasicBlockRef true_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBasicBlockRef false_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBasicBlockRef merge_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBuildCondBr(c->llvm_builder, lhs, true_block, false_block);
+
+            // Short circuit if lhs is true
+            LLVMPositionBuilderAtEnd(c->llvm_builder, true_block);
+            LLVMBuildBr(c->llvm_builder, merge_block);
+
+            // Check rhs if lhs is false
+            LLVMPositionBuilderAtEnd(c->llvm_builder, false_block);
+            LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+            LLVMBuildBr(c->llvm_builder, merge_block);
+
+            // Merge
+            LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
+            LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
+            LLVMValueRef      phi_values[] = {lhs, rhs};
+            LLVMBasicBlockRef phi_blocks[] = {true_block, false_block};
+            LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
+            return phi;
+        }
+
+        case TOKEN_LAND: {
+            LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
+
+            LLVMBasicBlockRef true_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBasicBlockRef false_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBasicBlockRef merge_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+            LLVMBuildCondBr(c->llvm_builder, lhs, true_block, false_block);
+
+            // Short circuit if lhs is false
+            LLVMPositionBuilderAtEnd(c->llvm_builder, false_block);
+            LLVMBuildBr(c->llvm_builder, merge_block);
+
+            // Check rhs if lhs is true
+            LLVMPositionBuilderAtEnd(c->llvm_builder, true_block);
+            LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
+            LLVMBuildBr(c->llvm_builder, merge_block);
+
+            // Merge
+            LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
+            LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
+            LLVMValueRef      phi_values[] = {lhs, rhs};
+            LLVMBasicBlockRef phi_blocks[] = {false_block, true_block};
+            LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
+            return phi;
         }
 
         default:

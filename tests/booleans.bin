@@ -1,9 +1,29 @@
 EXIT 0
-STDOUT 22
+STDOUT 106
 true
 false
 false
 true
+69
+420
+true
+69
+420
+false
+69
+false
+69
+false
+69
+true
+69
+true
+69
+420
+true
+69
+420
+false
 
 STDERR 0
 

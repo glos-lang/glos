@@ -206,7 +206,7 @@ Token lexer_get_string(Lexer *l, Pos pos) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 78, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -402,14 +402,18 @@ Token lexer_iter(Lexer *l) {
 
     case '|':
         token.kind = TOKEN_BOR;
-        if (match_char(l, '=')) {
+        if (match_char(l, '|')) {
+            token.kind = TOKEN_LOR;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_BOR_SET;
         }
         break;
 
     case '&':
         token.kind = TOKEN_BAND;
-        if (match_char(l, '=')) {
+        if (match_char(l, '&')) {
+            token.kind = TOKEN_LAND;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_BAND_SET;
         }
         break;

@@ -63,6 +63,8 @@ typedef enum {
     TOKEN_ADD_ADD,
     TOKEN_SUB_SUB,
 
+    TOKEN_LOR,
+    TOKEN_LAND,
     TOKEN_LNOT,
 
     TOKEN_GT,
