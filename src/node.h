@@ -618,6 +618,7 @@ typedef enum {
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
     TYPE_CAST_TO_UNION,
+    TYPE_CAST_TO_ANY,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 

@@ -1966,6 +1966,19 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     return real;
 }
 
+static LLVMValueRef compile_cast_to_any(Compiler *c, Type *type, LLVMValueRef value) {
+    LLVMTypeRef fields[] = {
+        LLVMPointerTypeInContext(c->llvm_context, 0),
+        LLVMTypeOf(value),
+    };
+    LLVMTypeRef any_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
+
+    LLVMValueRef any_memory = compile_alloca(c, any_type);
+    LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), any_memory);
+    LLVMBuildStore(c->llvm_builder, value, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
+    return any_memory;
+}
+
 static LLVMValueRef
 compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, LLVMValueRef from, bool ref) {
     LLVMValueRef memory = compile_alloca(c, union_type);
@@ -2984,25 +2997,29 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_CALL: {
         Node_Call *call = (Node_Call *) n;
         if (call->is_type_cast) {
-            LLVMValueRef from = compile_expr(c, call->args.head, false);
-            LLVMTypeRef  from_type = call->args.head->type.llvm;
+            Node        *from = call->args.head;
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            LLVMTypeRef  from_type = from->type.llvm;
 
             set_debug_pos(c, call->fn->token.pos);
-            static_assert(COUNT_TYPE_CASTS == 4, "");
+            static_assert(COUNT_TYPE_CASTS == 5, "");
             switch (call->type_cast) {
             case TYPE_CAST_NOP:
-                return from;
+                return from_value;
 
             case TYPE_CAST_NORMAL:
                 set_debug_pos(c, n->token.pos);
-                return compile_cast(c, from, n->type.llvm, type_is_signed(call->args.head->type));
+                return compile_cast(c, from_value, n->type.llvm, type_is_signed(from->type));
 
             case TYPE_CAST_TO_BOOL:
                 set_debug_pos(c, n->token.pos);
-                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from, LLVMConstNull(from_type), "");
+                return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from_type), "");
 
             case TYPE_CAST_TO_UNION:
-                return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from, ref);
+                return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
+
+            case TYPE_CAST_TO_ANY:
+                return compile_cast_to_any(c, &from->type, from_value);
 
             default:
                 unreachable();
@@ -3418,21 +3435,10 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     static_assert(COUNT_AUTO_CASTS == 3, "");
     switch (n->auto_cast_kind) {
     case AUTO_CAST_TO_ANY: {
-        LLVMValueRef result = compile_expr_impl(c, n, false);
-
-        LLVMTypeRef fields[] = {
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-            LLVMTypeOf(result),
-        };
-        LLVMTypeRef any_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
-
-        LLVMValueRef any_memory = compile_alloca(c, any_type);
-        LLVMBuildStore(c->llvm_builder, compile_type_info(c, &n->type), any_memory);
-        LLVMBuildStore(c->llvm_builder, result, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
-
+        LLVMValueRef result = compile_cast_to_any(c, &n->type, compile_expr_impl(c, n, false));
         n->type = n_type_save;
         compile_type(c, &n->type);
-        return any_memory;
+        return result;
     }
 
     case AUTO_CAST_TO_UNION: {

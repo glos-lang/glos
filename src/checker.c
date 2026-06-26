@@ -857,7 +857,10 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     }
 
     case TYPE_SLICE: {
-        todo(); // TODO: Slices in constant expressions
+        Const_Value_Array array = {0};
+        array.is_slice = true;
+        array.element_type = type.spec.slice.element;
+        return const_value_array(array);
     }
 
     case TYPE_STRING:
@@ -869,6 +872,13 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     default:
         unreachable();
     }
+}
+
+static Const_Value const_value_to_any(Compiler *c, Type *type, Const_Value value) {
+    Const_Value_Any any = {0};
+    any.type = type;
+    any.value = arena_clone(c->arena, &value, sizeof(value));
+    return const_value_any(any);
 }
 
 static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t union_index, Const_Value value) {
@@ -1358,7 +1368,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         }
 
         const Const_Value value = eval_const_expr(c, call->args.head);
-        static_assert(COUNT_TYPE_CASTS == 4, "");
+        static_assert(COUNT_TYPE_CASTS == 5, "");
         switch (call->type_cast) {
         case TYPE_CAST_NOP:
             return value;
@@ -1371,6 +1381,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
         case TYPE_CAST_TO_UNION:
             return const_value_to_union(c, n->type, call->type_cast_union_index, value);
+
+        case TYPE_CAST_TO_ANY:
+            return const_value_to_any(c, &call->args.head->type, value);
 
         default:
             unreachable();
@@ -1542,12 +1555,9 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
 
         static_assert(COUNT_AUTO_CASTS == 3, "");
         switch (n->auto_cast_kind) {
-        case AUTO_CAST_TO_ANY: {
-            Const_Value_Any any = {0};
-            any.type = n->auto_cast_from;
-            any.value = arena_clone(c->arena, &result, sizeof(result));
-            result = const_value_any(any);
-        } break;
+        case AUTO_CAST_TO_ANY:
+            result = const_value_to_any(c, n->auto_cast_from, result);
+            break;
 
         case AUTO_CAST_TO_UNION:
             result = const_value_to_union(c, n->type, n->auto_cast_data, result);
@@ -2588,7 +2598,6 @@ fn_type_to_cstr_but_excluding_receiver_if_required(const Type_Fn *fn_spec_raw, b
 
 // If this is a cast, then do not pass 'fn_type_spec'
 static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn_spec) {
-    // TODO: When printing error messages showing the function type also, prettify it for methods
     typedef struct {
         const Node *node;
         const Node *name;
@@ -4278,9 +4287,12 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             Type *to_type = &n->type;
 
             bool same = false;
+            bool to_any = false;
             bool to_union = false;
             if (type_eq_without_distinct(*to_type, *from_type)) {
                 same = true;
+            } else if (type_eq(*to_type, (Type) {.kind = TYPE_ANY})) {
+                to_any = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
             } else if (type_is_scalar(*to_type)) {
@@ -4292,7 +4304,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             if (!same) {
-                if (to_union) {
+                if (to_any) {
+                    // Pass
+                } else if (to_union) {
                     finalize_untyped_type(from_type);
                     call->type_cast_union_index = get_union_type_index(call->args.head, *to_type);
                 } else if (type_is_scalar(*to_type)) {
@@ -4337,6 +4351,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 call->type_cast = TYPE_CAST_NOP;
             } else if (type_eq(*to_type, (Type) {.kind = TYPE_BOOL})) {
                 call->type_cast = TYPE_CAST_TO_BOOL;
+            } else if (to_any) {
+                call->type_cast = TYPE_CAST_TO_ANY;
             } else if (to_union) {
                 call->type_cast = TYPE_CAST_TO_UNION;
             } else {
