@@ -1,6 +1,6 @@
 foo :: (ns: ...i64) {
     println("foo:")
-    for i := 0; i < ns.count; i++ {
+    for i := 0; i < ns.count; i += 1 {
         println(ns[i])
     }
 }

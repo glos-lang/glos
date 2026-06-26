@@ -432,10 +432,8 @@ typedef struct {
 } Node_Group;
 
 typedef struct {
-    Node  node;
-    Node *value;
-    bool  is_postfix; // For '++' and '--'
-
+    Node     node;
+    Node    *value;
     Node_Fn *overload;
 } Node_Unary;
 

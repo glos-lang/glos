@@ -1,6 +1,7 @@
 iota :: () -> i64 {
     #static i := 0
-    return i++
+    i += 1
+    return i - 1
 }
 
 main :: () {

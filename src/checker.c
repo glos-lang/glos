@@ -171,7 +171,7 @@ static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -956,7 +956,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1017,7 +1017,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value);
@@ -1079,7 +1079,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         Const_Value lhs = {0};
         Const_Value rhs = {0};
 
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
             lhs = eval_const_expr(c, binary->lhs);
@@ -2427,7 +2427,7 @@ static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *r
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 78, "");
+static_assert(COUNT_TOKENS == 76, "");
 static const char *operator_method_name_from_token_kind(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -3140,7 +3140,7 @@ static void check_compound_expr(Compiler *c, Node_Compound *compound) {
 
 static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 78, "");
+    static_assert(COUNT_TOKENS == 76, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -3301,7 +3301,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -3386,7 +3386,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 78, "");
+        static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE);
@@ -3435,12 +3435,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         case TOKEN_BNOT:
             check_expr(c, unary->value, REF_NONE);
             n->type = type_assert_numeric(unary->value, false);
-            break;
-
-        case TOKEN_ADD_ADD:
-        case TOKEN_SUB_SUB:
-            check_expr(c, unary->value, REF_ASSIGN);
-            n->type = type_assert_numeric(unary->value, true);
             break;
 
         case TOKEN_LNOT:
