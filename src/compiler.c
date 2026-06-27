@@ -2601,9 +2601,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 const size_t group_count =
                     binary->lhs->type.kind == TYPE_GROUP ? binary->lhs->type.spec.group.count : 0;
 
-                const bool  is_pointer_arithmetic = type_is_pointer(n->type);
                 LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-                LLVMTypeRef llvm_type_void = LLVMVoidTypeInContext(c->llvm_context);
+                LLVMTypeRef llvm_type_ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
 
                 const size_t group_values_ptr_start = c->group_values.count;
                 LLVMValueRef ptr = compile_expr(c, binary->lhs, true);
@@ -2619,7 +2618,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                         compile_type(c, type);
 
                         LLVMValueRef lhs = LLVMBuildLoad2(c->llvm_builder, type->llvm, ptr, "");
-                        if (is_pointer_arithmetic) {
+                        if (type_is_pointer(*type)) {
                             lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
                         }
                         da_push(&c->group_values, lhs);
@@ -2627,7 +2626,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     assert(c->group_values.count == group_values_count_save + group_count * 2);
                 } else {
                     lhs = LLVMBuildLoad2(c->llvm_builder, binary->lhs->type.llvm, ptr, "");
-                    if (is_pointer_arithmetic) {
+                    if (type_is_pointer(binary->lhs->type)) {
                         lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
                     }
                 }
@@ -2638,12 +2637,12 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     assert(c->group_values.count == group_values_count_save + group_count * 3);
                     for (size_t i = 0; i < group_count; i++) {
                         LLVMValueRef *rhs = &c->group_values.data[group_values_rhs_start + i];
-                        if (is_pointer_arithmetic) {
+                        if (type_is_pointer(binary->lhs->type.spec.group.data[i])) {
                             *rhs = LLVMBuildPtrToInt(c->llvm_builder, *rhs, llvm_type_i64, "");
                         }
                     }
                 } else {
-                    if (is_pointer_arithmetic) {
+                    if (type_is_pointer(binary->lhs->type)) {
                         rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
                     }
                 }
@@ -2665,8 +2664,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                             result = op.i(c->llvm_builder, lhs, rhs, "");
                         }
 
-                        if (is_pointer_arithmetic) {
-                            result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_void, "");
+                        if (type_is_pointer(binary->lhs->type.spec.group.data[i])) {
+                            result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
                         }
                         LLVMBuildStore(c->llvm_builder, result, ptr);
                     }
@@ -2680,8 +2679,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                         result = op.i(c->llvm_builder, lhs, rhs, "");
                     }
 
-                    if (is_pointer_arithmetic) {
-                        result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_void, "");
+                    if (type_is_pointer(binary->lhs->type)) {
+                        result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
                     }
                     LLVMBuildStore(c->llvm_builder, result, ptr);
                 }

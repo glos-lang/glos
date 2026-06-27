@@ -2504,20 +2504,29 @@ static const char *operator_method_name_from_token_kind(Token_Kind kind) {
     }
 }
 
-static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token_Kind op, Module *module) {
+static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
+    const Token_Kind op = binary->node.token.kind;
     switch (op) {
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:
         if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
-            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, module);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, binary->module);
         }
         break;
 
     case TOKEN_MUL_SET:
     case TOKEN_DIV_SET:
     case TOKEN_MOD_SET:
+        if (type_is_pointer(n->type)) {
+            fprintf(
+                stderr, Pos_Fmt "ERROR: This operation is not valid for pointers\n", Pos_Arg(binary->node.token.pos));
+            fprintf(
+                stderr, Pos_Fmt "NOTE: The operands are of type %s\n", Pos_Arg(n->token.pos), type_to_cstr(n->type));
+            exit(1);
+        }
+
         if (!type_is_numeric(n->type)) {
-            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, module);
+            return get_operator_overload(c, operator_method_name_from_token_kind(op), n, &n->token.pos, binary->module);
         }
         break;
 
@@ -2525,6 +2534,14 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node *n, Token
     case TOKEN_SHR_SET:
     case TOKEN_BOR_SET:
     case TOKEN_BAND_SET:
+        if (type_is_pointer(n->type)) {
+            fprintf(
+                stderr, Pos_Fmt "ERROR: This operation is not valid for pointers\n", Pos_Arg(binary->node.token.pos));
+            fprintf(
+                stderr, Pos_Fmt "NOTE: The operands are of type %s\n", Pos_Arg(n->token.pos), type_to_cstr(n->type));
+            exit(1);
+        }
+
         type_assert_numeric(n, false);
         break;
 
@@ -2563,14 +2580,12 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
             type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token.pos);
 
             if (binary->overloads) {
-                binary->overloads[i] =
-                    check_assignment_lhs_for_arithmetics(c, lhs, binary->node.token.kind, binary->module);
+                binary->overloads[i] = check_assignment_lhs_for_arithmetics(c, binary, lhs);
             }
         }
     } else {
         type_assert(c, binary->rhs, binary->lhs->type);
-        binary->overload =
-            check_assignment_lhs_for_arithmetics(c, binary->lhs, binary->node.token.kind, binary->module);
+        binary->overload = check_assignment_lhs_for_arithmetics(c, binary, binary->lhs);
     }
 
     binary->node.type = (Type) {.kind = TYPE_UNIT};
@@ -3208,6 +3223,16 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
             type_assert_node(c, binary->rhs, binary->lhs);
         }
 
+        if (type_is_pointer(binary->lhs->type)) {
+            fprintf(stderr, Pos_Fmt "ERROR: This operation is not valid for pointers\n", Pos_Arg(n->token.pos));
+            fprintf(
+                stderr,
+                Pos_Fmt "NOTE: The operands are of type %s\n",
+                Pos_Arg(binary->lhs->token.pos),
+                type_to_cstr(binary->lhs->type));
+            exit(1);
+        }
+
         if (!type_is_numeric(binary->lhs->type)) {
             binary->overload = get_operator_overload(
                 c, operator_method_name_from_token_kind(n->token.kind), binary->lhs, &n->token.pos, binary->module);
@@ -3224,6 +3249,17 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
             check_expr(c, binary->rhs, REF_NONE);
             type_assert_node(c, binary->rhs, binary->lhs);
         }
+
+        if (type_is_pointer(binary->lhs->type)) {
+            fprintf(stderr, Pos_Fmt "ERROR: This operation is not valid for pointers\n", Pos_Arg(n->token.pos));
+            fprintf(
+                stderr,
+                Pos_Fmt "NOTE: The operands are of type %s\n",
+                Pos_Arg(binary->lhs->token.pos),
+                type_to_cstr(binary->lhs->type));
+            exit(1);
+        }
+
         n->type = type_assert_numeric(binary->lhs, false);
         break;
 
