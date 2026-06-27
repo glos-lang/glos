@@ -257,7 +257,7 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     }
 }
 
-static Const_Value eval_const_expr(Compiler *c, Node *n);
+static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref);
 
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     if (type_is_integer(expected) && type_kind_eq(n->type, TYPE_INT)) {
@@ -265,7 +265,7 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             cast_untyped(c, n, expected);
 
             // Only constant expressions can be untyped integers
-            const Const_Value value = eval_const_expr(c, n);
+            const Const_Value value = eval_const_expr(c, n, false);
             assert(value.kind == CONST_VALUE_INT);
 
             check_int_limit(n, &value.as.integer);
@@ -809,7 +809,7 @@ static Node_Fn *get_main(Compiler *c) {
 static_assert(COUNT_TYPES == 25, "");
 static Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
-        return const_value_int(0); // TODO: Pointers in constant expressions
+        return const_value_int(0);
     }
 
     switch (type.kind) {
@@ -827,7 +827,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_U32:
     case TYPE_U64:
 
-    case TYPE_RAWPTR: // TODO: Pointers in constant expressions
+    case TYPE_RAWPTR:
     case TYPE_FN:
     case TYPE_ENUM:
         return const_value_int(0);
@@ -891,8 +891,8 @@ static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t uni
 }
 
 static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
-    Const_Value lhs = eval_const_expr(c, binary->lhs);
-    Const_Value rhs = eval_const_expr(c, binary->rhs);
+    Const_Value lhs = eval_const_expr(c, binary->lhs, false);
+    Const_Value rhs = eval_const_expr(c, binary->rhs, false);
 
     if (binary->any_check) {
         Const_Value any;
@@ -906,7 +906,6 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
         }
         assert(any.kind == CONST_VALUE_ANY);
 
-        // TODO: Pointers in constant expressions
         if (type.kind == CONST_VALUE_INT && type.as.integer == 0) {
             return !any.as.any.type;
         }
@@ -933,7 +932,6 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
         }
         assert(unionn.kind == CONST_VALUE_UNION);
 
-        // TODO: Pointers in constant expressions
         if (variant.kind == CONST_VALUE_INT && variant.as.integer == 0) {
             return unionn.as.unionn.index == 0;
         }
@@ -951,15 +949,34 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
     return const_value_eq(lhs, rhs);
 }
 
+static Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
+    if (var->definition_spec->assignment_node) {
+        return var->definition_spec->const_value;
+    }
+
+    // TODO: Should this be cached?
+    return default_const_value(c, var->node.type);
+}
+
 // Is this valid for signedness?
 static_assert(COUNT_NODES == 27, "");
-static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
+static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
     }
 
     if (n->emit_type_info) {
         return const_value_type(*n->emit_type_info);
+    }
+
+    if (ref) {
+        if (n->kind != NODE_ATOM || n->token.kind != TOKEN_IDENT) {
+            fprintf(
+                stderr,
+                Pos_Fmt "ERROR: Can only take reference to variables in a constant expression\n",
+                Pos_Arg(n->token.pos));
+            exit(1);
+        }
     }
 
     switch (n->kind) {
@@ -983,15 +1000,26 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
             assert(atom->definition);
             if (!atom->definition->definition_spec->is_const) {
-                fprintf(
-                    stderr, Pos_Fmt "ERROR: Cannot use variables in a constant expression\n", Pos_Arg(n->token.pos));
-                fprintf(
-                    stderr,
-                    Pos_Fmt "NOTE: Here is the variable being used\n",
-                    Pos_Arg(atom->definition->node.token.pos));
-                exit(1);
+                if (atom->definition->definition_spec->is_local) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot use local variables in a constant expression\n",
+                        Pos_Arg(n->token.pos));
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "NOTE: Here is the variable being used\n",
+                        Pos_Arg(atom->definition->node.token.pos));
+                    exit(1);
+                }
+
+                if (ref) {
+                    return const_value_var(atom->definition);
+                }
+
+                return const_value_of_var(c, atom->definition);
             }
 
+            assert(!ref);
             return atom->definition->definition_spec->const_value;
 
         case TOKEN_STRING:
@@ -1030,31 +1058,32 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
-            value = eval_const_expr(c, unary->value);
+            value = eval_const_expr(c, unary->value, false);
             return const_value_int(-value.as.integer);
 
         case TOKEN_MUL:
-            fprintf(stderr, Pos_Fmt "ERROR: Cannot dereference in a constant expression\n", Pos_Arg(n->token.pos));
+            value = eval_const_expr(c, unary->value, false);
+            if (value.kind == CONST_VALUE_VAR) {
+                return const_value_of_var(c, value.as.var);
+            }
+
+            fprintf(stderr, Pos_Fmt "ERROR: This expression is not constant at compile time\n", Pos_Arg(n->token.pos));
             exit(1);
             break;
 
         case TOKEN_BAND:
-            value = eval_const_expr(c, unary->value);
+            value = eval_const_expr(c, unary->value, true);
             if (value.kind == CONST_VALUE_TYPE) {
                 value.as.type.ref++;
-                return value;
             }
-
-            fprintf(stderr, Pos_Fmt "ERROR: Cannot take reference in a constant expression\n", Pos_Arg(n->token.pos));
-            exit(1);
-            break;
+            return value;
 
         case TOKEN_BNOT:
-            value = eval_const_expr(c, unary->value);
+            value = eval_const_expr(c, unary->value, false);
             return const_value_int(~value.as.integer);
 
         case TOKEN_LNOT:
-            value = eval_const_expr(c, unary->value);
+            value = eval_const_expr(c, unary->value, false);
             return const_value_int(!value.as.integer);
 
         case TOKEN_SIZEOF:
@@ -1092,23 +1121,23 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
         static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
         case TOKEN_ADD:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer + rhs.as.integer);
 
         case TOKEN_SUB:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer - rhs.as.integer);
 
         case TOKEN_MUL:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer * rhs.as.integer);
 
         case TOKEN_DIV:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             if (rhs.as.integer == 0) {
                 fprintf(stderr, Pos_Fmt "ERROR: Cannot divide by zero\n", Pos_Arg(binary->rhs->token.pos));
                 exit(1);
@@ -1116,68 +1145,68 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             return const_value_int(lhs.as.integer / rhs.as.integer);
 
         case TOKEN_MOD:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer % rhs.as.integer);
 
         case TOKEN_SHL:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer << rhs.as.integer);
 
         case TOKEN_SHR:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer >> rhs.as.integer);
 
         case TOKEN_BOR:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer | rhs.as.integer);
 
         case TOKEN_BAND:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer & rhs.as.integer);
 
         case TOKEN_LOR:
-            lhs = eval_const_expr(c, binary->lhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
             assert(lhs.kind == CONST_VALUE_INT);
             if (lhs.as.integer) {
                 return lhs;
             }
 
-            rhs = eval_const_expr(c, binary->rhs);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return rhs;
 
         case TOKEN_LAND:
-            lhs = eval_const_expr(c, binary->lhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
             assert(lhs.kind == CONST_VALUE_INT);
             if (!lhs.as.integer) {
                 return lhs;
             }
 
-            rhs = eval_const_expr(c, binary->rhs);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return rhs;
 
         case TOKEN_GT:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer > rhs.as.integer);
 
         case TOKEN_GE:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer >= rhs.as.integer);
 
         case TOKEN_LT:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer < rhs.as.integer);
 
         case TOKEN_LE:
-            lhs = eval_const_expr(c, binary->lhs);
-            rhs = eval_const_expr(c, binary->rhs);
+            lhs = eval_const_expr(c, binary->lhs, false);
+            rhs = eval_const_expr(c, binary->rhs, false);
             return const_value_int(lhs.as.integer <= rhs.as.integer);
 
         case TOKEN_EQ:
@@ -1202,9 +1231,12 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             return const_value_fn(member->method);
         }
 
-        const Const_Value lhs = eval_const_expr(c, member->lhs);
+        Const_Value lhs = eval_const_expr(c, member->lhs, false);
+        while (lhs.kind == CONST_VALUE_VAR) {
+            lhs = const_value_of_var(c, lhs.as.var);
+        }
 
-        static_assert(COUNT_CONST_VALUES == 9, "");
+        static_assert(COUNT_CONST_VALUES == 10, "");
         switch (lhs.kind) {
         case CONST_VALUE_UNION:
             if (member->rhs) {
@@ -1346,9 +1378,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             }
 
             if (n->type.kind == TYPE_STRUCT) {
-                value.as.structt.fields[it_iota] = eval_const_expr(c, it);
+                value.as.structt.fields[it_iota] = eval_const_expr(c, it, false);
             } else if (n->type.kind == TYPE_ARRAY) {
-                value.as.array.data[it_iota] = eval_const_expr(c, it);
+                value.as.array.data[it_iota] = eval_const_expr(c, it, false);
             } else {
                 unreachable();
             }
@@ -1367,7 +1399,12 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             exit(1);
         }
 
-        const Const_Value value = eval_const_expr(c, call->args.head);
+        const Const_Value value = eval_const_expr(c, call->args.head, false);
+        if (value.kind == CONST_VALUE_VAR || type_is_pointer(n->type)) {
+            fprintf(stderr, Pos_Fmt "ERROR: This expression is not constant at compile time\n", Pos_Arg(n->token.pos));
+            exit(1);
+        }
+
         static_assert(COUNT_TYPE_CASTS == 5, "");
         switch (call->type_cast) {
         case TYPE_CAST_NOP:
@@ -1404,21 +1441,29 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
             exit(1);
         }
 
-        const Const_Value lhs = eval_const_expr(c, index->lhs);
+        const Const_Value lhs = eval_const_expr(c, index->lhs, false);
         if (index->is_ranged) {
-            static_assert(COUNT_CONST_VALUES == 9, "");
+            if (type_is_pointer(index->lhs->type)) {
+                fprintf(
+                    stderr,
+                    Pos_Fmt "ERROR: Cannot construct slices from pointers in constant expressions\n",
+                    Pos_Arg(n->token.pos));
+                exit(1);
+            }
+
+            static_assert(COUNT_CONST_VALUES == 10, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 Const_Value_Array array = lhs.as.array;
 
                 i64 begin = 0;
                 if (index->a) {
-                    begin = eval_const_expr(c, index->a).as.integer;
+                    begin = eval_const_expr(c, index->a, false).as.integer;
                 }
 
                 i64 end = array.count;
                 if (index->b) {
-                    end = eval_const_expr(c, index->b).as.integer;
+                    end = eval_const_expr(c, index->b, false).as.integer;
                 }
 
                 if (begin > end) {
@@ -1453,12 +1498,12 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
 
                 i64 begin = 0;
                 if (index->a) {
-                    begin = eval_const_expr(c, index->a).as.integer;
+                    begin = eval_const_expr(c, index->a, false).as.integer;
                 }
 
                 i64 end = sv.count;
                 if (index->b) {
-                    end = eval_const_expr(c, index->b).as.integer;
+                    end = eval_const_expr(c, index->b, false).as.integer;
                 }
 
                 if (begin > end) {
@@ -1491,9 +1536,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
                 unreachable();
             }
         } else {
-            const i64 at = eval_const_expr(c, index->a).as.integer;
+            const i64 at = eval_const_expr(c, index->a, false).as.integer;
 
-            static_assert(COUNT_CONST_VALUES == 9, "");
+            static_assert(COUNT_CONST_VALUES == 10, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -1538,7 +1583,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n) {
     }
 }
 
-static Const_Value eval_const_expr(Compiler *c, Node *n) {
+static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
     }
@@ -1549,7 +1594,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n) {
         n->type = *n->auto_cast_from;
     }
 
-    Const_Value result = eval_const_expr_impl(c, n);
+    Const_Value result = eval_const_expr_impl(c, n, ref);
     if (n->auto_cast_from) {
         n->type = n_type_save;
 
@@ -1614,14 +1659,14 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
 
     if (sw->unionn) {
         if (node_is_null(pred)) {
-            value = const_value_int(0); // TODO: Pointers in constant expressions
+            value = const_value_int(0);
         } else {
             type_assert_type(pred);
             value = const_value_int(get_union_type_index(pred, sw->expr->type));
         }
     } else if (sw->is_expr_any) {
         if (node_is_null(pred)) {
-            value = const_value_int(0); // TODO: Pointers in constant expressions
+            value = const_value_int(0);
         } else {
             type_assert_type(pred);
             Type type = pred->type;
@@ -1630,7 +1675,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
         }
     } else {
         type_assert(c, pred, sw->expr->type);
-        value = eval_const_expr(c, pred);
+        value = eval_const_expr(c, pred, false);
     }
 
     for (size_t i = 0; i < *iota; i++) {
@@ -1642,7 +1687,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                 fprintf(stderr, "%s", type_to_cstr(pred->type));
                 pred->type.is_meta = true;
             } else {
-                static_assert(COUNT_CONST_VALUES == 9, "");
+                static_assert(COUNT_CONST_VALUES == 10, "");
                 switch (value.kind) {
                 case CONST_VALUE_INT:
                     if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1755,7 +1800,7 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 9, "");
+        static_assert(COUNT_CONST_VALUES == 10, "");
         switch (value->kind) {
         case CONST_VALUE_UNION: {
             const Const_Value_Union unionn = value->as.unionn;
@@ -1863,7 +1908,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             check_expr(c, iff->condition, REF_NONE);
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
-            const Const_Value value = eval_const_expr(c, iff->condition);
+            const Const_Value value = eval_const_expr(c, iff->condition, false);
             iff->compile_time_real = value.as.integer ? iff->consequence : iff->antecedence;
 
             if (iff->compile_time_real) {
@@ -1915,7 +1960,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
         if (sw->is_compile_time) {
             check_switch_expr_and_alloc_preds(c, sw);
 
-            const Const_Value value = eval_const_expr(c, sw->expr);
+            const Const_Value value = eval_const_expr(c, sw->expr, false);
 
             size_t iota = 0;
             for (Node *it = sw->cases.head; it; it = it->next) {
@@ -2141,7 +2186,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
 
     if (it_expr && it->definition_spec->definition_node->is_value_known_at_compile_time) {
         if (!it->definition_spec->is_const_value_evaluated) {
-            it->definition_spec->const_value = eval_const_expr(c, it_expr);
+            it->definition_spec->const_value = eval_const_expr(c, it_expr, false);
             it->definition_spec->is_const_value_evaluated = true;
         }
     }
@@ -2275,6 +2320,8 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                         stderr,
                         Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
                         Pos_Arg(n->token.pos));
+                    fprintf(
+                        stderr, Pos_Fmt "NOTE: Here is the constant being used\n", Pos_Arg(definition->node.token.pos));
                     exit(1);
                 }
                 break;
@@ -2285,12 +2332,15 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                         stderr,
                         Pos_Fmt "ERROR: Cannot take reference to compile time constant value\n",
                         Pos_Arg(n->token.pos));
+                    fprintf(
+                        stderr, Pos_Fmt "NOTE: Here is the constant being used\n", Pos_Arg(definition->node.token.pos));
                     exit(1);
                 }
                 break;
 
             case REF_ASSIGN:
                 fprintf(stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
+                fprintf(stderr, Pos_Fmt "NOTE: Here is the constant being used\n", Pos_Arg(definition->node.token.pos));
                 exit(1);
                 break;
 
@@ -2298,6 +2348,8 @@ static void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
                 if (!type_kind_eq(definition->node.type, TYPE_MODULE)) {
                     fprintf(
                         stderr, Pos_Fmt "ERROR: Cannot assign to compile time constant value\n", Pos_Arg(n->token.pos));
+                    fprintf(
+                        stderr, Pos_Fmt "NOTE: Here is the constant being used\n", Pos_Arg(definition->node.token.pos));
                     exit(1);
                 }
                 break;
@@ -3116,7 +3168,7 @@ static void check_compound_expr(Compiler *c, Node_Compound *compound) {
                 check_expr(c, it_binary->lhs, REF_NONE);
                 type_assert_numeric(it_binary->lhs, false);
 
-                const Const_Value value = eval_const_expr(c, it_binary->lhs);
+                const Const_Value value = eval_const_expr(c, it_binary->lhs, false);
                 assert(value.kind == CONST_VALUE_INT);
 
                 if (n->type.kind == TYPE_ARRAY && (size_t) value.as.integer >= n->type.spec.array.count) {
@@ -3888,7 +3940,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     if (is_node_caller_location(define->expr)) {
                         fn_spec->args[fn_spec->args_count].default_value_is_caller_location = true;
                     } else {
-                        it->definition_spec->const_value = eval_const_expr(c, define->expr);
+                        it->definition_spec->const_value = eval_const_expr(c, define->expr, false);
                         fn_spec->args[fn_spec->args_count].default_value = &it->definition_spec->const_value;
                     }
                     fn_spec->args[fn_spec->args_count].has_default_value = true;
@@ -4131,7 +4183,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 check_expr(c, unary->value, REF_NONE);
                 type_assert(c, unary->value, underlying);
 
-                const Const_Value value = eval_const_expr(c, unary->value);
+                const Const_Value value = eval_const_expr(c, unary->value, false);
                 assert(value.kind == CONST_VALUE_INT);
                 iota = value.as.integer;
             }
@@ -4599,7 +4651,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             check_expr(c, indexable->count, REF_NONE);
             type_assert_numeric(indexable->count, false);
 
-            const Const_Value value = eval_const_expr(c, indexable->count);
+            const Const_Value value = eval_const_expr(c, indexable->count, false);
             assert(value.kind == CONST_VALUE_INT);
             array_count = value.as.integer;
 
@@ -4695,12 +4747,12 @@ static void check_stmt(Compiler *c, Node *n) {
             type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
         }
 
-        const bool ok = eval_const_expr(c, assertt->expr).as.integer;
+        const bool ok = eval_const_expr(c, assertt->expr, false).as.integer;
 
         if (!ok) {
             fprintf(stderr, Pos_Fmt "Assertion failed", Pos_Arg(n->token.pos));
             if (assertt->message) {
-                const SV message = eval_const_expr(c, assertt->message).as.string;
+                const SV message = eval_const_expr(c, assertt->message, false).as.string;
                 fprintf(stderr, ": " SV_Fmt, SV_Arg(message));
             }
             fprintf(stderr, "\n");

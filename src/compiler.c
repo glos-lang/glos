@@ -1181,13 +1181,13 @@ static LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv) {
     return LLVMConstStructInContext(c->llvm_context, fields, len(fields), false);
 }
 
+static void         compile_var_def(Compiler *c, Node_Atom *it);
 static LLVMValueRef compile_type_info(Compiler *c, Type *type);
 
-static_assert(COUNT_CONST_VALUES == 9, "");
+static_assert(COUNT_CONST_VALUES == 10, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
-        // TODO: Pointers in constant expressions
         if (type_is_pointer(type)) {
             assert(value.as.integer == 0);
             return LLVMConstNull(type.llvm);
@@ -1196,6 +1196,16 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
     case CONST_VALUE_FN:
         return compile_fn(c, value.as.fn);
+
+    case CONST_VALUE_VAR: {
+        Node_Atom *var = value.as.var;
+        if (!var->definition_spec->llvm) {
+            compile_var_def(c, var);
+        }
+
+        assert(var->definition_spec->llvm);
+        return var->definition_spec->llvm;
+    } break;
 
     case CONST_VALUE_TYPE:
         return compile_type_info(c, &value.as.type);
@@ -1663,7 +1673,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 9, "");
+        static_assert(COUNT_CONST_VALUES == 10, "");
         switch (const_value.kind) {
         case CONST_VALUE_UNION:
         case CONST_VALUE_STRUCT:
@@ -1701,7 +1711,7 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     }
 
     if (!definition->definition_spec->llvm) {
-        compile_stmt(c, (Node *) definition->definition_spec->definition_node);
+        compile_var_def(c, definition);
     }
 
     if (ref) {
@@ -2252,7 +2262,7 @@ compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *f
 
             value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
         } else {
-            static_assert(COUNT_CONST_VALUES == 9, "");
+            static_assert(COUNT_CONST_VALUES == 10, "");
             switch (arg->default_value->kind) {
             case CONST_VALUE_UNION:
             case CONST_VALUE_STRUCT:

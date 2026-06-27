@@ -227,6 +227,7 @@ bool type_is_unknown(Type type);
 typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FN,
+    CONST_VALUE_VAR,
     CONST_VALUE_TYPE,
 
     CONST_VALUE_UNION,
@@ -267,9 +268,10 @@ typedef struct {
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        i64      integer;
-        Type     type;
-        Node_Fn *fn;
+        i64        integer;
+        Type       type;
+        Node_Fn   *fn;
+        Node_Atom *var;
 
         Const_Value_Union  unionn;
         Const_Value_Struct structt;
@@ -282,9 +284,10 @@ struct Const_Value {
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 9, "");
+static_assert(COUNT_CONST_VALUES == 10, "");
 #define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_var(v)  ((Const_Value) {.kind = CONST_VALUE_VAR, .as.var = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
