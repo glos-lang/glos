@@ -1,0 +1,10 @@
+main :: () {
+    a := "Hello"
+    println(a)
+
+    b := []char(a)
+    println(b)
+
+    c := string(b)
+    println(c)
+}

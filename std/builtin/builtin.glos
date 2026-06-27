@@ -62,7 +62,17 @@ wprint :: (f: C.File, vs: ...any) {
 
         case Type_Info_Character
             ch := *&char(data)
-            C.fprintf(f, "%c".data, ch)
+            if nested {
+                C.fprintf(f, "'".data)
+                if ch == '\'' {
+                    C.fprintf(f, "\\\'".data)
+                } else {
+                    C.fprintf(f, "%c".data, ch)
+                }
+                C.fprintf(f, "'".data)
+            } else {
+                C.fprintf(f, "%c".data, ch)
+            }
 
         case Type_Info_Integer
             if v.signed {

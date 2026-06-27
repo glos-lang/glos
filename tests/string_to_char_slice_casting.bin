@@ -1,0 +1,8 @@
+EXIT 0
+STDOUT 38
+Hello
+{'H', 'e', 'l', 'l', 'o'}
+Hello
+
+STDERR 0
+

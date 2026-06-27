@@ -4397,9 +4397,25 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             } else if (type_is_scalar(*to_type)) {
                 // Pass
             } else {
-                fprintf(
-                    stderr, Pos_Fmt "ERROR: Cannot cast to %s\n", Pos_Arg(call->fn->token.pos), type_to_cstr(*to_type));
-                exit(1);
+                Type char_type = {.kind = TYPE_CHAR};
+                Type char_slice_type = {
+                    .kind = TYPE_SLICE,
+                    .spec.slice.element = &char_type,
+                };
+                Type string_type = {.kind = TYPE_STRING};
+
+                if (type_eq(*to_type, string_type) && type_eq(*from_type, char_slice_type)) {
+                    same = true;
+                } else if (type_eq(*from_type, string_type) && type_eq(*to_type, char_slice_type)) {
+                    same = true;
+                } else {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Cannot cast to %s\n",
+                        Pos_Arg(call->fn->token.pos),
+                        type_to_cstr(*to_type));
+                    exit(1);
+                }
             }
 
             if (!same) {

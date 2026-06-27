@@ -3006,16 +3006,17 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_CALL: {
         Node_Call *call = (Node_Call *) n;
         if (call->is_type_cast) {
-            Node        *from = call->args.head;
+            Node *from = call->args.head;
+            if (call->type_cast == TYPE_CAST_NOP) {
+                return compile_expr(c, from, ref);
+            }
+
             LLVMValueRef from_value = compile_expr(c, from, false);
             LLVMTypeRef  from_type = from->type.llvm;
 
             set_debug_pos(c, call->fn->token.pos);
             static_assert(COUNT_TYPE_CASTS == 5, "");
             switch (call->type_cast) {
-            case TYPE_CAST_NOP:
-                return from_value;
-
             case TYPE_CAST_NORMAL:
                 set_debug_pos(c, n->token.pos);
                 return compile_cast(c, from_value, n->type.llvm, type_is_signed(from->type));
