@@ -8,7 +8,7 @@ bool lexer_open(Lexer *l, const char *path, Arena *a) {
     memset(l, 0, sizeof(*l));
 
     l->arena = a;
-    if (!read_file_into_arena(path, &l->sv, l->arena)) {
+    if (!read_file(path, &l->sv, l->arena)) {
         return false;
     }
 
@@ -179,7 +179,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
 }
 
 Token lexer_get_string(Lexer *l, Pos pos) {
-    const size_t arena_sb_count_save = l->arena->sb.count;
+    const size_t default_sb_count_save = default_sb.count;
 
     Token token = {.kind = TOKEN_STRING, .pos = pos};
     while (l->sv.count) {
@@ -192,7 +192,7 @@ Token lexer_get_string(Lexer *l, Pos pos) {
             token.kind = TOKEN_ISTRING;
             break;
         }
-        sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
+        sb_push(&default_sb, next_char_with_parsed_escape(l, "string"));
     }
 
     if (!l->sv.count) {
@@ -200,9 +200,9 @@ Token lexer_get_string(Lexer *l, Pos pos) {
     }
     next_char(l);
 
-    token.sv.count = l->arena->sb.count - arena_sb_count_save;
-    token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
-    l->arena->sb.count = arena_sb_count_save;
+    token.sv.count = default_sb.count - default_sb_count_save;
+    token.sv.data = arena_clone(l->arena, default_sb.data + default_sb_count_save, token.sv.count);
+    default_sb.count = default_sb_count_save;
     return token;
 }
 

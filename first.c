@@ -41,7 +41,7 @@ static const char *shift(int *argc, char ***argv, const char *program, const cha
     return *(*argv)++;
 }
 
-static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
+static SV run_cmd_and_read_stdout(Cmd *cmd) {
     const char *name = cmd->data[0];
 
     FILE *out = NULL;
@@ -57,7 +57,7 @@ static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
     }
 
     SV sv = {0};
-    if (!read_fp(out, &sv, sb)) {
+    if (!read_fp(out, &sv, &default_arena)) {
         fprintf(stderr, "ERROR: Could not read standard output of command '%s'\n", name);
         exit(1);
     }
@@ -69,6 +69,7 @@ static void run_cmd_and_read_stdout(Cmd *cmd, SB *sb) {
     }
 
     fclose(out);
+    return sv;
 }
 
 static bool is_space(char ch) {
@@ -77,21 +78,20 @@ static bool is_space(char ch) {
 
 #ifdef PLATFORM_X86_64_WINDOWS
 static void filter_cl_exe_output(Proc proc) {
-    SB sb = {0};
     SV sv = {0};
-    if (read_fp(proc.out, &sv, &sb)) {
-        while (sv.count) {
-            const SV line = sv_split_mut(&sv, '\n');
-            if (sv_find(line, ' ', NULL)) {
-                printf(SV_Fmt "\n", SV_Arg(line));
-            }
-        }
-    } else {
+    if (!read_fp(proc.out, &sv, &default_arena)) {
         fprintf(stderr, "ERROR: Could not read standard output of 'cl.exe'\n");
+        exit(1);
     }
-
-    sb_free(&sb);
     fclose(proc.out);
+
+    while (sv.count) {
+        const SV line = sv_split_mut(&sv, '\n');
+        if (sv_find(line, ' ', NULL)) {
+            printf(SV_Fmt "\n", SV_Arg(line));
+        }
+    }
+    arena_reset(&default_arena, sv.data);
 }
 #endif // PLATFORM_X86_64_WINDOWS
 
@@ -263,13 +263,14 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     if (need_linking) {
         fprintf(stderr, "Building 'glos" EXE_FILE_EXTENSION "'\n");
 
-        SB sb = {0};
+        SV sv = {0};
         cmd_push(cmd, "./llvm/bin/llvm-config", "--ldflags", "--libs", "--system-libs", "--link-static");
-        run_cmd_and_read_stdout(cmd, &sb);
+        sv = run_cmd_and_read_stdout(cmd);
 
 #ifdef PLATFORM_ARM64_MACOS
+        arena_reset(&default_arena, sv.data + sv.count);
         cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
-        run_cmd_and_read_stdout(cmd, &sb);
+        sv.count += run_cmd_and_read_stdout(cmd);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
@@ -298,7 +299,6 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             cmd_push(cmd, temp_replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
         }
 
-        SV sv = {.data = sb.data, .count = sb.count};
         while (sv.count) {
             const SV arg = sv_split_by_mut(&sv, is_space);
             if (arg.count == 0) {
@@ -306,7 +306,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             }
             cmd_push(cmd, temp_sv_to_cstr(arg));
         }
-        sb_free(&sb);
+        arena_reset(&default_arena, sv.data);
 
         const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
@@ -527,7 +527,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
 
         Test_Info actual = {0};
         if (it->pout) {
-            if (!read_fp_into_arena(it->pout, &actual.out, arena)) {
+            if (!read_fp(it->pout, &actual.out, arena)) {
                 fprintf(stderr, "ERROR: Could not read standard output of test case '%s'\n", it->name);
                 exit(1);
             }
@@ -537,7 +537,7 @@ static void tests_flush(Tests *tests, Cmd *cmd, bool interactive, Arena *arena, 
         }
 
         if (it->perr) {
-            if (!read_fp_into_arena(it->perr, &actual.err, arena)) {
+            if (!read_fp(it->perr, &actual.err, arena)) {
                 fprintf(stderr, "ERROR: Could not read standard error of test case '%s'\n", it->name);
                 exit(1);
             }
@@ -688,7 +688,7 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     }
 
     SV contents = {0};
-    if (!read_file_into_arena(TESTS_LIST_PATH, &contents, &arena)) {
+    if (!read_file(TESTS_LIST_PATH, &contents, &arena)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", TESTS_LIST_PATH);
         exit(1);
     }
@@ -707,7 +707,7 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         const char *record_path = temp_replace_suffix(test.name, ".glos", ".bin");
 
         SV         contents = {0};
-        const bool record_exists = read_file_into_arena(record_path, &contents, &arena);
+        const bool record_exists = read_file(record_path, &contents, &arena);
 
         Test_Info expected = {0};
         if (record_exists) {

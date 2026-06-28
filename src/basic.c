@@ -10,6 +10,12 @@
 #include <sys/wait.h>
 #endif // PLATFORM_X86_64_WINDOWS
 
+void basic_atexit(void) {
+    temporary_files_cleanup();
+    arena_free(&default_arena);
+    sb_free(&default_sb);
+}
+
 // Dynamic Array
 void da_resize(void **data, size_t *capacity, size_t size, size_t count) {
     if (!count) {
@@ -313,10 +319,15 @@ void sb_sprintf(SB *sb, const char *fmt, ...) {
     va_end(args);
 }
 
-void sb_push_cstr(SB *sb, const char *cstr) {
-    const size_t n = strlen(cstr);
-    sb_push_many(sb, cstr, n);
+void sb_push_sv(SB *sb, SV sv) {
+    sb_push_many(sb, sv.data, sv.count);
 }
+
+void sb_push_cstr(SB *sb, const char *cstr) {
+    sb_push_many(sb, cstr, strlen(cstr));
+}
+
+SB default_sb;
 
 // Temporary Allocator
 static char   temp_data[16 * 1024 * 1024];
@@ -365,77 +376,57 @@ void *temp_clone(const void *data, size_t size) {
 }
 
 // Arena Allocator
-#define ARENA_MINIMUM_CAPACITY 16000
-
-struct Arena_Region {
-    Arena_Region *next;
-    size_t        count;
-    size_t        capacity;
-    char          data[];
-};
-
 void arena_free(Arena *a) {
-    Arena_Region *it = a->head;
-    while (it) {
-        Arena_Region *next = it->next;
-        free(it);
-        it = next;
+    if (!a->data) {
+        return;
     }
-    sb_free(&a->sb);
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    VirtualFree(a->data, 0, MEM_RELEASE);
+#else
+    munmap(a->data, a->capacity);
+#endif // PLATFORM_X86_64_WINDOWS
+
     memset(a, 0, sizeof(*a));
 }
 
-void *arena_alloc(Arena *a, size_t size) {
-    Arena_Region *region = a->head;
-    if (region && region->count + size > region->capacity) {
-        region = NULL;
-    }
-
-    // TODO: The best fit model is broken
-    // for (Arena_Region *it = a->head; it; it = it->next) {
-    //     if (it->count + size <= it->capacity) {
-    //         region = it;
-    //         break;
-    //     }
-    // }
-
-    size = (size + 7) & -8; // Alignment
-    if (!region) {
-        size_t capacity = size;
-        if (capacity < ARENA_MINIMUM_CAPACITY) {
-            capacity = ARENA_MINIMUM_CAPACITY;
-        }
-
-        region = malloc(sizeof(Arena_Region) + capacity);
-        region->next = a->head;
-        region->count = 0;
-        region->capacity = capacity;
-        a->head = region;
-    }
-
-    void *ptr = &region->data[region->count];
-    if (size) {
-        memset(ptr, 0, size);
-    }
-    region->count += size;
-    return ptr;
+void arena_reset(Arena *a, const void *ptr) {
+    assert((const char *) ptr >= a->data && (const char *) ptr <= a->data + a->head);
+    a->head = (const char *) ptr - a->data;
 }
 
-void arena_reset(Arena *a, const void *ptr) {
-    for (Arena_Region *it = a->head; it; it = it->next) {
-        if ((const char *) ptr >= it->data && (const char *) ptr <= it->data + it->capacity) {
-            it->count = (const char *) ptr - it->data;
-            for (Arena_Region *p = a->head; p != it;) {
-                Arena_Region *next = p->next;
-                free(p);
-                p = next;
-            }
-            a->head = it;
-            return;
+void *arena_alloc(Arena *a, size_t size) {
+    if (!a->data) {
+        if (!a->capacity) {
+            a->capacity = 256 * 1024 * 1024;
         }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        a->data = VirtualAlloc(NULL, a->capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+#else
+        a->data = mmap(NULL, a->capacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (a->data == MAP_FAILED) {
+            a->data = NULL;
+        }
+#endif // PLATFORM_X86_64_WINDOWS
+
+        assert(a->data != NULL);
     }
 
-    unreachable();
+    void *ptr = a->data + a->head;
+    if (size == 0) {
+        return ptr;
+    }
+
+    size = (size + 7) & -8; // Alignment
+    assert(a->head + size <= a->capacity);
+
+    a->head += size;
+    return memset(ptr, 0, size);
+}
+
+void *arena_clone(Arena *a, const void *data, size_t size) {
+    return memcpy(arena_alloc(a, size), data, size);
 }
 
 char *arena_sprintf(Arena *a, const char *fmt, ...) {
@@ -460,14 +451,20 @@ char *arena_sv_to_cstr(Arena *a, SV sv) {
     return p;
 }
 
-void *arena_clone(Arena *a, const void *data, size_t size) {
-    return memcpy(arena_alloc(a, size), data, size);
+char *arena_sb_to_cstr(Arena *a, SB *sb, size_t start) {
+    char *p = arena_sv_to_cstr(a, (SV) {.data = sb->data + start, .count = sb->count - start});
+    sb->count = start;
+    return p;
 }
 
+Arena default_arena;
+
 // FS
-bool read_fp(FILE *f, SV *out, SB *sb) {
-    bool         result = true;
-    const size_t start = sb->count;
+bool read_fp(FILE *f, SV *out, Arena *a) {
+    bool result = true;
+
+    char  *start = arena_alloc(a, 0);
+    size_t count = 0;
 
     if (!f) {
         return_defer(false);
@@ -475,9 +472,9 @@ bool read_fp(FILE *f, SV *out, SB *sb) {
 
     while (true) {
 #define CHUNK_SIZE 4096
-        sb_grow(sb, sb->count + CHUNK_SIZE);
-        const size_t n = fread(sb->data + sb->count, sizeof(*sb->data), CHUNK_SIZE, f);
-        sb->count += n;
+        arena_alloc(a, CHUNK_SIZE);
+        const size_t n = fread(start + count, sizeof(*start), CHUNK_SIZE, f);
+        count += n;
 
         if (n < CHUNK_SIZE) {
             if (feof(f)) {
@@ -491,37 +488,29 @@ bool read_fp(FILE *f, SV *out, SB *sb) {
 #undef CHUNK_SIZE
     }
 
-    size_t j = start;
-    for (size_t i = start; i < sb->count; i++) {
-        char it = sb->data[i];
-        if (it == '\r' && i + 1 < sb->count && sb->data[i + 1] == '\n') {
-            it = sb->data[++i];
+    size_t j = 0;
+    for (size_t i = 0; i < count; i++) {
+        char it = start[i];
+        if (it == '\r' && i + 1 < count && start[i + 1] == '\n') {
+            it = start[++i];
         }
-        sb->data[j++] = it;
+        start[j++] = it;
     }
-    sb->count = j;
 
-    out->data = sb->data + start;
-    out->count = sb->count - start;
+    count = j;
+    arena_reset(a, start + count);
+
+    out->data = start;
+    out->count = count;
 
 defer:
     if (!result) {
-        sb->count = start;
+        arena_reset(a, start);
     }
     return result;
 }
 
-bool read_fp_into_arena(FILE *f, SV *out, Arena *arena) {
-    if (!read_fp(f, out, &arena->sb)) {
-        return false;
-    }
-
-    out->data = arena_clone(arena, out->data, out->count);
-    arena->sb.count -= out->count;
-    return true;
-}
-
-bool read_file(const char *path, SV *out, SB *sb) {
+bool read_file(const char *path, SV *out, Arena *a) {
     bool result = true;
 
     FILE *f = fopen(path, "r");
@@ -529,7 +518,7 @@ bool read_file(const char *path, SV *out, SB *sb) {
         return_defer(false);
     }
 
-    if (!read_fp(f, out, sb)) {
+    if (!read_fp(f, out, a)) {
         return_defer(false);
     }
 
@@ -539,16 +528,6 @@ defer:
     }
 
     return result;
-}
-
-bool read_file_into_arena(const char *path, SV *out, Arena *arena) {
-    if (!read_file(path, out, &arena->sb)) {
-        return false;
-    }
-
-    out->data = arena_clone(arena, out->data, out->count);
-    arena->sb.count -= out->count;
-    return true;
 }
 
 bool delete_file(const char *path) {
@@ -681,7 +660,7 @@ static bool path_is_rooted(SV path) {
 
 const char *get_cwd(Arena *a) {
     const char  *result = NULL;
-    const size_t start = a->sb.count;
+    const size_t start = default_sb.count;
 
 #ifdef PLATFORM_X86_64_WINDOWS
     const DWORD count = GetCurrentDirectory(0, NULL);
@@ -689,28 +668,28 @@ const char *get_cwd(Arena *a) {
         return_defer(NULL);
     }
 
-    sb_grow(&a->sb, a->sb.count + count);
-    if (!GetCurrentDirectory(count, a->sb.data + start)) {
+    sb_grow(&default_sb, default_sb.count + count);
+    if (!GetCurrentDirectory(count, default_sb.data + start)) {
         return_defer(NULL);
     }
 
-    unixify_path_separators_inplace(a->sb.data + start, count);
+    unixify_path_separators_inplace(default_sb.data + start, count);
 #else
-    sb_grow(&a->sb, a->sb.count + DA_INIT_CAP);
-    while (!getcwd(a->sb.data + start, a->sb.capacity)) {
+    sb_grow(&default_sb, default_sb.count + DA_INIT_CAP);
+    while (!getcwd(default_sb.data + start, default_sb.capacity)) {
         if (errno != ERANGE) {
             return_defer(NULL);
         }
 
-        a->sb.count = a->sb.capacity;
-        sb_grow(&a->sb, a->sb.count + DA_INIT_CAP);
+        default_sb.count = default_sb.capacity;
+        sb_grow(&default_sb, default_sb.count + DA_INIT_CAP);
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-    return_defer(arena_sprintf(a, "%s", a->sb.data + start));
+    return_defer(arena_sprintf(a, "%s", default_sb.data + start));
 
 defer:
-    a->sb.count = start;
+    default_sb.count = start;
     return result;
 }
 
@@ -724,19 +703,19 @@ static bool is_path_separator(char ch) {
 
 // `cwd` must be absolute
 const char *get_absolute_path(SV cwd, SV path, Arena *a) {
-    const size_t start = a->sb.count;
+    const size_t start = default_sb.count;
 
     if (path_is_rooted(path)) {
 #ifdef PLATFORM_X86_64_WINDOWS
         if (path.count && path.data[0] == '/') {
             assert(cwd.count >= 2 && isalpha(cwd.data[0]) && cwd.data[1] == ':');
-            sb_push_many(&a->sb, cwd.data, 2);
+            sb_push_many(&default_sb, cwd.data, 2);
         }
 #endif // PLATFORM_X86_64_WINDOWS
     } else {
-        sb_push_many(&a->sb, cwd.data, cwd.count);
-        if (a->sb.count > start && a->sb.data[a->sb.count - 1] == '/') {
-            a->sb.count--;
+        sb_push_many(&default_sb, cwd.data, cwd.count);
+        if (default_sb.count > start && default_sb.data[default_sb.count - 1] == '/') {
+            default_sb.count--;
         }
     }
 
@@ -751,9 +730,9 @@ const char *get_absolute_path(SV cwd, SV path, Arena *a) {
         }
 
         if (sv_match(component, "..")) {
-            for (size_t i = a->sb.count; i > start; i--) {
-                if (a->sb.data[i - 1] == '/') {
-                    a->sb.count = i - 1;
+            for (size_t i = default_sb.count; i > start; i--) {
+                if (default_sb.data[i - 1] == '/') {
+                    default_sb.count = i - 1;
                     break;
                 }
             }
@@ -764,37 +743,35 @@ const char *get_absolute_path(SV cwd, SV path, Arena *a) {
         bool push_slash = true;
 
 #ifdef PLATFORM_X86_64_WINDOWS
-        if (a->sb.count == start) {
+        if (default_sb.count == start) {
             assert(path_is_rooted(component));
             push_slash = false;
         }
 #endif // PLATFORM_X86_64_WINDOWS
 
         if (push_slash) {
-            sb_push(&a->sb, '/');
+            sb_push(&default_sb, '/');
         }
-        sb_push_many(&a->sb, component.data, component.count);
+        sb_push_many(&default_sb, component.data, component.count);
     }
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    assert(path_is_rooted((SV) {.data = a->sb.data + start, .count = a->sb.count - start}));
-    if (a->sb.count == start + 2) {
-        sb_push(&a->sb, '/');
+    assert(path_is_rooted((SV) {.data = default_sb.data + start, .count = default_sb.count - start}));
+    if (default_sb.count == start + 2) {
+        sb_push(&default_sb, '/');
     }
 #else
-    if (a->sb.count == start) {
-        sb_push(&a->sb, '/');
+    if (default_sb.count == start) {
+        sb_push(&default_sb, '/');
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-    const char *result = arena_sv_to_cstr(a, (SV) {.data = a->sb.data + start, .count = a->sb.count - start});
-    a->sb.count = start;
-    return result;
+    return arena_sb_to_cstr(a, &default_sb, start);
 }
 
 // `cwd` and `path` must be absolute
 const char *get_relative_path(SV cwd, SV path, Arena *a) {
-    const size_t start = a->sb.count;
+    const size_t start = default_sb.count;
     while (cwd.count && path.count) {
         const SV cwd_component = sv_split(cwd, '/');
         const SV path_component = sv_split(path, '/');
@@ -808,26 +785,24 @@ const char *get_relative_path(SV cwd, SV path, Arena *a) {
 
     while (cwd.count) {
         sv_split_mut(&cwd, '/');
-        if (a->sb.count != start) {
-            sb_push(&a->sb, '/');
+        if (default_sb.count != start) {
+            sb_push(&default_sb, '/');
         }
-        sb_push_cstr(&a->sb, "..");
+        sb_push_cstr(&default_sb, "..");
     }
 
     if (path.count) {
-        if (a->sb.count != start) {
-            sb_push(&a->sb, '/');
+        if (default_sb.count != start) {
+            sb_push(&default_sb, '/');
         }
-        sb_push_many(&a->sb, path.data, path.count);
+        sb_push_many(&default_sb, path.data, path.count);
     }
 
-    if (a->sb.count == start) {
-        sb_push(&a->sb, '.');
+    if (default_sb.count == start) {
+        sb_push(&default_sb, '.');
     }
 
-    const char *result = arena_sv_to_cstr(a, (SV) {.data = a->sb.data + start, .count = a->sb.count - start});
-    a->sb.count = start;
-    return result;
+    return arena_sb_to_cstr(a, &default_sb, start);
 }
 
 // `path` must be absolute

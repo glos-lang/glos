@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
     clock_t timer = 0;
 #endif // PROFILING
 
-    atexit(temporary_files_cleanup);
+    atexit(basic_atexit);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
     int   result = 0;
