@@ -321,7 +321,7 @@ static size_t get_union_type_index(Node *n, Type unionn) {
 
 static bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
     if (n->type.is_meta && type_eq(expected, c->type_info_pointer_type)) {
-        n->emit_type_info = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->emit_type_info = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->emit_type_info->is_meta = false;
         n->type = c->type_info_pointer_type;
         return true;
@@ -378,7 +378,7 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
 
     if (type_is_union(expected) && !type_is_unknown(n->type)) {
         finalize_untyped_type(&n->type);
-        n->auto_cast_from = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->auto_cast_kind = AUTO_CAST_TO_UNION;
         n->auto_cast_data = get_union_type_index(n, expected);
         n->type = expected;
@@ -386,7 +386,7 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
     }
 
     if (type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE) && !n->type.ref && !expected.ref) {
-        n->auto_cast_from = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->auto_cast_kind = AUTO_CAST_ARRAY_TO_SLICE;
         n->type = expected;
         return true;
@@ -395,7 +395,7 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
     if (type_eq(expected, (Type) {.kind = TYPE_ANY}) && !type_is_unknown(n->type)) {
         finalize_untyped_type(&n->type);
         try_auto_cast_type_to_rtti(c, n, c->type_info_pointer_type);
-        n->auto_cast_from = arena_clone(c->arena, &n->type, sizeof(n->type));
+        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->auto_cast_kind = AUTO_CAST_TO_ANY;
         n->type = expected;
         return true;
@@ -838,7 +838,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_STRUCT: {
         Const_Value_Struct structure = {0};
         structure.spec = type.spec.structt;
-        structure.fields = arena_alloc(c->arena, structure.spec->fields_count * sizeof(*structure.fields));
+        structure.fields = arena_alloc(&default_arena, structure.spec->fields_count * sizeof(*structure.fields));
         for (size_t i = 0; i < structure.spec->fields_count; i++) {
             structure.fields[i] = default_const_value(c, structure.spec->fields[i].type);
         }
@@ -848,7 +848,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_ARRAY: {
         Const_Value_Array array = {0};
         array.count = type.spec.array.count;
-        array.data = arena_alloc(c->arena, array.count * sizeof(*array.data));
+        array.data = arena_alloc(&default_arena, array.count * sizeof(*array.data));
         array.element_type = type.spec.array.element;
         for (size_t i = 0; i < array.count; i++) {
             array.data[i] = default_const_value(c, *array.element_type);
@@ -874,19 +874,19 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     }
 }
 
-static Const_Value const_value_to_any(Compiler *c, Type *type, Const_Value value) {
+static Const_Value const_value_to_any(Type *type, Const_Value value) {
     Const_Value_Any any = {0};
     any.type = type;
-    any.value = arena_clone(c->arena, &value, sizeof(value));
+    any.value = arena_clone(&default_arena, &value, sizeof(value));
     return const_value_any(any);
 }
 
-static Const_Value const_value_to_union(Compiler *c, Type union_type, size_t union_index, Const_Value value) {
+static Const_Value const_value_to_union(Type union_type, size_t union_index, Const_Value value) {
     Const_Value_Union unionn = {0};
     assert(union_type.kind == TYPE_UNION);
     unionn.spec = union_type.spec.unionn;
     unionn.index = union_index;
-    unionn.real = arena_clone(c->arena, &value, sizeof(value));
+    unionn.real = arena_clone(&default_arena, &value, sizeof(value));
     return const_value_union(unionn);
 }
 
@@ -1417,10 +1417,10 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
             return const_value_int(value.as.integer != 0);
 
         case TYPE_CAST_TO_UNION:
-            return const_value_to_union(c, n->type, call->type_cast_union_index, value);
+            return const_value_to_union(n->type, call->type_cast_union_index, value);
 
         case TYPE_CAST_TO_ANY:
-            return const_value_to_any(c, &call->args.head->type, value);
+            return const_value_to_any(&call->args.head->type, value);
 
         default:
             unreachable();
@@ -1601,11 +1601,11 @@ static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
         static_assert(COUNT_AUTO_CASTS == 3, "");
         switch (n->auto_cast_kind) {
         case AUTO_CAST_TO_ANY:
-            result = const_value_to_any(c, n->auto_cast_from, result);
+            result = const_value_to_any(n->auto_cast_from, result);
             break;
 
         case AUTO_CAST_TO_UNION:
-            result = const_value_to_union(c, n->type, n->auto_cast_data, result);
+            result = const_value_to_union(n->type, n->auto_cast_data, result);
             break;
 
         case AUTO_CAST_ARRAY_TO_SLICE:
@@ -1631,7 +1631,7 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     } else if (type_is_union(sw->expr->type)) {
         sw->unionn = sw->expr->type.spec.unionn->definition;
     } else if (sw->expr->type.is_meta) {
-        sw->expr->emit_type_info = arena_clone(c->arena, &sw->expr->type, sizeof(sw->expr->type));
+        sw->expr->emit_type_info = arena_clone(&default_arena, &sw->expr->type, sizeof(sw->expr->type));
         sw->expr->emit_type_info->is_meta = false;
         sw->expr->type = c->type_info_pointer_type;
         sw->is_expr_type_info = true;
@@ -1649,7 +1649,7 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     }
 
     if (!sw->preds) {
-        sw->preds = arena_alloc(c->arena, sw->preds_count * sizeof(*sw->preds));
+        sw->preds = arena_alloc(&default_arena, sw->preds_count * sizeof(*sw->preds));
     }
 }
 
@@ -1788,11 +1788,11 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
         replace->from = replace->from->definition;
     }
 
-    replace->to = arena_clone(c->arena, from, sizeof(*from));
+    replace->to = arena_clone(&default_arena, from, sizeof(*from));
     replace->to->is_ghost = true;
     replace->to->definition = from;
     replace->to->definition_spec =
-        arena_clone(c->arena, replace->to->definition_spec, sizeof(*replace->to->definition_spec));
+        arena_clone(&default_arena, replace->to->definition_spec, sizeof(*replace->to->definition_spec));
 
     replace->to->node.type = to;
     replace->to->node.type.is_meta = false;
@@ -2120,7 +2120,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 }
 
                 if (it_expr->type.is_meta && !it->definition_spec->is_const) {
-                    it_expr->emit_type_info = arena_clone(c->arena, &it_expr->type, sizeof(it_expr->type));
+                    it_expr->emit_type_info = arena_clone(&default_arena, &it_expr->type, sizeof(it_expr->type));
                     it_expr->emit_type_info->is_meta = false;
                     it_expr->type = c->type_info_pointer_type;
                 }
@@ -2620,7 +2620,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
     if (is_lhs_group) {
         if (binary->node.token.kind != TOKEN_SET) {
-            binary->overloads = arena_alloc(c->arena, lhs_count * sizeof(*binary->overloads));
+            binary->overloads = arena_alloc(&default_arena, lhs_count * sizeof(*binary->overloads));
         }
 
         assert(is_rhs_group);
@@ -3497,7 +3497,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             }
         }
 
-        spec.data = arena_alloc(c->arena, spec.count * sizeof(*spec.data));
+        spec.data = arena_alloc(&default_arena, spec.count * sizeof(*spec.data));
 
         size_t iota = 0;
         ll_foreach(it, &group->nodes) {
@@ -3906,8 +3906,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         context_push_fn(&c->context, &context_fn);
 
         {
-            Type_Fn *fn_spec = arena_alloc(c->arena, sizeof(*fn_spec));
-            fn_spec->args = arena_alloc(c->arena, fn->args_count * sizeof(*fn_spec->args));
+            Type_Fn *fn_spec = arena_alloc(&default_arena, sizeof(*fn_spec));
+            fn_spec->args = arena_alloc(&default_arena, fn->args_count * sizeof(*fn_spec->args));
             fn_spec->args_count_min = fn->args_count_min;
             fn_spec->variadics_kind = fn->variadics_kind;
 
@@ -3950,7 +3950,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             if (fn->returns.head) {
-                fn_spec->returns = arena_alloc(c->arena, fn->returns_count * sizeof(*fn_spec->returns));
+                fn_spec->returns = arena_alloc(&default_arena, fn->returns_count * sizeof(*fn_spec->returns));
 
                 size_t iota = 0;
                 ll_foreach(it, &fn->returns) {
@@ -3974,7 +3974,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 return_type.spec.group.data = fn_spec->returns;
                 return_type.spec.group.count = fn_spec->returns_count;
             }
-            fn_spec->return_type = arena_clone(c->arena, &return_type, sizeof(return_type));
+            fn_spec->return_type = arena_clone(&default_arena, &return_type, sizeof(return_type));
 
             n->type = (Type) {.kind = TYPE_FN, .spec.fn = fn_spec};
 
@@ -4201,7 +4201,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_UNION: {
         Node_Union *unionn = (Node_Union *) n;
 
-        Type_Union *spec = arena_alloc(c->arena, sizeof(*spec));
+        Type_Union *spec = arena_alloc(&default_arena, sizeof(*spec));
         spec->definition = unionn;
 
         n->type = (Type) {
@@ -4214,7 +4214,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             unionn->defined_as->node.type = n->type;
         }
 
-        spec->variants = arena_alloc(c->arena, unionn->variants_count * sizeof(*spec->variants));
+        spec->variants = arena_alloc(&default_arena, unionn->variants_count * sizeof(*spec->variants));
         spec->variants_count = unionn->variants_count;
 
         size_t iota = 0;
@@ -4243,7 +4243,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_STRUCT: {
         Node_Struct *structt = (Node_Struct *) n;
 
-        Type_Struct *spec = arena_alloc(c->arena, sizeof(*spec));
+        Type_Struct *spec = arena_alloc(&default_arena, sizeof(*spec));
         spec->definition = structt;
 
         n->type = (Type) {
@@ -4336,7 +4336,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         const size_t fields_count = c->struct_fields.count - fields_start;
         if (fields_count) {
             spec->fields = arena_clone(
-                c->arena, &c->struct_fields.data[fields_start], fields_count * sizeof(*c->struct_fields.data));
+                &default_arena, &c->struct_fields.data[fields_start], fields_count * sizeof(*c->struct_fields.data));
             spec->fields_count = fields_count;
         }
 
@@ -4545,7 +4545,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 element_type.ref--;
                 n->type = (Type) {
                     .kind = TYPE_SLICE,
-                    .spec.slice.element = arena_clone(c->arena, &element_type, sizeof(element_type)),
+                    .spec.slice.element = arena_clone(&default_arena, &element_type, sizeof(element_type)),
                 };
             } else if (
                 type_kind_eq(index->lhs->type, TYPE_ARRAY) || type_kind_eq(index->lhs->type, TYPE_SLICE) ||
@@ -4697,7 +4697,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             check_expr(c, indexable->element, REF_ADDR);
         }
 
-        Type *element_type = arena_alloc(c->arena, sizeof(*element_type));
+        Type *element_type = arena_alloc(&default_arena, sizeof(*element_type));
         *element_type = type_assert_type(indexable->element);
         element_type->is_meta = false;
 
@@ -5039,10 +5039,10 @@ void check_nodes(Compiler *c) {
     c->methods_table.hasheq = ht_hasheq_method_spec;
 
     {
-        Type_Fn *fn_spec = arena_alloc(c->arena, sizeof(*fn_spec));
+        Type_Fn *fn_spec = arena_alloc(&default_arena, sizeof(*fn_spec));
 
         const Type unit = {.kind = TYPE_UNIT};
-        fn_spec->return_type = arena_clone(c->arena, &unit, sizeof(unit));
+        fn_spec->return_type = arena_clone(&default_arena, &unit, sizeof(unit));
 
         c->main_fn_type = (Type) {
             .kind = TYPE_FN,
@@ -5054,7 +5054,7 @@ void check_nodes(Compiler *c) {
         const Type any = {.kind = TYPE_ANY};
         c->interpolated_string_type = (Type) {
             .kind = TYPE_SLICE,
-            .spec.slice.element = arena_clone(c->arena, &any, sizeof(any)),
+            .spec.slice.element = arena_clone(&default_arena, &any, sizeof(any)),
         };
     }
 

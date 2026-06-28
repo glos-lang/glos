@@ -17,17 +17,17 @@
 
 void link_flags_add_libpath(Link_Flags *ls, SV path) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    da_push(ls, arena_sprintf(ls->arena, "/libpath:" SV_Fmt, SV_Arg(path)));
+    da_push(ls, arena_sprintf(&default_arena, "/libpath:" SV_Fmt, SV_Arg(path)));
 #else
-    da_push(ls, arena_sprintf(ls->arena, "-L" SV_Fmt, SV_Arg(path)));
+    da_push(ls, arena_sprintf(&default_arena, "-L" SV_Fmt, SV_Arg(path)));
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
 void link_flags_add_libname(Link_Flags *ls, SV name) {
 #ifdef PLATFORM_X86_64_WINDOWS
-    da_push(ls, arena_sprintf(ls->arena, SV_Fmt ".lib", SV_Arg(name)));
+    da_push(ls, arena_sprintf(&default_arena, SV_Fmt ".lib", SV_Arg(name)));
 #else
-    da_push(ls, arena_sprintf(ls->arena, "-l" SV_Fmt, SV_Arg(name)));
+    da_push(ls, arena_sprintf(&default_arena, "-l" SV_Fmt, SV_Arg(name)));
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
@@ -176,7 +176,7 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
             spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->count, false);
             arena_reset(&temp_arena, fields);
 
-            spec->offsets = arena_alloc(c->arena, spec->count * sizeof(*spec->offsets));
+            spec->offsets = arena_alloc(&default_arena, spec->count * sizeof(*spec->offsets));
             for (size_t i = 0; i < spec->count; i++) {
                 spec->offsets[i] = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i);
             }
@@ -3984,7 +3984,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     assert(c->cmd);
-    assert(c->arena);
     assert(c->modules);
     assert(c->main_fn);
 

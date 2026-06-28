@@ -4,11 +4,9 @@
 #include <ctype.h>
 #include <errno.h>
 
-bool lexer_open(Lexer *l, const char *path, Arena *a) {
+bool lexer_open(Lexer *l, const char *path) {
     memset(l, 0, sizeof(*l));
-
-    l->arena = a;
-    if (!read_file(path, &l->sv, l->arena)) {
+    if (!read_file(path, &l->sv, &default_arena)) {
         return false;
     }
 
@@ -201,7 +199,7 @@ Token lexer_get_string(Lexer *l, Pos pos) {
     next_char(l);
 
     token.sv.count = default_sb.count - default_sb_count_save;
-    token.sv.data = arena_clone(l->arena, default_sb.data + default_sb_count_save, token.sv.count);
+    token.sv.data = arena_clone(&default_arena, default_sb.data + default_sb_count_save, token.sv.count);
     default_sb.count = default_sb_count_save;
     return token;
 }
