@@ -212,6 +212,7 @@ struct Type_Struct_Field {
     size_t offset;
 };
 
+void        sb_push_type(SB *sb, Type type);
 const char *type_to_cstr_raw(Type type);
 const char *type_to_cstr(Type type);
 

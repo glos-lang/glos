@@ -96,7 +96,7 @@ static_assert(sizeof(u64) == 8, "");
 #define ll_foreach2(a, b, ll1, ll2)                                                                                    \
     for (__typeof__((ll1)->head) a = (ll1)->head, b = (ll2)->head; a && b; a = a->next, b = b->next)
 
-#define add_trailing_s_if_plural(s, n) ((n) == 1 ? (s) : temp_sprintf("%ss", (s)))
+#define add_trailing_s_if_plural(s, n) ((n) == 1 ? (s) : arena_sprintf(&temp_arena, "%ss", (s)))
 
 // Dynamic Array
 #define DA_INIT_CAP 128
@@ -288,15 +288,6 @@ void sb_push_cstr(SB *sb, const char *cstr);
 
 extern SB default_sb;
 
-// Temporary Allocator
-void  temp_reset(const void *p);
-void *temp_alloc(size_t n);
-char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
-char *temp_sv_to_cstr(SV sv);
-void  temp_remove_null(void);
-
-void *temp_clone(const void *data, size_t size);
-
 // Arena Allocator
 typedef struct {
     char  *data;
@@ -313,6 +304,7 @@ char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
 char *arena_sv_to_cstr(Arena *a, SV sv);
 char *arena_sb_to_cstr(Arena *a, SB *sb, size_t start);
 
+extern Arena temp_arena;
 extern Arena default_arena;
 
 // FS

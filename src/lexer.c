@@ -231,12 +231,12 @@ Token lexer_iter(Lexer *l) {
             error_invalid(l->pos, l->sv, "digit");
         }
 
-        char *buffer = temp_sv_to_cstr(token.sv);
+        char *buffer = arena_sv_to_cstr(&temp_arena, token.sv);
         memcpy(buffer, token.sv.data, token.sv.count);
 
         errno = 0;
         token.as.integer = strtol(buffer, NULL, 10);
-        temp_reset(buffer);
+        arena_reset(&temp_arena, buffer);
 
         if (!errno) {
             return token;

@@ -127,7 +127,7 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
 
         Type_Struct *spec = type->spec.structt;
         if (!spec->llvm) {
-            LLVMTypeRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+            LLVMTypeRef *fields = arena_alloc(&temp_arena, spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
                 compile_type(c, &it->type);
@@ -135,7 +135,7 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
             }
 
             spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->fields_count, false);
-            temp_reset(fields);
+            arena_reset(&temp_arena, fields);
 
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
@@ -166,7 +166,7 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
     case TYPE_GROUP: {
         Type_Group *spec = &type->spec.group;
         if (!spec->llvm) {
-            LLVMTypeRef *fields = temp_alloc(spec->count * sizeof(*fields));
+            LLVMTypeRef *fields = arena_alloc(&temp_arena, spec->count * sizeof(*fields));
             for (size_t i = 0; i < spec->count; i++) {
                 Type *it = &spec->data[i];
                 compile_type(c, it);
@@ -174,7 +174,7 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
             }
 
             spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, spec->count, false);
-            temp_reset(fields);
+            arena_reset(&temp_arena, fields);
 
             spec->offsets = arena_alloc(c->arena, spec->count * sizeof(*spec->offsets));
             for (size_t i = 0; i < spec->count; i++) {
@@ -511,7 +511,7 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
     assert(!type.ref && type.kind == TYPE_FN);
     Type_Fn *spec = type.spec.fn;
 
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     abi_set_return_type(c, abi, spec->return_type);
     for (size_t i = 0; i < spec->args_count; i++) {
@@ -522,10 +522,10 @@ static LLVMTypeRef compile_fn_type(Compiler *c, Type type, ABI *abi) {
         abi_set_variadic_at(abi, abi->actual_args_count);
     }
 
-    abi->actual_args = temp_alloc(abi->actual_args_count * sizeof(*abi->actual_args));
+    abi->actual_args = arena_alloc(&temp_arena, abi->actual_args_count * sizeof(*abi->actual_args));
     spec->llvm = abi_finalize(c, abi);
 
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
     return spec->llvm;
 }
 
@@ -533,14 +533,13 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn);
 static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref);
 static void         compile_stmt(Compiler *c, Node *n);
 
-static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *module) {
+static void sb_push_nested_fn_name(Compiler *c, SB *sb, Node_Fn *fn, Module *module) {
     if (!fn) {
-        return temp_sv_to_cstr(module->name);
+        sb_push_sv(sb, module->name);
+        return;
     }
 
-    const char *name = temp_emit_nested_fn_name(c, fn->outer_fn, module);
-    temp_remove_null();
-
+    sb_push_nested_fn_name(c, sb, fn->outer_fn, module);
     if (fn->is_method) {
         assert(fn->defined_as);
         assert(!fn->outer_fn);
@@ -549,23 +548,24 @@ static const char *temp_emit_nested_fn_name(Compiler *c, Node_Fn *fn, Module *mo
         const Type_Fn *fn_spec = fn->node.type.spec.fn;
 
         assert(fn_spec->args_count);
-        temp_sprintf(".");
-        temp_remove_null();
-
-        type_to_cstr_raw(fn_spec->args[0].type);
-        temp_remove_null();
+        sb_sprintf(sb, ".");
+        sb_push_type(sb, fn_spec->args[0].type);
     }
 
     if (fn->defined_as) {
-        temp_sprintf("." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
+        sb_sprintf(sb, "." SV_Fmt, SV_Arg(fn->defined_as->node.token.sv));
     } else {
         if (!fn->defined_as_anon_iota) {
             fn->defined_as_anon_iota = ++c->iota_anonymous_fn;
         }
-        temp_sprintf(".anon.%zu", fn->defined_as_anon_iota);
+        sb_sprintf(sb, ".anon.%zu", fn->defined_as_anon_iota);
     }
+}
 
-    return name;
+static const char *temp_nested_fn_name(Compiler *c, Node_Fn *fn, Module *module) {
+    const size_t start = default_sb.count;
+    sb_push_nested_fn_name(c, &default_sb, fn, module);
+    return arena_sb_to_cstr(&temp_arena, &default_sb, start);
 }
 
 static LLVMMetadataRef get_debug_file(Compiler *c, const char *path) {
@@ -602,10 +602,10 @@ typedef struct {
 
 static LLVMMetadataRef
 get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_Field *fields, size_t fields_count) {
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     LLVMMetadataRef  empty_file_path_metadata = get_debug_file(c, "");
-    LLVMMetadataRef *members = temp_alloc(fields_count * sizeof(*members));
+    LLVMMetadataRef *members = arena_alloc(&temp_arena, fields_count * sizeof(*members));
 
     size_t size_bits = 0;
     for (size_t i = 0; i < fields_count; i++) {
@@ -656,7 +656,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
         c->llvm_debug_compile_unit,
         64);
 
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
     return typedef_metadata;
 }
 
@@ -713,7 +713,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     case TYPE_FN: {
         const Type_Fn *spec = type->spec.fn;
 
-        LLVMMetadataRef *args = temp_alloc((spec->args_count + 1) * sizeof(*args));
+        LLVMMetadataRef *args = arena_alloc(&temp_arena, (spec->args_count + 1) * sizeof(*args));
         args[0] = get_debug_for_type(c, spec->return_type);
         for (size_t i = 0; i < spec->args_count; i++) {
             args[i + 1] = get_debug_for_type(c, &spec->args[i].type);
@@ -722,7 +722,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         LLVMMetadataRef fn_debug_type =
             LLVMDIBuilderCreateSubroutineType(c->llvm_debug_builder, NULL, args, spec->args_count + 1, 0);
 
-        temp_reset(args);
+        arena_reset(&temp_arena, args);
         return LLVMDIBuilderCreatePointerType(
             c->llvm_debug_builder, fn_debug_type, sizeof(void *), sizeof(void *), 0, "", 0);
     }
@@ -730,7 +730,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     case TYPE_ENUM: {
         Node_Enum *definition = type->spec.enumm.definition;
         if (!definition->debug) {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             const size_t size = compile_sizeof(c, type);
             const SV     name = sv_from_cstr(type_to_cstr(*type));
@@ -742,7 +742,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 type_is_signed(*type) ? DW_ATE_signed : DW_ATE_unsigned,
                 0);
 
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         }
         return definition->debug;
     }
@@ -752,18 +752,16 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
         Type_Union *spec = type->spec.unionn;
         if (!spec->debug) {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             SV name = {0};
             {
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
-                    const char *namespace =
-                        temp_emit_nested_fn_name(c, spec->definition->defined_in, spec->definition->module);
-
-                    temp_remove_null();
-                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
-                    name = sv_from_cstr(namespace);
+                    const size_t start = default_sb.count;
+                    sb_push_nested_fn_name(c, &default_sb, spec->definition->defined_in, spec->definition->module);
+                    sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                    name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
                 }
             }
 
@@ -826,7 +824,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                     NULL,
                     0);
 
-                LLVMMetadataRef *variants = temp_alloc(spec->variants_count * sizeof(*variants));
+                LLVMMetadataRef *variants = arena_alloc(&temp_arena, spec->variants_count * sizeof(*variants));
                 for (size_t i = 0; i < spec->variants_count; i++) {
                     Type_Union_Variant *it = &spec->variants[i];
 
@@ -911,7 +909,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             }
 
             spec->debug = real;
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         }
         return spec->debug;
     }
@@ -921,18 +919,16 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
         Type_Struct *spec = type->spec.structt;
         if (!spec->debug) {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             SV name = {0};
             {
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
-                    const char *namespace =
-                        temp_emit_nested_fn_name(c, spec->definition->defined_in, spec->definition->module);
-
-                    temp_remove_null();
-                    temp_sprintf("." SV_Fmt, SV_Arg(defined_as->node.token.sv));
-                    name = sv_from_cstr(namespace);
+                    const size_t start = default_sb.count;
+                    sb_push_nested_fn_name(c, &default_sb, spec->definition->defined_in, spec->definition->module);
+                    sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                    name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
                 }
             }
 
@@ -956,7 +952,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 NULL,
                 0);
 
-            LLVMMetadataRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+            LLVMMetadataRef *fields = arena_alloc(&temp_arena, spec->fields_count * sizeof(*fields));
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
 
@@ -1011,7 +1007,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             }
 
             spec->debug = real;
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         }
         return spec->debug;
     }
@@ -1023,7 +1019,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         for (Type *t = type; t->kind == TYPE_ARRAY; t = t->spec.array.element) {
             subscripts_count++;
         }
-        LLVMMetadataRef *subscripts = temp_alloc(subscripts_count * sizeof(*subscripts));
+        LLVMMetadataRef *subscripts = arena_alloc(&temp_arena, subscripts_count * sizeof(*subscripts));
 
         Type  *innermost = NULL;
         size_t subscripts_iota = 0;
@@ -1040,12 +1036,12 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
             subscripts,
             subscripts_count);
 
-        temp_reset(subscripts);
+        arena_reset(&temp_arena, subscripts);
         return metadata;
     } break;
 
     case TYPE_SLICE: {
-        const void *checkpoint = temp_alloc(0);
+        const void *checkpoint = arena_alloc(&temp_arena, 0);
 
         SV name = sv_from_cstr(type_to_cstr_raw(*type));
 
@@ -1059,7 +1055,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         fields[1].type = (Type) {.kind = TYPE_I64};
 
         LLVMMetadataRef metadata = get_debug_for_builtin_compound_type(c, name, fields, len(fields));
-        temp_reset(checkpoint);
+        arena_reset(&temp_arena, checkpoint);
         return metadata;
     }
 
@@ -1082,19 +1078,19 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
         Type_Group *spec = &type->spec.group;
         if (!spec->debug) {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
             const SV    name = sv_from_cstr(type_to_cstr_raw(*type));
 
             LLVMMetadataRef empty_file_path_metadata = get_debug_file(c, "");
 
-            LLVMMetadataRef *fields = temp_alloc(spec->count * sizeof(*fields));
+            LLVMMetadataRef *fields = arena_alloc(&temp_arena, spec->count * sizeof(*fields));
             for (size_t i = 0; i < spec->count; i++) {
                 Type *it = &spec->data[i];
 
                 const size_t size_bits = LLVMABISizeOfType(c->llvm_target_data, it->llvm) * 8;
                 const size_t align_bits = LLVMABIAlignmentOfType(c->llvm_target_data, it->llvm) * 8;
                 const size_t offset_bits = LLVMOffsetOfElement(c->llvm_target_data, spec->llvm, i) * 8;
-                const SV     name = sv_from_cstr(temp_sprintf("%zu", i));
+                const SV     name = sv_from_cstr(arena_sprintf(&temp_arena, "%zu", i));
 
                 fields[i] = LLVMDIBuilderCreateMemberType(
                     c->llvm_debug_builder,
@@ -1138,7 +1134,7 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 c->llvm_debug_compile_unit,
                 LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8);
 
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         }
 
         return spec->debug;
@@ -1237,13 +1233,13 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
     case CONST_VALUE_STRUCT: {
         const Type_Struct *spec = value.as.structt.spec;
 
-        LLVMValueRef *fields = temp_alloc(spec->fields_count * sizeof(*fields));
+        LLVMValueRef *fields = arena_alloc(&temp_arena, spec->fields_count * sizeof(*fields));
         for (size_t i = 0; i < spec->fields_count; i++) {
             fields[i] = compile_const_value(c, value.as.structt.fields[i], spec->fields[i].type);
         }
 
         LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, fields, spec->fields_count, false);
-        temp_reset(fields);
+        arena_reset(&temp_arena, fields);
         return result;
     }
 
@@ -1351,27 +1347,27 @@ static void compile_local_var_debug(Compiler *c, Node_Atom *it, LLVMMetadataRef 
 }
 
 static void compile_var_def(Compiler *c, Node_Atom *it) {
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     compile_type(c, &it->node.type);
 
     SV link_as = {0};
     if (it->definition_spec->link_as.count) {
         // Guarantee a terminating '\0'
-        link_as = sv_from_cstr(temp_sv_to_cstr(it->definition_spec->link_as));
+        link_as = sv_from_cstr(arena_sv_to_cstr(&temp_arena, it->definition_spec->link_as));
     }
 
     SV name = it->node.token.sv;
     if (it->definition_spec->is_extern) {
         // Guarantee a terminating '\0'
-        name = sv_from_cstr(temp_sv_to_cstr(name));
+        name = sv_from_cstr(arena_sv_to_cstr(&temp_arena, name));
     } else if (it->definition_spec->static_var_fn) {
-        const char *namespace = temp_emit_nested_fn_name(c, it->definition_spec->static_var_fn, it->module);
-        temp_remove_null();
-        temp_sprintf("." SV_Fmt, SV_Arg(name));
-        name = sv_from_cstr(namespace);
+        const size_t start = default_sb.count;
+        sb_push_nested_fn_name(c, &default_sb, it->definition_spec->static_var_fn, it->module);
+        sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(name));
+        name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
     } else if (!it->definition_spec->is_local) {
-        name = sv_from_cstr(temp_sprintf(SV_Fmt "." SV_Fmt, SV_Arg(it->module->name), SV_Arg(name)));
+        name = sv_from_cstr(arena_sprintf(&temp_arena, SV_Fmt "." SV_Fmt, SV_Arg(it->module->name), SV_Arg(name)));
     }
 
     if (it->definition_spec->is_local && !it->definition_spec->is_extern && !it->definition_spec->static_var_fn) {
@@ -1417,7 +1413,7 @@ static void compile_var_def(Compiler *c, Node_Atom *it) {
         }
     }
 
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
 }
 
 static void compile_defers(Compiler *c, size_t from, bool rollback) {
@@ -1435,17 +1431,17 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         return fn->llvm;
     }
 
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     ABI abi = {0};
-    abi.args = temp_alloc(fn->args_count * sizeof(*abi.args));
+    abi.args = arena_alloc(&temp_arena, fn->args_count * sizeof(*abi.args));
     abi.args_count = fn->args_count;
     fn->node.type.llvm = compile_fn_type(c, fn->node.type, &abi);
 
     SV link_as = {0};
     if (fn->defined_as && fn->defined_as->definition_spec->link_as.count) {
         // Guarantee a terminating '\0'
-        link_as = sv_from_cstr(temp_sv_to_cstr(fn->defined_as->definition_spec->link_as));
+        link_as = sv_from_cstr(arena_sv_to_cstr(&temp_arena, fn->defined_as->definition_spec->link_as));
     }
 
     if (fn->is_extern) {
@@ -1466,7 +1462,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
         LLVMMetadataRef llvm_current_debug_location_save = LLVMGetCurrentDebugLocation2(c->llvm_builder);
 
-        SV fn_name = sv_from_cstr(temp_emit_nested_fn_name(c, fn, fn->module));
+        SV fn_name = sv_from_cstr(temp_nested_fn_name(c, fn, fn->module));
         if (!link_as.count) {
             link_as = fn_name;
         }
@@ -1485,7 +1481,8 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
         {
 
-            LLVMMetadataRef *arg_debug_types = temp_alloc((fn_type_spec->args_count + 1) * sizeof(*arg_debug_types));
+            LLVMMetadataRef *arg_debug_types =
+                arena_alloc(&temp_arena, (fn_type_spec->args_count + 1) * sizeof(*arg_debug_types));
             arg_debug_types[0] = get_debug_for_type(c, fn_type_spec->return_type);
             for (size_t i = 0; i < fn_type_spec->args_count; i++) {
                 arg_debug_types[i + 1] = get_debug_for_type(c, &fn_type_spec->args[i].type);
@@ -1498,7 +1495,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
                 fn_type_spec->args_count + 1,
                 0);
 
-            temp_reset(arg_debug_types);
+            arena_reset(&temp_arena, arg_debug_types);
         }
 
         fn->llvm_debug_scope = LLVMDIBuilderCreateFunction(
@@ -1637,7 +1634,7 @@ static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
         LLVMSetCurrentDebugLocation2(c->llvm_builder, llvm_current_debug_location_save);
     }
 
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
     return fn->llvm;
 }
 
@@ -1825,21 +1822,21 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             break;
 
         case TYPE_FN: {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             LLVMValueRef fn_fields[2] = {0};
             size_t       fn_fields_iota = 0;
 
             const Type_Fn *spec = type->spec.fn;
 
-            LLVMValueRef *args = temp_alloc(spec->args_count * sizeof(*args));
+            LLVMValueRef *args = arena_alloc(&temp_arena, spec->args_count * sizeof(*args));
             for (size_t i = 0; i < spec->args_count; i++) {
                 args[i] = compile_type_info(c, &spec->args[i].type);
             }
             fn_fields[fn_fields_iota++] =
                 create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), args, spec->args_count);
 
-            LLVMValueRef *returns = temp_alloc(spec->returns_count * sizeof(*returns));
+            LLVMValueRef *returns = arena_alloc(&temp_arena, spec->returns_count * sizeof(*returns));
             for (size_t i = 0; i < spec->returns_count; i++) {
                 returns[i] = compile_type_info(c, &spec->returns[i]);
             }
@@ -1847,19 +1844,19 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
                 c, LLVMPointerTypeInContext(c->llvm_context, 0), returns, spec->returns_count);
 
             tiv_fields[tiv_fields_iota++] = LLVMConstStructInContext(c->llvm_context, fn_fields, fn_fields_iota, false);
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_ENUM: {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             LLVMValueRef enum_fields[3] = {0};
             size_t       enum_fields_iota = 0;
 
             const Type_Enum *spec = &type->spec.enumm;
 
-            LLVMValueRef *names = temp_alloc(spec->definition->values_count * sizeof(*names));
-            LLVMValueRef *values = temp_alloc(spec->definition->values_count * sizeof(*values));
+            LLVMValueRef *names = arena_alloc(&temp_arena, spec->definition->values_count * sizeof(*names));
+            LLVMValueRef *values = arena_alloc(&temp_arena, spec->definition->values_count * sizeof(*values));
 
             {
                 size_t iota = 0;
@@ -1883,35 +1880,35 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             tiv_fields[tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, enum_fields, enum_fields_iota, false);
 
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_UNION: {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             const Type_Union *spec = type->spec.unionn;
 
-            LLVMValueRef *variants = temp_alloc(spec->variants_count * sizeof(*variants));
+            LLVMValueRef *variants = arena_alloc(&temp_arena, spec->variants_count * sizeof(*variants));
             for (size_t i = 0; i < spec->variants_count; i++) {
                 variants[i] = compile_type_info(c, &spec->variants[i].type);
             }
             tiv_fields[tiv_fields_iota++] = create_const_slice_from_memory(
                 c, LLVMPointerTypeInContext(c->llvm_context, 0), variants, spec->variants_count);
 
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_STRUCT: {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             LLVMValueRef struct_fields[3] = {0};
             size_t       struct_fields_iota = 0;
 
             const Type_Struct *spec = type->spec.structt;
 
-            LLVMValueRef *names = temp_alloc(spec->fields_count * sizeof(*names));
-            LLVMValueRef *types = temp_alloc(spec->fields_count * sizeof(*types));
-            LLVMValueRef *offsets = temp_alloc(spec->fields_count * sizeof(*offsets));
+            LLVMValueRef *names = arena_alloc(&temp_arena, spec->fields_count * sizeof(*names));
+            LLVMValueRef *types = arena_alloc(&temp_arena, spec->fields_count * sizeof(*types));
+            LLVMValueRef *offsets = arena_alloc(&temp_arena, spec->fields_count * sizeof(*offsets));
 
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field *it = &spec->fields[i];
@@ -1931,7 +1928,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
 
             tiv_fields[tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, struct_fields, struct_fields_iota, false);
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_ARRAY: {
@@ -2037,14 +2034,14 @@ static LLVMValueRef
 compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref) {
     LLVMMetadataRef debug_pos = LLVMGetCurrentDebugLocation2(c->llvm_builder);
 
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
     assert(fn.type->kind == TYPE_FN);
 
     const Type_Fn *fn_spec = fn.type->spec.fn;
     if (!fn_spec->llvm) {
         ABI abi = {0};
         abi.args_count = fn_spec->args_count;
-        abi.args = temp_alloc(abi.args_count * sizeof(*abi.args));
+        abi.args = arena_alloc(&temp_arena, abi.args_count * sizeof(*abi.args));
         compile_fn_type(c, *fn.type, &abi);
     }
     fn.type->llvm = fn_spec->llvm;
@@ -2056,7 +2053,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
         da_push(&c->arg_values, compile_alloca(c, fn_spec->return_type->llvm));
     }
 
-    ABI_Info *args_info = temp_alloc(args_count * sizeof(*args_info));
+    ABI_Info *args_info = arena_alloc(&temp_arena, args_count * sizeof(*args_info));
 
     for (size_t i = 0; i < args_count; i++) {
         Typed_LLVM_Value *arg = &args[i];
@@ -2220,7 +2217,7 @@ compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t ar
 #endif // PLATFORM_X86_64_LINUX
 
     c->arg_values.count = arg_values_count_save;
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
 
     if (memory) {
         if (ref) {
@@ -2299,7 +2296,7 @@ compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *f
 static LLVMValueRef compile_binary_with_overloaded_operator(
     Compiler *c, Node_Binary *binary, size_t index, LLVMValueRef lhs, LLVMValueRef rhs) //
 {
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     Node_Fn *overload = binary->overloads ? binary->overloads[index] : binary->overload;
 
@@ -2308,7 +2305,7 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     fn.type = &overload->node.type;
 
     const Type_Fn    *fn_spec = fn.type->spec.fn;
-    Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+    Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
     if (fn_spec->args[0].type.ref > binary->lhs->type.ref) {
         lhs = undo_load(lhs);
     }
@@ -2322,7 +2319,7 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     compile_optional_arguments(c, args, fn_spec, binary->node.token.pos);
     LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
 
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
     return result;
 }
 
@@ -2404,14 +2401,14 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             set_debug_pos(c, n->token.pos);
 
             if (unary->overload) {
-                const void *checkpoint = temp_alloc(0);
+                const void *checkpoint = arena_alloc(&temp_arena, 0);
 
                 Typed_LLVM_Value fn = {0};
                 fn.value = compile_fn(c, unary->overload);
                 fn.type = &unary->overload->node.type;
 
                 const Type_Fn    *fn_spec = fn.type->spec.fn;
-                Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+                Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
                 if (fn_spec->args[0].type.ref > unary->value->type.ref) {
                     value = undo_load(value);
                 }
@@ -2422,7 +2419,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 compile_optional_arguments(c, args, fn_spec, n->token.pos);
                 LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
 
-                temp_reset(checkpoint);
+                arena_reset(&temp_arena, checkpoint);
                 return result;
             }
 
@@ -2882,9 +2879,9 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 {
                     // TODO: Now that we have RTTI, this can be a better error message, like the one in constant
                     // expressions
-                    const char *message = temp_sprintf(Pos_Fmt "Type mismatch\n", Pos_Arg(n->token.pos));
+                    const char *message = arena_sprintf(&temp_arena, Pos_Fmt "Type mismatch\n", Pos_Arg(n->token.pos));
                     compile_panic(c, message, NULL, NULL, NULL);
-                    temp_reset(message);
+                    arena_reset(&temp_arena, message);
                 }
 
                 // Success
@@ -3036,7 +3033,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        const void *checkpoint = temp_alloc(0);
+        const void *checkpoint = arena_alloc(&temp_arena, 0);
 
         Typed_LLVM_Value fn = {0};
         fn.value = compile_expr(c, call->fn, false);
@@ -3047,7 +3044,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         if (fn_spec->variadics_kind == VARIADICS_UNTYPED) {
             args_count = max(args_count, call->args_count);
         }
-        Typed_LLVM_Value *args = temp_alloc(args_count * sizeof(*args));
+        Typed_LLVM_Value *args = arena_alloc(&temp_arena, args_count * sizeof(*args));
 
         size_t args_iota = 0;
         if (call->fn->kind == NODE_MEMBER) {
@@ -3162,14 +3159,14 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             result = NULL;
         }
 
-        temp_reset(checkpoint);
+        arena_reset(&temp_arena, checkpoint);
         return result;
     }
 
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
         if (index->overload) {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             LLVMValueRef lhs = compile_expr(c, index->lhs, false);
             LLVMValueRef a = compile_expr(c, index->a, false);
@@ -3180,7 +3177,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             fn.type = &index->overload->node.type;
 
             const Type_Fn    *fn_spec = fn.type->spec.fn;
-            Typed_LLVM_Value *args = temp_alloc(fn_spec->args_count * sizeof(*args));
+            Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
             if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
                 lhs = undo_load(lhs);
             }
@@ -3206,11 +3203,11 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             compile_optional_arguments(c, args, fn_spec, n->token.pos);
             if (index->is_ranged) {
                 LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, ref);
-                temp_reset(checkpoint);
+                arena_reset(&temp_arena, checkpoint);
                 return value;
             } else {
                 LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false);
-                temp_reset(checkpoint);
+                arena_reset(&temp_arena, checkpoint);
                 if (ref) {
                     return ptr;
                 }
@@ -3303,12 +3300,13 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 // Failure
                 LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
                 {
-                    const char *message = temp_sprintf(
+                    const char *message = arena_sprintf(
+                        &temp_arena,
                         Pos_Fmt "Range (%%zd..%%zd) is invalid: Beginning of range is more than end\n",
                         Pos_Arg(n->token.pos));
 
                     compile_panic(c, message, a, b, NULL);
-                    temp_reset(message);
+                    arena_reset(&temp_arena, message);
                 }
 
                 // Success
@@ -3337,13 +3335,14 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                     // Failure
                     LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
                     {
-                        const char *message = temp_sprintf(
+                        const char *message = arena_sprintf(
+                            &temp_arena,
                             Pos_Fmt "Range (%%zd..%%zd) is out of bounds in %s of length %%zd\n",
                             Pos_Arg(n->token.pos),
                             label);
 
                         compile_panic(c, message, a, b, count);
-                        temp_reset(message);
+                        arena_reset(&temp_arena, message);
                     }
 
                     // Success
@@ -3394,11 +3393,14 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             // Failure
             LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
             {
-                const char *message = temp_sprintf(
-                    Pos_Fmt "Index %%zd is out of bounds in %s of length %%zd\n", Pos_Arg(n->token.pos), label);
+                const char *message = arena_sprintf(
+                    &temp_arena,
+                    Pos_Fmt "Index %%zd is out of bounds in %s of length %%zd\n",
+                    Pos_Arg(n->token.pos),
+                    label);
 
                 compile_panic(c, message, a, count, NULL);
-                temp_reset(message);
+                arena_reset(&temp_arena, message);
             }
 
             // Success
@@ -3545,11 +3547,11 @@ static void compile_stmt(Compiler *c, Node *n) {
                 }
             }
         } else {
-            const void *checkpoint = temp_alloc(0);
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
 
             LLVMValueRef *vars = NULL;
             if (define->expr) {
-                vars = temp_alloc(define->count * sizeof(*vars));
+                vars = arena_alloc(&temp_arena, define->count * sizeof(*vars));
             }
 
             Node_Atom *lhs = NULL;
@@ -3578,7 +3580,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 c->group_values.count = group_values_count_save;
             }
 
-            temp_reset(checkpoint);
+            arena_reset(&temp_arena, checkpoint);
         }
     } break;
 
@@ -3979,7 +3981,7 @@ size_t compile_sizeof(Compiler *c, Type *type) {
 }
 
 void compiler_build(Compiler *c, const char *output_path) {
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
 
     assert(c->cmd);
     assert(c->arena);
@@ -4074,7 +4076,7 @@ void compiler_build(Compiler *c, const char *output_path) {
             cmd_push(c->cmd, "link", "/nologo");
         }
 
-        cmd_push(c->cmd, temp_sprintf("/out:%s", output_path));
+        cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
         cmd_push(c->cmd, "/defaultlib:libcmt");
 #else
         cmd_push(c->cmd, "cc");
@@ -4110,5 +4112,5 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->arg_values);
     da_free(&c->group_values);
     da_free(&c->defers);
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
 }

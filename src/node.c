@@ -23,121 +23,104 @@ void modules_free(Modules *ms) {
 }
 
 static_assert(COUNT_TYPES == 25, "");
-const char *type_to_cstr_raw(Type type) {
+void sb_push_type(SB *sb, Type type) {
     assert(!type.is_meta);
 
-    const char *s = temp_alloc(0);
     if (type.distinct) {
         const Type distinct_type = type.distinct->node.type;
         if (distinct_type.ref <= type.ref) {
             for (size_t i = distinct_type.ref; i < type.ref; i++) {
-                temp_sprintf("&");
-                temp_remove_null();
+                sb_push(sb, '&');
             }
-
-            temp_sv_to_cstr(type.distinct->node.token.sv);
-            return s;
+            sb_push_sv(sb, type.distinct->node.token.sv);
+            return;
         }
     }
 
     for (size_t i = 0; i < type.ref; i++) {
-        temp_sprintf("&");
-        temp_remove_null();
+        sb_push(sb, '&');
     }
 
     switch (type.kind) {
     case TYPE_UNIT:
-        temp_sprintf("void");
+        sb_push_cstr(sb, "void");
         break;
 
     case TYPE_BOOL:
-        temp_sprintf("bool");
+        sb_push_cstr(sb, "bool");
         break;
 
     case TYPE_CHAR:
-        temp_sprintf("char");
+        sb_push_cstr(sb, "char");
         break;
 
     case TYPE_I8:
-        temp_sprintf("i8");
+        sb_push_cstr(sb, "i8");
         break;
 
     case TYPE_I16:
-        temp_sprintf("i16");
+        sb_push_cstr(sb, "i16");
         break;
 
     case TYPE_I32:
-        temp_sprintf("i32");
+        sb_push_cstr(sb, "i32");
         break;
 
     case TYPE_I64:
-        temp_sprintf("i64");
+        sb_push_cstr(sb, "i64");
         break;
 
     case TYPE_U8:
-        temp_sprintf("u8");
+        sb_push_cstr(sb, "u8");
         break;
 
     case TYPE_U16:
-        temp_sprintf("u16");
+        sb_push_cstr(sb, "u16");
         break;
 
     case TYPE_U32:
-        temp_sprintf("u32");
+        sb_push_cstr(sb, "u32");
         break;
 
     case TYPE_U64:
-        temp_sprintf("u64");
+        sb_push_cstr(sb, "u64");
         break;
 
     case TYPE_INT:
-        temp_sprintf("i64");
+        sb_push_cstr(sb, "i64");
         break;
 
     case TYPE_RAWPTR:
-        temp_sprintf("rawptr");
+        sb_push_cstr(sb, "rawptr");
         break;
 
     case TYPE_FN:
-        temp_sprintf("(");
+        sb_push_cstr(sb, "(");
 
         for (size_t i = 0; i < type.spec.fn->args_count; i++) {
             Type_Fn_Arg it = type.spec.fn->args[i];
             if (i) {
-                temp_remove_null();
-                temp_sprintf(", ");
+                sb_push_cstr(sb, ", ");
             }
-
-            temp_remove_null();
-            temp_sprintf(SV_Fmt ": ", SV_Arg(it.name));
+            sb_sprintf(sb, SV_Fmt ": ", SV_Arg(it.name));
 
             Type it_type = it.type;
             if (type.spec.fn->variadics_kind == VARIADICS_TYPED && i == type.spec.fn->variadics_index) {
-                temp_remove_null();
-                temp_sprintf("...");
-
+                sb_push_cstr(sb, "...");
                 assert(it_type.kind == TYPE_SLICE);
                 it_type = *it_type.spec.slice.element;
             }
-
-            temp_remove_null();
-            type_to_cstr_raw(it_type);
+            sb_push_type(sb, it_type);
         }
 
         if (type.spec.fn->variadics_kind == VARIADICS_UNTYPED) {
-            temp_remove_null();
-            temp_sprintf(", ...");
+            sb_push_cstr(sb, ", ...");
         }
-
-        temp_remove_null();
-        temp_sprintf(")");
+        sb_push_cstr(sb, ")");
 
         if (type.spec.fn->returns_count) {
-            temp_remove_null();
-            temp_sprintf(" -> ");
-
-            temp_remove_null();
-            type_to_cstr_raw(*type.spec.fn->return_type);
+            sb_push_cstr(sb, " -> ");
+            sb_push_type(sb, *type.spec.fn->return_type);
         }
         break;
 
@@ -145,11 +128,10 @@ const char *type_to_cstr_raw(Type type) {
         assert(type.spec.enumm.definition);
         const Node_Atom *defined_as = type.spec.enumm.definition->defined_as;
         if (defined_as) {
-            temp_sv_to_cstr(defined_as->node.token.sv);
+            sb_push_sv(sb, defined_as->node.token.sv);
         } else {
-            temp_sprintf("enum ");
-            temp_remove_null();
-            type_to_cstr_raw((Type) {.kind = type.spec.enumm.underlying});
+            sb_push_cstr(sb, "enum ");
+            sb_push_type(sb, (Type) {.kind = type.spec.enumm.underlying});
         }
     } break;
 
@@ -157,23 +139,17 @@ const char *type_to_cstr_raw(Type type) {
         const Type_Union *spec = type.spec.unionn;
         const Node_Atom  *defined_as = spec->definition->defined_as;
         if (defined_as) {
-            temp_sv_to_cstr(defined_as->node.token.sv);
+            sb_push_sv(sb, defined_as->node.token.sv);
         } else {
-            temp_sprintf("union {");
-
+            sb_push_cstr(sb, "union {");
             for (size_t i = 0; i < spec->variants_count; i++) {
                 Type_Union_Variant it = spec->variants[i];
                 if (i) {
-                    temp_remove_null();
-                    temp_sprintf("; ");
+                    sb_push_cstr(sb, "; ");
                 }
-
-                temp_remove_null();
-                type_to_cstr_raw(it.type);
+                sb_push_type(sb, it.type);
             }
-
-            temp_remove_null();
-            temp_sprintf("}");
+            sb_push_cstr(sb, "}");
         }
     } break;
 
@@ -181,101 +157,87 @@ const char *type_to_cstr_raw(Type type) {
         const Type_Struct *spec = type.spec.structt;
         const Node_Atom   *defined_as = spec->definition->defined_as;
         if (defined_as) {
-            temp_sv_to_cstr(defined_as->node.token.sv);
+            sb_push_sv(sb, defined_as->node.token.sv);
         } else {
-            temp_sprintf("struct {");
-
+            sb_push_cstr(sb, "struct {");
             for (size_t i = 0; i < spec->fields_count; i++) {
                 Type_Struct_Field it = spec->fields[i];
                 if (i) {
-                    temp_remove_null();
-                    temp_sprintf("; ");
+                    sb_push_cstr(sb, "; ");
                 }
 
-                temp_remove_null();
-                temp_sprintf(SV_Fmt ": ", SV_Arg(it.name));
-
-                temp_remove_null();
-                type_to_cstr_raw(it.type);
+                sb_sprintf(sb, SV_Fmt ": ", SV_Arg(it.name));
+                sb_push_type(sb, it.type);
             }
-
-            temp_remove_null();
-            temp_sprintf("}");
+            sb_push_cstr(sb, "}");
         }
     } break;
 
     case TYPE_ARRAY:
-        temp_sprintf("[%zu]", type.spec.array.count);
-        temp_remove_null();
-        type_to_cstr_raw(*type.spec.array.element);
+        sb_sprintf(sb, "[%zu]", type.spec.array.count);
+        sb_push_type(sb, *type.spec.array.element);
         break;
 
     case TYPE_SLICE:
-        temp_sprintf("[]");
-        temp_remove_null();
-        type_to_cstr_raw(*type.spec.slice.element);
+        sb_push_cstr(sb, "[]");
+        sb_push_type(sb, *type.spec.slice.element);
         break;
 
     case TYPE_STRING:
-        temp_sprintf("string");
+        sb_push_cstr(sb, "string");
         break;
 
     case TYPE_ANY:
-        temp_sprintf("any");
+        sb_push_cstr(sb, "any");
         break;
 
     case TYPE_GROUP:
-        temp_sprintf("(");
+        sb_push_cstr(sb, "(");
         for (size_t i = 0; i < type.spec.group.count; i++) {
             if (i) {
-                temp_remove_null();
-                temp_sprintf(", ");
+                sb_push_cstr(sb, ", ");
             }
-
-            temp_remove_null();
-            type_to_cstr_raw(type.spec.group.data[i]);
+            sb_push_type(sb, type.spec.group.data[i]);
         }
-        temp_remove_null();
-        temp_sprintf(")");
+        sb_push_cstr(sb, ")");
         break;
 
     case TYPE_MODULE:
         unreachable();
 
     case TYPE_UNKNOWN_ENUM:
-        temp_sprintf("unknown enum");
-        break;
-
     case TYPE_UNKNOWN_COMPOUND:
-        temp_sprintf("unknown compound");
-        break;
+        unreachable();
 
     default:
         unreachable();
     }
+}
 
-    return s;
+const char *type_to_cstr_raw(Type type) {
+    const size_t start = default_sb.count;
+    sb_push_type(&default_sb, type);
+    return arena_sb_to_cstr(&temp_arena, &default_sb, start);
 }
 
 const char *type_to_cstr(Type type) {
     if (type.is_meta) {
-        return temp_sprintf("a type");
+        return arena_sprintf(&temp_arena, "a type");
     }
 
     if (type.kind == TYPE_MODULE) {
-        return temp_sprintf("a module");
+        return arena_sprintf(&temp_arena, "a module");
     }
 
     if (type.kind == TYPE_UNKNOWN_ENUM) {
-        return temp_sprintf("unknown enum");
+        return arena_sprintf(&temp_arena, "unknown enum");
     }
 
-    const char *s = temp_sprintf("'");
-    temp_remove_null();
-    type_to_cstr_raw(type);
-    temp_remove_null();
-    temp_sprintf("'");
-    return s;
+    const size_t start = default_sb.count;
+    sb_push(&default_sb, '\'');
+    sb_push_type(&default_sb, type);
+    sb_push(&default_sb, '\'');
+    return arena_sb_to_cstr(&temp_arena, &default_sb, start);
 }
 
 static bool type_union_eq(Type_Union *a, Type_Union *b) {

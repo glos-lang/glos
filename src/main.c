@@ -75,7 +75,7 @@ static const char *get_temp_file_path(void) {
 }
 
 static const char *get_std_dir_path(Arena *a) {
-    const void *checkpoint = temp_alloc(0);
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
     const char *result = NULL;
 
 #ifdef PLATFORM_X86_64_LINUX
@@ -83,7 +83,7 @@ static const char *get_std_dir_path(Arena *a) {
     char *data = NULL;
 
     for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = temp_alloc(capacity);
+        data = arena_alloc(&temp_arena, capacity);
         count = readlink("/proc/self/exe", data, capacity);
 
         if (count == -1) {
@@ -94,21 +94,21 @@ static const char *get_std_dir_path(Arena *a) {
             break;
         }
 
-        temp_reset(checkpoint);
+        arena_reset(&temp_arena, checkpoint);
     }
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
     uint32_t count = DA_INIT_CAP;
-    char    *data = temp_alloc(count);
+    char    *data = arena_alloc(&temp_arena, count);
 
     int _NSGetExecutablePath(char *buffer, uint32_t *size);
     if (_NSGetExecutablePath(data, &count) == -1) {
-        temp_reset(data);
-        data = temp_alloc(count);
+        arena_reset(&temp_arena, data);
+        data = arena_alloc(&temp_arena, count);
 
         if (_NSGetExecutablePath(data, &count) == -1) {
-            temp_reset(data);
+            arena_reset(&temp_arena, data);
             return NULL;
         }
     }
@@ -118,10 +118,10 @@ static const char *get_std_dir_path(Arena *a) {
 
 #ifdef PLATFORM_X86_64_WINDOWS
     i64   count = 0;
-    char *data = temp_alloc(0);
+    char *data = arena_alloc(&temp_arena, 0);
 
     for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = temp_alloc(capacity);
+        data = arena_alloc(&temp_arena, capacity);
         count = GetModuleFileNameA(NULL, data, capacity);
 
         if (count == 0) {
@@ -147,7 +147,7 @@ static const char *get_std_dir_path(Arena *a) {
     return_defer(arena_sprintf(a, SV_Fmt "std", SV_Arg(sv)));
 
 defer:
-    temp_reset(checkpoint);
+    arena_reset(&temp_arena, checkpoint);
     return result;
 }
 
@@ -235,7 +235,8 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         } else {
-            output_path = temp_sv_to_cstr(sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
+            output_path =
+                arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
         }
 
         if (run) {
@@ -356,7 +357,7 @@ int main(int argc, char **argv) {
 
 #ifdef PLATFORM_X86_64_WINDOWS
     if (!sv_has_suffix(sv_from_cstr(output_path), sv_from_cstr(".exe"))) {
-        output_path = temp_sprintf("%s.exe", output_path);
+        output_path = arena_sprintf(&temp_arena, "%s.exe", output_path);
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
@@ -387,7 +388,7 @@ int main(int argc, char **argv) {
 
 #ifndef PLATFORM_X86_64_WINDOWS
         if (!sv_find(sv_from_cstr(child_name), '/', NULL)) {
-            child_name = temp_sprintf("./%s", child_name);
+            child_name = arena_sprintf(&temp_arena, "./%s", child_name);
         }
 #endif // PLATFORM_X86_64_WINDOWS
 

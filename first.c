@@ -1,6 +1,7 @@
 #include "src/basic.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef PLATFORM_X86_64_WINDOWS
 #define OBJ_FILE_EXTENSION ".obj"
@@ -201,7 +202,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/main.c",
     };
 
-    const void *save = temp_alloc(0);
+    const void *save = arena_alloc(&temp_arena, 0);
     Procs       procs = {.nprocs = nprocs};
 
     size_t headers_time_latest = 0;
@@ -226,12 +227,12 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         Cmd_Stdio proc_stdio = {0};
 
 #ifdef PLATFORM_X86_64_WINDOWS
-        proc_stdio.out = (FILE **) temp_alloc(sizeof(FILE *));
+        proc_stdio.out = (FILE **) arena_alloc(&temp_arena, sizeof(FILE *));
         procs.callback_before_wait = filter_cl_exe_output;
 
         cmd_push(cmd, "cl", "/Z7", "/nologo", "/c");
         cmd_push(cmd, "/I", "./llvm/include");
-        cmd_push(cmd, temp_sprintf("/Fo:%s", obj));
+        cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", obj));
 #else
         cmd_push(cmd, "cc", "-c");
         cmd_push(cmd, "-Wall", "-Wextra", "-Werror");
@@ -304,7 +305,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             if (arg.count == 0) {
                 continue;
             }
-            cmd_push(cmd, temp_sv_to_cstr(arg));
+            cmd_push(cmd, arena_sv_to_cstr(&temp_arena, arg));
         }
         arena_reset(&default_arena, sv.data);
 
@@ -316,7 +317,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     }
 
     da_free(&procs);
-    temp_reset(save);
+    arena_reset(&temp_arena, save);
 }
 
 static char single_char_prompt(FILE *in, FILE *out, const char *choices, const char **descriptions) {
@@ -421,9 +422,9 @@ static size_t parse_uint_value(SV value, const char *label, const char *path, si
 static SV parse_bytes_value(SV value, SV *contents, const char *label, const char *path, size_t *row, SV line) {
     SV bytes = {0};
 
-    const char *label_full = temp_sprintf("%s byte(s) count", label);
+    const char *label_full = arena_sprintf(&temp_arena, "%s byte(s) count", label);
     bytes.count = parse_uint_value(value, label_full, path, (*row)++, line);
-    temp_reset(label_full);
+    arena_reset(&temp_arena, label_full);
 
     if (bytes.count >= contents->count) {
         fprintf(
@@ -624,7 +625,7 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
     FILE *proc_stdout = NULL;
     proc_stdio.out = &proc_stdout;
     cmd_push(cmd, "cl", "/nologo", "/c");
-    cmd_push(cmd, temp_sprintf("/Fo:%s", object_path));
+    cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", object_path));
 #else
     cmd_push(cmd, "cc", "-c");
     cmd_push(cmd, "-ggdb");
@@ -654,7 +655,7 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
 
 #ifdef PLATFORM_X86_64_WINDOWS
     cmd_push(cmd, "lib", "/nologo");
-    cmd_push(cmd, temp_sprintf("/out:%s", library_path));
+    cmd_push(cmd, arena_sprintf(&temp_arena, "/out:%s", library_path));
 #else
     cmd_push(cmd, "ar");
     cmd_push(cmd, "rcs");
@@ -671,13 +672,12 @@ static void build_test_library(Cmd *cmd, const char *library_path, const char *s
     }
 
     delete_file(object_path);
-    temp_reset(object_path);
+    arena_reset(&temp_arena, object_path);
 }
 
 static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     Tests       tests = {0};
-    Arena       arena = {0};
-    const char *temp_save = temp_alloc(0);
+    const char *temp_save = arena_alloc(&temp_arena, 0);
 
     {
 #ifdef PLATFORM_X86_64_WINDOWS
@@ -688,12 +688,12 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
     }
 
     SV contents = {0};
-    if (!read_file(TESTS_LIST_PATH, &contents, &arena)) {
+    if (!read_file(TESTS_LIST_PATH, &contents, &default_arena)) {
         fprintf(stderr, "ERROR: Could not read file '%s'\n", TESTS_LIST_PATH);
         exit(1);
     }
 
-    const void *arena_save = arena_alloc(&arena, 0);
+    const void *arena_save = arena_alloc(&default_arena, 0);
     while (contents.count) {
         SV line = sv_trim(sv_split(sv_split_mut(&contents, '\n'), '#'), ' ');
         if (line.count == 0) {
@@ -701,13 +701,13 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         }
 
         Test test = {0};
-        test.name = temp_sv_to_cstr(line);
+        test.name = arena_sv_to_cstr(&temp_arena, line);
         test_prepare_cmd(test, cmd);
 
         const char *record_path = temp_replace_suffix(test.name, ".glos", ".bin");
 
         SV         contents = {0};
-        const bool record_exists = read_file(record_path, &contents, &arena);
+        const bool record_exists = read_file(record_path, &contents, &default_arena);
 
         Test_Info expected = {0};
         if (record_exists) {
@@ -745,18 +745,18 @@ static void run_tests(Cmd *cmd, size_t nprocs, bool interactive) {
         da_push(&tests, test);
 
         if (tests.count >= nprocs) {
-            tests_flush(&tests, cmd, interactive, &arena, arena_save);
+            tests_flush(&tests, cmd, interactive, &default_arena, arena_save);
         }
     }
 
-    tests_flush(&tests, cmd, interactive, &arena, arena_save);
+    tests_flush(&tests, cmd, interactive, &default_arena, arena_save);
 
     da_free(&tests);
-    arena_free(&arena);
-    temp_reset(temp_save);
+    arena_reset(&temp_arena, temp_save);
 }
 
 int main(int argc, char **argv) {
+    atexit(basic_atexit);
     const char *program = shift(&argc, &argv, NULL, NULL);
 
     bool   tests = false;

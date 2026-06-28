@@ -12,6 +12,7 @@
 
 void basic_atexit(void) {
     temporary_files_cleanup();
+    arena_free(&temp_arena);
     arena_free(&default_arena);
     sb_free(&default_sb);
 }
@@ -329,52 +330,6 @@ void sb_push_cstr(SB *sb, const char *cstr) {
 
 SB default_sb;
 
-// Temporary Allocator
-static char   temp_data[16 * 1024 * 1024];
-static size_t temp_count;
-
-void temp_reset(const void *p) {
-    assert((const char *) p >= temp_data && (const char *) p <= temp_data + temp_count);
-    temp_count = (const char *) p - temp_data;
-}
-
-void *temp_alloc(size_t n) {
-    assert(temp_count + n <= len(temp_data));
-    char *result = &temp_data[temp_count];
-    temp_count += n;
-    return memset(result, 0, n);
-}
-
-char *temp_sprintf(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    const int n = vsnprintf(NULL, 0, fmt, args);
-    va_end(args);
-
-    assert(n >= 0);
-    char *result = temp_alloc(n + 1);
-
-    va_start(args, fmt);
-    vsnprintf(result, n + 1, fmt, args);
-    va_end(args);
-
-    return result;
-}
-
-char *temp_sv_to_cstr(SV sv) {
-    return memcpy(temp_alloc(sv.count + 1), sv.data, sv.count);
-}
-
-void temp_remove_null(void) {
-    if (temp_count && temp_data[temp_count - 1] == '\0') {
-        temp_count--;
-    }
-}
-
-void *temp_clone(const void *data, size_t size) {
-    return memcpy(temp_alloc(size), data, size);
-}
-
 // Arena Allocator
 void arena_free(Arena *a) {
     if (!a->data) {
@@ -457,6 +412,7 @@ char *arena_sb_to_cstr(Arena *a, SB *sb, size_t start) {
     return p;
 }
 
+Arena temp_arena = {.capacity = 16 * 1024 * 1024};
 Arena default_arena;
 
 // FS
@@ -603,12 +559,12 @@ bool is_cmd_available_in_path(const char *cmd) {
             continue;
         }
 
-        const char *path = temp_sprintf(PATH_FORMAT, SV_Arg(dir), cmd);
+        const char *path = arena_sprintf(&temp_arena, PATH_FORMAT, SV_Arg(dir), cmd);
         if (!access(path, X_OK)) {
-            temp_reset(path);
+            arena_reset(&temp_arena, path);
             return true;
         }
-        temp_reset(path);
+        arena_reset(&temp_arena, path);
     }
 
     return false;
@@ -631,7 +587,7 @@ bool is_lld_available_in_path(void) {
 
 const char *temp_replace_suffix(const char *path, const char *old, const char *new) {
     const SV base = sv_strip_suffix(sv_from_cstr(path), sv_from_cstr(old));
-    return temp_sprintf(SV_Fmt "%s", SV_Arg(base), new);
+    return arena_sprintf(&temp_arena, SV_Fmt "%s", SV_Arg(base), new);
 }
 
 DA(const char *) temporary_files;

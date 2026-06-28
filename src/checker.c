@@ -1754,7 +1754,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
 
             const size_t variants_count = sw->unionn->variants_count + 1;
 
-            bool *handled = temp_alloc(variants_count * sizeof(*handled));
+            bool *handled = arena_alloc(&temp_arena, variants_count * sizeof(*handled));
             for (size_t i = 0; i < sw->preds_count; i++) {
                 const Const_Value *pred_value = &sw->preds[i].value;
                 assert(pred_value->kind == CONST_VALUE_INT);
@@ -2684,7 +2684,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
     bool is_method = false;
     if (fn_spec) {
-        args = temp_alloc(fn_spec->args_count * sizeof(*args));
+        args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
         args_count_min = fn_spec->args_count_min;
         args_count_max = fn_spec->variadics_kind != VARIADICS_NONE ? UINT64_MAX : fn_spec->args_count;
 
@@ -3004,7 +3004,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                 exit(1);
             }
 
-            temp_reset(args);
+            arena_reset(&temp_arena, args);
         }
 
         return;

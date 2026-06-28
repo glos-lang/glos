@@ -1654,7 +1654,7 @@ static bool get_source_files(const char *path, Paths *items, Arena *a) {
     const bool path_ends_with_slash = sv_has_suffix(path_sv, sv_from_cstr("/"));
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    char *search_path = temp_sprintf("%s\\*", path);
+    char *search_path = arena_sprintf(&temp_arena, "%s\\*", path);
 
     WIN32_FIND_DATA find_file_data;
     HANDLE          handle = FindFirstFile(search_path, &find_file_data);
@@ -1734,7 +1734,7 @@ defer:
     }
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    temp_reset(search_path);
+    arena_reset(&temp_arena, search_path);
 #else
     if (dir) {
         closedir(dir);
