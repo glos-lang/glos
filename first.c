@@ -270,7 +270,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #ifdef PLATFORM_ARM64_MACOS
         arena_reset(&default_arena, sv.data + sv.count);
         cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
-        sv.count += run_cmd_and_read_stdout(cmd);
+        sv.count += run_cmd_and_read_stdout(cmd).count;
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
