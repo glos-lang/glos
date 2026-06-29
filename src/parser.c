@@ -747,8 +747,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_DOT: {
-        // TODO: Do not allow `case`
-        node = node_alloc(&default_arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE));
+        node = node_alloc(&default_arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT));
         Node_Member *member = (Node_Member *) node;
         member->dot = token;
         member->module = p->module_current;
@@ -1128,9 +1127,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         switch (token.kind) {
         case TOKEN_DOT: {
-            // TODO: Do now allow `case`
-            Node_Member *member = (Node_Member *) node_alloc(
-                &default_arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_CASE, TOKEN_LPAREN));
+            Node_Member *member =
+                (Node_Member *) node_alloc(&default_arena, NODE_MEMBER, expect_token(p, TOKEN_IDENT, TOKEN_LPAREN));
 
             member->lhs = node;
             member->dot = token;

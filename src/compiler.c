@@ -1180,10 +1180,7 @@ static LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv) {
 static void         compile_var_def(Compiler *c, Node_Atom *it);
 static LLVMValueRef compile_type_info(Compiler *c, Type *type);
 
-// TODO: Range check
-static i64 i64_from_int128(Int128 n) {
-    return n.low;
-}
+#define i64_from_int128(n) (n).low
 
 static_assert(COUNT_CONST_VALUES == 10, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {

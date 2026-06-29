@@ -201,7 +201,7 @@ wprint :: (f: C.File, vs: ...any) {
             if a == null {
                 C.fprintf(f, "null".data)
             } else {
-                write(f, a.data, a.case, nested)
+                write(f, a.data, a.type, nested)
             }
         }
     }
@@ -211,7 +211,7 @@ wprint :: (f: C.File, vs: ...any) {
         if v == null {
             C.fprintf(f, "null".data)
         } else {
-            write(f, v.data, v.case, false)
+            write(f, v.data, v.type, false)
         }
     }
 }

@@ -4,7 +4,7 @@ Show :: union {
 }
 
 show :: (s: Show) {
-    println(s.case)
+    println(s.type)
 
     if s == {
     case i64;    println(s)

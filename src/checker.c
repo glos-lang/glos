@@ -3678,7 +3678,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                         n->type = member->rhs->type;
                         n->type.is_meta = false;
                     } else {
-                        if (sv_match(n->token.sv, "case")) {
+                        if (sv_match(n->token.sv, "type")) {
                             n->type = c->type_info_pointer_type;
                             member->field_index = 0;
                         } else if (sv_match(n->token.sv, "data")) {
@@ -3707,7 +3707,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                         n->type = member->rhs->type;
                         n->type.is_meta = false;
                     } else {
-                        if (sv_match(n->token.sv, "case")) {
+                        if (sv_match(n->token.sv, "type")) {
                             n->type = (Type) {.kind = TYPE_I64};
                             member->field_index = 0;
                         } else {
