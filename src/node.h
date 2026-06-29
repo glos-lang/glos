@@ -1,6 +1,7 @@
 #ifndef NODE_H
 #define NODE_H
 
+#include "int128.h"
 #include "token.h"
 #include <llvm-c/Types.h>
 
@@ -223,6 +224,7 @@ bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
 bool type_is_scalar(Type type);
 bool type_is_signed(Type type);
+bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
 
 typedef enum {
@@ -269,7 +271,7 @@ typedef struct {
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        i64        integer;
+        Int128     integer;
         Type       type;
         Node_Fn   *fn;
         Node_Atom *var;
@@ -286,7 +288,10 @@ struct Const_Value {
 };
 
 static_assert(COUNT_CONST_VALUES == 10, "");
-#define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_i64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_i64(v)})
+#define const_value_u64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_u64(v)})
+
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
 #define const_value_var(v)  ((Const_Value) {.kind = CONST_VALUE_VAR, .as.var = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})

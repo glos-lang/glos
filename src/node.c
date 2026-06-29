@@ -441,6 +441,9 @@ bool type_is_signed(Type type) {
     case TYPE_I32:
     case TYPE_I64:
     case TYPE_INT:
+
+    case TYPE_UNKNOWN_ENUM:
+    case TYPE_UNKNOWN_COMPOUND:
         return true;
 
     default:
@@ -449,8 +452,17 @@ bool type_is_signed(Type type) {
 }
 
 static_assert(COUNT_TYPES == 25, "");
+bool type_is_untyped(Type type) {
+    if (type.is_meta || type.ref) {
+        return false;
+    }
+
+    return type.kind == TYPE_INT;
+}
+
+static_assert(COUNT_TYPES == 25, "");
 bool type_is_unknown(Type type) {
-    if (type.is_meta) {
+    if (type.is_meta || type.ref) {
         return false;
     }
 
@@ -465,7 +477,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
 
     switch (a.kind) {
     case CONST_VALUE_INT:
-        return a.as.integer == b.as.integer;
+        return int128_eq(a.as.integer, b.as.integer);
 
     case CONST_VALUE_FN:
         return a.as.fn == b.as.fn;

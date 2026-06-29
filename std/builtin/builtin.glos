@@ -122,7 +122,9 @@ wprint :: (f: C.File, vs: ...any) {
                 }
             }
 
-            C.fprintf(f, "(Invalid enum value: %ld)".data, value)
+            C.fprintf(f, "(Invalid enum value: ".data)
+            write(f, data, v.underlying, true)
+            C.fprintf(f, ")".data)
 
         case Type_Info_Union
             variant := *&i64(data)

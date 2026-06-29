@@ -233,7 +233,7 @@ Token lexer_iter(Lexer *l) {
         memcpy(buffer, token.sv.data, token.sv.count);
 
         errno = 0;
-        token.as.integer = strtol(buffer, NULL, 10);
+        token.as.integer = strtoul(buffer, NULL, 10);
         arena_reset(&temp_arena, buffer);
 
         if (!errno) {

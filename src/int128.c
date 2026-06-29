@@ -1,14 +1,13 @@
 #include "int128.h"
-#include "basic.h"
 
-Int128 int128_from_i64(int64_t n) {
+Int128 int128_from_i64(i64 n) {
     Int128 result;
-    result.low = (uint64_t) n;
+    result.low = (u64) n;
     result.high = (n < 0) ? UINT64_MAX : 0;
     return result;
 }
 
-Int128 int128_from_u64(uint64_t n) {
+Int128 int128_from_u64(u64 n) {
     Int128 result;
     result.low = n;
     result.high = 0;
@@ -19,7 +18,7 @@ Int128 int128_add(Int128 a, Int128 b, bool is_signed) {
     unused(is_signed);
     Int128 result;
     result.low = a.low + b.low;
-    result.high = a.high + b.high + (uint64_t) (result.low < a.low);
+    result.high = a.high + b.high + (u64) (result.low < a.low);
     return result;
 }
 
@@ -27,23 +26,23 @@ Int128 int128_sub(Int128 a, Int128 b, bool is_signed) {
     unused(is_signed);
     Int128 result;
     result.low = a.low - b.low;
-    result.high = a.high - b.high - (uint64_t) (a.low < b.low);
+    result.high = a.high - b.high - (u64) (a.low < b.low);
     return result;
 }
 
 // 64x64 -> 128 multiplication
-static void mul64wide(uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo) {
-    uint64_t a0 = (uint32_t) a;
-    uint64_t a1 = a >> 32;
-    uint64_t b0 = (uint32_t) b;
-    uint64_t b1 = b >> 32;
+static void mul64wide(u64 a, u64 b, u64 *hi, u64 *lo) {
+    u64 a0 = (uint32_t) a;
+    u64 a1 = a >> 32;
+    u64 b0 = (uint32_t) b;
+    u64 b1 = b >> 32;
 
-    uint64_t p00 = a0 * b0;
-    uint64_t p01 = a0 * b1;
-    uint64_t p10 = a1 * b0;
-    uint64_t p11 = a1 * b1;
+    u64 p00 = a0 * b0;
+    u64 p01 = a0 * b1;
+    u64 p10 = a1 * b0;
+    u64 p11 = a1 * b1;
 
-    uint64_t middle = (p00 >> 32) + (uint32_t) p01 + (uint32_t) p10;
+    u64 middle = (p00 >> 32) + (uint32_t) p01 + (uint32_t) p10;
     *lo = (p00 & 0xffffffffULL) | (middle << 32);
     *hi = p11 + (p01 >> 32) + (p10 >> 32) + (middle >> 32);
 }
@@ -86,11 +85,6 @@ Int128 int128_neg(Int128 x) {
     return r;
 }
 
-// Signed test
-static bool int128_is_negative(Int128 x) {
-    return (x.high >> 63) != 0;
-}
-
 Int128 int128_mul(Int128 a, Int128 b, bool is_signed) {
     bool negate = false;
     if (is_signed) {
@@ -105,9 +99,9 @@ Int128 int128_mul(Int128 a, Int128 b, bool is_signed) {
         }
     }
 
-    uint64_t lo_lo_hi, lo_lo_lo;
-    uint64_t hi_lo_hi, hi_lo_lo;
-    uint64_t lo_hi_hi, lo_hi_lo;
+    u64 lo_lo_hi, lo_lo_lo;
+    u64 hi_lo_hi, hi_lo_lo;
+    u64 lo_hi_hi, lo_hi_lo;
 
     // al * bl
     mul64wide(a.low, b.low, &lo_lo_hi, &lo_lo_lo);
@@ -198,22 +192,30 @@ void int128_divmod(Int128 a, Int128 b, bool is_signed, Int128 *out_quotient, Int
     if (out_remainder) *out_remainder = remainder;
 }
 
-Int128 int128_shl(Int128 x, unsigned shift, bool is_signed) {
+Int128 int128_shl(Int128 a, Int128 b, bool is_signed) {
+    assert(b.high == 0);
+    assert(b.low <= 127);
+    const unsigned shift = b.low;
+
     unused(is_signed);
     Int128 r = {0, 0};
     if (shift >= 128) return r;
-    if (shift == 0) return x;
+    if (shift == 0) return a;
     if (shift >= 64) {
-        r.high = x.low << (shift - 64);
+        r.high = a.low << (shift - 64);
         return r;
     }
 
-    r.high = (x.high << shift) | (x.low >> (64 - shift));
-    r.low = x.low << shift;
+    r.high = (a.high << shift) | (a.low >> (64 - shift));
+    r.low = a.low << shift;
     return r;
 }
 
-Int128 int128_shr(Int128 x, unsigned shift, bool is_signed) {
+Int128 int128_shr(Int128 x, Int128 b, bool is_signed) {
+    assert(b.high == 0);
+    assert(b.low <= 127);
+    const unsigned shift = b.low;
+
     Int128 r;
     if (shift >= 128) {
         if (is_signed && (x.high & 0x8000000000000000ULL)) {
@@ -228,7 +230,7 @@ Int128 int128_shr(Int128 x, unsigned shift, bool is_signed) {
 
     if (shift == 0) return x;
     if (shift >= 64) {
-        unsigned s = shift - 64;
+        const unsigned s = shift - 64;
         if (is_signed && (x.high & 0x8000000000000000ULL)) {
             r.high = UINT64_MAX;
             if (s == 0) r.low = x.high;
@@ -287,13 +289,12 @@ static int int128_cmp(Int128 a, Int128 b, bool is_signed) {
     return 0;
 }
 
-bool int128_eq(Int128 a, Int128 b, bool is_signed) {
-    unused(is_signed);
-    return a.high == b.high && a.low == b.low;
+bool int128_gt(Int128 a, Int128 b, bool is_signed) {
+    return int128_cmp(a, b, is_signed) > 0;
 }
 
-bool int128_ne(Int128 a, Int128 b, bool is_signed) {
-    return !int128_eq(a, b, is_signed);
+bool int128_ge(Int128 a, Int128 b, bool is_signed) {
+    return int128_cmp(a, b, is_signed) >= 0;
 }
 
 bool int128_lt(Int128 a, Int128 b, bool is_signed) {
@@ -304,12 +305,20 @@ bool int128_le(Int128 a, Int128 b, bool is_signed) {
     return int128_cmp(a, b, is_signed) <= 0;
 }
 
-bool int128_gt(Int128 a, Int128 b, bool is_signed) {
-    return int128_cmp(a, b, is_signed) > 0;
+bool int128_eq(Int128 a, Int128 b) {
+    return a.high == b.high && a.low == b.low;
 }
 
-bool int128_ge(Int128 a, Int128 b, bool is_signed) {
-    return int128_cmp(a, b, is_signed) >= 0;
+bool int128_ne(Int128 a, Int128 b) {
+    return !int128_eq(a, b);
+}
+
+bool int128_is_zero(Int128 x) {
+    return x.low == 0 && x.high == 0;
+}
+
+bool int128_is_negative(Int128 x) {
+    return (x.high >> 63) != 0;
 }
 
 const char *int128_to_cstr(Int128 n) {
@@ -326,21 +335,24 @@ const char *int128_to_cstr(Int128 n) {
     }
 
     buffer[--head] = '\0';
-    while (!int128_eq(n, zero, true)) {
-        Int128 quotient = {0};
-        Int128 remainder = {0};
-        int128_divmod(n, ten, true, &quotient, &remainder);
+    if (int128_eq(n, zero)) {
+        buffer[--head] = '0';
+    } else {
+        while (!int128_eq(n, zero)) {
+            Int128 quotient = {0};
+            Int128 remainder = {0};
+            int128_divmod(n, ten, true, &quotient, &remainder);
 
-        assert(head);
-        buffer[--head] = '0' + remainder.low;
-        n = quotient;
+            assert(head);
+            buffer[--head] = '0' + remainder.low;
+            n = quotient;
+        }
     }
 
     if (negative) {
         assert(head);
         buffer[--head] = '-';
     }
-
     return arena_sv_to_cstr(&temp_arena, (SV) {.data = buffer + head, .count = len(buffer) - head});
 }
 

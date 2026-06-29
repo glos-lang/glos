@@ -3,6 +3,7 @@
 #include "compiler.h"
 #include "context.h"
 #include "contract.h"
+#include "int128.h"
 #include "node.h"
 #include "parser.h"
 #include "token.h"
@@ -99,55 +100,53 @@ static void check_that_type_is_known(const Node *n) {
 }
 
 static_assert(COUNT_TYPES == 25, "");
-static void check_int_limit(Node *n, const void *ptr) {
+static void check_int_limit_ex(Node *n, Int128 value, bool min_zero, const char *label) {
+    const Type_Kind type_kind = type_kind_eq(n->type, TYPE_ENUM) ? n->type.spec.enumm.underlying : n->type.kind;
+
+    typedef struct {
+        Int128 min;
+        Int128 max;
+    } Limit;
+
+    Limit limit = {0};
     if (type_is_signed(n->type)) {
-        typedef struct {
-            i64 min;
-            i64 max;
-        } Limit;
-
         const Limit limits[COUNT_TYPES] = {
-            [TYPE_I8] = {.min = INT8_MIN, .max = INT8_MAX},
-            [TYPE_I16] = {.min = INT16_MIN, .max = INT16_MAX},
-            [TYPE_I32] = {.min = INT32_MIN, .max = INT32_MAX},
-            [TYPE_I64] = {.min = INT64_MIN, .max = INT64_MAX},
-            [TYPE_INT] = {.min = INT64_MIN, .max = INT64_MAX},
+            [TYPE_I8] = {.min = INT128_FROM_I64(INT8_MIN), .max = INT128_FROM_I64(INT8_MAX)},
+            [TYPE_I16] = {.min = INT128_FROM_I64(INT16_MIN), .max = INT128_FROM_I64(INT16_MAX)},
+            [TYPE_I32] = {.min = INT128_FROM_I64(INT32_MIN), .max = INT128_FROM_I64(INT32_MAX)},
+            [TYPE_I64] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
+            [TYPE_INT] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
         };
-
-        const i64   value = *(const i64 *) ptr;
-        const Limit limit = limits[n->type.kind];
-        if (value < limit.min || value > limit.max) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Number '%zd' is invalid for %s, which must be in range [%zd, %zd]\n",
-                Pos_Arg(n->token.pos),
-                value,
-                type_to_cstr(n->type),
-                limit.min,
-                limit.max);
-            exit(1);
-        }
+        limit = limits[type_kind];
     } else {
-        const size_t limits[COUNT_TYPES] = {
-            [TYPE_U8] = UINT8_MAX,
-            [TYPE_U16] = UINT16_MAX,
-            [TYPE_U32] = UINT32_MAX,
-            [TYPE_U64] = UINT64_MAX,
+        const Limit limits[COUNT_TYPES] = {
+            [TYPE_U8] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT8_MAX)},
+            [TYPE_U16] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT16_MAX)},
+            [TYPE_U32] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
+            [TYPE_U64] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
         };
-
-        const size_t value = *(const size_t *) ptr;
-        const size_t limit = limits[n->type.kind];
-        if (value > limit) {
-            fprintf(
-                stderr,
-                Pos_Fmt "ERROR: Number '%zu' is invalid for %s, which must be in range [0, %zu]\n",
-                Pos_Arg(n->token.pos),
-                value,
-                type_to_cstr(n->type),
-                limit);
-            exit(1);
-        }
+        limit = limits[type_kind];
     }
+
+    if (min_zero) {
+        limit.min = INT128_FROM_U64(0);
+    }
+
+    if (int128_lt(value, limit.min, true) || int128_gt(value, limit.max, true)) {
+        fprintf(
+            stderr,
+            Pos_Fmt "ERROR: Number '%s' is invalid for %s, which must be in range [%s, %s]\n",
+            Pos_Arg(n->token.pos),
+            int128_to_cstr(value),
+            label ? label : type_to_cstr(n->type),
+            int128_to_cstr(limit.min),
+            int128_to_cstr(limit.max));
+        exit(1);
+    }
+}
+
+static inline void check_int_limit(Node *n, Int128 value) {
+    check_int_limit_ex(n, value, false, NULL);
 }
 
 // TODO: What about sign?
@@ -175,17 +174,12 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
-            check_int_limit(n, &n->token.as.integer);
             break;
 
         case TOKEN_IDENT: {
             Node_Atom *atom = (Node_Atom *) n;
             assert(atom->definition->definition_spec->is_const); // Only constants can be defined as untyped int
-
             n->type = expected;
-            if (type_is_integer(n->type)) {
-                check_int_limit(n, &atom->definition->definition_spec->const_value.as.integer);
-            }
         } break;
 
         default:
@@ -196,19 +190,10 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
         n->type = expected;
-        if (n->token.kind == TOKEN_SIZEOF) {
-            const size_t value = compile_sizeof(c, &unary->value->type);
-            check_int_limit(n, &value);
-        } else {
+        if (n->token.kind != TOKEN_SIZEOF) {
             cast_untyped(c, unary->value, expected);
             if (n->token.kind == TOKEN_SUB) {
-                if (type_is_numeric(n->type) || type_is_pointer(n->type)) {
-                    if (!type_is_signed(expected)) {
-                        fprintf(
-                            stderr, Pos_Fmt "ERROR: Cannot negate unsigned constant value\n", Pos_Arg(n->token.pos));
-                        exit(1);
-                    }
-                } else {
+                if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
                     unary->overload = get_operator_overload(c, "neg", unary->value, &n->token.pos, unary->module);
                 }
             }
@@ -232,12 +217,9 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
             n->type = expected;
         } else {
             assert(member->module_access_definition); // Must be a module access
-
             const Definition_Spec *definition_spec = member->module_access_definition->definition_spec;
             assert(definition_spec->is_const); // Only constants can be defined as untyped int
-
             n->type = expected;
-            check_int_limit(n, &definition_spec->const_value.as.integer);
         }
     } break;
 
@@ -260,7 +242,9 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
 static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref);
 
 static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    if (type_is_integer(expected) && type_kind_eq(n->type, TYPE_INT)) {
+    if (type_kind_eq(n->type, TYPE_INT) &&
+        (type_is_integer(expected) || (type_kind_eq(expected, TYPE_ENUM) && !expected.ref))) //
+    {
         if (!type_kind_eq(expected, TYPE_INT)) {
             cast_untyped(c, n, expected);
 
@@ -268,7 +252,7 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             const Const_Value value = eval_const_expr(c, n, false);
             assert(value.kind == CONST_VALUE_INT);
 
-            check_int_limit(n, &value.as.integer);
+            check_int_limit(n, value.as.integer);
         }
         return true;
     }
@@ -336,9 +320,13 @@ static bool type_eq_without_distinct(Type a, Type b) {
     return type_eq(a, b);
 }
 
-static void finalize_untyped_type(Type *t) {
-    if (type_kind_eq(*t, TYPE_INT)) {
-        t->kind = TYPE_I64;
+static void finalize_untyped_type(Compiler *c, Node *n) {
+    if (type_kind_eq(n->type, TYPE_INT)) {
+        const Const_Value value = eval_const_expr(c, n, false);
+        n->type.kind = TYPE_I64;
+
+        assert(value.kind == CONST_VALUE_INT);
+        check_int_limit(n, value.as.integer);
     }
 }
 
@@ -377,7 +365,7 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
     }
 
     if (type_is_union(expected) && !type_is_unknown(n->type)) {
-        finalize_untyped_type(&n->type);
+        finalize_untyped_type(c, n);
         n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->auto_cast_kind = AUTO_CAST_TO_UNION;
         n->auto_cast_data = get_union_type_index(n, expected);
@@ -393,7 +381,7 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
     }
 
     if (type_eq(expected, (Type) {.kind = TYPE_ANY}) && !type_is_unknown(n->type)) {
-        finalize_untyped_type(&n->type);
+        finalize_untyped_type(c, n);
         try_auto_cast_type_to_rtti(c, n, c->type_info_pointer_type);
         n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
         n->auto_cast_kind = AUTO_CAST_TO_ANY;
@@ -809,7 +797,7 @@ static Node_Fn *get_main(Compiler *c) {
 static_assert(COUNT_TYPES == 25, "");
 static Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
-        return const_value_int(0);
+        return const_value_u64(0);
     }
 
     switch (type.kind) {
@@ -830,7 +818,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_RAWPTR:
     case TYPE_FN:
     case TYPE_ENUM:
-        return const_value_int(0);
+        return const_value_u64(0);
 
     case TYPE_UNION:
         return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
@@ -906,7 +894,7 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
         }
         assert(any.kind == CONST_VALUE_ANY);
 
-        if (type.kind == CONST_VALUE_INT && type.as.integer == 0) {
+        if (type.kind == CONST_VALUE_INT && int128_is_zero(type.as.integer)) {
             return !any.as.any.type;
         }
 
@@ -932,7 +920,7 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
         }
         assert(unionn.kind == CONST_VALUE_UNION);
 
-        if (variant.kind == CONST_VALUE_INT && variant.as.integer == 0) {
+        if (variant.kind == CONST_VALUE_INT && int128_is_zero(variant.as.integer)) {
             return unionn.as.unionn.index == 0;
         }
 
@@ -956,6 +944,11 @@ static Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
 
     // TODO: Should this be cached?
     return default_const_value(c, var->node.type);
+}
+
+static inline i64 i64_from_int128(Node *n, Int128 x, bool min_zero, const char *label) {
+    check_int_limit_ex(n, x, min_zero, label);
+    return x.low;
 }
 
 // Is this valid for signedness?
@@ -988,10 +981,10 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         case TOKEN_INT:
         case TOKEN_BOOL:
         case TOKEN_CHAR:
-            return const_value_int(n->token.as.integer);
+            return const_value_u64(n->token.as.integer);
 
         case TOKEN_NULL:
-            return const_value_int(0);
+            return const_value_u64(0);
 
         case TOKEN_IDENT:
             if (n->type.is_meta) {
@@ -1059,7 +1052,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value, false);
-            return const_value_int(-value.as.integer);
+            return const_value_int(int128_neg(value.as.integer));
 
         case TOKEN_MUL:
             value = eval_const_expr(c, unary->value, false);
@@ -1080,18 +1073,18 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
         case TOKEN_BNOT:
             value = eval_const_expr(c, unary->value, false);
-            return const_value_int(~value.as.integer);
+            return const_value_int(int128_not(value.as.integer));
 
         case TOKEN_LNOT:
             value = eval_const_expr(c, unary->value, false);
-            return const_value_int(!value.as.integer);
+            return const_value_u64(int128_is_zero(value.as.integer));
 
         case TOKEN_SIZEOF:
-            return const_value_int(compile_sizeof(c, &unary->value->type));
+            return const_value_u64(compile_sizeof(c, &unary->value->type));
 
         case TOKEN_TYPEOF: {
+            finalize_untyped_type(c, unary->value);
             Type type = unary->value->type;
-            finalize_untyped_type(&type);
             type.is_meta = true;
             return const_value_type(type);
         }
@@ -1118,61 +1111,64 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         Const_Value lhs = {0};
         Const_Value rhs = {0};
 
+        // Arithmetic operations
+        {
+            typedef Int128 (*Int_Op)(Int128 lhs, Int128 rhs, bool is_signed);
+
+            static_assert(COUNT_TOKENS == 76, "");
+            static const Int_Op ops[COUNT_TOKENS] = {
+                [TOKEN_ADD] = int128_add,
+                [TOKEN_SUB] = int128_sub,
+                [TOKEN_MUL] = int128_mul,
+                [TOKEN_DIV] = int128_div,
+                [TOKEN_MOD] = int128_mod,
+
+                [TOKEN_SHL] = int128_shl,
+                [TOKEN_SHR] = int128_shr,
+                [TOKEN_BOR] = int128_or,
+                [TOKEN_BAND] = int128_and,
+            };
+
+            const Int_Op op = ops[n->token.kind];
+            if (op) {
+                lhs = eval_const_expr(c, binary->lhs, false);
+                rhs = eval_const_expr(c, binary->rhs, false);
+
+                if ((n->token.kind == TOKEN_DIV || n->token.kind == TOKEN_MOD) && int128_is_zero(rhs.as.integer)) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Cannot divide by zero\n", Pos_Arg(binary->rhs->token.pos));
+                    exit(1);
+                }
+
+                return const_value_int(op(lhs.as.integer, rhs.as.integer, type_is_signed(n->type)));
+            }
+        }
+
+        // Arithmetic comparisons
+        {
+            typedef bool (*Int_Op)(Int128 lhs, Int128 rhs, bool is_signed);
+
+            static_assert(COUNT_TOKENS == 76, "");
+            static const Int_Op ops[COUNT_TOKENS] = {
+                [TOKEN_GT] = int128_gt,
+                [TOKEN_GE] = int128_ge,
+                [TOKEN_LT] = int128_lt,
+                [TOKEN_LE] = int128_le,
+            };
+
+            const Int_Op op = ops[n->token.kind];
+            if (op) {
+                lhs = eval_const_expr(c, binary->lhs, false);
+                rhs = eval_const_expr(c, binary->rhs, false);
+                return const_value_u64(op(lhs.as.integer, rhs.as.integer, type_is_signed(n->type)));
+            }
+        }
+
         static_assert(COUNT_TOKENS == 76, "");
         switch (n->token.kind) {
-        case TOKEN_ADD:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer + rhs.as.integer);
-
-        case TOKEN_SUB:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer - rhs.as.integer);
-
-        case TOKEN_MUL:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer * rhs.as.integer);
-
-        case TOKEN_DIV:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            if (rhs.as.integer == 0) {
-                fprintf(stderr, Pos_Fmt "ERROR: Cannot divide by zero\n", Pos_Arg(binary->rhs->token.pos));
-                exit(1);
-            }
-            return const_value_int(lhs.as.integer / rhs.as.integer);
-
-        case TOKEN_MOD:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer % rhs.as.integer);
-
-        case TOKEN_SHL:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer << rhs.as.integer);
-
-        case TOKEN_SHR:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer >> rhs.as.integer);
-
-        case TOKEN_BOR:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer | rhs.as.integer);
-
-        case TOKEN_BAND:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer & rhs.as.integer);
-
         case TOKEN_LOR:
             lhs = eval_const_expr(c, binary->lhs, false);
             assert(lhs.kind == CONST_VALUE_INT);
-            if (lhs.as.integer) {
+            if (!int128_is_zero(lhs.as.integer)) {
                 return lhs;
             }
 
@@ -1182,38 +1178,18 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         case TOKEN_LAND:
             lhs = eval_const_expr(c, binary->lhs, false);
             assert(lhs.kind == CONST_VALUE_INT);
-            if (!lhs.as.integer) {
+            if (!int128_is_zero(lhs.as.integer)) {
                 return lhs;
             }
 
             rhs = eval_const_expr(c, binary->rhs, false);
             return rhs;
 
-        case TOKEN_GT:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer > rhs.as.integer);
-
-        case TOKEN_GE:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer >= rhs.as.integer);
-
-        case TOKEN_LT:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer < rhs.as.integer);
-
-        case TOKEN_LE:
-            lhs = eval_const_expr(c, binary->lhs, false);
-            rhs = eval_const_expr(c, binary->rhs, false);
-            return const_value_int(lhs.as.integer <= rhs.as.integer);
-
         case TOKEN_EQ:
-            return const_value_int(eval_const_binary_equality(c, binary));
+            return const_value_u64(eval_const_binary_equality(c, binary));
 
         case TOKEN_NE:
-            return const_value_int(!eval_const_binary_equality(c, binary));
+            return const_value_u64(!eval_const_binary_equality(c, binary));
 
         default:
             unreachable();
@@ -1224,7 +1200,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_MEMBER: {
         Node_Member *member = (Node_Member *) n;
         if (member->is_enum) {
-            return const_value_int(member->enum_value);
+            return const_value_i64(member->enum_value);
         }
 
         if (member->method) {
@@ -1254,7 +1230,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                 assert(lhs.as.unionn.real); // The type is checked, that means a real value exists
                 return *lhs.as.unionn.real;
             } else if (member->field_index == 0) {
-                return const_value_int(lhs.as.unionn.index);
+                return const_value_u64(lhs.as.unionn.index);
             } else {
                 unreachable();
             }
@@ -1268,7 +1244,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                     stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
                 exit(1);
             } else if (member->field_index == 1) {
-                return const_value_int(lhs.as.array.count);
+                return const_value_u64(lhs.as.array.count);
             } else {
                 unreachable();
             }
@@ -1279,7 +1255,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                     stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
                 exit(1);
             } else if (member->field_index == 1) {
-                return const_value_int(lhs.as.string.count);
+                return const_value_u64(lhs.as.string.count);
             } else {
                 unreachable();
             }
@@ -1302,7 +1278,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                 if (lhs.as.any.type) {
                     return const_value_type(*lhs.as.any.type);
                 }
-                return const_value_int(0);
+                return const_value_u64(0);
             } else if (member->field_index == 1) {
                 fprintf(
                     stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
@@ -1414,7 +1390,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
             return value;
 
         case TYPE_CAST_TO_BOOL:
-            return const_value_int(value.as.integer != 0);
+            return const_value_u64(!int128_is_zero(value.as.integer));
 
         case TYPE_CAST_TO_UNION:
             return const_value_to_union(n->type, call->type_cast_union_index, value);
@@ -1458,12 +1434,14 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 i64 begin = 0;
                 if (index->a) {
-                    begin = eval_const_expr(c, index->a, false).as.integer;
+                    begin = i64_from_int128(
+                        index->a, eval_const_expr(c, index->a, false).as.integer, true, "beginning of range");
                 }
 
                 i64 end = array.count;
                 if (index->b) {
-                    end = eval_const_expr(c, index->b, false).as.integer;
+                    end =
+                        i64_from_int128(index->a, eval_const_expr(c, index->b, false).as.integer, true, "end of range");
                 }
 
                 if (begin > end) {
@@ -1498,12 +1476,14 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
                 i64 begin = 0;
                 if (index->a) {
-                    begin = eval_const_expr(c, index->a, false).as.integer;
+                    begin = i64_from_int128(
+                        index->a, eval_const_expr(c, index->a, false).as.integer, true, "beginning of range");
                 }
 
                 i64 end = sv.count;
                 if (index->b) {
-                    end = eval_const_expr(c, index->b, false).as.integer;
+                    end =
+                        i64_from_int128(index->a, eval_const_expr(c, index->b, false).as.integer, true, "end of range");
                 }
 
                 if (begin > end) {
@@ -1536,7 +1516,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                 unreachable();
             }
         } else {
-            const i64 at = eval_const_expr(c, index->a, false).as.integer;
+            const i64 at = i64_from_int128(index->a, eval_const_expr(c, index->a, false).as.integer, true, "index");
 
             static_assert(COUNT_CONST_VALUES == 10, "");
             switch (lhs.kind) {
@@ -1565,7 +1545,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                     exit(1);
                 };
 
-                return const_value_int(lhs.as.string.data[at]);
+                return const_value_u64(lhs.as.string.data[at]);
             }
 
             default:
@@ -1623,7 +1603,7 @@ static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
 
 static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_expr(c, sw->expr, REF_NONE);
-    finalize_untyped_type(&sw->expr->type);
+    finalize_untyped_type(c, sw->expr);
     check_that_type_is_known(sw->expr);
 
     if (!sw->expr->type.ref && type_kind_eq(sw->expr->type, TYPE_ENUM)) {
@@ -1659,14 +1639,14 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
 
     if (sw->unionn) {
         if (node_is_null(pred)) {
-            value = const_value_int(0);
+            value = const_value_u64(0);
         } else {
             type_assert_type(pred);
-            value = const_value_int(get_union_type_index(pred, sw->expr->type));
+            value = const_value_u64(get_union_type_index(pred, sw->expr->type));
         }
     } else if (sw->is_expr_any) {
         if (node_is_null(pred)) {
-            value = const_value_int(0);
+            value = const_value_u64(0);
         } else {
             type_assert_type(pred);
             Type type = pred->type;
@@ -1692,12 +1672,10 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                 case CONST_VALUE_INT:
                     if (type_kind_eq(pred->type, TYPE_CHAR)) {
                         fprintf(stderr, "'");
-                        print_quoted_char(stderr, value.as.integer, '\'');
+                        print_quoted_char(stderr, value.as.integer.low, '\'');
                         fprintf(stderr, "'");
-                    } else if (type_is_signed(pred->type)) {
-                        fprintf(stderr, "%zd", value.as.integer);
                     } else {
-                        fprintf(stderr, "%zu", value.as.integer);
+                        fprintf(stderr, "%s", int128_to_cstr(value.as.integer));
                     }
                     break;
 
@@ -1730,7 +1708,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
                 for (size_t i = 0; i < sw->preds_count; i++) {
                     const Const_Value *pred_value = &sw->preds[i].value;
                     assert(pred_value->kind == CONST_VALUE_INT);
-                    if (pred_value->as.integer == it->token.as.integer) {
+                    if (int128_eq(pred_value->as.integer, int128_from_u64(it->token.as.integer))) {
                         handled = true;
                         break;
                     }
@@ -1759,7 +1737,7 @@ static void check_switch_exhaustive(Node_Switch *sw) {
                 const Const_Value *pred_value = &sw->preds[i].value;
                 assert(pred_value->kind == CONST_VALUE_INT);
 
-                const size_t pred_index = pred_value->as.integer;
+                const size_t pred_index = pred_value->as.integer.low;
                 assert(pred_index < variants_count);
                 handled[pred_index] = true;
             }
@@ -1909,7 +1887,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
             const Const_Value value = eval_const_expr(c, iff->condition, false);
-            iff->compile_time_real = value.as.integer ? iff->consequence : iff->antecedence;
+            iff->compile_time_real = !int128_is_zero(value.as.integer) ? iff->consequence : iff->antecedence;
 
             if (iff->compile_time_real) {
                 iff->context_replace.outer = c->context.replace;
@@ -1987,7 +1965,7 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     } else if (sw->unionn) {
                         assert(value.kind == CONST_VALUE_UNION);
                         assert(pred_value.kind == CONST_VALUE_INT);
-                        if (value.as.unionn.index == (size_t) pred_value.as.integer) {
+                        if (int128_eq(int128_from_u64(value.as.unionn.index), pred_value.as.integer)) {
                             sw->compile_time_real = branch;
                         }
                     } else if (const_value_eq(pred_value, value)) {
@@ -2165,7 +2143,12 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                     type_assert_grouped(c, n, type->type, group_index, &it->node.token.pos);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
-                    finalize_untyped_type(&it->node.type);
+                    if (type_is_untyped(it->node.type)) {
+                        i64   group_index = -1;
+                        Node *n = get_node_from_group(it_expr, it->definition_spec->group_index, &group_index);
+                        finalize_untyped_type(c, n);
+                        it->node.type = n->type;
+                    }
                 }
 
                 type_determined = true;
@@ -2177,7 +2160,7 @@ static void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *ty
                 type_assert(c, it_expr, type->type);
             } else {
                 if (!it->definition_spec->is_const) {
-                    finalize_untyped_type(&it_expr->type);
+                    finalize_untyped_type(c, it_expr);
                 }
                 it->node.type = it_expr->type;
             }
@@ -3171,17 +3154,19 @@ static void check_compound_expr(Compiler *c, Node_Compound *compound) {
                 const Const_Value value = eval_const_expr(c, it_binary->lhs, false);
                 assert(value.kind == CONST_VALUE_INT);
 
-                if (n->type.kind == TYPE_ARRAY && (size_t) value.as.integer >= n->type.spec.array.count) {
+                if (n->type.kind == TYPE_ARRAY &&
+                    int128_ge(value.as.integer, int128_from_u64(n->type.spec.array.count), true)) //
+                {
                     fprintf(
                         stderr,
-                        Pos_Fmt "ERROR: Index %zd is out of bounds in array of length %zu\n",
+                        Pos_Fmt "ERROR: Index %s is out of bounds in array of length %zu\n",
                         Pos_Arg(it_binary->lhs->token.pos),
-                        value.as.integer,
+                        int128_to_cstr(value.as.integer),
                         n->type.spec.array.count);
                     exit(1);
                 }
 
-                it->token.as.integer = value.as.integer;
+                it->token.as.integer = i64_from_int128(it_binary->lhs, value.as.integer, true, "index");
             } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
                 // Nothing
             } else {
@@ -3583,7 +3568,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             check_that_type_is_known(unary->value);
             n->type = unary->value->type;
 
-            finalize_untyped_type(&n->type);
+            finalize_untyped_type(c, n);
             n->type.is_meta = true;
             break;
 
@@ -4185,12 +4170,12 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
                 const Const_Value value = eval_const_expr(c, unary->value, false);
                 assert(value.kind == CONST_VALUE_INT);
-                iota = value.as.integer;
+                iota = i64_from_int128(unary->value, value.as.integer, false, NULL);
             }
             iota_max = max(iota_max, iota);
 
             it->type.kind = underlying.kind;
-            check_int_limit(it, &iota);
+            check_int_limit(it, int128_from_i64(iota));
             it->type.kind = TYPE_UNIT;
             it->token.as.integer = iota++;
         }
@@ -4422,7 +4407,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 if (to_any) {
                     // Pass
                 } else if (to_union) {
-                    finalize_untyped_type(from_type);
+                    finalize_untyped_type(c, call->args.head);
                     call->type_cast_union_index = get_union_type_index(call->args.head, *to_type);
                 } else if (type_is_scalar(*to_type)) {
                     type_assert_scalar(call->args.head);
@@ -4446,6 +4431,12 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                             !type_kind_eq(*to_type, TYPE_INT)) {
                             ok = false;
                         }
+                    } else if (
+                        type_kind_eq(*from_type, TYPE_INT) &&
+                        (type_is_integer(*to_type) || type_kind_eq(*to_type, TYPE_ENUM))) //
+                    {
+                        ok = try_auto_cast_untyped(c, call->args.head, n->type);
+                        same = true;
                     }
 
                     if (!ok) {
@@ -4669,19 +4660,9 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
             const Const_Value value = eval_const_expr(c, indexable->count, false);
             assert(value.kind == CONST_VALUE_INT);
-            array_count = value.as.integer;
 
-            const u64 max_count = INT64_MAX;
-            if (array_count > max_count) {
-                fprintf(
-                    stderr,
-                    Pos_Fmt "ERROR: Number '%zd' is invalid for array capacity, which must be in range [0, %zu]\n",
-                    Pos_Arg(indexable->count->token.pos),
-                    array_count,
-                    max_count);
-                exit(1);
-            }
-
+            check_int_limit_ex(indexable->count, value.as.integer, true, "array capacity");
+            array_count = value.as.integer.low;
             check_expr(c, indexable->element, REF_NONE);
         } else {
             // The type `[]T` gets compiled to:
@@ -4763,9 +4744,7 @@ static void check_stmt(Compiler *c, Node *n) {
             type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
         }
 
-        const bool ok = eval_const_expr(c, assertt->expr, false).as.integer;
-
-        if (!ok) {
+        if (int128_is_zero(eval_const_expr(c, assertt->expr, false).as.integer)) {
             fprintf(stderr, Pos_Fmt "Assertion failed", Pos_Arg(n->token.pos));
             if (assertt->message) {
                 const SV message = eval_const_expr(c, assertt->message, false).as.string;
@@ -4990,15 +4969,15 @@ Const_Value get_platform(Compiler *c, Type *type) {
     }
 
 #ifdef PLATFORM_X86_64_LINUX
-    return const_value_int(CONTRACT_PLATFORM_LINUX);
+    return const_value_u64(CONTRACT_PLATFORM_LINUX);
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    return const_value_int(CONTRACT_PLATFORM_MACOS);
+    return const_value_u64(CONTRACT_PLATFORM_MACOS);
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    return const_value_int(CONTRACT_PLATFORM_WINDOWS);
+    return const_value_u64(CONTRACT_PLATFORM_WINDOWS);
 #endif // PLATFORM_X86_64_WINDOWS
 
     unreachable();

@@ -117,7 +117,7 @@ typedef struct {
     bool newline;
 
     union {
-        i64 integer;
+        u64 integer;
     } as;
 } Token;
 

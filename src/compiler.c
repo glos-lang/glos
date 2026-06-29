@@ -1180,15 +1180,20 @@ static LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv) {
 static void         compile_var_def(Compiler *c, Node_Atom *it);
 static LLVMValueRef compile_type_info(Compiler *c, Type *type);
 
+// TODO: Range check
+static i64 i64_from_int128(Int128 n) {
+    return n.low;
+}
+
 static_assert(COUNT_CONST_VALUES == 10, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
         if (type_is_pointer(type)) {
-            assert(value.as.integer == 0);
+            assert(int128_is_zero(value.as.integer));
             return LLVMConstNull(type.llvm);
         }
-        return LLVMConstInt(type.llvm, value.as.integer, type_is_signed(type));
+        return LLVMConstInt(type.llvm, i64_from_int128(value.as.integer), type_is_signed(type));
 
     case CONST_VALUE_FN:
         return compile_fn(c, value.as.fn);
@@ -3775,7 +3780,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
                 LLVMValueRef value = NULL;
                 if (sw->unionn) {
-                    value = LLVMConstInt(i64_type, pred_value->as.integer, true);
+                    value = LLVMConstInt(i64_type, i64_from_int128(pred_value->as.integer), true);
                 } else if (sw->is_expr_any || sw->is_expr_type_info) {
                     if (pred_value->kind == CONST_VALUE_TYPE) {
                         assert(!pred_value->as.type.is_meta);
@@ -3783,7 +3788,7 @@ static void compile_stmt(Compiler *c, Node *n) {
 
                         const size_t id = ht_get(&c->type_info_cache, pred_value->as.type)->id;
                         value = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), id, true);
-                    } else if (pred_value->kind == CONST_VALUE_INT && pred_value->as.integer == 0) {
+                    } else if (pred_value->kind == CONST_VALUE_INT && int128_is_zero(pred_value->as.integer)) {
                         value = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 0, true);
                     } else {
                         unreachable();
