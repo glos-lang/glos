@@ -149,7 +149,6 @@ static inline void check_int_limit(Node *n, Int128 value) {
     check_int_limit_ex(n, value, false, NULL);
 }
 
-// TODO: What about sign?
 static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
     ll_foreach(it, &enumm->values) {
         if (sv_eq(it->token.sv, name)) {
@@ -162,9 +161,59 @@ static i64 get_enum_value(Node_Enum *enumm, SV name, const Token *t) {
     exit(1);
 }
 
+static size_t get_union_type_index(Node *n, Type unionn) {
+    assert(unionn.kind == TYPE_UNION);
+    const Type_Union *spec = unionn.spec.unionn;
+
+    Type type = n->type;
+    type.is_meta = false;
+
+    for (size_t i = 0; i < spec->variants_count; i++) {
+        if (type_eq(spec->variants[i].type, type)) {
+            return i + 1;
+        }
+    }
+
+    fprintf(
+        stderr,
+        Pos_Fmt "ERROR: Type %s is not a variant of %s\n",
+        Pos_Arg(n->token.pos),
+        type_to_cstr(type),
+        type_to_cstr(unionn));
+    fprintf(stderr, Pos_Fmt "NOTE: Union defined here\n", Pos_Arg(spec->definition->node.token.pos));
+    exit(1);
+}
+
 static void     check_compound_expr(Compiler *c, Node_Compound *compound);
 static void     check_binary_expr(Compiler *c, Node_Binary *binary, bool check_children);
 static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *receiver, Pos *pos, Module *module);
+
+static void set_auto_cast(Node *n, i64 index, Auto_Cast_Kind kind, Type from, Type to) {
+    if (!n->auto_casts) {
+        n->auto_casts_count = type_kind_eq(n->type, TYPE_GROUP) ? n->type.spec.group.count : 1;
+        n->auto_casts = arena_alloc(&default_arena, n->auto_casts_count * sizeof(*n->auto_casts));
+    }
+
+    Auto_Cast *it = &n->auto_casts[index == -1 ? 0 : index];
+    it->kind = kind;
+    it->from = from;
+    it->to = to;
+    if (kind == AUTO_CAST_TO_UNION) {
+        it->data = get_union_type_index(n, to);
+    }
+
+    if (index == -1) {
+        n->type = to;
+    } else {
+        assert(type_kind_eq(n->type, TYPE_GROUP));
+        if (!n->auto_casts_group) {
+            n->auto_casts_group = arena_clone(
+                &default_arena, n->type.spec.group.data, sizeof(*n->type.spec.group.data) * n->type.spec.group.count);
+            n->type.spec.group.data = n->auto_casts_group;
+        }
+        n->type.spec.group.data[index] = to;
+    }
+}
 
 static_assert(COUNT_NODES == 27, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
@@ -226,6 +275,9 @@ static void cast_untyped(Compiler *c, Node *n, Type expected) {
     case NODE_COMPOUND:
         n->type = expected;
         check_compound_expr(c, (Node_Compound *) n);
+        if (type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE)) {
+            set_auto_cast(n, -1, AUTO_CAST_ARRAY_TO_SLICE, n->type, expected);
+        }
         break;
 
     case NODE_RETURN: {
@@ -280,29 +332,6 @@ static bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
-static size_t get_union_type_index(Node *n, Type unionn) {
-    assert(unionn.kind == TYPE_UNION);
-    const Type_Union *spec = unionn.spec.unionn;
-
-    Type type = n->type;
-    type.is_meta = false;
-
-    for (size_t i = 0; i < spec->variants_count; i++) {
-        if (type_eq(spec->variants[i].type, type)) {
-            return i + 1;
-        }
-    }
-
-    fprintf(
-        stderr,
-        Pos_Fmt "ERROR: Type %s is not a variant of %s\n",
-        Pos_Arg(n->token.pos),
-        type_to_cstr(type),
-        type_to_cstr(unionn));
-    fprintf(stderr, Pos_Fmt "NOTE: Union defined here\n", Pos_Arg(spec->definition->node.token.pos));
-    exit(1);
-}
-
 static bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
     if (n->type.is_meta && type_eq(expected, c->type_info_pointer_type)) {
         n->emit_type_info = arena_clone(&default_arena, &n->type, sizeof(n->type));
@@ -351,41 +380,44 @@ static bool try_auto_cast_literal(Node *n, Type expected) {
     return false;
 }
 
-static bool try_auto_cast(Compiler *c, Node *n, Type expected) {
-    if (try_auto_cast_untyped(c, n, expected)) {
-        return true;
-    }
+// Set 'group_index' to -1 for no group
+static bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
+    // Literals cannot be part of a group
+    if (group_index == -1) {
+        if (try_auto_cast_untyped(c, n, expected)) {
+            return true;
+        }
 
-    if (try_auto_cast_literal(n, expected)) {
-        return true;
-    }
+        if (try_auto_cast_literal(n, expected)) {
+            return true;
+        }
 
-    if (try_auto_cast_type_to_rtti(c, n, expected)) {
-        return true;
-    }
+        if (try_auto_cast_type_to_rtti(c, n, expected)) {
+            return true;
+        }
 
-    if (type_is_union(expected) && !type_is_unknown(n->type)) {
         finalize_untyped_type(c, n);
-        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
-        n->auto_cast_kind = AUTO_CAST_TO_UNION;
-        n->auto_cast_data = get_union_type_index(n, expected);
-        n->type = expected;
+    }
+
+    Type actual = n->type;
+    if (group_index != -1) {
+        assert(actual.kind == TYPE_GROUP);
+        actual = actual.spec.group.data[group_index];
+    }
+
+    if (type_is_union(expected) && !type_is_unknown(actual)) {
+        set_auto_cast(n, group_index, AUTO_CAST_TO_UNION, actual, expected);
         return true;
     }
 
-    if (type_kind_eq(n->type, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE) && !n->type.ref && !expected.ref) {
-        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
-        n->auto_cast_kind = AUTO_CAST_ARRAY_TO_SLICE;
-        n->type = expected;
+    if (type_kind_eq(actual, TYPE_ARRAY) && type_kind_eq(expected, TYPE_SLICE) && !actual.ref && !expected.ref) {
+        set_auto_cast(n, group_index, AUTO_CAST_ARRAY_TO_SLICE, actual, expected);
         return true;
     }
 
-    if (type_eq(expected, (Type) {.kind = TYPE_ANY}) && !type_is_unknown(n->type)) {
+    if (type_eq(expected, (Type) {.kind = TYPE_ANY}) && !type_is_unknown(actual)) {
         finalize_untyped_type(c, n);
-        try_auto_cast_type_to_rtti(c, n, c->type_info_pointer_type);
-        n->auto_cast_from = arena_clone(&default_arena, &n->type, sizeof(n->type));
-        n->auto_cast_kind = AUTO_CAST_TO_ANY;
-        n->type = expected;
+        set_auto_cast(n, group_index, AUTO_CAST_TO_ANY, actual, expected);
         return true;
     }
 
@@ -397,7 +429,7 @@ static Type type_assert(Compiler *c, Node *n, Type expected) {
         return expected;
     }
 
-    if (try_auto_cast(c, n, expected)) {
+    if (try_auto_cast(c, n, expected, -1)) {
         return expected;
     }
 
@@ -443,7 +475,7 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
     }
 
     if (!is_group) {
-        if (try_auto_cast(c, n, expected)) {
+        if (try_auto_cast(c, n, expected, -1)) {
             return expected;
         }
 
@@ -458,6 +490,10 @@ static Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_i
         maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_cast(n, expected);
     } else {
         check_that_type_is_known(n);
+        if (try_auto_cast(c, n, expected, group_index)) {
+            return expected;
+        }
+
         const char *postfix = order_postfix(group_index + 1);
         fprintf(
             stderr,
@@ -482,11 +518,11 @@ static Type type_assert_node(Compiler *c, Node *a, Node *b) {
         return a->type;
     }
 
-    if (try_auto_cast(c, b, a->type)) {
+    if (try_auto_cast(c, b, a->type, -1)) {
         return a->type;
     }
 
-    if (try_auto_cast(c, a, b->type)) {
+    if (try_auto_cast(c, a, b->type, -1)) {
         return b->type;
     }
 
@@ -1569,23 +1605,24 @@ static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     }
 
     Type n_type_save;
-    if (n->auto_cast_from) {
+    if (n->auto_casts) {
+        assert(n->auto_casts_count == 1); // Functions cannot be called in constant expressions
         n_type_save = n->type;
-        n->type = *n->auto_cast_from;
+        n->type = n->auto_casts->from;
     }
 
     Const_Value result = eval_const_expr_impl(c, n, ref);
-    if (n->auto_cast_from) {
+    if (n->auto_casts) {
         n->type = n_type_save;
 
-        static_assert(COUNT_AUTO_CASTS == 3, "");
-        switch (n->auto_cast_kind) {
+        static_assert(COUNT_AUTO_CASTS == 4, "");
+        switch (n->auto_casts->kind) {
         case AUTO_CAST_TO_ANY:
-            result = const_value_to_any(n->auto_cast_from, result);
+            result = const_value_to_any(&n->auto_casts->from, result);
             break;
 
         case AUTO_CAST_TO_UNION:
-            result = const_value_to_union(n->type, n->auto_cast_data, result);
+            result = const_value_to_union(n->type, n->auto_casts->data, result);
             break;
 
         case AUTO_CAST_ARRAY_TO_SLICE:
@@ -2819,11 +2856,17 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
             }
 
             for (size_t i = 0; i < parts; i++) {
-                if (!type_checked && expected) {
-                    type_assert_grouped(c, it, *expected, i, NULL);
+                const size_t n = it_index + i;
+                if (!type_checked) {
+                    if (parts != 1) {
+                        expected = get_argument_type(fn_spec, n);
+                    }
+
+                    if (expected) {
+                        type_assert_grouped(c, it, *expected, i, NULL);
+                    }
                 }
 
-                const size_t n = it_index + i;
                 if (fn_spec->variadics_kind == VARIADICS_TYPED && n >= fn_spec->variadics_index) {
                     Argument *variadic_arg = &args[fn_spec->variadics_index];
                     if (it_is_named) {
@@ -2930,7 +2973,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
         has_minimum = false;
         expected = args_count_min;
         situation = "Not enough";
-        extra = " atleast";
+        extra = " at least";
     }
 
     if (call->args_count > args_count_max) {
@@ -5191,5 +5234,3 @@ void check_nodes(Compiler *c) {
 }
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
-// TODO: Print "atleast" as "atmost"
-// TODO: Auto cast group to any

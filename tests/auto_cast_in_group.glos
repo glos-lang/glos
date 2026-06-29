@@ -1,0 +1,11 @@
+f :: () -> ([2]i64, bool) {
+    return {69, 420}, true
+}
+
+g :: (a: []i64, b: bool) {
+    println(a, ' ', b)
+}
+
+main :: () {
+    g(f())
+}

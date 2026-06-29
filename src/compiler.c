@@ -3434,46 +3434,34 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     }
 }
 
-static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
-    if (!n) {
-        return NULL;
-    }
-
-    if (!n->auto_cast_from) {
-        return compile_expr_impl(c, n, ref);
-    }
-
-    const Type n_type_save = n->type;
-    n->type = *n->auto_cast_from;
-
-    static_assert(COUNT_AUTO_CASTS == 3, "");
-    switch (n->auto_cast_kind) {
+static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result, Auto_Cast *auto_cast, bool ref) {
+    static_assert(COUNT_AUTO_CASTS == 4, "");
+    switch (auto_cast->kind) {
     case AUTO_CAST_TO_ANY: {
-        LLVMValueRef result = compile_cast_to_any(c, &n->type, compile_expr_impl(c, n, false));
-        n->type = n_type_save;
+        result = compile_cast_to_any(c, &auto_cast->from, result);
+        n->type = auto_cast->to;
         compile_type(c, &n->type);
         return result;
     }
 
     case AUTO_CAST_TO_UNION: {
-        LLVMValueRef result = compile_expr_impl(c, n, false);
-        n->type = n_type_save;
+        n->type = auto_cast->to;
         compile_type(c, &n->type);
-        return compile_cast_to_union(c, n->type.llvm, n->auto_cast_data, result, ref);
+        return compile_cast_to_union(c, n->type.llvm, auto_cast->data, result, ref);
     }
 
     case AUTO_CAST_ARRAY_TO_SLICE: {
-        LLVMValueRef memory = compile_expr_impl(c, n, true);
-        assert(n->type.kind == TYPE_ARRAY);
+        LLVMValueRef memory = undo_load(result);
+        assert(auto_cast->from.kind == TYPE_ARRAY);
 
         LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
         LLVMBuildStore(c->llvm_builder, memory, slice);
         LLVMBuildStore(
             c->llvm_builder,
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), n->type.spec.array.count, true),
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), auto_cast->from.spec.array.count, true),
             LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
 
-        n->type = n_type_save;
+        n->type = auto_cast->to;
         compile_type(c, &n->type);
 
         if (ref) {
@@ -3485,6 +3473,54 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     default:
         unreachable();
     }
+}
+
+static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
+    if (!n) {
+        return NULL;
+    }
+
+    if (!n->auto_casts) {
+        return compile_expr_impl(c, n, ref);
+    }
+
+    if (n->auto_casts_count == 1) {
+        n->type = n->auto_casts[0].from;
+    } else {
+        assert(n->type.kind == TYPE_GROUP);
+        Type_Group *spec = &n->type.spec.group;
+        for (size_t i = 0; i < spec->count; i++) {
+            Auto_Cast *it = &n->auto_casts[i];
+            if (it->kind != AUTO_CAST_NONE) {
+                spec->data[i] = n->auto_casts[i].from;
+            }
+        }
+    }
+
+    const size_t group_values_start = c->group_values.count;
+    const Type   n_type_save = n->type;
+
+    LLVMValueRef result = compile_expr_impl(c, n, false);
+    if (n->type.kind == TYPE_GROUP) {
+        for (size_t i = group_values_start; i < c->group_values.count; i++) {
+            Auto_Cast *it = &n->auto_casts[i - group_values_start];
+            if (it->kind != AUTO_CAST_NONE) {
+                c->group_values.data[i] = compile_auto_cast(c, n, c->group_values.data[i], it, ref);
+                n->type = n_type_save;
+            }
+        }
+
+        Type_Group *spec = &n->type.spec.group;
+        for (size_t i = 0; i < spec->count; i++) {
+            Auto_Cast *it = &n->auto_casts[i];
+            if (it->kind != AUTO_CAST_NONE) {
+                spec->data[i] = n->auto_casts[i].to;
+            }
+        }
+    } else {
+        result = compile_auto_cast(c, n, result, &n->auto_casts[0], ref);
+    }
+    return result;
 }
 
 static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost) {

@@ -351,11 +351,21 @@ typedef enum {
 } Node_Kind;
 
 typedef enum {
+    AUTO_CAST_NONE,
     AUTO_CAST_TO_ANY,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
     COUNT_AUTO_CASTS
 } Auto_Cast_Kind;
+
+typedef struct {
+    Auto_Cast_Kind kind;
+
+    Type from;
+    Type to;
+
+    size_t data; // For unions
+} Auto_Cast;
 
 struct Node {
     Node_Kind kind;
@@ -367,9 +377,9 @@ struct Node {
 
     Type *emit_type_info;
 
-    Type          *auto_cast_from;
-    Auto_Cast_Kind auto_cast_kind;
-    size_t         auto_cast_data;
+    Auto_Cast *auto_casts;
+    size_t     auto_casts_count;
+    Type      *auto_casts_group;
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
