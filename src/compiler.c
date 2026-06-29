@@ -4058,22 +4058,10 @@ void compiler_build(Compiler *c, const char *output_path) {
         0);
 
     compile_type(c, &c->type_info_type);
-    for (Module *m = c->modules->head; m; m = m->next) {
-        ht_foreach(g, &m->globals) {
-            Node_Atom *it = *g.value;
-            if (it->definition_spec->llvm) {
-                continue;
-            }
 
-            if (it->definition_spec->is_const) {
-                if (it->definition_spec->const_value.kind == CONST_VALUE_FN) {
-                    compile_fn(c, it->definition_spec->const_value.as.fn);
-                }
-            } else {
-                compile_var_def(c, it);
-            }
-        }
-    }
+    const Const_Value main = get_const_definition_value(c, c->builtin_module, sv_from_cstr("main"), NULL);
+    assert(main.kind == CONST_VALUE_FN);
+    compile_fn(c, main.as.fn);
 
     LLVMPassBuilderOptionsRef pass_builder_options = LLVMCreatePassBuilderOptions();
     LLVMRunPasses(c->llvm_module, "always-inline", c->llvm_target_machine, pass_builder_options);
