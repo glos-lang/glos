@@ -4,11 +4,9 @@
 #include <ctype.h>
 #include <errno.h>
 
-bool lexer_open(Lexer *l, const char *path, Arena *a) {
+bool lexer_open(Lexer *l, const char *path) {
     memset(l, 0, sizeof(*l));
-
-    l->arena = a;
-    if (!read_file_into_arena(path, &l->sv, l->arena)) {
+    if (!read_file(path, &l->sv, &default_arena)) {
         return false;
     }
 
@@ -179,7 +177,7 @@ static char next_char_with_parsed_escape(Lexer *l, const char *label) {
 }
 
 Token lexer_get_string(Lexer *l, Pos pos) {
-    const size_t arena_sb_count_save = l->arena->sb.count;
+    const size_t default_sb_count_save = default_sb.count;
 
     Token token = {.kind = TOKEN_STRING, .pos = pos};
     while (l->sv.count) {
@@ -192,7 +190,7 @@ Token lexer_get_string(Lexer *l, Pos pos) {
             token.kind = TOKEN_ISTRING;
             break;
         }
-        sb_push(&l->arena->sb, next_char_with_parsed_escape(l, "string"));
+        sb_push(&default_sb, next_char_with_parsed_escape(l, "string"));
     }
 
     if (!l->sv.count) {
@@ -200,9 +198,9 @@ Token lexer_get_string(Lexer *l, Pos pos) {
     }
     next_char(l);
 
-    token.sv.count = l->arena->sb.count - arena_sb_count_save;
-    token.sv.data = arena_clone(l->arena, l->arena->sb.data + arena_sb_count_save, token.sv.count);
-    l->arena->sb.count = arena_sb_count_save;
+    token.sv.count = default_sb.count - default_sb_count_save;
+    token.sv.data = arena_clone(&default_arena, default_sb.data + default_sb_count_save, token.sv.count);
+    default_sb.count = default_sb_count_save;
     return token;
 }
 
@@ -231,12 +229,12 @@ Token lexer_iter(Lexer *l) {
             error_invalid(l->pos, l->sv, "digit");
         }
 
-        char *buffer = temp_sv_to_cstr(token.sv);
+        char *buffer = arena_sv_to_cstr(&temp_arena, token.sv);
         memcpy(buffer, token.sv.data, token.sv.count);
 
         errno = 0;
-        token.as.integer = strtol(buffer, NULL, 10);
-        temp_reset(buffer);
+        token.as.integer = strtoul(buffer, NULL, 10);
+        arena_reset(&temp_arena, buffer);
 
         if (!errno) {
             return token;
@@ -363,8 +361,6 @@ Token lexer_iter(Lexer *l) {
         token.kind = TOKEN_ADD;
         if (match_char(l, '=')) {
             token.kind = TOKEN_ADD_SET;
-        } else if (match_char(l, '+')) {
-            token.kind = TOKEN_ADD_ADD;
         }
         break;
 
@@ -374,8 +370,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_ARROW;
         } else if (match_char(l, '=')) {
             token.kind = TOKEN_SUB_SET;
-        } else if (match_char(l, '-')) {
-            token.kind = TOKEN_SUB_SUB;
         }
         break;
 
@@ -402,14 +396,18 @@ Token lexer_iter(Lexer *l) {
 
     case '|':
         token.kind = TOKEN_BOR;
-        if (match_char(l, '=')) {
+        if (match_char(l, '|')) {
+            token.kind = TOKEN_LOR;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_BOR_SET;
         }
         break;
 
     case '&':
         token.kind = TOKEN_BAND;
-        if (match_char(l, '=')) {
+        if (match_char(l, '&')) {
+            token.kind = TOKEN_LAND;
+        } else if (match_char(l, '=')) {
             token.kind = TOKEN_BAND_SET;
         }
         break;

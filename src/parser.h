@@ -25,8 +25,7 @@ typedef struct {
 } Parser_State;
 
 typedef struct {
-    Arena *arena;
-    Paths  paths;
+    Paths paths;
 
     SV cwd;
     SV std;

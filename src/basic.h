@@ -20,6 +20,7 @@
 #define OBJ_FILE_EXTENSION ".obj"
 #define EXE_FILE_EXTENSION ".exe"
 #else
+#include <sys/mman.h>
 #include <unistd.h>
 
 #define OBJ_FILE_EXTENSION ".o"
@@ -37,6 +38,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Usage:
+//
+// ```
+// #include "basic.h"
+//
+// int main(int argc, char **argv) {
+//     atexit(basic_atexit);
+// }
+// ```
+void basic_atexit(void);
 
 // AAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 //
@@ -84,7 +96,7 @@ static_assert(sizeof(u64) == 8, "");
 #define ll_foreach2(a, b, ll1, ll2)                                                                                    \
     for (__typeof__((ll1)->head) a = (ll1)->head, b = (ll2)->head; a && b; a = a->next, b = b->next)
 
-#define add_trailing_s_if_plural(s, n) ((n) == 1 ? (s) : temp_sprintf("%ss", (s)))
+#define add_trailing_s_if_plural(s, n) ((n) == 1 ? (s) : arena_sprintf(&temp_arena, "%ss", (s)))
 
 // Dynamic Array
 #define DA_INIT_CAP 128
@@ -269,39 +281,35 @@ typedef DA(char) SB;
 #define sb_push_many da_push_many
 
 void sb_sprintf(SB *sb, const char *fmt, ...) Printf_Like(2);
+
+// These are implemented as functions instead of macros to avoid evaluating the argument twice
+void sb_push_sv(SB *sb, SV sv);
 void sb_push_cstr(SB *sb, const char *cstr);
 
-// Temporary Allocator
-void  temp_reset(const void *p);
-void *temp_alloc(size_t n);
-char *temp_sprintf(const char *fmt, ...) Printf_Like(1);
-char *temp_sv_to_cstr(SV sv);
-void  temp_remove_null(void);
-
-void *temp_clone(const void *data, size_t size);
+extern SB default_sb;
 
 // Arena Allocator
-typedef struct Arena_Region Arena_Region;
-
 typedef struct {
-    SB            sb;
-    Arena_Region *head;
+    char  *data;
+    size_t head;
+    size_t capacity;
 } Arena;
 
 void  arena_free(Arena *a);
-void *arena_alloc(Arena *a, size_t size);
 void  arena_reset(Arena *a, const void *ptr);
-char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
-char *arena_sv_to_cstr(Arena *a, SV sv);
-
+void *arena_alloc(Arena *a, size_t size);
 void *arena_clone(Arena *a, const void *data, size_t size);
 
-// FS
-bool read_fp(FILE *f, SV *out, SB *sb);
-bool read_fp_into_arena(FILE *f, SV *out, Arena *arena);
+char *arena_sprintf(Arena *a, const char *fmt, ...) Printf_Like(2);
+char *arena_sv_to_cstr(Arena *a, SV sv);
+char *arena_sb_to_cstr(Arena *a, SB *sb, size_t start);
 
-bool read_file(const char *path, SV *out, SB *sb);
-bool read_file_into_arena(const char *path, SV *out, Arena *arena);
+extern Arena temp_arena;
+extern Arena default_arena;
+
+// FS
+bool read_fp(FILE *f, SV *out, Arena *a);
+bool read_file(const char *path, SV *out, Arena *a);
 
 bool delete_file(const char *path);
 bool create_directory(const char *path);

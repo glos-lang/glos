@@ -62,7 +62,17 @@ wprint :: (f: C.File, vs: ...any) {
 
         case Type_Info_Character
             ch := *&char(data)
-            C.fprintf(f, "%c".data, ch)
+            if nested {
+                C.fprintf(f, "'".data)
+                if ch == '\'' {
+                    C.fprintf(f, "\\\'".data)
+                } else {
+                    C.fprintf(f, "%c".data, ch)
+                }
+                C.fprintf(f, "'".data)
+            } else {
+                C.fprintf(f, "%c".data, ch)
+            }
 
         case Type_Info_Integer
             if v.signed {
@@ -104,7 +114,7 @@ wprint :: (f: C.File, vs: ...any) {
             case 8; value = i64(*&i64(data))
             }
 
-            for i := 0; i < v.values.count; i++ {
+            for i := 0; i < v.values.count; i += 1 {
                 if v.values[i] == value {
                     name := v.names[i]
                     C.fprintf(f, "%.*s".data, i32(name.count), name.data)
@@ -112,7 +122,9 @@ wprint :: (f: C.File, vs: ...any) {
                 }
             }
 
-            C.fprintf(f, "(Invalid enum value: %ld)".data, value)
+            C.fprintf(f, "(Invalid enum value: ".data)
+            write(f, data, v.underlying, true)
+            C.fprintf(f, ")".data)
 
         case Type_Info_Union
             variant := *&i64(data)
@@ -124,7 +136,7 @@ wprint :: (f: C.File, vs: ...any) {
 
         case Type_Info_Structure
             C.fprintf(f, "{".data)
-            for i := 0; i < v.types.count; i++ {
+            for i := 0; i < v.types.count; i += 1 {
                 type   := v.types[i]
                 offset := v.offsets[i]
                 field  := data + rawptr(offset)
@@ -138,7 +150,7 @@ wprint :: (f: C.File, vs: ...any) {
 
         case Type_Info_Array
             C.fprintf(f, "{".data)
-            for i := 0; i < v.count; i++ {
+            for i := 0; i < v.count; i += 1 {
                 offset := i * v.underlying.size
                 item   := data + rawptr(offset)
 
@@ -155,7 +167,7 @@ wprint :: (f: C.File, vs: ...any) {
             data  := *&rawptr(data)
 
             C.fprintf(f, "{".data)
-            for i := 0; i < count; i++ {
+            for i := 0; i < count; i += 1 {
                 offset := i * v.underlying.size
                 item   := data + rawptr(offset)
 
@@ -171,7 +183,7 @@ wprint :: (f: C.File, vs: ...any) {
             s := *&string(data)
             if nested {
                 C.fprintf(f, "\"".data)
-                for i := 0; i < s.count; i++ {
+                for i := 0; i < s.count; i += 1 {
                     ch := s[i]
                     if ch == '"' {
                         C.fprintf(f, "\\\"".data)
@@ -189,17 +201,17 @@ wprint :: (f: C.File, vs: ...any) {
             if a == null {
                 C.fprintf(f, "null".data)
             } else {
-                write(f, a.data, a.case, nested)
+                write(f, a.data, a.type, nested)
             }
         }
     }
 
-    for i := 0; i < vs.count; i++ {
+    for i := 0; i < vs.count; i += 1 {
         v := vs[i]
         if v == null {
             C.fprintf(f, "null".data)
         } else {
-            write(f, v.data, v.case, false)
+            write(f, v.data, v.type, false)
         }
     }
 }

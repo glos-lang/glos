@@ -1,0 +1,8 @@
+a := 69
+b :: &a
+c := *b + 351
+
+main :: () {
+    println(*b)
+    println(c)
+}

@@ -4,4 +4,24 @@ main :: () {
 
     println(!true)
     println(!false)
+
+    println(foo(true)  && bar(true))
+    println(foo(true)  && bar(false))
+    println(foo(false) && bar(true))
+    println(foo(false) && bar(false))
+
+    println(foo(true)  || bar(true))
+    println(foo(true)  || bar(false))
+    println(foo(false) || bar(true))
+    println(foo(false) || bar(false))
+}
+
+foo :: (x: bool) -> bool {
+    println(69)
+    return x
+}
+
+bar :: (x: bool) -> bool {
+    println(420)
+    return x
 }

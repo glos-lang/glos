@@ -124,11 +124,11 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_BAND_SET:
         return "'&='";
 
-    case TOKEN_ADD_ADD:
-        return "'++'";
+    case TOKEN_LOR:
+        return "'||'";
 
-    case TOKEN_SUB_SUB:
-        return "'--'";
+    case TOKEN_LAND:
+        return "'&&'";
 
     case TOKEN_LNOT:
         return "'!'";

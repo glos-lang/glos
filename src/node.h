@@ -1,6 +1,7 @@
 #ifndef NODE_H
 #define NODE_H
 
+#include "int128.h"
 #include "token.h"
 #include <llvm-c/Types.h>
 
@@ -212,6 +213,7 @@ struct Type_Struct_Field {
     size_t offset;
 };
 
+void        sb_push_type(SB *sb, Type type);
 const char *type_to_cstr_raw(Type type);
 const char *type_to_cstr(Type type);
 
@@ -222,11 +224,13 @@ bool type_is_integer(Type type);
 bool type_is_pointer(Type type);
 bool type_is_scalar(Type type);
 bool type_is_signed(Type type);
+bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
 
 typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FN,
+    CONST_VALUE_VAR,
     CONST_VALUE_TYPE,
 
     CONST_VALUE_UNION,
@@ -267,9 +271,10 @@ typedef struct {
 struct Const_Value {
     Const_Value_Kind kind;
     union {
-        i64      integer;
-        Type     type;
-        Node_Fn *fn;
+        Int128     integer;
+        Type       type;
+        Node_Fn   *fn;
+        Node_Atom *var;
 
         Const_Value_Union  unionn;
         Const_Value_Struct structt;
@@ -282,9 +287,13 @@ struct Const_Value {
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 9, "");
-#define const_value_int(v)  ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+static_assert(COUNT_CONST_VALUES == 10, "");
+#define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
+#define const_value_i64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_i64(v)})
+#define const_value_u64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_u64(v)})
+
 #define const_value_fn(v)   ((Const_Value) {.kind = CONST_VALUE_FN, .as.fn = (v)})
+#define const_value_var(v)  ((Const_Value) {.kind = CONST_VALUE_VAR, .as.var = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
 #define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
@@ -342,11 +351,21 @@ typedef enum {
 } Node_Kind;
 
 typedef enum {
+    AUTO_CAST_NONE,
     AUTO_CAST_TO_ANY,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
     COUNT_AUTO_CASTS
 } Auto_Cast_Kind;
+
+typedef struct {
+    Auto_Cast_Kind kind;
+
+    Type from;
+    Type to;
+
+    size_t data; // For unions
+} Auto_Cast;
 
 struct Node {
     Node_Kind kind;
@@ -358,9 +377,9 @@ struct Node {
 
     Type *emit_type_info;
 
-    Type          *auto_cast_from;
-    Auto_Cast_Kind auto_cast_kind;
-    size_t         auto_cast_data;
+    Auto_Cast *auto_casts;
+    size_t     auto_casts_count;
+    Type      *auto_casts_group;
 };
 
 Node *node_alloc(Arena *a, Node_Kind kind, Token token);
@@ -434,9 +453,9 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *value;
-    bool  is_postfix; // For '++' and '--'
 
     Node_Fn *overload;
+    Module  *module;
 } Node_Unary;
 
 typedef struct {
@@ -446,6 +465,7 @@ typedef struct {
 
     Node_Fn  *overload;
     Node_Fn **overloads;
+    Module   *module;
 
     Node *any_check;
     Type *any_check_type;
@@ -476,6 +496,8 @@ typedef struct {
     LLVMValueRef method_receiver_llvm;
 
     bool is_enum;
+
+    Module *module;
 } Node_Member;
 
 typedef struct {
@@ -620,6 +642,7 @@ typedef enum {
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
     TYPE_CAST_TO_UNION,
+    TYPE_CAST_TO_ANY,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 
@@ -659,6 +682,7 @@ typedef struct {
     bool  is_assign;
 
     Node_Fn *overload;
+    Module  *module;
 } Node_Index;
 
 // This represents a type

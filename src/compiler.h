@@ -7,13 +7,7 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
-typedef struct {
-    const char **data;
-    size_t       count;
-    size_t       capacity;
-
-    Arena *arena;
-} Link_Flags;
+typedef DA(const char *) Link_Flags;
 
 void link_flags_add_libpath(Link_Flags *ls, SV path);
 void link_flags_add_libname(Link_Flags *ls, SV name);
@@ -41,7 +35,6 @@ typedef struct {
     Type comparison_type;
 
     // These are used both by the analyzer and the compiler
-    Arena  *arena;
     Context context;
 
     Parser  *parser;

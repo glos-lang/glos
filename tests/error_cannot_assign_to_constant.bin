@@ -1,6 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 100
+STDERR 186
 tests/error_cannot_assign_to_constant.glos:3:5: ERROR: Cannot assign to compile time constant value
+tests/error_cannot_assign_to_constant.glos:2:5: NOTE: Here is the constant being used
 

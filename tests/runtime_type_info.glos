@@ -89,15 +89,16 @@ write_type :: (ti: &Type_Info) {
         #static depth: i64
         #static tm: [1024]&Type_Info
         #static tm_count: i64
-        for i := 0; i < tm_count; i++ {
+        for i := 0; i < tm_count; i += 1 {
             if tm[i] == ti {
                 write_string("<Recursive>")
                 return
             }
         }
 
-        tm[tm_count++] = ti
-        defer tm_count--
+        tm[tm_count] = ti
+        tm_count += 1
+        defer tm_count -= 1
 
         variant := ti.variant
         if variant == {
@@ -125,7 +126,7 @@ write_type :: (ti: &Type_Info) {
 
         case Type_Info_Function
             write_string("(")
-            for i := 0; i < variant.args.count; i++ {
+            for i := 0; i < variant.args.count; i += 1 {
                 if i > 0 {
                     write_string(", ")
                 }
@@ -139,7 +140,7 @@ write_type :: (ti: &Type_Info) {
                     write_string("(")
                 }
 
-                for i := 0; i < variant.returns.count; i++ {
+                for i := 0; i < variant.returns.count; i += 1 {
                     if i > 0 {
                         write_string(", ")
                     }
@@ -157,15 +158,15 @@ write_type :: (ti: &Type_Info) {
             write_string(" {")
             if variant.names.count != 0 {
                 write_string("\n")
-                depth++
-                for i := 0; i < variant.names.count; i++ {
+                depth += 1
+                for i := 0; i < variant.names.count; i += 1 {
                     write_indent(depth)
                     write_string(variant.names[i])
                     write_string(" = ")
                     write_i64(variant.values[i])
                     write_string("\n")
                 }
-                depth--
+                depth -= 1
                 write_indent(depth)
             }
             write_string("}")
@@ -175,13 +176,13 @@ write_type :: (ti: &Type_Info) {
             write_string("union {")
             if variant.variants.count != 0 {
                 write_string("\n")
-                depth++
-                for i := 0; i < variant.variants.count; i++ {
+                depth += 1
+                for i := 0; i < variant.variants.count; i += 1 {
                     write_indent(depth)
                     write_type(variant.variants[i])
                     write_string("\n")
                 }
-                depth--
+                depth -= 1
                 write_indent(depth)
             }
             write_string("}")
@@ -190,8 +191,8 @@ write_type :: (ti: &Type_Info) {
             write_string("struct {")
             if variant.names.count != 0 {
                 write_string("\n")
-                depth++
-                for i := 0; i < variant.names.count; i++ {
+                depth += 1
+                for i := 0; i < variant.names.count; i += 1 {
                     write_indent(depth)
                     write_string(variant.names[i])
                     write_string(": ")
@@ -200,7 +201,7 @@ write_type :: (ti: &Type_Info) {
                     write_i64(variant.offsets[i])
                     write_string("\n")
                 }
-                depth--
+                depth -= 1
                 write_indent(depth)
             }
             write_string("}")
