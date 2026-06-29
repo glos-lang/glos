@@ -782,7 +782,6 @@ typedef enum {
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref);
 static void check_stmt(Compiler *c, Node *n);
 
-// TODO: Should this be moved back into 'compiler.c'?
 static Node_Fn *get_main(Compiler *c) {
     if (c->main_fn) {
         return c->main_fn;
@@ -974,12 +973,12 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
 }
 
 static Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
-    if (var->definition_spec->assignment_node) {
-        return var->definition_spec->const_value;
+    if (!var->definition_spec->is_const_value_evaluated) {
+        var->definition_spec->const_value = default_const_value(c, var->node.type);
+        var->definition_spec->is_const_value_evaluated = true;
     }
 
-    // TODO: Should this be cached?
-    return default_const_value(c, var->node.type);
+    return var->definition_spec->const_value;
 }
 
 static inline i64 i64_from_int128(Node *n, Int128 x, bool min_zero, const char *label) {
