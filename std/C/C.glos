@@ -3,6 +3,7 @@ File :: distinct rawptr
 extern {
     printf :: (fmt: &char, ...) -> i32
     fprintf :: (f: File, fmt: &char, ...) -> i32
+    fwrite :: (ptr: rawptr, size: i64, count: i64, f: File)
     fflush :: (f: File)
     abort :: ()
     exit :: (code: i32)

@@ -15,6 +15,7 @@ typedef struct Node_Define Node_Define;
 
 typedef struct Node_Fn     Node_Fn;
 typedef struct Node_Enum   Node_Enum;
+typedef struct Node_Trait  Node_Trait;
 typedef struct Node_Union  Node_Union;
 typedef struct Node_Struct Node_Struct;
 
@@ -70,6 +71,7 @@ typedef enum {
 
     TYPE_FN,
     TYPE_ENUM,
+    TYPE_TRAIT,
     TYPE_UNION,
     TYPE_STRUCT,
 
@@ -88,6 +90,8 @@ typedef enum {
 
 typedef struct Type               Type;
 typedef struct Type_Fn_Arg        Type_Fn_Arg;
+typedef struct Type_Trait_Impl    Type_Trait_Impl;
+typedef struct Type_Trait_Method  Type_Trait_Method;
 typedef struct Type_Union_Variant Type_Union_Variant;
 typedef struct Type_Struct_Field  Type_Struct_Field;
 
@@ -116,6 +120,17 @@ typedef struct {
     Type_Kind  underlying;
     Node_Enum *definition;
 } Type_Enum;
+
+typedef struct {
+    Type_Trait_Method *methods;
+    size_t             methods_count;
+
+    struct {
+        Type_Trait_Impl *head; // Who cares about direction...
+    } impls;
+
+    Node_Trait *definition;
+} Type_Trait;
 
 typedef struct {
     Type_Union_Variant *variants;
@@ -171,6 +186,7 @@ struct Type {
     union {
         Type_Fn     *fn;
         Type_Enum    enumm;
+        Type_Trait  *trait;
         Type_Union  *unionn;
         Type_Struct *structt;
 
@@ -197,6 +213,21 @@ struct Type_Fn_Arg {
     bool         default_value_is_caller_location;
 
     bool has_default_value;
+};
+
+struct Type_Trait_Impl {
+    Type      type;
+    Node_Fn **methods;
+    size_t    methods_count;
+
+    LLVMValueRef     llvm;
+    Type_Trait_Impl *next;
+};
+
+struct Type_Trait_Method {
+    Pos  pos;
+    SV   name;
+    Type type;
 };
 
 struct Type_Union_Variant {
@@ -326,6 +357,7 @@ typedef enum {
 
     NODE_FN,
     NODE_ENUM,
+    NODE_TRAIT,
     NODE_UNION,
     NODE_STRUCT,
     NODE_COMPOUND,
@@ -353,6 +385,7 @@ typedef enum {
 typedef enum {
     AUTO_CAST_NONE,
     AUTO_CAST_TO_ANY,
+    AUTO_CAST_TO_TRAIT,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
     COUNT_AUTO_CASTS
@@ -364,7 +397,10 @@ typedef struct {
     Type from;
     Type to;
 
-    size_t data; // For unions
+    union {
+        size_t           union_index;
+        Type_Trait_Impl *trait_impl;
+    };
 } Auto_Cast;
 
 struct Node {
@@ -380,9 +416,11 @@ struct Node {
     Auto_Cast *auto_casts;
     size_t     auto_casts_count;
     Type      *auto_casts_group;
+
+    Module *module;
 };
 
-Node *node_alloc(Arena *a, Node_Kind kind, Token token);
+Node *node_alloc(Module *module, Node_Kind kind, Token token);
 Node *node_iter(Node *it, Node *ll);
 
 // When the concrete type of an abstract value is resolved inside conditional statements
@@ -484,6 +522,7 @@ typedef struct {
     union {
         size_t field_index;
         size_t enum_value;
+        size_t trait_method;
         size_t union_index;
     };
 
@@ -496,6 +535,7 @@ typedef struct {
     LLVMValueRef method_receiver_llvm;
 
     bool is_enum;
+    bool is_trait;
 
     Module *module;
 } Node_Member;
@@ -546,6 +586,11 @@ struct Node_Fn {
     bool is_inline;
     bool is_method;
 
+    // Foo :: trait {
+    //     foo: () // <- This function is a trait method type
+    // }
+    Type *trait_method_type;
+
     // compare :: (this: $T, that: T) -> bool // Partial, only implements equality
     // compare :: (this: $T, that: T) -> i32  // Complete, implements equality AND ordering
     bool is_compare_operator_complete;
@@ -585,6 +630,21 @@ struct Node_Enum {
 
     LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
+};
+
+// This represents a type
+struct Node_Trait {
+    Node   node;
+    Nodes  methods;
+    size_t methods_count; // Calculated at parse time
+
+    Node_Atom *defined_as;
+    size_t     defined_as_anon_iota;
+
+    // The module this was parsed in
+    Module *module;
+
+    Node_Fn *defined_in;
 };
 
 // This represents a type
@@ -788,3 +848,5 @@ void node_debug(FILE *f, Node *n);
 void nodes_debug(FILE *f, Nodes ns);
 
 #endif // NODE_H
+
+// Remove the individual `module` fields present in specific node types

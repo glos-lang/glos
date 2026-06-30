@@ -99,7 +99,7 @@ static void check_that_type_is_known(const Node *n) {
     }
 }
 
-static_assert(COUNT_TYPES == 25, "");
+static_assert(COUNT_TYPES == 26, "");
 static void check_int_limit_ex(Node *n, Int128 value, bool min_zero, const char *label) {
     const Type_Kind type_kind = type_kind_eq(n->type, TYPE_ENUM) ? n->type.spec.enumm.underlying : n->type.kind;
 
@@ -199,7 +199,7 @@ static void set_auto_cast(Node *n, i64 index, Auto_Cast_Kind kind, Type from, Ty
     it->from = from;
     it->to = to;
     if (kind == AUTO_CAST_TO_UNION) {
-        it->data = get_union_type_index(n, to);
+        it->union_index = get_union_type_index(n, to);
     }
 
     if (index == -1) {
@@ -215,11 +215,11 @@ static void set_auto_cast(Node *n, i64 index, Auto_Cast_Kind kind, Type from, Ty
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -380,6 +380,8 @@ static bool try_auto_cast_literal(Node *n, Type expected) {
     return false;
 }
 
+static Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type type, Type_Trait *trait, Node *n, i64 group_index);
+
 // Set 'group_index' to -1 for no group
 static bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
     // Literals cannot be part of a group
@@ -418,6 +420,14 @@ static bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) 
     if (type_eq(expected, (Type) {.kind = TYPE_ANY}) && !type_is_unknown(actual)) {
         finalize_untyped_type(c, n);
         set_auto_cast(n, group_index, AUTO_CAST_TO_ANY, actual, expected);
+        return true;
+    }
+
+    if (type_kind_eq(expected, TYPE_TRAIT) && !expected.ref && !type_is_unknown(actual)) {
+        finalize_untyped_type(c, n);
+        Type_Trait_Impl *impl = check_type_satisfies_trait(c, actual, expected.spec.trait, n, group_index);
+        set_auto_cast(n, group_index, AUTO_CAST_TO_TRAIT, actual, expected);
+        n->auto_casts[group_index == -1 ? 0 : group_index].trait_impl = impl;
         return true;
     }
 
@@ -581,7 +591,7 @@ static Type type_assert_type(const Node *n) {
 }
 
 static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 25, "");
+    static_assert(COUNT_TYPES == 26, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -615,7 +625,7 @@ static bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static bool loop_breaks(Node *n) {
     if (!n) {
         return false;
@@ -678,7 +688,7 @@ static bool is_atom_false(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_BOOL && !n->token.as.integer;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static bool always_returns(Node *n) {
     if (!n) {
         return false;
@@ -829,7 +839,7 @@ static Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_TYPES == 25, "");
+static_assert(COUNT_TYPES == 26, "");
 static Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -854,6 +864,9 @@ static Const_Value default_const_value(Compiler *c, Type type) {
     case TYPE_FN:
     case TYPE_ENUM:
         return const_value_u64(0);
+
+    case TYPE_TRAIT:
+        todo(); // TODO(@trait)
 
     case TYPE_UNION:
         return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
@@ -987,7 +1000,7 @@ static inline i64 i64_from_int128(Node *n, Int128 x, bool min_zero, const char *
 }
 
 // Is this valid for signedness?
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1011,7 +1024,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     case NODE_ATOM: {
         Node_Atom *atom = (Node_Atom *) n;
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_INT:
         case TOKEN_BOOL:
@@ -1083,7 +1096,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
         Const_Value value = {0};
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             value = eval_const_expr(c, unary->value, false);
@@ -1150,7 +1163,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         {
             typedef Int128 (*Int_Op)(Int128 lhs, Int128 rhs, bool is_signed);
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 77, "");
             static const Int_Op ops[COUNT_TOKENS] = {
                 [TOKEN_ADD] = int128_add,
                 [TOKEN_SUB] = int128_sub,
@@ -1182,7 +1195,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         {
             typedef bool (*Int_Op)(Int128 lhs, Int128 rhs, bool is_signed);
 
-            static_assert(COUNT_TOKENS == 76, "");
+            static_assert(COUNT_TOKENS == 77, "");
             static const Int_Op ops[COUNT_TOKENS] = {
                 [TOKEN_GT] = int128_gt,
                 [TOKEN_GE] = int128_ge,
@@ -1198,7 +1211,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
             }
         }
 
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_LOR:
             lhs = eval_const_expr(c, binary->lhs, false);
@@ -1365,6 +1378,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     }
 
     case NODE_ENUM:
+    case NODE_TRAIT:
     case NODE_UNION:
     case NODE_STRUCT:
         return const_value_type(n->type);
@@ -1614,14 +1628,18 @@ static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     if (n->auto_casts) {
         n->type = n_type_save;
 
-        static_assert(COUNT_AUTO_CASTS == 4, "");
+        static_assert(COUNT_AUTO_CASTS == 5, "");
         switch (n->auto_casts->kind) {
         case AUTO_CAST_TO_ANY:
             result = const_value_to_any(&n->auto_casts->from, result);
             break;
 
+        case AUTO_CAST_TO_TRAIT:
+            todo(); // TODO(@trait)
+            break;
+
         case AUTO_CAST_TO_UNION:
-            result = const_value_to_union(n->type, n->auto_casts->data, result);
+            result = const_value_to_union(n->type, n->auto_casts->union_index, result);
             break;
 
         case AUTO_CAST_ARRAY_TO_SLICE:
@@ -1847,7 +1865,7 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     c->context.replace = replace;
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_DEFINE: {
@@ -2490,6 +2508,178 @@ static Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
     return method;
 }
 
+static Type_Trait_Impl *
+check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *n, i64 group_index) //
+{
+    Type receiver_with_ref_plus_one = receiver;
+    receiver_with_ref_plus_one.ref++;
+
+    Type receiver_with_ref_zero = receiver;
+    receiver_with_ref_zero.ref = 0;
+
+    ll_foreach(it, &trait->impls) {
+        if (type_eq(it->type, receiver_with_ref_zero)) {
+            return it;
+        }
+    }
+
+    const Type expected = {.kind = TYPE_TRAIT, .spec.trait = trait};
+
+    Type_Trait_Impl impl = {0};
+    impl.type = receiver_with_ref_zero;
+    impl.methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*impl.methods));
+    impl.methods_count = trait->methods_count;
+
+    typedef enum {
+        OK,
+        UNDEFINED,
+        WRONG_RECEIVER,
+        WRONG_SIGNATURE,
+    } Error_Kind;
+
+    typedef struct {
+        Error_Kind kind;
+        Node_Fn   *fn;
+    } Error;
+
+    Error *errors = arena_alloc(&temp_arena, trait->methods_count * sizeof(*errors));
+    {
+        for (size_t i = 0; i < trait->methods_count; i++) {
+            const Type_Trait_Method *it = &trait->methods[i];
+
+            Method_Spec spec = {0};
+            if (!get_method_spec(c, receiver, it->name, &spec, NULL, NULL)) {
+                errors[i] = (Error) {.kind = UNDEFINED};
+                goto next;
+            }
+
+            Node_Fn *fn = get_method(c, spec, n->module);
+            if (!fn) {
+                errors[i] = (Error) {.kind = UNDEFINED};
+                goto next;
+            }
+
+            assert(it->type.kind == TYPE_FN);
+            const Type_Fn *expected_spec = it->type.spec.fn;
+
+            assert(fn->node.type.kind == TYPE_FN);
+            const Type_Fn *actual_spec = fn->node.type.spec.fn;
+
+            if (!type_eq(actual_spec->args[0].type, receiver_with_ref_plus_one)) {
+                errors[i] = (Error) {.kind = WRONG_RECEIVER, .fn = fn};
+                goto next;
+            }
+
+            if (expected_spec->args_count != actual_spec->args_count) {
+                errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
+                goto next;
+            }
+
+            for (size_t i = 0; i < actual_spec->args_count; i++) {
+                if (i == 0) {
+                    continue;
+                }
+
+                if (!type_eq(actual_spec->args[i].type, expected_spec->args[i].type)) {
+                    errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
+                    goto next;
+                }
+            }
+
+            if (!type_eq(*actual_spec->return_type, *expected_spec->return_type)) {
+                errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
+                goto next;
+            }
+
+            impl.methods[i] = fn;
+
+        next:;
+        }
+
+        bool ok = true;
+        for (size_t i = 0; i < trait->methods_count; i++) {
+            const Error it = errors[i];
+            if (it.kind == OK) {
+                continue;
+            }
+
+            if (ok) {
+                ok = false;
+                if (group_index == -1) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Type %s does not implement %s\n",
+                        Pos_Arg(n->token.pos),
+                        type_to_cstr(receiver),
+                        type_to_cstr(expected));
+                } else {
+                    const char *postfix = order_postfix(group_index + 1);
+                    fprintf(
+                        stderr,
+                        Pos_Fmt
+                        "ERROR: The %zd%s value of this expression has type %s, which does not implement %s. The type of this entire expression is %s\n",
+                        Pos_Arg(n->token.pos),
+                        group_index + 1,
+                        postfix,
+                        type_to_cstr(receiver),
+                        type_to_cstr(expected),
+                        type_to_cstr(n->type));
+                }
+            }
+
+            switch (it.kind) {
+            case UNDEFINED:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The method '" SV_Fmt "' is not defined\n",
+                    Pos_Arg(trait->methods[i].pos),
+                    SV_Arg(trait->methods[i].name));
+                break;
+
+            case WRONG_RECEIVER:
+                // TODO(@trait): There should be a special case of this error, where if all the errors are wrong
+                // receiver types based on same reference level, to print a different error then. Ultimately this is
+                // what compiler development is all about: Printing better and specific error messages. This is what
+                // separates real compilers from toy interpreters.
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The method '" SV_Fmt "' should have receiver %s, not %s\n",
+                    Pos_Arg(it.fn->defined_as->node.token.pos),
+                    SV_Arg(it.fn->defined_as->node.token.sv),
+                    type_to_cstr(receiver_with_ref_plus_one),
+                    type_to_cstr(it.fn->node.type.spec.fn->args[0].type));
+
+                // TODO(@trait): Currently, the trait method needs to accept a higher reference level. This is a
+                // temporary solution. The final solution would be to pass the receiver via pointer under the hood
+                // always.
+                break;
+
+            case WRONG_SIGNATURE:
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The method '" SV_Fmt "' has wrong signature. Expected %s, got %s\n",
+                    Pos_Arg(it.fn->defined_as->node.token.pos),
+                    SV_Arg(it.fn->defined_as->node.token.sv),
+                    type_to_cstr(trait->methods[i].type),
+                    type_to_cstr(it.fn->node.type));
+                break;
+
+            case OK:
+                break;
+            }
+        }
+
+        if (!ok) {
+            exit(1);
+        }
+    }
+    arena_reset(&temp_arena, errors);
+
+    impl.next = trait->impls.head;
+    trait->impls.head = arena_clone(&default_arena, &impl, sizeof(impl));
+    return trait->impls.head;
+}
+
 static bool is_indexable(Compiler *c, Type type, Module *module) {
     if (type_kind_eq(type, TYPE_ARRAY) || type_kind_eq(type, TYPE_SLICE) || type_kind_eq(type, TYPE_STRING)) {
         return true;
@@ -2539,7 +2729,7 @@ static Node_Fn *get_operator_overload(Compiler *c, const char *operator, Node *r
     exit(1);
 }
 
-static_assert(COUNT_TOKENS == 76, "");
+static_assert(COUNT_TOKENS == 77, "");
 static const char *operator_method_name_from_token_kind(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -2709,7 +2899,7 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 
         if (call->fn->kind == NODE_MEMBER) {
             Node_Member *member = (Node_Member *) call->fn;
-            if (member->method && !member->lhs->type.is_meta) {
+            if ((member->method || member->is_trait) && !member->lhs->type.is_meta) {
                 assert(member->lhs);
 
                 is_method = true;
@@ -3065,7 +3255,9 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
 static void check_whether_member_access_is_valid(Node_Member *m) {
     if (m->rhs) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
-        if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ANY})) {
+        if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ANY}) &&
+            !type_eq(m->lhs->type, (Type) {.kind = TYPE_TRAIT})) //
+        {
             fprintf(
                 stderr,
                 Pos_Fmt "ERROR: Cannot access variant of %s\n",
@@ -3276,7 +3468,7 @@ static void check_compound_expr(Compiler *c, Node_Compound *compound) {
 
 static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 76, "");
+    static_assert(COUNT_TOKENS == 77, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -3449,7 +3641,7 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
 
 // The argument 'expected_type' is a hint in order to infer the types of implicit expressions. Checking against it is
 // NOT the responsibility of this function.
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -3458,7 +3650,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     bool is_ref_valid = false;
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = (Type) {.kind = TYPE_INT};
@@ -3543,7 +3735,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
-        static_assert(COUNT_TOKENS == 76, "");
+        static_assert(COUNT_TOKENS == 77, "");
         switch (n->token.kind) {
         case TOKEN_SUB:
             check_expr(c, unary->value, REF_NONE);
@@ -3712,6 +3904,28 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     member->is_enum = true;
                     n->type = member->lhs->type;
                     n->type.is_meta = false;
+                } else if (type_kind_eq(member->lhs->type, TYPE_TRAIT)) {
+                    check_whether_member_access_is_valid(member);
+
+                    Type_Trait *spec = member->lhs->type.spec.trait;
+                    if (member->rhs) {
+                        todo(); // TODO(@trait)
+                    } else {
+                        bool ok = false;
+                        for (size_t i = 0; i < spec->methods_count; i++) {
+                            const Type_Trait_Method *it = &spec->methods[i];
+                            if (sv_eq(n->token.sv, it->name)) {
+                                member->trait_method = i;
+                                member->is_trait = true;
+                                ok = true;
+                                n->type = it->type;
+                            }
+                        }
+
+                        if (!ok) {
+                            error_undefined(&n->token, "method", false);
+                        }
+                    }
                 } else if (type_kind_eq(member->lhs->type, TYPE_ANY)) {
                     check_whether_member_access_is_valid(member);
                     if (member->rhs) {
@@ -3934,9 +4148,27 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
         {
             Type_Fn *fn_spec = arena_alloc(&default_arena, sizeof(*fn_spec));
-            fn_spec->args = arena_alloc(&default_arena, fn->args_count * sizeof(*fn_spec->args));
+            fn_spec->args_count = fn->args_count;
             fn_spec->args_count_min = fn->args_count_min;
+            if (fn->trait_method_type) {
+                assert(fn->is_type);
+                fn_spec->args_count++;
+                fn_spec->args_count_min++;
+            }
+
+            fn_spec->args = arena_alloc(&default_arena, fn_spec->args_count * sizeof(*fn_spec->args));
             fn_spec->variadics_kind = fn->variadics_kind;
+
+            size_t iota = 0;
+            if (fn->trait_method_type) {
+                assert(fn->trait_method_type->kind == TYPE_TRAIT);
+
+                Type_Fn_Arg *it_arg = &fn_spec->args[iota++];
+                it_arg->name = sv_from_cstr("this");
+                it_arg->pos = fn->trait_method_type->spec.trait->definition->node.token.pos;
+                it_arg->type = *fn->trait_method_type;
+                it_arg->type.is_meta = false;
+            }
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {
                 assert(arg->kind == NODE_DEFINE);
@@ -3945,7 +4177,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 assert(define->name->kind == NODE_ATOM);
                 Node_Atom *it = (Node_Atom *) define->name;
                 if (!sv_match(it->node.token.sv, "_")) {
-                    for (size_t i = 0; i < fn_spec->args_count; i++) {
+                    for (size_t i = 0; i < iota; i++) {
                         Type_Fn_Arg previous = fn_spec->args[i];
                         if (sv_eq(previous.name, it->node.token.sv)) {
                             error_redefinition((Node *) it, &previous.pos);
@@ -3953,27 +4185,29 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     }
                 }
 
-                fn_spec->args[fn_spec->args_count].name = it->node.token.sv;
-                fn_spec->args[fn_spec->args_count].pos = it->node.token.pos;
+                Type_Fn_Arg *it_arg = &fn_spec->args[iota];
+                it_arg->name = it->node.token.sv;
+                it_arg->pos = it->node.token.pos;
 
                 check_stmt(c, arg);
                 if (define->has_spread) {
-                    fn_spec->variadics_index = fn_spec->args_count;
+                    fn_spec->variadics_index = iota;
                     it->node.type.kind = TYPE_SLICE;
                     it->node.type.spec.slice.element = &define->type->type;
                 }
 
                 if (define->expr) {
                     if (is_node_caller_location(define->expr)) {
-                        fn_spec->args[fn_spec->args_count].default_value_is_caller_location = true;
+                        it_arg->default_value_is_caller_location = true;
                     } else {
                         it->definition_spec->const_value = eval_const_expr(c, define->expr, false);
-                        fn_spec->args[fn_spec->args_count].default_value = &it->definition_spec->const_value;
+                        it_arg->default_value = &it->definition_spec->const_value;
                     }
-                    fn_spec->args[fn_spec->args_count].has_default_value = true;
+                    it_arg->has_default_value = true;
                 }
-                fn_spec->args[fn_spec->args_count].type = it->node.type;
-                fn_spec->args_count += define->count;
+                it_arg->type = it->node.type;
+
+                iota += define->count;
             }
 
             if (fn->returns.head) {
@@ -4223,6 +4457,54 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         }
 
         n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
+    } break;
+
+    case NODE_TRAIT: {
+        Node_Trait *trait = (Node_Trait *) n;
+
+        Type_Trait *spec = arena_alloc(&default_arena, sizeof(*spec));
+        spec->definition = trait;
+
+        n->type = (Type) {
+            .kind = TYPE_TRAIT,
+            .is_meta = true,
+            .spec.trait = spec,
+        };
+
+        // TODO(@trait): Should this be done this early?
+        if (trait->defined_as) {
+            trait->defined_as->node.type = n->type;
+            trait->defined_as->definition_spec->check_status = CHECKED;
+        }
+
+        spec->methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*spec->methods));
+        spec->methods_count = trait->methods_count;
+
+        size_t iota = 0;
+        ll_foreach(method, &trait->methods) {
+            assert(method->kind == NODE_DEFINE);
+            Node_Define *define = (Node_Define *) method;
+
+            assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+            Node_Atom *it = (Node_Atom *) define->name;
+            for (size_t i = 0; i < iota; i++) {
+                const Type_Trait_Method *previous = &spec->methods[i];
+                if (sv_eq(previous->name, it->node.token.sv)) {
+                    error_redefinition((const Node *) it, &previous->pos);
+                }
+            }
+
+            it->definition_spec->is_local = false;
+            check_definition(c, it, define->expr, define->type);
+            assert(type_kind_eq(define->type->type, TYPE_FN) && !define->type->type.ref);
+
+            Type_Trait_Method *tm = &spec->methods[iota++];
+            tm->pos = it->node.token.pos;
+            tm->name = it->node.token.sv;
+            tm->type = define->type->type;
+        }
+
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
     } break;
 
     case NODE_UNION: {
@@ -4769,7 +5051,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
-static_assert(COUNT_NODES == 27, "");
+static_assert(COUNT_NODES == 28, "");
 static void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -5103,9 +5385,9 @@ void check_nodes(Compiler *c) {
 
         assert(type_info_variant->kind == TYPE_UNION);
         c->type_info_variants_union = type_info_variant->spec.unionn;
-        assert(c->type_info_variants_union->variants_count == 12);
+        assert(c->type_info_variants_union->variants_count == 13);
 
-        static_assert(COUNT_TYPES == 25, "");
+        static_assert(COUNT_TYPES == 26, "");
         c->type_info_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
         c->type_info_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
 
@@ -5124,6 +5406,7 @@ void check_nodes(Compiler *c) {
 
         c->type_info_variants[TYPE_FN] = CONTRACT_TYPE_INFO_FUNCTION;
         c->type_info_variants[TYPE_ENUM] = CONTRACT_TYPE_INFO_ENUMERATION;
+        c->type_info_variants[TYPE_TRAIT] = CONTRACT_TYPE_INFO_TRAIT;
         c->type_info_variants[TYPE_UNION] = CONTRACT_TYPE_INFO_UNION;
         c->type_info_variants[TYPE_STRUCT] = CONTRACT_TYPE_INFO_STRUCTURE;
 
@@ -5233,3 +5516,4 @@ void check_nodes(Compiler *c) {
 }
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
+// TODO: Figure out a way to make methods accept the receiver as a pointer

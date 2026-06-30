@@ -126,6 +126,9 @@ wprint :: (f: C.File, vs: ...any) {
             write(f, data, v.underlying, true)
             C.fprintf(f, ")".data)
 
+        case Type_Info_Trait
+            todo() // TODO(@trait)
+
         case Type_Info_Union
             variant := *&i64(data)
             if variant == 0 {

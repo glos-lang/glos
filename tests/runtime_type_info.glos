@@ -222,7 +222,7 @@ write_type :: (ti: &Type_Info) {
         case Type_Info_Any
             write_string("any")
 
-        case null
+        case
             unreachable()
         }
     }
@@ -241,3 +241,5 @@ write_type :: (ti: &Type_Info) {
 
     C :: #import "C"
 }
+
+// TODO: Trait

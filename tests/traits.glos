@@ -1,0 +1,19 @@
+Writer :: trait {
+    write: (bytes: []char)
+}
+
+greet :: (w: Writer) {
+    w.write([]char("Hello, world!\n"))
+}
+
+File :: distinct C.File
+
+main :: () {
+    greet(File(C.stdout))
+}
+
+write :: (this: &File, bytes: []char) {
+    C.fwrite(rawptr(bytes.data), sizeof(char), bytes.count, C.File(*this))
+}
+
+C :: #import "C"
