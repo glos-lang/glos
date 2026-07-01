@@ -18,6 +18,11 @@ static bool node_is_null(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_NULL;
 }
 
+static Type type_without_ref(Type t) {
+    t.ref = 0;
+    return t;
+}
+
 static void error_undefined(const Token *t, const char *label, bool no_exit) {
     fprintf(stderr, Pos_Fmt "ERROR: Undefined %s '" SV_Fmt "'\n", Pos_Arg(t->pos), label, SV_Arg(t->sv));
     if (!no_exit) {
@@ -2511,11 +2516,9 @@ static Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
 static Type_Trait_Impl *
 check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *n, i64 group_index) //
 {
-    Type receiver_with_ref_zero = receiver;
-    receiver_with_ref_zero.ref = 0;
-
+    const Type receiver_without_ref = type_without_ref(receiver);
     ll_foreach(it, &trait->impls) {
-        if (type_eq(it->type, receiver_with_ref_zero)) {
+        if (type_eq(it->type, receiver_without_ref)) {
             return it;
         }
     }
@@ -2523,7 +2526,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
     const Type expected = {.kind = TYPE_TRAIT, .spec.trait = trait};
 
     Type_Trait_Impl impl = {0};
-    impl.type = receiver_with_ref_zero;
+    impl.type = receiver_without_ref;
     impl.methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*impl.methods));
     impl.methods_count = trait->methods_count;
 
@@ -2594,6 +2597,20 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
         }
 
         bool ok = true;
+        bool impl_for_other_type = false;
+        if (trait->methods_count && errors[0].kind == WRONG_RECEIVER) {
+            impl_for_other_type = true;
+            const Type receiver = errors[0].fn->node.type.spec.fn->args[0].type;
+            for (size_t i = 1; i < trait->methods_count; i++) {
+                if (errors[i].kind != WRONG_RECEIVER ||
+                    !type_eq(errors[i].fn->node.type.spec.fn->args[i].type, receiver)) //
+                {
+                    impl_for_other_type = false;
+                    break;
+                }
+            }
+        }
+
         for (size_t i = 0; i < trait->methods_count; i++) {
             const Error it = errors[i];
             if (it.kind == OK) {
@@ -2624,27 +2641,41 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                 }
             }
 
+            if (impl_for_other_type) {
+                const Type impl = it.fn->node.type.spec.fn->args[0].type;
+                fprintf(
+                    stderr,
+                    Pos_Fmt "NOTE: The trait is implemented for %s, not %s",
+                    Pos_Arg(n->token.pos),
+                    type_to_cstr(impl),
+                    type_to_cstr(receiver));
+
+                if (type_eq(type_without_ref(impl), type_without_ref(receiver))) {
+                    fprintf(stderr, ". Perhaps try %s?", impl.ref > receiver.ref ? "referencing" : "dereferencing");
+                }
+
+                fprintf(stderr, "\n");
+                exit(1);
+            }
+
             switch (it.kind) {
             case UNDEFINED:
                 fprintf(
                     stderr,
-                    Pos_Fmt "NOTE: The method '" SV_Fmt "' is not defined\n",
+                    Pos_Fmt "NOTE: The method '" SV_Fmt "' is not defined for type %s\n",
                     Pos_Arg(trait->methods[i].pos),
-                    SV_Arg(trait->methods[i].name));
+                    SV_Arg(trait->methods[i].name),
+                    type_to_cstr(expected));
                 break;
 
             case WRONG_RECEIVER:
-                // TODO(@trait): There should be a special case of this error, where if all the errors are wrong
-                // receiver types based on same reference level, to print a different error then. Ultimately this is
-                // what compiler development is all about: Printing better and specific error messages. This is what
-                // separates real compilers from toy interpreters.
                 fprintf(
                     stderr,
-                    Pos_Fmt "NOTE: The method '" SV_Fmt "' should have receiver %s, not %s\n",
+                    Pos_Fmt "NOTE: The method '" SV_Fmt "' has receiver %s, not %s\n",
                     Pos_Arg(it.fn->defined_as->node.token.pos),
                     SV_Arg(it.fn->defined_as->node.token.sv),
-                    type_to_cstr(receiver),
-                    type_to_cstr(it.fn->node.type.spec.fn->args[0].type));
+                    type_to_cstr(it.fn->node.type.spec.fn->args[0].type),
+                    type_to_cstr(receiver));
                 break;
 
             case WRONG_SIGNATURE:
