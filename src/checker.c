@@ -2511,9 +2511,6 @@ static Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
 static Type_Trait_Impl *
 check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *n, i64 group_index) //
 {
-    Type receiver_with_ref_plus_one = receiver;
-    receiver_with_ref_plus_one.ref++;
-
     Type receiver_with_ref_zero = receiver;
     receiver_with_ref_zero.ref = 0;
 
@@ -2565,7 +2562,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
             assert(fn->node.type.kind == TYPE_FN);
             const Type_Fn *actual_spec = fn->node.type.spec.fn;
 
-            if (!type_eq(actual_spec->args[0].type, receiver_with_ref_plus_one)) {
+            if (!type_eq(actual_spec->args[0].type, receiver)) {
                 errors[i] = (Error) {.kind = WRONG_RECEIVER, .fn = fn};
                 goto next;
             }
@@ -2591,7 +2588,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                 goto next;
             }
 
-            impl.methods[i] = fn;
+            impl.methods[i].fn = fn;
 
         next:;
         }
@@ -2646,12 +2643,8 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                     Pos_Fmt "NOTE: The method '" SV_Fmt "' should have receiver %s, not %s\n",
                     Pos_Arg(it.fn->defined_as->node.token.pos),
                     SV_Arg(it.fn->defined_as->node.token.sv),
-                    type_to_cstr(receiver_with_ref_plus_one),
+                    type_to_cstr(receiver),
                     type_to_cstr(it.fn->node.type.spec.fn->args[0].type));
-
-                // TODO(@trait): Currently, the trait method needs to accept a higher reference level. This is a
-                // temporary solution. The final solution would be to pass the receiver via pointer under the hood
-                // always.
                 break;
 
             case WRONG_SIGNATURE:
@@ -2675,6 +2668,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
     }
     arena_reset(&temp_arena, errors);
 
+    impl.trait = trait;
     impl.next = trait->impls.head;
     trait->impls.head = arena_clone(&default_arena, &impl, sizeof(impl));
     return trait->impls.head;
@@ -5516,4 +5510,3 @@ void check_nodes(Compiler *c) {
 }
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
-// TODO: Figure out a way to make methods accept the receiver as a pointer

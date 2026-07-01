@@ -912,6 +912,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 if (read_token(p, TOKEN_SPREAD)) {
+                    if (fn->is_method) {
+                        assert(p->state.ahead.kind == TOKEN_SPREAD);
+                        fprintf(
+                            stderr,
+                            Pos_Fmt "ERROR: Methods cannot have untyped variadics\n",
+                            Pos_Arg(p->state.ahead.pos));
+                        exit(1);
+                    }
+
                     fn->variadics_kind = VARIADICS_UNTYPED;
                     fn_args_end_pos = expect_token(p, TOKEN_RPAREN).pos;
                     break;

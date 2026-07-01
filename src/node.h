@@ -215,10 +215,17 @@ struct Type_Fn_Arg {
     bool has_default_value;
 };
 
+typedef struct {
+    Node_Fn     *fn;
+    LLVMValueRef wrapper;
+} Type_Trait_Impl_Method;
+
 struct Type_Trait_Impl {
-    Type      type;
-    Node_Fn **methods;
-    size_t    methods_count;
+    Type        type;
+    Type_Trait *trait;
+
+    Type_Trait_Impl_Method *methods;
+    size_t                  methods_count;
 
     LLVMValueRef     llvm;
     Type_Trait_Impl *next;
@@ -591,8 +598,12 @@ struct Node_Fn {
     // }
     Type *trait_method_type;
 
-    // compare :: (this: $T, that: T) -> bool // Partial, only implements equality
-    // compare :: (this: $T, that: T) -> i32  // Complete, implements equality AND ordering
+    // For generating wrappers of trait implementation methods
+    Node_Fn    *wrapper;
+    Type_Trait *wrapper_for_trait;
+
+    // compare :: (this: $T, that: T) -> bool       // Partial, only implements equality
+    // compare :: (this: $T, that: T) -> Comparison // Complete, implements equality AND ordering
     bool is_compare_operator_complete;
 
     Node_Fn *outer_fn;
