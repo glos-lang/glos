@@ -129,6 +129,8 @@ typedef struct {
         Type_Trait_Impl *head; // Who cares about direction...
     } impls;
 
+    LLVMMetadataRef debug;
+
     Node_Trait *definition;
 } Type_Trait;
 

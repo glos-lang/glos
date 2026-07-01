@@ -85,7 +85,6 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
     case TYPE_RAWPTR:
     case TYPE_FN:
     case TYPE_ANY:
-    case TYPE_TRAIT:
         type->llvm = LLVMPointerTypeInContext(c->llvm_context, 0);
         break;
 
@@ -153,15 +152,11 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
 
     case TYPE_SLICE:
     case TYPE_STRING:
-        if (!c->llvm_slice_type) {
-            LLVMTypeRef fields[] = {
-                LLVMPointerTypeInContext(c->llvm_context, 0),
-                LLVMInt64TypeInContext(c->llvm_context),
-            };
-            c->llvm_slice_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
-        }
-
         type->llvm = c->llvm_slice_type;
+        break;
+
+    case TYPE_TRAIT:
+        type->llvm = c->llvm_trait_type;
         break;
 
     case TYPE_GROUP: {
@@ -279,6 +274,7 @@ static bool type_is_compound(Type type) {
     }
 
     switch (type.kind) {
+    case TYPE_TRAIT:
     case TYPE_UNION:
     case TYPE_STRUCT:
     case TYPE_ARRAY:
@@ -378,7 +374,6 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     case TYPE_RAWPTR:
     case TYPE_FN:
     case TYPE_ANY:
-    case TYPE_TRAIT:
         info.direct_types[info.direct_types_count++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         return info;
 
@@ -769,6 +764,41 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         return definition->debug;
     }
 
+    case TYPE_TRAIT: {
+        compile_type(c, type);
+
+        Type_Trait *spec = type->spec.trait;
+        if (!spec->debug) {
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
+
+            SV name = {0};
+            {
+                Node_Atom *defined_as = spec->definition->defined_as;
+                if (defined_as) {
+                    const size_t start = default_sb.count;
+                    sb_push_nested_fn_name(c, &default_sb, spec->definition->defined_in, spec->definition->module);
+                    sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(defined_as->node.token.sv));
+                    name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
+                }
+            }
+
+            Builtin_Compound_Type_Field fields[3] = {0};
+            fields[0].name = sv_from_cstr("type");
+            fields[0].type = c->type_info_pointer_type;
+
+            fields[1].name = sv_from_cstr("data");
+            fields[1].type = (Type) {.kind = TYPE_RAWPTR};
+
+            fields[2].name = sv_from_cstr("impl");
+            fields[2].type = (Type) {.kind = TYPE_RAWPTR};
+
+            spec->debug = get_debug_for_builtin_compound_type(c, name, fields, len(fields));
+            arena_reset(&temp_arena, checkpoint);
+        }
+
+        return spec->debug;
+    }
+
     case TYPE_UNION: {
         compile_type(c, type);
 
@@ -1092,7 +1122,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     }
 
     case TYPE_ANY:
-    case TYPE_TRAIT:
         return LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, NULL, sizeof(void *), sizeof(void *), 0, "", 0);
 
     case TYPE_GROUP: {
@@ -2148,14 +2177,17 @@ static LLVMValueRef compile_cast_to_trait(Compiler *c, Type *type, Type_Trait_Im
     LLVMTypeRef fields[] = {
         LLVMPointerTypeInContext(c->llvm_context, 0),
         LLVMPointerTypeInContext(c->llvm_context, 0),
-        LLVMTypeOf(value),
+        LLVMPointerTypeInContext(c->llvm_context, 0),
     };
     LLVMTypeRef any_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
 
+    LLVMValueRef value_memory = compile_alloca(c, LLVMTypeOf(value));
+    LLVMBuildStore(c->llvm_builder, value, value_memory);
+
     LLVMValueRef any_memory = compile_alloca(c, any_type);
     LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), any_memory);
-    LLVMBuildStore(c->llvm_builder, impl->llvm, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
-    LLVMBuildStore(c->llvm_builder, value, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 2, ""));
+    LLVMBuildStore(c->llvm_builder, value_memory, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
+    LLVMBuildStore(c->llvm_builder, impl->llvm, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 2, ""));
     return any_memory;
 }
 
@@ -2395,12 +2427,21 @@ static LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool
     return result;
 }
 
-static LLVMValueRef
-compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref) //
+static LLVMValueRef compile_call(
+    Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool is_trait_call, bool ref) //
 {
     Call_Compiler call = {0};
     compile_call_begin(c, &call, fn, args_count);
     for (size_t i = 0; i < args_count; i++) {
+        if (i == 0 && is_trait_call) {
+            Type             rawptr = {.kind = TYPE_RAWPTR};
+            Typed_LLVM_Value receiver = {0};
+            receiver.type = &rawptr;
+            receiver.value = args[i].value;
+            compile_call_arg(c, &call, i, &receiver);
+            continue;
+        }
+
         compile_call_arg(c, &call, i, &args[i]);
     }
     return compile_call_finalize(c, &call, ref);
@@ -2494,7 +2535,7 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     args[1].type = &fn_spec->args[1].type;
 
     compile_optional_arguments(c, args, fn_spec, binary->node.token.pos);
-    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
+    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false, false);
 
     arena_reset(&temp_arena, checkpoint);
     return result;
@@ -2594,7 +2635,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 args[0].type = &fn_spec->args[0].type;
 
                 compile_optional_arguments(c, args, fn_spec, n->token.pos);
-                LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
+                LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false, false);
 
                 arena_reset(&temp_arena, checkpoint);
                 return result;
@@ -2973,45 +3014,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         LLVMValueRef lhs = NULL;
         LLVMTypeRef  lhs_type = NULL;
 
-        if (member->is_trait) {
-            lhs = compile_expr(c, member->lhs, false);
-            set_debug_pos(c, n->token.pos);
-
-            LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-            for (size_t i = 0; i < member->lhs->type.ref; i++) {
-                lhs = LLVMBuildLoad2(c->llvm_builder, ptr_type, lhs, "");
-            }
-
-            // Trait :: struct {
-            //     type: Type
-            //     impl: Impl
-            //     data: ...
-            // }
-
-            // TODO(@trait): Fow now, assume this is not NULL. Fix this later
-            LLVMValueRef impl_ptr_indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 1, true)};
-            LLVMValueRef impl_ptr = LLVMBuildLoad2(
-                c->llvm_builder,
-                ptr_type,
-                LLVMBuildGEP2(c->llvm_builder, ptr_type, lhs, impl_ptr_indices, len(impl_ptr_indices), ""),
-                "");
-
-            // TODO(@trait): Fow now, assume this is not NULL. Fix this later
-            LLVMValueRef value_ptr_indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 2, true)};
-            member->method_receiver_llvm =
-                LLVMBuildGEP2(c->llvm_builder, ptr_type, lhs, value_ptr_indices, len(value_ptr_indices), "");
-
-            // Impl :: []TraitMethod
-            LLVMValueRef impl_method_indices[] = {
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), member->trait_method, true)};
-
-            return LLVMBuildLoad2(
-                c->llvm_builder,
-                ptr_type,
-                LLVMBuildGEP2(c->llvm_builder, ptr_type, impl_ptr, impl_method_indices, len(impl_method_indices), ""),
-                "");
-        }
-
         if (member->lhs->type.ref) {
             lhs = compile_expr(c, member->lhs, false);
             set_debug_pos(c, n->token.pos);
@@ -3031,6 +3033,24 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             lhs = compile_expr(c, member->lhs, !member->method);
             lhs_type = member->lhs->type.llvm;
             set_debug_pos(c, n->token.pos);
+        }
+
+        if (member->is_trait) {
+            LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+            member->method_receiver_llvm = LLVMBuildLoad2(
+                c->llvm_builder, ptr_type, LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, ""), "");
+
+            LLVMValueRef impl = LLVMBuildLoad2(
+                c->llvm_builder, ptr_type, LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 2, ""), "");
+
+            LLVMValueRef indices[] = {
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), member->trait_method, true)};
+
+            return LLVMBuildLoad2(
+                c->llvm_builder,
+                ptr_type,
+                LLVMBuildGEP2(c->llvm_builder, ptr_type, impl, indices, len(indices), ""),
+                "");
         }
 
         if (member->method) {
@@ -3262,6 +3282,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         }
         Typed_LLVM_Value *args = arena_alloc(&temp_arena, args_count * sizeof(*args));
 
+        bool   is_trait_call = false;
         size_t args_iota = 0;
         if (call->fn->kind == NODE_MEMBER) {
             Node_Member *member = (Node_Member *) call->fn;
@@ -3273,6 +3294,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 args[args_iota].type = &fn_spec->args[0].type;
                 args_iota++;
             }
+            is_trait_call = member->is_trait;
         }
 
         LLVMTypeRef  variadics_type = NULL;
@@ -3363,7 +3385,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         compile_optional_arguments(c, args, fn_spec, call->fn->token.pos);
 
         const bool   is_group = n->type.kind == TYPE_GROUP;
-        LLVMValueRef result = compile_call(c, fn, args, args_count, ref || is_group);
+        LLVMValueRef result = compile_call(c, fn, args, args_count, is_trait_call, ref || is_group);
         if (is_group) {
             assert(!ref);
             compile_type(c, &n->type);
@@ -3418,11 +3440,11 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             compile_optional_arguments(c, args, fn_spec, n->token.pos);
             if (index->is_ranged) {
-                LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, ref);
+                LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, false, ref);
                 arena_reset(&temp_arena, checkpoint);
                 return value;
             } else {
-                LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false);
+                LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false, false);
                 arena_reset(&temp_arena, checkpoint);
                 if (ref) {
                     return ptr;
@@ -3662,7 +3684,11 @@ static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result,
         result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result);
         n->type = auto_cast->to;
         compile_type(c, &n->type);
-        return result;
+
+        if (ref) {
+            return result;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, result, "");
     }
 
     case AUTO_CAST_TO_UNION: {
@@ -4223,6 +4249,22 @@ static void compiler_init_llvm_target_data(Compiler *c) {
     c->llvm_target_machine = LLVMCreateTargetMachine(
         target, triple, "generic", "", LLVMCodeGenLevelDefault, LLVMRelocPIC, LLVMCodeModelDefault);
     c->llvm_target_data = LLVMCreateTargetDataLayout(c->llvm_target_machine);
+
+    // Initialize the common types
+    {
+        LLVMTypeRef slice_fields[] = {
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMInt64TypeInContext(c->llvm_context),
+        };
+        c->llvm_slice_type = LLVMStructTypeInContext(c->llvm_context, slice_fields, len(slice_fields), false);
+
+        LLVMTypeRef trait_fields[] = {
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+        };
+        c->llvm_trait_type = LLVMStructTypeInContext(c->llvm_context, trait_fields, len(trait_fields), false);
+    }
 
     free(triple);
 }
