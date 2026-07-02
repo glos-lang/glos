@@ -2578,12 +2578,12 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                     goto next;
                 }
 
-                for (size_t i = 0; i < actual_spec->args_count; i++) {
-                    if (i == 0) {
+                for (size_t j = 0; j < actual_spec->args_count; j++) {
+                    if (j == 0) {
                         continue;
                     }
 
-                    if (!type_eq(actual_spec->args[i].type, expected_spec->args[i].type)) {
+                    if (!type_eq(actual_spec->args[j].type, expected_spec->args[j].type)) {
                         errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
                         goto next;
                     }
@@ -2606,7 +2606,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                 const Type receiver = errors[0].fn->node.type.spec.fn->args[0].type;
                 for (size_t i = 1; i < trait->methods_count; i++) {
                     if (errors[i].kind != WRONG_RECEIVER ||
-                        !type_eq(errors[i].fn->node.type.spec.fn->args[i].type, receiver)) //
+                        !type_eq(errors[i].fn->node.type.spec.fn->args[0].type, receiver)) //
                     {
                         impl_for_other_type = false;
                         break;
