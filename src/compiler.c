@@ -2211,27 +2211,30 @@ static LLVMValueRef compile_cast_to_any(Compiler *c, Type *type, LLVMValueRef va
     return any_memory;
 }
 
-static LLVMValueRef compile_cast_to_trait(Compiler *c, Type *type, Type_Trait_Impl *impl, LLVMValueRef value) {
+static LLVMValueRef
+compile_cast_to_trait(Compiler *c, Type *type, Type_Trait_Impl *impl, LLVMValueRef value, bool ref) //
+{
     compile_trait_impl(c, impl);
-    LLVMTypeRef fields[] = {
-        LLVMPointerTypeInContext(c->llvm_context, 0),
-        LLVMPointerTypeInContext(c->llvm_context, 0),
-        LLVMPointerTypeInContext(c->llvm_context, 0),
-    };
-    LLVMTypeRef any_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
 
     LLVMValueRef value_memory = compile_alloca(c, LLVMTypeOf(value));
     LLVMBuildStore(c->llvm_builder, value, value_memory);
 
-    LLVMValueRef any_memory = compile_alloca(c, any_type);
-    LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), any_memory);
-    LLVMBuildStore(c->llvm_builder, value_memory, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
-    LLVMBuildStore(c->llvm_builder, impl->llvm, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 2, ""));
-    return any_memory;
+    LLVMValueRef trait_memory = compile_alloca(c, c->llvm_trait_type);
+    LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), trait_memory);
+    LLVMBuildStore(
+        c->llvm_builder, value_memory, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_trait_type, trait_memory, 1, ""));
+    LLVMBuildStore(
+        c->llvm_builder, impl->llvm, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_trait_type, trait_memory, 2, ""));
+
+    if (ref) {
+        return trait_memory;
+    }
+    return LLVMBuildLoad2(c->llvm_builder, c->llvm_trait_type, trait_memory, "");
 }
 
 static LLVMValueRef
-compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, LLVMValueRef from, bool ref) {
+compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, LLVMValueRef from, bool ref) //
+{
     LLVMValueRef memory = compile_alloca(c, union_type);
     LLVMBuildStore(c->llvm_builder, LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), union_index, true), memory);
 
@@ -3333,7 +3336,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             LLVMTypeRef  from_type = from->type.llvm;
 
             set_debug_pos(c, call->fn->token.pos);
-            static_assert(COUNT_TYPE_CASTS == 5, "");
+            static_assert(COUNT_TYPE_CASTS == 6, "");
             switch (call->type_cast) {
             case TYPE_CAST_NORMAL:
                 set_debug_pos(c, n->token.pos);
@@ -3342,6 +3345,9 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             case TYPE_CAST_TO_BOOL:
                 set_debug_pos(c, n->token.pos);
                 return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from_type), "");
+
+            case TYPE_CAST_TO_TRAIT:
+                return compile_cast_to_trait(c, &call->args.head->type, call->type_cast_trait_impl, from_value, ref);
 
             case TYPE_CAST_TO_UNION:
                 return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
@@ -3766,14 +3772,10 @@ static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result,
     }
 
     case AUTO_CAST_TO_TRAIT: {
-        result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result);
+        result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result, ref);
         n->type = auto_cast->to;
         compile_type(c, &n->type);
-
-        if (ref) {
-            return result;
-        }
-        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, result, "");
+        return result;
     }
 
     case AUTO_CAST_TO_UNION: {

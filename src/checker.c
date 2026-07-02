@@ -1514,7 +1514,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
             exit(1);
         }
 
-        static_assert(COUNT_TYPE_CASTS == 5, "");
+        static_assert(COUNT_TYPE_CASTS == 6, "");
         switch (call->type_cast) {
         case TYPE_CAST_NOP:
             return value;
@@ -1524,6 +1524,9 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
         case TYPE_CAST_TO_BOOL:
             return const_value_u64(!int128_is_zero(value.as.integer));
+
+        case TYPE_CAST_TO_TRAIT:
+            return const_value_to_trait(n, &call->args.head->type, call->type_cast_trait_impl, value);
 
         case TYPE_CAST_TO_UNION:
             return const_value_to_union(n->type, call->type_cast_union_index, value);
@@ -4871,11 +4874,14 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
             bool same = false;
             bool to_any = false;
+            bool to_trait = false;
             bool to_union = false;
             if (type_eq_without_distinct(*to_type, *from_type)) {
                 same = true;
             } else if (type_eq(*to_type, (Type) {.kind = TYPE_ANY})) {
                 to_any = true;
+            } else if (type_is_trait(*to_type)) {
+                to_trait = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
             } else if (type_is_scalar(*to_type)) {
@@ -4905,6 +4911,10 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             if (!same) {
                 if (to_any) {
                     // Pass
+                } else if (to_trait) {
+                    finalize_untyped_type(c, call->args.head);
+                    call->type_cast_trait_impl =
+                        check_type_satisfies_trait(c, *from_type, to_type->spec.trait, call->args.head, -1);
                 } else if (to_union) {
                     finalize_untyped_type(c, call->args.head);
                     call->type_cast_union_index = get_union_type_index(call->args.head, *to_type);
@@ -4958,6 +4968,8 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 call->type_cast = TYPE_CAST_TO_BOOL;
             } else if (to_any) {
                 call->type_cast = TYPE_CAST_TO_ANY;
+            } else if (to_trait) {
+                call->type_cast = TYPE_CAST_TO_TRAIT;
             } else if (to_union) {
                 call->type_cast = TYPE_CAST_TO_UNION;
             } else {

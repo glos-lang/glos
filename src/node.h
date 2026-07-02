@@ -726,6 +726,7 @@ typedef enum {
     TYPE_CAST_NOP,
     TYPE_CAST_NORMAL,
     TYPE_CAST_TO_BOOL,
+    TYPE_CAST_TO_TRAIT,
     TYPE_CAST_TO_UNION,
     TYPE_CAST_TO_ANY,
     COUNT_TYPE_CASTS,
@@ -753,7 +754,10 @@ typedef struct {
 
     bool      is_type_cast;
     Type_Cast type_cast;
-    size_t    type_cast_union_index;
+    union {
+        Type_Trait_Impl *type_cast_trait_impl;
+        size_t           type_cast_union_index;
+    };
 
     bool is_stmt;
 } Node_Call;
