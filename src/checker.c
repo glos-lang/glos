@@ -922,6 +922,17 @@ static Const_Value const_value_to_any(Type *type, Const_Value value) {
     return const_value_any(any);
 }
 
+// n    -> Final type (trait)
+// type -> Original type
+static Const_Value const_value_to_trait(Node *n, Type *type, Type_Trait_Impl *impl, Const_Value value) {
+    Const_Value_Trait trait = {0};
+    assert(n->type.kind == TYPE_TRAIT);
+    trait.impl = impl;
+    trait.data = arena_clone(&default_arena, &value, sizeof(value));
+    trait.type = type;
+    return const_value_trait(trait);
+}
+
 static Const_Value const_value_to_union(Type union_type, size_t union_index, Const_Value value) {
     Const_Value_Union unionn = {0};
     assert(union_type.kind == TYPE_UNION);
@@ -1265,8 +1276,12 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
             lhs = const_value_of_var(c, lhs.as.var);
         }
 
-        static_assert(COUNT_CONST_VALUES == 10, "");
+        static_assert(COUNT_CONST_VALUES == 11, "");
         switch (lhs.kind) {
+        case CONST_VALUE_TRAIT: {
+            todo(); // TODO(@trait)
+        }
+
         case CONST_VALUE_UNION:
             if (member->rhs) {
                 if (member->union_index != lhs.as.unionn.index) {
@@ -1481,7 +1496,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                 exit(1);
             }
 
-            static_assert(COUNT_CONST_VALUES == 10, "");
+            static_assert(COUNT_CONST_VALUES == 11, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 Const_Value_Array array = lhs.as.array;
@@ -1572,7 +1587,7 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         } else {
             const i64 at = i64_from_int128(index->a, eval_const_expr(c, index->a, false).as.integer, true, "index");
 
-            static_assert(COUNT_CONST_VALUES == 10, "");
+            static_assert(COUNT_CONST_VALUES == 11, "");
             switch (lhs.kind) {
             case CONST_VALUE_ARRAY: {
                 if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -1634,17 +1649,17 @@ static Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
         n->type = n_type_save;
 
         static_assert(COUNT_AUTO_CASTS == 5, "");
-        switch (n->auto_casts->kind) {
+        switch (n->auto_casts[0].kind) {
         case AUTO_CAST_TO_ANY:
-            result = const_value_to_any(&n->auto_casts->from, result);
+            result = const_value_to_any(&n->auto_casts[0].from, result);
             break;
 
         case AUTO_CAST_TO_TRAIT:
-            todo(); // TODO(@trait)
+            result = const_value_to_trait(n, &n->auto_casts[0].from, n->auto_casts[0].trait_impl, result);
             break;
 
         case AUTO_CAST_TO_UNION:
-            result = const_value_to_union(n->type, n->auto_casts->union_index, result);
+            result = const_value_to_union(n->type, n->auto_casts[0].union_index, result);
             break;
 
         case AUTO_CAST_ARRAY_TO_SLICE:
@@ -1726,7 +1741,7 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
                 fprintf(stderr, "%s", type_to_cstr(pred->type));
                 pred->type.is_meta = true;
             } else {
-                static_assert(COUNT_CONST_VALUES == 10, "");
+                static_assert(COUNT_CONST_VALUES == 11, "");
                 switch (value.kind) {
                 case CONST_VALUE_INT:
                     if (type_kind_eq(pred->type, TYPE_CHAR)) {
@@ -1837,8 +1852,12 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 10, "");
+        static_assert(COUNT_CONST_VALUES == 11, "");
         switch (value->kind) {
+        case CONST_VALUE_TRAIT: {
+            todo(); // TODO(@trait)
+        } break;
+
         case CONST_VALUE_UNION: {
             const Const_Value_Union unionn = value->as.unionn;
             if (unionn.index) {

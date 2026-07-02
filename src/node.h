@@ -273,6 +273,7 @@ typedef enum {
     CONST_VALUE_VAR,
     CONST_VALUE_TYPE,
 
+    CONST_VALUE_TRAIT,
     CONST_VALUE_UNION,
     CONST_VALUE_STRUCT,
 
@@ -283,6 +284,12 @@ typedef enum {
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
 } Const_Value_Kind;
+
+typedef struct {
+    Type            *type;
+    Const_Value     *data;
+    Type_Trait_Impl *impl;
+} Const_Value_Trait;
 
 typedef struct {
     Type_Union  *spec;
@@ -316,6 +323,7 @@ struct Const_Value {
         Node_Fn   *fn;
         Node_Atom *var;
 
+        Const_Value_Trait  trait;
         Const_Value_Union  unionn;
         Const_Value_Struct structt;
 
@@ -327,7 +335,7 @@ struct Const_Value {
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 10, "");
+static_assert(COUNT_CONST_VALUES == 11, "");
 #define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_i64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_i64(v)})
 #define const_value_u64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_u64(v)})
@@ -336,8 +344,9 @@ static_assert(COUNT_CONST_VALUES == 10, "");
 #define const_value_var(v)  ((Const_Value) {.kind = CONST_VALUE_VAR, .as.var = (v)})
 #define const_value_type(v) ((Const_Value) {.kind = CONST_VALUE_TYPE, .as.type = (v)})
 
-#define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
+#define const_value_trait(v)  ((Const_Value) {.kind = CONST_VALUE_TRAIT, .as.trait = (v)})
 #define const_value_union(v)  ((Const_Value) {.kind = CONST_VALUE_UNION, .as.unionn = (v)})
+#define const_value_struct(v) ((Const_Value) {.kind = CONST_VALUE_STRUCT, .as.structt = (v)})
 
 #define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})

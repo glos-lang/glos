@@ -513,7 +513,7 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
-static_assert(COUNT_CONST_VALUES == 10, "");
+static_assert(COUNT_CONST_VALUES == 11, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -531,6 +531,25 @@ bool const_value_eq(Const_Value a, Const_Value b) {
 
     case CONST_VALUE_TYPE:
         return type_eq(a.as.type, b.as.type);
+
+    case CONST_VALUE_TRAIT:
+        if (a.as.trait.impl != b.as.trait.impl) {
+            return false;
+        }
+
+        if (!a.as.trait.type || !b.as.trait.type) {
+            return a.as.trait.type == b.as.trait.type;
+        }
+
+        if (!type_eq(*a.as.trait.type, *b.as.trait.type)) {
+            return false;
+        }
+
+        if (!a.as.trait.data || !b.as.trait.data) {
+            return a.as.trait.data == b.as.trait.data;
+        }
+
+        return const_value_eq(*a.as.trait.data, *b.as.trait.data);
 
     case CONST_VALUE_UNION:
         if (!type_union_eq(a.as.unionn.spec, b.as.unionn.spec)) {

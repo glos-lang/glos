@@ -1,0 +1,20 @@
+x: Show = Int(69)
+
+main :: () {
+    display(x)
+}
+
+// Details
+Show :: trait {
+    show: ()
+}
+
+display :: (s: Show) {
+    s.show()
+}
+
+Int :: distinct i64
+
+show :: (this: Int) {
+    println(this)
+}

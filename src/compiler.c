@@ -1233,7 +1233,53 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type);
 
 #define i64_from_int128(n) (n).low
 
-static_assert(COUNT_CONST_VALUES == 10, "");
+static void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
+    if (!impl->llvm) {
+        for (size_t i = 0; i < impl->methods_count; i++) {
+            Type_Trait_Impl_Method *it = &impl->methods[i];
+            compile_fn(c, it->fn);
+
+            if (!it->wrapper) {
+                const void *checkpoint = arena_alloc(&temp_arena, 0);
+
+                assert(it->fn->node.type.kind == TYPE_FN);
+                Type_Fn wrapper_spec = *it->fn->node.type.spec.fn;
+                wrapper_spec.args =
+                    arena_clone(&temp_arena, wrapper_spec.args, wrapper_spec.args_count * sizeof(*wrapper_spec.args));
+
+                wrapper_spec.args[0].type.ref++;
+                wrapper_spec.args[0].type.llvm = NULL;
+                wrapper_spec.llvm = NULL;
+                assert(wrapper_spec.variadics_kind != VARIADICS_UNTYPED);
+
+                Node_Fn wrapper_node = *it->fn;
+                wrapper_node.node.token.pos = impl->trait->methods[i].pos;
+                wrapper_node.node.type.spec.fn = &wrapper_spec;
+                wrapper_node.llvm = NULL;
+                wrapper_node.llvm_debug_scope = NULL;
+                wrapper_node.wrapper = it->fn;
+                wrapper_node.wrapper_for_trait = impl->trait;
+                it->wrapper = compile_fn(c, &wrapper_node);
+
+                arena_reset(&temp_arena, checkpoint);
+            }
+        }
+
+        // Checking again, since the 'compile_fn' calls might have generated this already
+        if (!impl->llvm) {
+            LLVMValueRef *fns = arena_alloc(&temp_arena, impl->methods_count * sizeof(*fns));
+            for (size_t i = 0; i < impl->methods_count; i++) {
+                fns[i] = impl->methods[i].wrapper;
+            }
+
+            impl->llvm = compile_const_value_into_memory(
+                c, LLVMConstArray(LLVMPointerTypeInContext(c->llvm_context, 0), fns, impl->methods_count));
+            arena_reset(&temp_arena, fns);
+        }
+    }
+}
+
+static_assert(COUNT_CONST_VALUES == 11, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
@@ -1258,6 +1304,25 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
     case CONST_VALUE_TYPE:
         return compile_type_info(c, &value.as.type);
+
+    case CONST_VALUE_TRAIT: {
+        Type_Trait_Impl *impl = value.as.trait.impl;
+        compile_trait_impl(c, impl);
+
+        LLVMValueRef fields[3] = {0};
+        size_t       fields_iota = 0;
+
+        // Type
+        fields[fields_iota++] = compile_type_info(c, value.as.trait.type);
+
+        // Data
+        fields[fields_iota++] =
+            compile_const_value_into_memory(c, compile_const_value(c, *value.as.trait.data, *value.as.trait.type));
+
+        // Impl
+        fields[fields_iota++] = impl->llvm;
+        return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, false);
+    }
 
     case CONST_VALUE_UNION: {
         const Type_Union *spec = value.as.unionn.spec;
@@ -1826,8 +1891,9 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 10, "");
+        static_assert(COUNT_CONST_VALUES == 11, "");
         switch (const_value.kind) {
+        case CONST_VALUE_TRAIT:
         case CONST_VALUE_UNION:
         case CONST_VALUE_STRUCT:
         case CONST_VALUE_ARRAY:
@@ -2147,50 +2213,7 @@ static LLVMValueRef compile_cast_to_any(Compiler *c, Type *type, LLVMValueRef va
 }
 
 static LLVMValueRef compile_cast_to_trait(Compiler *c, Type *type, Type_Trait_Impl *impl, LLVMValueRef value) {
-    if (!impl->llvm) {
-        for (size_t i = 0; i < impl->methods_count; i++) {
-            Type_Trait_Impl_Method *it = &impl->methods[i];
-            compile_fn(c, it->fn);
-
-            if (!it->wrapper) {
-                const void *checkpoint = arena_alloc(&temp_arena, 0);
-
-                assert(it->fn->node.type.kind == TYPE_FN);
-                Type_Fn wrapper_spec = *it->fn->node.type.spec.fn;
-                wrapper_spec.args =
-                    arena_clone(&temp_arena, wrapper_spec.args, wrapper_spec.args_count * sizeof(*wrapper_spec.args));
-
-                wrapper_spec.args[0].type.ref++;
-                wrapper_spec.args[0].type.llvm = NULL;
-                wrapper_spec.llvm = NULL;
-                assert(wrapper_spec.variadics_kind != VARIADICS_UNTYPED);
-
-                Node_Fn wrapper_node = *it->fn;
-                wrapper_node.node.token.pos = impl->trait->methods[i].pos;
-                wrapper_node.node.type.spec.fn = &wrapper_spec;
-                wrapper_node.llvm = NULL;
-                wrapper_node.llvm_debug_scope = NULL;
-                wrapper_node.wrapper = it->fn;
-                wrapper_node.wrapper_for_trait = impl->trait;
-                it->wrapper = compile_fn(c, &wrapper_node);
-
-                arena_reset(&temp_arena, checkpoint);
-            }
-        }
-
-        // Checking again, since the 'compile_fn' calls might have generated this already
-        if (!impl->llvm) {
-            LLVMValueRef *fns = arena_alloc(&temp_arena, impl->methods_count * sizeof(*fns));
-            for (size_t i = 0; i < impl->methods_count; i++) {
-                fns[i] = impl->methods[i].wrapper;
-            }
-
-            impl->llvm = compile_const_value_into_memory(
-                c, LLVMConstArray(LLVMPointerTypeInContext(c->llvm_context, 0), fns, impl->methods_count));
-            arena_reset(&temp_arena, fns);
-        }
-    }
-
+    compile_trait_impl(c, impl);
     LLVMTypeRef fields[] = {
         LLVMPointerTypeInContext(c->llvm_context, 0),
         LLVMPointerTypeInContext(c->llvm_context, 0),
@@ -2497,8 +2520,9 @@ compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *f
 
             value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
         } else {
-            static_assert(COUNT_CONST_VALUES == 10, "");
+            static_assert(COUNT_CONST_VALUES == 11, "");
             switch (arg->default_value->kind) {
+            case CONST_VALUE_TRAIT:
             case CONST_VALUE_UNION:
             case CONST_VALUE_STRUCT:
             case CONST_VALUE_ARRAY:
