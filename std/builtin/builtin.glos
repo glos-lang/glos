@@ -1,4 +1,4 @@
-assert :: (cond: bool, message: ...any, location := #caller_location) {
+assert :: (cond: bool, message: ...Any, location := #caller_location) {
     if !cond {
         if message.count == 0 {
             eprintln("\{location} Assertion failed")
@@ -13,7 +13,7 @@ assert :: (cond: bool, message: ...any, location := #caller_location) {
     }
 }
 
-todo :: (message: ...any, location := #caller_location) {
+todo :: (message: ...Any, location := #caller_location) {
     if message.count == 0 {
         eprintln("\{location} TODO")
     } else {
@@ -26,7 +26,7 @@ todo :: (message: ...any, location := #caller_location) {
     C.abort()
 }
 
-unreachable :: (message: ...any, location := #caller_location) {
+unreachable :: (message: ...Any, location := #caller_location) {
     if message.count == 0 {
         eprintln("\{location} Unreachable")
     } else {
@@ -39,14 +39,16 @@ unreachable :: (message: ...any, location := #caller_location) {
     C.abort()
 }
 
-// TODO: Print types separately
-wprint :: (f: C.File, vs: ...any) {
+// TODO: Introduce a trait `Writer`
+wprint :: (f: C.File, vs: ...Any) {
+    // TODO: Use `Any` directly
     write :: (f: C.File, data: rawptr, type: Type, nested: bool) {
         if type == Source_Code_Location {
             l := &Source_Code_Location(data)
             C.fprintf(f, "%.*s:%ld:%ld:".data, i32(l.path.count), l.path.data, l.row, l.col)
             return
         }
+        // TODO: Have a special case for printing `Type` like `Source_Code_Location`
 
         v := type.variant
         if v == {
@@ -126,6 +128,15 @@ wprint :: (f: C.File, vs: ...any) {
             write(f, data, v.underlying, true)
             C.fprintf(f, ")".data)
 
+        case Type_Info_Trait
+            type := *&Type(data)
+            data := *&rawptr(data + rawptr(8))
+            if type == null {
+                C.fprintf(f, "null".data)
+            } else {
+                write(f, data, type, nested)
+            }
+
         case Type_Info_Union
             variant := *&i64(data)
             if variant == 0 {
@@ -195,14 +206,6 @@ wprint :: (f: C.File, vs: ...any) {
             } else {
                 C.fprintf(f, "%.*s".data, i32(s.count), s.data)
             }
-
-        case Type_Info_Any
-            a := *&any(data)
-            if a == null {
-                C.fprintf(f, "null".data)
-            } else {
-                write(f, a.data, a.type, nested)
-            }
         }
     }
 
@@ -216,24 +219,24 @@ wprint :: (f: C.File, vs: ...any) {
     }
 }
 
-wprintln :: (f: C.File, vs: ...any) {
+wprintln :: (f: C.File, vs: ...Any) {
     wprint(f, ...vs)
     wprint(f, '\n')
 }
 
-print :: (vs: ...any) {
+print :: (vs: ...Any) {
     wprint(C.stdout, ...vs)
 }
 
-println :: (vs: ...any) {
+println :: (vs: ...Any) {
     wprintln(C.stdout, ...vs)
 }
 
-eprint :: (vs: ...any) {
+eprint :: (vs: ...Any) {
     wprint(C.stderr, ...vs)
 }
 
-eprintln :: (vs: ...any) {
+eprintln :: (vs: ...Any) {
     wprintln(C.stderr, ...vs)
 }
 
