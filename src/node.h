@@ -526,6 +526,9 @@ typedef struct {
     Node *any_check;
     Type *any_check_type;
 
+    Node *trait_check;
+    Type *trait_check_type;
+
     Node  *union_check;
     size_t union_check_index;
 } Node_Binary;
@@ -838,6 +841,7 @@ typedef struct {
     size_t preds_count;
 
     Node_Enum  *enumeration;
+    Node_Trait *trait;
     Node_Union *unionn;
 
     bool is_expr_any;

@@ -976,6 +976,32 @@ static bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
         return type_eq(*any.as.any.type, expected);
     }
 
+    if (binary->trait_check) {
+        Const_Value trait;
+        Const_Value type;
+        if (binary->trait_check == binary->lhs) {
+            trait = lhs;
+            type = rhs;
+        } else {
+            trait = rhs;
+            type = lhs;
+        }
+        assert(trait.kind == CONST_VALUE_TRAIT);
+
+        if (type.kind == CONST_VALUE_INT && int128_is_zero(type.as.integer)) {
+            return !trait.as.trait.type;
+        }
+
+        assert(type.kind == CONST_VALUE_TYPE);
+        if (!trait.as.trait.type) {
+            return false;
+        }
+
+        Type expected = type.as.type;
+        expected.is_meta = false;
+        return type_eq(*trait.as.trait.type, expected);
+    }
+
     if (binary->union_check) {
         Const_Value unionn;
         Const_Value variant;
@@ -1720,6 +1746,8 @@ static void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
 
     if (!sw->expr->type.ref && type_kind_eq(sw->expr->type, TYPE_ENUM)) {
         sw->enumeration = sw->expr->type.spec.enumm.definition;
+    } else if (type_is_trait(sw->expr->type)) {
+        sw->trait = sw->expr->type.spec.trait->definition;
     } else if (type_is_union(sw->expr->type)) {
         sw->unionn = sw->expr->type.spec.unionn->definition;
     } else if (sw->expr->type.is_meta) {
@@ -1749,7 +1777,17 @@ static Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, s
     Const_Value value = {0};
     check_expr(c, pred, REF_NONE);
 
-    if (sw->unionn) {
+    if (sw->trait) {
+        if (node_is_null(pred)) {
+            value = const_value_u64(0);
+        } else {
+            type_assert_type(pred);
+            Type type = pred->type;
+            type.is_meta = false;
+            check_type_satisfies_trait(c, type, sw->trait->node.type.spec.trait, pred, -1);
+            value = const_value_type(type);
+        }
+    } else if (sw->unionn) {
         if (node_is_null(pred)) {
             value = const_value_u64(0);
         } else {
@@ -1887,35 +1925,34 @@ static void push_context_replace(Compiler *c, Context_Replace *replace, Node_Ato
     replace->to->node.type = to;
     replace->to->node.type.is_meta = false;
 
+    // Technically the code generated in the mismatch condition will access invalid memory.
+    // However it will be unreachable, so does it even matter?
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
         static_assert(COUNT_CONST_VALUES == 11, "");
         switch (value->kind) {
         case CONST_VALUE_TRAIT: {
-            todo(); // TODO(@trait)
+            const Const_Value_Trait trait = value->as.trait;
+            if (trait.type && type_eq(*trait.type, replace->to->node.type)) {
+                assert(trait.data);
+                *value = *trait.data;
+            }
         } break;
 
         case CONST_VALUE_UNION: {
             const Const_Value_Union unionn = value->as.unionn;
-            if (unionn.index) {
-                if (type_eq(unionn.spec->variants[unionn.index - 1].type, replace->to->node.type)) {
-                    assert(unionn.real);
-                    *value = *unionn.real;
-                }
-
-                // Technically the code generated will access invalid memory.
-                // However it will be unreachable, so does it even matter?
+            if (unionn.index && type_eq(unionn.spec->variants[unionn.index - 1].type, replace->to->node.type)) {
+                assert(unionn.real);
+                *value = *unionn.real;
             }
         } break;
 
         case CONST_VALUE_ANY: {
             const Const_Value_Any any = value->as.any;
-            if (any.type) {
-                if (type_eq(*any.type, replace->to->node.type)) {
-                    assert(any.value);
-                    *value = *any.value;
-                }
+            if (any.type && type_eq(*any.type, replace->to->node.type)) {
+                assert(any.value);
+                *value = *any.value;
             }
         } break;
 
@@ -2012,8 +2049,11 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                     if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                         Node_Binary *condition = (Node_Binary *) iff->condition;
                         const Type   any_type = {.kind = TYPE_ANY};
-                        if ((type_eq(condition->lhs->type, any_type) || type_is_union(condition->lhs->type)) &&
-                            condition->lhs->kind == NODE_ATOM) {
+                        if ((type_eq(condition->lhs->type, any_type) || //
+                             type_is_trait(condition->lhs->type) ||     //
+                             type_is_union(condition->lhs->type)) &&    //
+                            condition->lhs->kind == NODE_ATOM)          //
+                        {
                             if (!node_is_null(condition->rhs)) {
                                 push_context_replace(
                                     c,
@@ -2022,8 +2062,11 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                                     condition->rhs->type);
                             }
                         } else if (
-                            (type_eq(condition->rhs->type, any_type) || type_is_union(condition->rhs->type)) &&
-                            condition->rhs->kind == NODE_ATOM) {
+                            (type_eq(condition->rhs->type, any_type) || //
+                             type_is_trait(condition->rhs->type) ||     //
+                             type_is_union(condition->rhs->type)) &&    //
+                            condition->rhs->kind == NODE_ATOM)          //
+                        {
                             if (!node_is_null(condition->lhs)) {
                                 push_context_replace(
                                     c,
@@ -2078,6 +2121,23 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
                                 sw->compile_time_real = branch;
                             }
                         }
+                    } else if (sw->trait) {
+                        assert(value.kind == CONST_VALUE_TRAIT);
+
+                        const Type *pred_type = NULL;
+                        if (pred_value.kind == CONST_VALUE_TYPE) {
+                            pred_type = &pred_value.as.type;
+                        }
+
+                        if (value.as.trait.type) {
+                            if (pred_type && type_eq(*value.as.trait.type, *pred_type)) {
+                                sw->compile_time_real = branch;
+                            }
+                        } else {
+                            if (!pred_type) {
+                                sw->compile_time_real = branch;
+                            }
+                        }
                     } else if (sw->unionn) {
                         assert(value.kind == CONST_VALUE_UNION);
                         assert(pred_value.kind == CONST_VALUE_INT);
@@ -2100,7 +2160,9 @@ static void define_orderless_nodes(Compiler *c, Node *n, const size_t block_star
             if (branch) {
                 branch->context_replace.outer = c->context.replace;
 
-                if ((sw->unionn || sw->is_expr_any) && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
+                if ((sw->trait || sw->unionn || sw->is_expr_any) &&          //
+                    sw->expr->kind == NODE_ATOM && branch->preds_count == 1) //
+                {
                     if (!node_is_null(branch->preds.head)) {
                         push_context_replace(
                             c,
@@ -2722,7 +2784,7 @@ check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *
                     Pos_Fmt "NOTE: The method '" SV_Fmt "' is not defined for type %s\n",
                     Pos_Arg(trait->methods[i].pos),
                     SV_Arg(trait->methods[i].name),
-                    type_to_cstr(expected));
+                    type_to_cstr(receiver));
                 break;
 
             case WRONG_RECEIVER:
@@ -3669,7 +3731,23 @@ static void check_binary_expr(Compiler *c, Node_Binary *binary, bool check_child
     case TOKEN_NE:
         check_expr(c, binary->lhs, REF_NONE);
         check_expr(c, binary->rhs, REF_NONE);
-        if (type_is_union(binary->lhs->type)) {
+        if (type_is_trait(binary->lhs->type)) {
+            binary->trait_check = binary->lhs;
+            if (!node_is_null(binary->rhs)) {
+                type_assert_type(binary->rhs);
+                binary->rhs->type.is_meta = false;
+                check_type_satisfies_trait(c, binary->rhs->type, binary->lhs->type.spec.trait, binary->rhs, -1);
+                binary->trait_check_type = &binary->rhs->type;
+            }
+        } else if (type_is_trait(binary->rhs->type)) {
+            binary->trait_check = binary->rhs;
+            if (!node_is_null(binary->lhs)) {
+                type_assert_type(binary->lhs);
+                binary->lhs->type.is_meta = false;
+                check_type_satisfies_trait(c, binary->lhs->type, binary->rhs->type.spec.trait, binary->lhs, -1);
+                binary->trait_check_type = &binary->lhs->type;
+            }
+        } else if (type_is_union(binary->lhs->type)) {
             binary->union_check = binary->lhs;
             if (!node_is_null(binary->rhs)) {
                 type_assert_type(binary->rhs);
@@ -4569,7 +4647,6 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             .spec.trait = spec,
         };
 
-        // TODO(@trait): Should this be done this early?
         if (trait->defined_as) {
             trait->defined_as->node.type = n->type;
             trait->defined_as->definition_spec->check_status = CHECKED;
@@ -5235,15 +5312,21 @@ static void check_stmt(Compiler *c, Node *n) {
             if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                 Node_Binary *condition = (Node_Binary *) iff->condition;
                 const Type   any_type = {.kind = TYPE_ANY};
-                if ((type_eq(condition->lhs->type, any_type) || type_is_union(condition->lhs->type)) &&
-                    condition->lhs->kind == NODE_ATOM) {
+                if ((type_eq(condition->lhs->type, any_type) || //
+                     type_is_trait(condition->lhs->type) ||     //
+                     type_is_union(condition->lhs->type)) &&    //
+                    condition->lhs->kind == NODE_ATOM)          //
+                {
                     if (!node_is_null(condition->rhs)) {
                         push_context_replace(
                             c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
                     }
                 } else if (
-                    (type_eq(condition->rhs->type, any_type) || type_is_union(condition->rhs->type)) &&
-                    condition->rhs->kind == NODE_ATOM) {
+                    (type_eq(condition->rhs->type, any_type) || //
+                     type_is_trait(condition->rhs->type) ||     //
+                     type_is_union(condition->rhs->type)) &&    //
+                    condition->rhs->kind == NODE_ATOM)          //
+                {
                     if (!node_is_null(condition->lhs)) {
                         push_context_replace(
                             c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
@@ -5304,7 +5387,9 @@ static void check_stmt(Compiler *c, Node *n) {
                 }
 
                 branch->context_replace.outer = c->context.replace;
-                if ((sw->unionn || sw->is_expr_any) && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
+                if ((sw->trait || sw->unionn || sw->is_expr_any) &&          //
+                    sw->expr->kind == NODE_ATOM && branch->preds_count == 1) //
+                {
                     if (!node_is_null(branch->preds.head)) {
                         push_context_replace(
                             c,
@@ -5614,3 +5699,4 @@ void check_nodes(Compiler *c) {
 }
 
 // TODO: Sometimes non-cyclic definitions are falsely flagged as cyclic
+// TODO: Should #if be deferred until end of orderless definitions?

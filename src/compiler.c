@@ -2737,6 +2737,22 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 c->llvm_builder, n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE, value, expected, "");
         }
 
+        if (binary->trait_check) {
+            LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+            LLVMValueRef value =
+                LLVMBuildLoad2(c->llvm_builder, ptr_type, compile_expr(c, binary->trait_check, true), "");
+
+            LLVMValueRef expected = NULL;
+            if (binary->trait_check_type) {
+                expected = compile_type_info(c, binary->trait_check_type);
+            } else {
+                expected = LLVMConstNull(ptr_type);
+            }
+
+            return LLVMBuildICmp(
+                c->llvm_builder, n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE, value, expected, "");
+        }
+
         if (binary->union_check) {
             LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
             LLVMValueRef value =
@@ -3839,15 +3855,23 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
     return result;
 }
 
-static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost) {
+static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost, bool is_trait) {
     LLVMValueRef real = compile_ident(c, (Node *) ghost, ghost->definition, true);
     if (type_eq(ghost->definition->node.type, (Type) {.kind = TYPE_ANY})) {
         real = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), real, "");
     }
 
-    LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
-    LLVMValueRef indices[] = {LLVMConstInt(i64_type, 1, true)};
-    ghost->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
+    if (is_trait) {
+        ghost->ghost_llvm = LLVMBuildLoad2(
+            c->llvm_builder,
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMBuildStructGEP2(c->llvm_builder, c->llvm_trait_type, real, 1, ""),
+            "");
+    } else {
+        LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+        LLVMValueRef indices[] = {LLVMConstInt(i64_type, 1, true)};
+        ghost->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
+    }
 }
 
 static LLVMValueRef get_type_id_from_type_info_pointer(Compiler *c, LLVMValueRef ptr) {
@@ -3992,7 +4016,8 @@ static void compile_stmt(Compiler *c, Node *n) {
         // Consequence
         LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
         if (iff->context_replace.to) {
-            introduce_ghost_for_union(c, iff->context_replace.to);
+            introduce_ghost_for_union(
+                c, iff->context_replace.to, iff->context_replace.from->node.type.kind == TYPE_TRAIT);
         }
         compile_stmt(c, iff->consequence);
         LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
@@ -4099,12 +4124,17 @@ static void compile_stmt(Compiler *c, Node *n) {
         }
 
         LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
+        LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
         LLVMValueRef expr = compile_expr(c, sw->expr, false);
-        if (sw->unionn) {
+        if (sw->trait) {
+            expr = undo_load(expr);
+            expr = LLVMBuildLoad2(c->llvm_builder, ptr_type, expr, "");
+            expr = get_type_id_from_type_info_pointer(c, expr);
+        } else if (sw->unionn) {
             expr = undo_load(expr);
             expr = LLVMBuildLoad2(c->llvm_builder, i64_type, expr, "");
         } else if (sw->is_expr_any) {
-            expr = compile_load_if_not_null(c, expr, LLVMPointerTypeInContext(c->llvm_context, 0));
+            expr = compile_load_if_not_null(c, expr, ptr_type);
             expr = get_type_id_from_type_info_pointer(c, expr);
         } else if (sw->is_expr_type_info) {
             expr = get_type_id_from_type_info_pointer(c, expr);
@@ -4130,7 +4160,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 LLVMValueRef value = NULL;
                 if (sw->unionn) {
                     value = LLVMConstInt(i64_type, i64_from_int128(pred_value->as.integer), true);
-                } else if (sw->is_expr_any || sw->is_expr_type_info) {
+                } else if (sw->trait || sw->is_expr_any || sw->is_expr_type_info) {
                     if (pred_value->kind == CONST_VALUE_TYPE) {
                         assert(!pred_value->as.type.is_meta);
                         compile_type_info(c, &pred_value->as.type);
@@ -4150,7 +4180,8 @@ static void compile_stmt(Compiler *c, Node *n) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, block);
 
             if (branch->context_replace.to) {
-                introduce_ghost_for_union(c, branch->context_replace.to);
+                introduce_ghost_for_union(
+                    c, branch->context_replace.to, branch->context_replace.from->node.type.kind == TYPE_TRAIT);
             }
             compile_stmt(c, branch->body);
             LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);

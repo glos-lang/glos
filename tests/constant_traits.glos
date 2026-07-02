@@ -1,20 +1,28 @@
-x: Show = Int(69)
-
+a: Foo : A(69)
 main :: () {
-    display(x)
+    #if a == {
+    case A
+        other()
+        println(a)
+        x: A = a
+    }
+}
+
+b: Foo : B("Urmom")
+other :: () {
+    #if b == B {
+        println(b)
+        x: B = b
+    }
 }
 
 // Details
-Show :: trait {
-    show: ()
+Foo :: trait {
+    foo: ()
 }
 
-display :: (s: Show) {
-    s.show()
-}
+A   :: distinct i64
+foo :: (this: A) { println("A: ", this) }
 
-Int :: distinct i64
-
-show :: (this: Int) {
-    println(this)
-}
+B   :: distinct string
+foo :: (this: B) { println("B: ", this) }
