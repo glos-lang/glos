@@ -31,7 +31,7 @@ void link_flags_add_libname(Link_Flags *ls, SV name) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-static_assert(COUNT_TYPES == 26, "");
+static_assert(COUNT_TYPES == 25, "");
 static LLVMTypeRef compile_type(Compiler *c, Type *type) {
     if (!type) {
         return NULL;
@@ -84,7 +84,6 @@ static LLVMTypeRef compile_type(Compiler *c, Type *type) {
 
     case TYPE_RAWPTR:
     case TYPE_FN:
-    case TYPE_ANY:
         type->llvm = LLVMPointerTypeInContext(c->llvm_context, 0);
         break;
 
@@ -267,7 +266,7 @@ typedef struct {
     size_t      direct_types_count;
 } ABI_Info;
 
-static_assert(COUNT_TYPES == 26, "");
+static_assert(COUNT_TYPES == 25, "");
 static bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -289,7 +288,7 @@ static bool type_is_compound(Type type) {
 }
 
 #ifdef PLATFORM_X86_64_LINUX
-static_assert(COUNT_TYPES == 26, "");
+static_assert(COUNT_TYPES == 25, "");
 static void x86_64_linux_split_into_two(Compiler *c, Type type, size_t offset, LLVMTypeRef out[2]) {
     assert(type_is_compound(type));
     switch (type.kind) {
@@ -361,7 +360,7 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
         return info;
     }
 
-    static_assert(COUNT_TYPES == 26, "");
+    static_assert(COUNT_TYPES == 25, "");
     switch (type->kind) {
     case TYPE_UNIT:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
@@ -373,7 +372,6 @@ static ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
 
     case TYPE_RAWPTR:
     case TYPE_FN:
-    case TYPE_ANY:
         info.direct_types[info.direct_types_count++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         return info;
 
@@ -677,7 +675,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 26, "");
+static_assert(COUNT_TYPES == 25, "");
 static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -1121,9 +1119,6 @@ static LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         return get_debug_for_builtin_compound_type(c, sv_from_cstr("string"), fields, len(fields));
     }
 
-    case TYPE_ANY:
-        return LLVMDIBuilderCreatePointerType(c->llvm_debug_builder, NULL, sizeof(void *), sizeof(void *), 0, "", 0);
-
     case TYPE_GROUP: {
         compile_type(c, type);
 
@@ -1235,32 +1230,36 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type);
 
 static void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
     if (!impl->llvm) {
-        for (size_t i = 0; i < impl->methods_count; i++) {
-            Type_Trait_Impl_Method *it = &impl->methods[i];
-            compile_fn(c, it->fn);
-
-            if (!it->wrapper) {
-                const void *checkpoint = arena_alloc(&temp_arena, 0);
-                it->wrapper = compile_fn(c, create_trait_method_wrapper(&temp_arena, it->fn, impl->trait, i));
-                arena_reset(&temp_arena, checkpoint);
-            }
-        }
-
-        // Checking again, since the 'compile_fn' calls might have generated this already
-        if (!impl->llvm) {
-            LLVMValueRef *fns = arena_alloc(&temp_arena, impl->methods_count * sizeof(*fns));
+        if (impl->methods_count) {
             for (size_t i = 0; i < impl->methods_count; i++) {
-                fns[i] = impl->methods[i].wrapper;
+                Type_Trait_Impl_Method *it = &impl->methods[i];
+                compile_fn(c, it->fn);
+
+                if (!it->wrapper) {
+                    const void *checkpoint = arena_alloc(&temp_arena, 0);
+                    it->wrapper = compile_fn(c, create_trait_method_wrapper(&temp_arena, it->fn, impl->trait, i));
+                    arena_reset(&temp_arena, checkpoint);
+                }
             }
 
-            impl->llvm = compile_const_value_into_memory(
-                c, LLVMConstArray(LLVMPointerTypeInContext(c->llvm_context, 0), fns, impl->methods_count));
-            arena_reset(&temp_arena, fns);
+            // Checking again, since the 'compile_fn' calls might have generated this already
+            if (!impl->llvm) {
+                LLVMValueRef *fns = arena_alloc(&temp_arena, impl->methods_count * sizeof(*fns));
+                for (size_t i = 0; i < impl->methods_count; i++) {
+                    fns[i] = impl->methods[i].wrapper;
+                }
+
+                impl->llvm = compile_const_value_into_memory(
+                    c, LLVMConstArray(LLVMPointerTypeInContext(c->llvm_context, 0), fns, impl->methods_count));
+                arena_reset(&temp_arena, fns);
+            }
+        } else {
+            impl->llvm = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
         }
     }
 }
 
-static_assert(COUNT_CONST_VALUES == 11, "");
+static_assert(COUNT_CONST_VALUES == 10, "");
 static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
@@ -1384,20 +1383,6 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
     case CONST_VALUE_STRING:
         return compile_string_into_const_value(c, value.as.string);
-
-    case CONST_VALUE_ANY: {
-        if (!value.as.any.type) {
-            return LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
-        }
-
-        LLVMValueRef fields[2] = {0};
-        fields[0] = compile_type_info(c, value.as.any.type);
-
-        assert(value.as.any.value);
-        fields[1] = compile_const_value(c, *value.as.any.value, *value.as.any.type);
-        return compile_const_value_into_memory(
-            c, LLVMConstStructInContext(c->llvm_context, fields, len(fields), false));
-    }
 
     case CONST_VALUE_MODULE:
         unreachable();
@@ -1890,14 +1875,13 @@ static LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, b
     if (definition->definition_spec->is_const) {
         const Const_Value const_value = definition->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 11, "");
+        static_assert(COUNT_CONST_VALUES == 10, "");
         switch (const_value.kind) {
         case CONST_VALUE_TRAIT:
         case CONST_VALUE_UNION:
         case CONST_VALUE_STRUCT:
         case CONST_VALUE_ARRAY:
         case CONST_VALUE_STRING:
-        case CONST_VALUE_ANY:
             if (!definition->definition_spec->llvm) {
                 definition->definition_spec->llvm =
                     compile_const_value_into_memory(c, compile_const_value(c, const_value, n->type));
@@ -2073,7 +2057,6 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         case TYPE_CHAR:
         case TYPE_RAWPTR:
         case TYPE_STRING:
-        case TYPE_ANY:
             // Pass
             break;
 
@@ -2262,25 +2245,12 @@ static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *
     return real;
 }
 
-static_assert(COUNT_TYPES == 26, "");
+static_assert(COUNT_TYPES == 25, "");
 static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
     Type_Info_Compiler tic = {0};
     compile_type_info_init(c, &tic, type);
     compile_type_info_variant(c, &tic);
     return compile_type_info_finalize(c, &tic);
-}
-
-static LLVMValueRef compile_cast_to_any(Compiler *c, Type *type, LLVMValueRef value) {
-    LLVMTypeRef fields[] = {
-        LLVMPointerTypeInContext(c->llvm_context, 0),
-        LLVMTypeOf(value),
-    };
-    LLVMTypeRef any_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
-
-    LLVMValueRef any_memory = compile_alloca(c, any_type);
-    LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), any_memory);
-    LLVMBuildStore(c->llvm_builder, value, LLVMBuildStructGEP2(c->llvm_builder, any_type, any_memory, 1, ""));
-    return any_memory;
 }
 
 static LLVMValueRef
@@ -2594,14 +2564,13 @@ compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *f
 
             value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
         } else {
-            static_assert(COUNT_CONST_VALUES == 11, "");
+            static_assert(COUNT_CONST_VALUES == 10, "");
             switch (arg->default_value->kind) {
             case CONST_VALUE_TRAIT:
             case CONST_VALUE_UNION:
             case CONST_VALUE_STRUCT:
             case CONST_VALUE_ARRAY:
             case CONST_VALUE_STRING:
-            case CONST_VALUE_ANY:
                 if (!arg->default_value_llvm) {
                     arg->default_value_llvm =
                         compile_const_value_into_memory(c, compile_const_value(c, *arg->default_value, arg->type));
@@ -2793,24 +2762,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_BINARY: {
         Node_Binary *binary = (Node_Binary *) n;
-
-        if (binary->any_check) {
-            LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-            LLVMValueRef value = compile_expr(c, binary->any_check, false);
-            value = compile_load_if_not_null(c, value, ptr_type);
-
-            LLVMValueRef expected = NULL;
-            if (binary->any_check_type) {
-                Type expected_type = *binary->any_check_type;
-                expected_type.is_meta = false;
-                expected = compile_type_info(c, &expected_type);
-            } else {
-                expected = LLVMConstNull(ptr_type);
-            }
-
-            return LLVMBuildICmp(
-                c->llvm_builder, n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE, value, expected, "");
-        }
 
         if (binary->trait_check) {
             LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
@@ -3231,24 +3182,13 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             return compile_fn(c, member->method);
         }
 
-        if (member->lhs->type.kind == TYPE_ANY) {
-            LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-            lhs = compile_load_if_not_null(c, lhs, ptr_type); // TODO: What is this about?
-
-            LLVMTypeRef fields[] = {
-                ptr_type,
-                n->type.llvm,
-            };
-            lhs_type = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
-        }
-
         if (member->rhs) {
             // Check if tag matches
             {
                 LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
                 LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
 
-                if (member->lhs->type.kind == TYPE_ANY || member->lhs->type.kind == TYPE_TRAIT) {
+                if (member->lhs->type.kind == TYPE_TRAIT) {
                     LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
                     LLVMValueRef tag = compile_load_if_not_null(c, lhs, ptr_type);
 
@@ -3306,10 +3246,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
         LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, member->field_index, "");
         if (ref) {
-            return ptr;
-        }
-
-        if (member->lhs->type.kind == TYPE_ANY && member->field_index == 1) {
             return ptr;
         }
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
@@ -3408,7 +3344,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             LLVMTypeRef  from_type = from->type.llvm;
 
             set_debug_pos(c, call->fn->token.pos);
-            static_assert(COUNT_TYPE_CASTS == 6, "");
+            static_assert(COUNT_TYPE_CASTS == 5, "");
             switch (call->type_cast) {
             case TYPE_CAST_NORMAL:
                 set_debug_pos(c, n->token.pos);
@@ -3423,9 +3359,6 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             case TYPE_CAST_TO_UNION:
                 return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
-
-            case TYPE_CAST_TO_ANY:
-                return compile_cast_to_any(c, &from->type, from_value);
 
             default:
                 unreachable();
@@ -3623,7 +3556,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         if (index->lhs->type.ref) {
             element_type = n->type.spec.slice.element;
         } else {
-            static_assert(COUNT_TYPES == 26, "");
+            static_assert(COUNT_TYPES == 25, "");
             switch (index->lhs->type.kind) {
             case TYPE_ARRAY:
                 label = "array";
@@ -3834,15 +3767,8 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 }
 
 static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result, Auto_Cast *auto_cast, bool ref) {
-    static_assert(COUNT_AUTO_CASTS == 5, "");
+    static_assert(COUNT_AUTO_CASTS == 4, "");
     switch (auto_cast->kind) {
-    case AUTO_CAST_TO_ANY: {
-        result = compile_cast_to_any(c, &auto_cast->from, result);
-        n->type = auto_cast->to;
-        compile_type(c, &n->type);
-        return result;
-    }
-
     case AUTO_CAST_TO_TRAIT: {
         result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result, ref);
         n->type = auto_cast->to;
@@ -3931,10 +3857,6 @@ static LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref) {
 
 static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost, bool is_trait) {
     LLVMValueRef real = compile_ident(c, (Node *) ghost, ghost->definition, true);
-    if (type_eq(ghost->definition->node.type, (Type) {.kind = TYPE_ANY})) {
-        real = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), real, "");
-    }
-
     if (is_trait) {
         ghost->ghost_llvm = LLVMBuildLoad2(
             c->llvm_builder,
@@ -4207,9 +4129,6 @@ static void compile_stmt(Compiler *c, Node *n) {
         } else if (sw->unionn) {
             expr = undo_load(expr);
             expr = LLVMBuildLoad2(c->llvm_builder, i64_type, expr, "");
-        } else if (sw->is_expr_any) {
-            expr = compile_load_if_not_null(c, expr, ptr_type);
-            expr = get_type_id_from_type_info_pointer(c, expr);
         } else if (sw->is_expr_type_info) {
             expr = get_type_id_from_type_info_pointer(c, expr);
         }
@@ -4234,7 +4153,7 @@ static void compile_stmt(Compiler *c, Node *n) {
                 LLVMValueRef value = NULL;
                 if (sw->unionn) {
                     value = LLVMConstInt(i64_type, i64_from_int128(pred_value->as.integer), true);
-                } else if (sw->trait || sw->is_expr_any || sw->is_expr_type_info) {
+                } else if (sw->trait || sw->is_expr_type_info) {
                     if (pred_value->kind == CONST_VALUE_TYPE) {
                         assert(!pred_value->as.type.is_meta);
                         compile_type_info(c, &pred_value->as.type);

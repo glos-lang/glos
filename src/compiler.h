@@ -51,6 +51,7 @@ typedef struct {
     const Type_Union *type_info_variants_union;
 
     Type source_code_location_type;
+    Type any_type;
 
     // Rest all are only used by compiler
     Cmd        *cmd;

@@ -243,10 +243,7 @@ write_type :: (ti: &Type_Info) {
         case Type_Info_String
             write_string("string")
 
-        case Type_Info_Any
-            write_string("any")
-
-        case
+        case null
             unreachable()
         }
     }

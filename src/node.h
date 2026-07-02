@@ -78,7 +78,6 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_SLICE,
     TYPE_STRING,
-    TYPE_ANY,
 
     TYPE_GROUP,
     TYPE_MODULE,
@@ -279,7 +278,6 @@ typedef enum {
 
     CONST_VALUE_ARRAY,
     CONST_VALUE_STRING,
-    CONST_VALUE_ANY,
 
     CONST_VALUE_MODULE,
     COUNT_CONST_VALUES
@@ -310,11 +308,6 @@ typedef struct {
     bool is_slice;
 } Const_Value_Array;
 
-typedef struct {
-    Type        *type;
-    Const_Value *value;
-} Const_Value_Any;
-
 struct Const_Value {
     Const_Value_Kind kind;
     union {
@@ -329,13 +322,12 @@ struct Const_Value {
 
         Const_Value_Array array;
         SV                string;
-        Const_Value_Any   any;
 
         Module *module;
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 11, "");
+static_assert(COUNT_CONST_VALUES == 10, "");
 #define const_value_int(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_i64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_i64(v)})
 #define const_value_u64(v) ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_u64(v)})
@@ -350,7 +342,6 @@ static_assert(COUNT_CONST_VALUES == 11, "");
 
 #define const_value_array(v)  ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
-#define const_value_any(v)    ((Const_Value) {.kind = CONST_VALUE_ANY, .as.any = (v)})
 
 #define const_value_module(v) ((Const_Value) {.kind = CONST_VALUE_MODULE, .as.module = (v)})
 
@@ -402,7 +393,6 @@ typedef enum {
 
 typedef enum {
     AUTO_CAST_NONE,
-    AUTO_CAST_TO_ANY,
     AUTO_CAST_TO_TRAIT,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
@@ -522,9 +512,6 @@ typedef struct {
     Node_Fn  *overload;
     Node_Fn **overloads;
     Module   *module;
-
-    Node *any_check;
-    Type *any_check_type;
 
     Node *trait_check;
     Type *trait_check_type;
@@ -728,7 +715,6 @@ typedef enum {
     TYPE_CAST_TO_BOOL,
     TYPE_CAST_TO_TRAIT,
     TYPE_CAST_TO_UNION,
-    TYPE_CAST_TO_ANY,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 
@@ -848,7 +834,6 @@ typedef struct {
     Node_Trait *trait;
     Node_Union *unionn;
 
-    bool is_expr_any;
     bool is_expr_type_info;
 
     bool       is_compile_time;
