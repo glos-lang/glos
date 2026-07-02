@@ -1279,7 +1279,20 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         static_assert(COUNT_CONST_VALUES == 11, "");
         switch (lhs.kind) {
         case CONST_VALUE_TRAIT: {
-            todo(); // TODO(@trait)
+            if (member->rhs) {
+                todo(); // TODO(@trait)
+            } else if (member->is_trait) {
+                if (!lhs.as.trait.impl) {
+                    fprintf(stderr, Pos_Fmt "ERROR: Cannot access method of null trait\n", Pos_Arg(n->token.pos));
+                    exit(1);
+                }
+
+                Node_Fn *fn = lhs.as.trait.impl->methods[member->trait_method].fn;
+                return const_value_fn(
+                    create_trait_method_wrapper(&default_arena, fn, lhs.as.trait.impl->trait, member->trait_method));
+            } else {
+                todo(); // TODO(@trait)
+            }
         }
 
         case CONST_VALUE_UNION:
@@ -2949,11 +2962,15 @@ static void check_call_arguments(Compiler *c, Node_Call *call, const Type_Fn *fn
                 is_method = true;
 
                 // The reference level has already been checked.
-                // Technically the type has also been checked, and right now this is redundant. But later when compile
-                // time polymorphism will be implemented, this will be important.
-                Type expected = fn_spec->args[call->args_count].type;
-                expected.ref = member->lhs->type.ref;
-                type_assert(c, member->lhs, expected);
+                // Technically the type has also been checked, and right now this is redundant. But later when
+                // compile time polymorphism will be implemented, this will be important.
+                //
+                // No need to check for traits, since it is runtime polymorphism
+                if (member->method) {
+                    Type expected = fn_spec->args[call->args_count].type;
+                    expected.ref = member->lhs->type.ref;
+                    type_assert(c, member->lhs, expected);
+                }
 
                 args[call->args_count++].node = member->lhs;
             }
@@ -4210,8 +4227,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 Type_Fn_Arg *it_arg = &fn_spec->args[iota++];
                 it_arg->name = sv_from_cstr("this");
                 it_arg->pos = fn->trait_method_type->spec.trait->definition->node.token.pos;
-                it_arg->type = *fn->trait_method_type;
-                it_arg->type.is_meta = false;
+                it_arg->type.kind = TYPE_RAWPTR;
             }
 
             for (Node *arg = fn->args.head; arg; arg = arg->next) {

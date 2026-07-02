@@ -1241,26 +1241,7 @@ static void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
 
             if (!it->wrapper) {
                 const void *checkpoint = arena_alloc(&temp_arena, 0);
-
-                assert(it->fn->node.type.kind == TYPE_FN);
-                Type_Fn wrapper_spec = *it->fn->node.type.spec.fn;
-                wrapper_spec.args =
-                    arena_clone(&temp_arena, wrapper_spec.args, wrapper_spec.args_count * sizeof(*wrapper_spec.args));
-
-                wrapper_spec.args[0].type.ref++;
-                wrapper_spec.args[0].type.llvm = NULL;
-                wrapper_spec.llvm = NULL;
-                assert(wrapper_spec.variadics_kind != VARIADICS_UNTYPED);
-
-                Node_Fn wrapper_node = *it->fn;
-                wrapper_node.node.token.pos = impl->trait->methods[i].pos;
-                wrapper_node.node.type.spec.fn = &wrapper_spec;
-                wrapper_node.llvm = NULL;
-                wrapper_node.llvm_debug_scope = NULL;
-                wrapper_node.wrapper = it->fn;
-                wrapper_node.wrapper_for_trait = impl->trait;
-                it->wrapper = compile_fn(c, &wrapper_node);
-
+                it->wrapper = compile_fn(c, create_trait_method_wrapper(&temp_arena, it->fn, impl->trait, i));
                 arena_reset(&temp_arena, checkpoint);
             }
         }
@@ -1621,6 +1602,10 @@ static LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool
 static LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
     if (fn->llvm) {
         return fn->llvm;
+    }
+
+    if (fn->wrapper) {
+        compile_fn(c, fn->wrapper);
     }
 
     const void *checkpoint = arena_alloc(&temp_arena, 0);

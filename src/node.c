@@ -973,4 +973,24 @@ void nodes_debug(FILE *f, Nodes ns) {
     nodes_debug_impl(f, ns, 0, NULL);
 }
 
+Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, size_t method_index) {
+    assert(fn->node.type.kind == TYPE_FN);
+    Type_Fn *wrapper_spec = arena_clone(a, fn->node.type.spec.fn, sizeof(*fn->node.type.spec.fn));
+    wrapper_spec->args = arena_clone(a, wrapper_spec->args, wrapper_spec->args_count * sizeof(*wrapper_spec->args));
+
+    wrapper_spec->args[0].type.ref++;
+    wrapper_spec->args[0].type.llvm = NULL;
+    wrapper_spec->llvm = NULL;
+    assert(wrapper_spec->variadics_kind != VARIADICS_UNTYPED);
+
+    Node_Fn *wrapper_node = arena_clone(a, fn, sizeof(*fn));
+    wrapper_node->node.token.pos = trait->methods[method_index].pos;
+    wrapper_node->node.type.spec.fn = wrapper_spec;
+    wrapper_node->llvm = NULL;
+    wrapper_node->llvm_debug_scope = NULL;
+    wrapper_node->wrapper = fn;
+    wrapper_node->wrapper_for_trait = trait;
+    return wrapper_node;
+}
+
 // TODO: Print space in anonymous types

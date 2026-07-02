@@ -869,6 +869,8 @@ typedef struct {
 void node_debug(FILE *f, Node *n);
 void nodes_debug(FILE *f, Nodes ns);
 
+Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, size_t method_index);
+
 #endif // NODE_H
 
 // Remove the individual `module` fields present in specific node types
