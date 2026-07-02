@@ -127,7 +127,13 @@ wprint :: (f: C.File, vs: ...any) {
             C.fprintf(f, ")".data)
 
         case Type_Info_Trait
-            todo() // TODO(@trait)
+            type := *&Type(data)
+            data := *&rawptr(data + rawptr(8))
+            if type == null {
+                C.fprintf(f, "null".data)
+            } else {
+                write(f, data, type, nested)
+            }
 
         case Type_Info_Union
             variant := *&i64(data)

@@ -1976,50 +1976,99 @@ static LLVMValueRef create_const_struct_from_single_value_if_not_already(Compile
     return LLVMConstStructInContext(c->llvm_context, &value, 1, false);
 }
 
-static_assert(COUNT_TYPES == 26, "");
-static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
+typedef struct {
+    Type *type;
+
+    size_t     variant_index;
+    Type_Info *type_info;
+
+    LLVMValueRef ti_fields[4];
+    size_t       ti_fields_iota;
+
+    LLVMValueRef tiv_fields[3];
+    size_t       tiv_fields_iota;
+
+    LLVMValueRef done;
+} Type_Info_Compiler;
+
+static void compile_type_info_init(Compiler *c, Type_Info_Compiler *tic, Type *type) {
     compile_type(c, type);
+    tic->type = type;
 
     if (!c->type_info_cache.hasheq) {
         c->type_info_cache.hasheq = ht_hasheq_type;
     }
 
-    const size_t variant_index = c->type_info_variants[type->ref ? TYPE_RAWPTR : type->kind];
-    assert(variant_index);
+    tic->variant_index = c->type_info_variants[type->ref ? TYPE_RAWPTR : type->kind];
+    assert(tic->variant_index);
 
     // Emit unique RTTI
-    Type_Info *type_info = NULL;
+    tic->type_info = NULL;
     {
-        type_info = ht_get(&c->type_info_cache, *type);
-        if (type_info) {
-            return type_info->info;
+        tic->type_info = ht_get(&c->type_info_cache, *type);
+        if (tic->type_info) {
+            tic->done = tic->type_info->info;
+            return;
         }
 
-        type_info = ht_set(&c->type_info_cache, *type, (Type_Info) {0});
-        type_info->id = ++c->type_id_iota;
-        type_info->info = LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, "");
+        tic->type_info = ht_set(&c->type_info_cache, *type, (Type_Info) {0});
+        tic->type_info->id = ++c->type_id_iota;
+        tic->type_info->info = LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, "");
     }
 
-    LLVMValueRef ti_fields[4] = {0};
-    size_t       ti_fields_iota = 0;
-    ti_fields[ti_fields_iota++] = LLVMConstInt(
+    tic->ti_fields[tic->ti_fields_iota++] = LLVMConstInt(
         LLVMInt64TypeInContext(c->llvm_context), LLVMABISizeOfType(c->llvm_target_data, type->llvm), false);
 
-    ti_fields[ti_fields_iota++] = LLVMConstInt(
+    tic->ti_fields[tic->ti_fields_iota++] = LLVMConstInt(
         LLVMInt64TypeInContext(c->llvm_context), LLVMABIAlignmentOfType(c->llvm_target_data, type->llvm), false);
 
-    LLVMValueRef tiv_fields[3] = {0};
-    size_t       tiv_fields_iota = 0;
+    tic->tiv_fields[tic->tiv_fields_iota++] =
+        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), tic->variant_index, false);
+}
 
-    tiv_fields[tiv_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), variant_index, false);
-    if (type->ref) {
-        Type underlying = *type;
+static void compile_type_info_fn(Compiler *c, Type_Info_Compiler *tic, bool skip_first_arg) {
+    const void *checkpoint = arena_alloc(&temp_arena, 0);
+
+    LLVMValueRef fn_fields[2] = {0};
+    size_t       fn_fields_iota = 0;
+
+    assert(tic->type->kind == TYPE_FN);
+    const Type_Fn *spec = tic->type->spec.fn;
+
+    LLVMValueRef *args = arena_alloc(&temp_arena, spec->args_count * sizeof(*args));
+    for (size_t i = skip_first_arg; i < spec->args_count; i++) {
+        args[i] = compile_type_info(c, &spec->args[i].type);
+    }
+    fn_fields[fn_fields_iota++] = create_const_slice_from_memory(
+        c, LLVMPointerTypeInContext(c->llvm_context, 0), args + skip_first_arg, spec->args_count - skip_first_arg);
+
+    LLVMValueRef *returns = arena_alloc(&temp_arena, spec->returns_count * sizeof(*returns));
+    for (size_t i = 0; i < spec->returns_count; i++) {
+        returns[i] = compile_type_info(c, &spec->returns[i]);
+    }
+    fn_fields[fn_fields_iota++] =
+        create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), returns, spec->returns_count);
+
+    tic->tiv_fields[tic->tiv_fields_iota++] =
+        LLVMConstStructInContext(c->llvm_context, fn_fields, fn_fields_iota, false);
+    arena_reset(&temp_arena, checkpoint);
+}
+
+static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *tic);
+
+static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
+    if (tic->done) {
+        return;
+    }
+
+    if (tic->type->ref) {
+        Type underlying = *tic->type;
         underlying.ref--;
         underlying.llvm = NULL;
-        tiv_fields[tiv_fields_iota++] =
+        tic->tiv_fields[tic->tiv_fields_iota++] =
             create_const_struct_from_single_value_if_not_already(c, compile_type_info(c, &underlying));
     } else {
-        switch (type->kind) {
+        switch (tic->type->kind) {
         case TYPE_BOOL:
         case TYPE_CHAR:
         case TYPE_RAWPTR:
@@ -2038,35 +2087,13 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
         case TYPE_U16:
         case TYPE_U32:
         case TYPE_U64:
-            tiv_fields[tiv_fields_iota++] = create_const_struct_from_single_value_if_not_already(
-                c, LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), type_is_signed(*type), true));
+            tic->tiv_fields[tic->tiv_fields_iota++] = create_const_struct_from_single_value_if_not_already(
+                c, LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), type_is_signed(*tic->type), true));
             break;
 
-        case TYPE_FN: {
-            const void *checkpoint = arena_alloc(&temp_arena, 0);
-
-            LLVMValueRef fn_fields[2] = {0};
-            size_t       fn_fields_iota = 0;
-
-            const Type_Fn *spec = type->spec.fn;
-
-            LLVMValueRef *args = arena_alloc(&temp_arena, spec->args_count * sizeof(*args));
-            for (size_t i = 0; i < spec->args_count; i++) {
-                args[i] = compile_type_info(c, &spec->args[i].type);
-            }
-            fn_fields[fn_fields_iota++] =
-                create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), args, spec->args_count);
-
-            LLVMValueRef *returns = arena_alloc(&temp_arena, spec->returns_count * sizeof(*returns));
-            for (size_t i = 0; i < spec->returns_count; i++) {
-                returns[i] = compile_type_info(c, &spec->returns[i]);
-            }
-            fn_fields[fn_fields_iota++] = create_const_slice_from_memory(
-                c, LLVMPointerTypeInContext(c->llvm_context, 0), returns, spec->returns_count);
-
-            tiv_fields[tiv_fields_iota++] = LLVMConstStructInContext(c->llvm_context, fn_fields, fn_fields_iota, false);
-            arena_reset(&temp_arena, checkpoint);
-        } break;
+        case TYPE_FN:
+            compile_type_info_fn(c, tic, false);
+            break;
 
         case TYPE_ENUM: {
             const void *checkpoint = arena_alloc(&temp_arena, 0);
@@ -2074,7 +2101,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             LLVMValueRef enum_fields[3] = {0};
             size_t       enum_fields_iota = 0;
 
-            const Type_Enum *spec = &type->spec.enumm;
+            const Type_Enum *spec = &tic->type->spec.enumm;
 
             LLVMValueRef *names = arena_alloc(&temp_arena, spec->definition->values_count * sizeof(*names));
             LLVMValueRef *values = arena_alloc(&temp_arena, spec->definition->values_count * sizeof(*values));
@@ -2098,26 +2125,54 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             Type underlying = {.kind = spec->underlying};
             enum_fields[enum_fields_iota++] = compile_type_info(c, &underlying);
 
-            tiv_fields[tiv_fields_iota++] =
+            tic->tiv_fields[tic->tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, enum_fields, enum_fields_iota, false);
 
             arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_TRAIT: {
-            todo();
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
+
+            LLVMValueRef struct_fields[2] = {0};
+            size_t       struct_fields_iota = 0;
+
+            const Type_Trait *spec = tic->type->spec.trait;
+
+            LLVMValueRef *names = arena_alloc(&temp_arena, spec->methods_count * sizeof(*names));
+            LLVMValueRef *types = arena_alloc(&temp_arena, spec->methods_count * sizeof(*types));
+
+            for (size_t i = 0; i < spec->methods_count; i++) {
+                Type_Trait_Method *it = &spec->methods[i];
+                names[i] = compile_string_into_const_value(c, it->name);
+
+                Type_Info_Compiler tic = {0};
+                compile_type_info_init(c, &tic, &it->type);
+                compile_type_info_fn(c, &tic, true);
+                types[i] = compile_type_info_finalize(c, &tic);
+            }
+
+            struct_fields[struct_fields_iota++] =
+                create_const_slice_from_memory(c, c->llvm_slice_type, names, spec->methods_count);
+
+            struct_fields[struct_fields_iota++] = create_const_slice_from_memory(
+                c, LLVMPointerTypeInContext(c->llvm_context, 0), types, spec->methods_count);
+
+            tic->tiv_fields[tic->tiv_fields_iota++] =
+                LLVMConstStructInContext(c->llvm_context, struct_fields, struct_fields_iota, false);
+            arena_reset(&temp_arena, checkpoint);
         } break;
 
         case TYPE_UNION: {
             const void *checkpoint = arena_alloc(&temp_arena, 0);
 
-            const Type_Union *spec = type->spec.unionn;
+            const Type_Union *spec = tic->type->spec.unionn;
 
             LLVMValueRef *variants = arena_alloc(&temp_arena, spec->variants_count * sizeof(*variants));
             for (size_t i = 0; i < spec->variants_count; i++) {
                 variants[i] = compile_type_info(c, &spec->variants[i].type);
             }
-            tiv_fields[tiv_fields_iota++] = create_const_slice_from_memory(
+            tic->tiv_fields[tic->tiv_fields_iota++] = create_const_slice_from_memory(
                 c, LLVMPointerTypeInContext(c->llvm_context, 0), variants, spec->variants_count);
 
             arena_reset(&temp_arena, checkpoint);
@@ -2129,7 +2184,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             LLVMValueRef struct_fields[3] = {0};
             size_t       struct_fields_iota = 0;
 
-            const Type_Struct *spec = type->spec.structt;
+            const Type_Struct *spec = tic->type->spec.structt;
 
             LLVMValueRef *names = arena_alloc(&temp_arena, spec->fields_count * sizeof(*names));
             LLVMValueRef *types = arena_alloc(&temp_arena, spec->fields_count * sizeof(*types));
@@ -2151,7 +2206,7 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             struct_fields[struct_fields_iota++] =
                 create_const_slice_from_memory(c, LLVMInt64TypeInContext(c->llvm_context), offsets, spec->fields_count);
 
-            tiv_fields[tiv_fields_iota++] =
+            tic->tiv_fields[tic->tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, struct_fields, struct_fields_iota, false);
             arena_reset(&temp_arena, checkpoint);
         } break;
@@ -2160,17 +2215,17 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             LLVMValueRef array_fields[2] = {0};
             size_t       array_fields_iota = 0;
 
-            array_fields[array_fields_iota++] = compile_type_info(c, type->spec.array.element);
+            array_fields[array_fields_iota++] = compile_type_info(c, tic->type->spec.array.element);
             array_fields[array_fields_iota++] =
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), type->spec.array.count, true);
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), tic->type->spec.array.count, true);
 
-            tiv_fields[tiv_fields_iota++] =
+            tic->tiv_fields[tic->tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, array_fields, array_fields_iota, false);
         } break;
 
         case TYPE_SLICE:
-            tiv_fields[tiv_fields_iota++] =
-                create_const_struct_from_single_value_if_not_already(c, compile_type_info(c, type->spec.slice.element));
+            tic->tiv_fields[tic->tiv_fields_iota++] = create_const_struct_from_single_value_if_not_already(
+                c, compile_type_info(c, tic->type->spec.slice.element));
             break;
 
         default:
@@ -2178,24 +2233,41 @@ static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
             break;
         }
     }
+}
 
-    const size_t variant_size = c->type_info_variants_union->variants[variant_index - 1].size;
+static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *tic) {
+    if (tic->done) {
+        return tic->done;
+    }
+
+    const size_t variant_size = c->type_info_variants_union->variants[tic->variant_index - 1].size;
     const size_t variant_padding = c->type_info_variants_union->variants_size_max - variant_size;
     if (variant_padding) {
-        tiv_fields[tiv_fields_iota++] =
+        tic->tiv_fields[tic->tiv_fields_iota++] =
             LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), variant_padding));
     }
 
-    ti_fields[ti_fields_iota++] = LLVMConstStructInContext(c->llvm_context, tiv_fields, tiv_fields_iota, false);
-    ti_fields[ti_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), type_info->id, true);
+    tic->ti_fields[tic->ti_fields_iota++] =
+        LLVMConstStructInContext(c->llvm_context, tic->tiv_fields, tic->tiv_fields_iota, false);
+    tic->ti_fields[tic->ti_fields_iota++] =
+        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), tic->type_info->id, true);
 
-    LLVMValueRef real =
-        compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, ti_fields, ti_fields_iota, false));
+    LLVMValueRef real = compile_const_value_into_memory(
+        c, LLVMConstStructInContext(c->llvm_context, tic->ti_fields, tic->ti_fields_iota, false));
 
-    LLVMReplaceAllUsesWith(type_info->info, real);
-    LLVMDeleteGlobal(type_info->info);
-    type_info->info = real;
+    LLVMReplaceAllUsesWith(tic->type_info->info, real);
+    LLVMDeleteGlobal(tic->type_info->info);
+    tic->type_info->info = real;
+    tic->done = real;
     return real;
+}
+
+static_assert(COUNT_TYPES == 26, "");
+static LLVMValueRef compile_type_info(Compiler *c, Type *type) {
+    Type_Info_Compiler tic = {0};
+    compile_type_info_init(c, &tic, type);
+    compile_type_info_variant(c, &tic);
+    return compile_type_info_finalize(c, &tic);
 }
 
 static LLVMValueRef compile_cast_to_any(Compiler *c, Type *type, LLVMValueRef value) {
