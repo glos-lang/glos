@@ -3157,7 +3157,7 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
                 LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
                 LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
 
-                if (member->lhs->type.kind == TYPE_ANY) {
+                if (member->lhs->type.kind == TYPE_ANY || member->lhs->type.kind == TYPE_TRAIT) {
                     LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
                     LLVMValueRef tag = compile_load_if_not_null(c, lhs, ptr_type);
 
@@ -3190,6 +3190,10 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
             }
 
             LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+            if (member->lhs->type.kind == TYPE_TRAIT) {
+                payload = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), payload, "");
+            }
+
             if (ref) {
                 return payload;
             }

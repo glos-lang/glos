@@ -10,6 +10,10 @@
 #include <assert.h>
 #include <stdint.h>
 
+static bool type_is_trait(Type type) {
+    return !type.ref && type_kind_eq(type, TYPE_TRAIT);
+}
+
 static bool type_is_union(Type type) {
     return !type.ref && type_kind_eq(type, TYPE_UNION);
 }
@@ -1280,7 +1284,18 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         switch (lhs.kind) {
         case CONST_VALUE_TRAIT: {
             if (member->rhs) {
-                todo(); // TODO(@trait)
+                if (!lhs.as.trait.type || !type_eq(n->type, *lhs.as.trait.type)) {
+                    fprintf(
+                        stderr,
+                        Pos_Fmt "ERROR: Type mismatch: Accessing %s, but real type is %s\n",
+                        Pos_Arg(n->token.pos),
+                        type_to_cstr(n->type),
+                        lhs.as.trait.type ? type_to_cstr(*lhs.as.trait.type) : "null");
+                    exit(1);
+                }
+
+                assert(lhs.as.trait.data); // The type is checked, that means a real value exists
+                return *lhs.as.trait.data;
             } else if (member->is_trait) {
                 if (!lhs.as.trait.impl) {
                     fprintf(stderr, Pos_Fmt "ERROR: Cannot access method of null trait\n", Pos_Arg(n->token.pos));
@@ -1290,8 +1305,18 @@ static Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
                 Node_Fn *fn = lhs.as.trait.impl->methods[member->trait_method].fn;
                 return const_value_fn(
                     create_trait_method_wrapper(&default_arena, fn, lhs.as.trait.impl->trait, member->trait_method));
+            } else if (member->field_index == 0) {
+                if (lhs.as.trait.type) {
+                    return const_value_type(*lhs.as.trait.type);
+                }
+
+                return const_value_u64(0);
+            } else if (member->field_index == 1 || member->field_index == 2) {
+                fprintf(
+                    stderr, Pos_Fmt "ERROR: Cannot access pointers in constant expressions\n", Pos_Arg(n->token.pos));
+                exit(1);
             } else {
-                todo(); // TODO(@trait)
+                unreachable();
             }
         }
 
@@ -3317,7 +3342,7 @@ static void check_whether_member_access_is_valid(Node_Member *m) {
     if (m->rhs) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
         if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ANY}) &&
-            !type_eq(m->lhs->type, (Type) {.kind = TYPE_TRAIT})) //
+            !type_is_trait(m->lhs->type)) //
         {
             fprintf(
                 stderr,
@@ -3970,7 +3995,20 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
                     Type_Trait *spec = member->lhs->type.spec.trait;
                     if (member->rhs) {
-                        todo(); // TODO(@trait)
+                        check_expr(c, member->rhs, REF_NONE);
+                        type_assert_type(member->rhs);
+                        n->type = member->rhs->type;
+                        n->type.is_meta = false;
+                        check_type_satisfies_trait(c, n->type, spec, member->rhs, -1);
+                    } else if (sv_match(n->token.sv, "type")) {
+                        n->type = c->type_info_pointer_type;
+                        member->field_index = 0;
+                    } else if (sv_match(n->token.sv, "data")) {
+                        n->type = (Type) {.kind = TYPE_RAWPTR};
+                        member->field_index = 1;
+                    } else if (sv_match(n->token.sv, "impl")) {
+                        n->type = (Type) {.kind = TYPE_RAWPTR};
+                        member->field_index = 2;
                     } else {
                         bool ok = false;
                         for (size_t i = 0; i < spec->methods_count; i++) {
@@ -3984,7 +4022,7 @@ static void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                         }
 
                         if (!ok) {
-                            error_undefined(&n->token, "method", false);
+                            error_undefined(&n->token, "field or method", false);
                         }
                     }
                 } else if (type_kind_eq(member->lhs->type, TYPE_ANY)) {
