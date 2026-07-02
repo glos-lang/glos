@@ -1307,20 +1307,34 @@ static LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type typ
 
     case CONST_VALUE_TRAIT: {
         Type_Trait_Impl *impl = value.as.trait.impl;
-        compile_trait_impl(c, impl);
+        if (impl) {
+            compile_trait_impl(c, impl);
+        }
 
         LLVMValueRef fields[3] = {0};
         size_t       fields_iota = 0;
 
         // Type
-        fields[fields_iota++] = compile_type_info(c, value.as.trait.type);
+        if (value.as.trait.type) {
+            fields[fields_iota++] = compile_type_info(c, value.as.trait.type);
+        } else {
+            fields[fields_iota++] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+        }
 
         // Data
-        fields[fields_iota++] =
-            compile_const_value_into_memory(c, compile_const_value(c, *value.as.trait.data, *value.as.trait.type));
+        if (value.as.trait.data) {
+            fields[fields_iota++] =
+                compile_const_value_into_memory(c, compile_const_value(c, *value.as.trait.data, *value.as.trait.type));
+        } else {
+            fields[fields_iota++] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+        }
 
         // Impl
-        fields[fields_iota++] = impl->llvm;
+        if (impl) {
+            fields[fields_iota++] = impl->llvm;
+        } else {
+            fields[fields_iota++] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+        }
         return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, false);
     }
 
@@ -3086,6 +3100,28 @@ static LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
             LLVMValueRef impl = LLVMBuildLoad2(
                 c->llvm_builder, ptr_type, LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 2, ""), "");
+
+            // Impl check
+            {
+                LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+                LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+
+                LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntNE, impl, LLVMConstNull(ptr_type), "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                {
+                    const char *message = arena_sprintf(
+                        &temp_arena, Pos_Fmt "Cannot access method of null trait\n", Pos_Arg(n->token.pos));
+
+                    compile_panic(c, message, NULL, NULL, NULL);
+                    arena_reset(&temp_arena, message);
+                }
+
+                // Success
+                LLVMPositionBuilderAtEnd(c->llvm_builder, success);
+            }
 
             LLVMValueRef indices[] = {
                 LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), member->trait_method, true)};

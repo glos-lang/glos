@@ -871,7 +871,7 @@ static Const_Value default_const_value(Compiler *c, Type type) {
         return const_value_u64(0);
 
     case TYPE_TRAIT:
-        todo(); // TODO(@trait)
+        return const_value_trait((Const_Value_Trait) {0});
 
     case TYPE_UNION:
         return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
