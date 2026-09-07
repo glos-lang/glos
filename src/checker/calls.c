@@ -55,20 +55,23 @@ static void show_error_for_uninferred_polymorphic_parameter_in_call(
 }
 
 void check_call_arity(
-    Compiler *c,
-    Node     *fn,
-    size_t    args_count,
-    Token     end,
-    bool      is_method,
-    size_t    args_count_min,
-    size_t    args_count_max,
-    Node     *excess_argument) //
+    Compiler   *c,
+    Node       *fn,
+    size_t      args_count,
+    Token       end,
+    bool        is_method,
+    size_t      args_count_min,
+    size_t      args_count_max,
+    Node       *excess_argument,
+    const char *extra_label) //
 {
     if (args_count < args_count_min) {
         error_token(
             EK_ERROR,
             end,
-            "Too few arguments: Expected%s %zu, got %zu",
+            "Too few arguments%s%s: Expected%s %zu, got %zu",
+            extra_label ? " " : "",
+            extra_label ? extra_label : "",
             args_count_min == args_count_max ? "" : " at least",
             args_count_min - is_method,
             args_count - is_method);
@@ -86,7 +89,9 @@ void check_call_arity(
         error_node(
             EK_ERROR,
             excess_argument,
-            "Too many arguments: Expected %zu, got %zu",
+            "Too many arguments%s%s: Expected %zu, got %zu",
+            extra_label ? " " : "",
+            extra_label ? extra_label : "",
             args_count_max - is_method,
             args_count - is_method);
 
@@ -303,7 +308,8 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
             cc->is_method || cc->is_trait,
             args_count_min,
             args_count_max,
-            excess_argument);
+            excess_argument,
+            NULL);
 
         size_t not_provided_count = 0;
         SV     not_provided_name = {0};

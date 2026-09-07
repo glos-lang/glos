@@ -153,14 +153,15 @@ typedef struct {
 } Call_Checker;
 
 void check_call_arity(
-    Compiler *c,
-    Node     *fn,
-    size_t    args_count,
-    Token     end,
-    bool      is_method,
-    size_t    args_count_min,
-    size_t    args_count_max,
-    Node     *excess_argument);
+    Compiler   *c,
+    Node       *fn,
+    size_t      args_count,
+    Token       end,
+    bool        is_method,
+    size_t      args_count_min,
+    size_t      args_count_max,
+    Node       *excess_argument,
+    const char *extra_label);
 void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_provided);
 
 const char *fn_type_to_cstr_but_excluding_receiver_if_required(const Type_Fn *fn_spec_raw, bool exclude_receiver);

@@ -1344,7 +1344,8 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                         false,
                         spec->polymorphs_count_min,
                         spec->polymorphs_count,
-                        excess_argument);
+                        excess_argument,
+                        NULL);
 
                     size_t not_provided_count = 0;
                     SV     not_provided_name = {0};
@@ -1487,7 +1488,8 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                         excess_argument = it;
                     }
                 }
-                check_call_arity(c, call->fn, call->args_count, call->end, false, 1, 1, excess_argument);
+                check_call_arity(
+                    c, call->fn, call->args_count, call->end, false, 1, 1, excess_argument, "in a cast expression");
             }
 
             Node *from = call->args.head;

@@ -23,22 +23,22 @@ static void error_begin(Error_Kind kind) {
 
     switch (kind) {
     case EK_ERROR:
-        afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, "Error:");
+        afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, "Error");
         break;
 
     case EK_WARN:
-        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Warn:");
+        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Warn");
         break;
 
     case EK_NOTE:
-        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Note:");
+        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Note");
         break;
 
     case EK_BLANK:
         return;
     }
 
-    fprintf(stderr, " ");
+    fprintf(stderr, ": ");
 }
 
 typedef struct {
