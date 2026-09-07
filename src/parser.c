@@ -615,6 +615,7 @@ static Node *parse_define(
     Node   *name,
     Token   token,
     bool    groups_allowed,
+    bool    compounds_allowed,
     bool    spread_allowed,
     bool    name_can_be_this,
     bool    is_static) //
@@ -719,7 +720,7 @@ static Node *parse_define(
         if (define->name_polymorph) {
             p->state.pb = NULL;
         }
-        define->type = parse_expr(p, POWER_PRE, false, true, NULL);
+        define->type = parse_expr(p, POWER_PRE, false, false, NULL);
         p->state.pb = pb_save;
     }
 
@@ -738,8 +739,7 @@ static Node *parse_define(
 
         p->state.pb = NULL;
         p->state.range_for = range_for;
-        // TODO: Maybe this function should accept 'compounds_allowed'
-        define->expr = parse_expr(p, POWER_SET, groups_allowed, range_for == NULL, NULL);
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, compounds_allowed, NULL);
         p->state.pb = pb_save;
 
         if (define->has_spread) {
@@ -749,7 +749,7 @@ static Node *parse_define(
     } else if (token.kind == TOKEN_COLON) {
         p->state.peeked = false;
         p->state.pb = NULL;
-        define->expr = parse_expr(p, POWER_SET, groups_allowed, true, NULL);
+        define->expr = parse_expr(p, POWER_SET, groups_allowed, compounds_allowed, NULL);
         p->state.pb = pb_save;
         define->is_const = true;
 
@@ -978,7 +978,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.in_extern = false;
 
             node = parse_expr(p, POWER_SET, false, true, NULL);
-            node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, false, false);
+            node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, true, false, false);
         } else {
             p->state.range_for = range_for;                                   // '(EXPR)' == 'EXPR' semantically
             p->state.allow_methods_without_body = allow_methods_without_body; // '(EXPR)' == 'EXPR' semantically
@@ -997,7 +997,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 p->state.fn_current = fn;
                 p->state.in_extern = false;
 
-                node = parse_define(p, node, next_token(p), false, true, true, false);
+                node = parse_define(p, node, next_token(p), false, true, true, true, false);
             } else {
                 node->lparen = token;
                 node->rparen = expect_token(p, TOKEN_RPAREN);
@@ -1111,7 +1111,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     unreachable();
                 }
 
-                arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false);
+                arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false);
             }
             p->state.pb = pb_save;
 
@@ -1236,7 +1236,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 exit(1);
             }
 
-            Node *method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false);
+            Node *method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false, false);
 
             Node_Define *define = (Node_Define *) method;
             if (define->is_const) {
@@ -1313,7 +1313,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             while (!read_token(p, TOKEN_RPAREN)) {
                 buffer_token(p, expect_token(p, TOKEN_DOLLAR));
                 Node *name = parse_expr(p, POWER_SET, false, true, NULL);
-                parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false);
+                parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false);
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
@@ -1376,7 +1376,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->module_current, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         unary->value = parse_expr(p, POWER_PRE, false, false, NULL);
-        unary->range_for = range_for;
         range_for->range = unary;
     } break;
 
@@ -1492,7 +1491,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         case TOKEN_COLON:
             p->state.range_for = range_for;
-            return parse_define(p, node, token, groups_allowed, false, false, false);
+            return parse_define(p, node, token, groups_allowed, compounds_allowed, false, false, false);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {
@@ -1621,13 +1620,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } break;
 
         default:
-            // TODO: range with '='
             if (should_be_switch && token.kind == TOKEN_EQ && peek_token(p).kind == TOKEN_LBRACE) {
                 *should_be_switch = true;
                 return node;
             } else {
                 Node_Binary *binary = (Node_Binary *) node_alloc(p->module_current, NODE_BINARY, token);
                 binary->lhs = node;
+                if (token.kind == TOKEN_SET) {
+                    p->state.range_for = range_for;
+                }
                 binary->rhs = parse_expr(p, lbp, groups_allowed, compounds_allowed, NULL);
                 binary->module = p->module_current;
                 node = (Node *) binary;
@@ -1677,7 +1678,7 @@ static Node *parse_stmt(Parser *p) {
         token.kind = TOKEN_IDENT;
         Node *name = node_alloc(p->module_current, NODE_ATOM, token);
 
-        node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false);
+        node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);
         Node_Define *define = (Node_Define *) node;
         if (!define->is_const || define->expr->kind != NODE_FN) {
             error_node(EK_ERROR, node, "Operator definition must be a constant method literal");

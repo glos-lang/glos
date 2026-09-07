@@ -1,0 +1,17 @@
+main :: () {
+    xs := []s32 {69, 420, 1337}
+
+    iota :: () -> s64 {
+        println("Side effect!")
+        #static iota := 0
+        iota += 1
+        return iota - 1
+    }
+
+    i: s64
+    ys: [3]s32
+    for i, ys[iota()] = range xs {
+        println(i, ys)
+    }
+    println(i)
+}

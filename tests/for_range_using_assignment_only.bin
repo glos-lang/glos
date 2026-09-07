@@ -1,0 +1,12 @@
+EXIT 0
+STDOUT 87
+Side effect!
+0 {69, 0, 0}
+Side effect!
+1 {69, 420, 0}
+Side effect!
+2 {69, 420, 1337}
+2
+
+STDERR 0
+

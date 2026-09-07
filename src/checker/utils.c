@@ -302,7 +302,7 @@ Node *get_node_from_group(Node *n, size_t index, i64 *group_index) {
         unreachable();
     }
 
-    if (n->kind == NODE_CALL) {
+    if (n->kind == NODE_CALL || (n->kind == NODE_UNARY && n->token.kind == TOKEN_RANGE)) {
         assert(index < n->type.spec.group.count);
         if (group_index) {
             *group_index = index;

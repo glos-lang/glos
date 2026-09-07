@@ -683,18 +683,6 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
         set_debug_pos(c, n->token.pos);
         return LLVMBuildXor(c->llvm_builder, value, LLVMConstInt(n->type.llvm, true, false), "");
 
-    case TOKEN_RANGE: {
-        unary->range_for->range_over_llvm = compile_expr(c, unary->value, false);
-
-        assert(n->type.kind == TYPE_GROUP);
-        Type_Group *group = &n->type.spec.group;
-        for (size_t i = 0; i < group->count; i++) {
-            da_push(&c->group_values, LLVMConstNull(compile_type(c, &group->data[i])));
-        }
-
-        return NULL;
-    }
-
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
 

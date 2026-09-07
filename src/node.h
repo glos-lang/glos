@@ -628,17 +628,12 @@ typedef struct {
     size_t count;
 } Node_Group;
 
-typedef struct Node_For Node_For;
-
 typedef struct {
     Node  node;
     Node *value;
 
     Node_Fn *overload;
     Module  *module;
-
-    // For range
-    Node_For *range_for;
 
     // For things like sizeof(), typeof()
     Token end;
@@ -1002,17 +997,16 @@ typedef struct {
     Context_Replace context_replace;
 } Node_If;
 
-struct Node_For {
+typedef struct {
     Node  node;
     Node *init;
     Node *condition;
     Node *update;
     Node *body;
 
-    Node_Unary  *range;
-    bool         is_range_custom;
-    LLVMValueRef range_over_llvm;
-};
+    Node_Unary *range;
+    bool        is_range_custom;
+} Node_For;
 
 typedef struct {
     Node   node;
@@ -1075,4 +1069,4 @@ Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, s
 
 #endif // NODE_H
 
-// Remove the individual `module` fields present in specific node types
+// TODO: Remove the individual `module` fields present in specific node types
