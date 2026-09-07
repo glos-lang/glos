@@ -20,7 +20,7 @@ typedef enum {
     TOKEN_ARROW,
     TOKEN_COLON,
     TOKEN_COMMA,
-    TOKEN_RANGE,
+    TOKEN_SLICE,
     TOKEN_SPREAD,
     TOKEN_DOLLAR,
 
@@ -81,6 +81,8 @@ typedef enum {
     TOKEN_TRAIT,
     TOKEN_UNION,
     TOKEN_STRUCT,
+
+    TOKEN_RANGE,
     TOKEN_SIZEOF,
     TOKEN_TYPEOF,
 

@@ -1,0 +1,11 @@
+main :: () {
+    xs: []s32 = {69, 420, 1337}
+    for i, x := range xs {
+        println(i, x)
+    }
+
+    for i, x := range &xs {
+        *x = s32(i) * 2
+    }
+    println(xs)
+}

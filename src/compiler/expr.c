@@ -551,7 +551,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -625,7 +625,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -682,6 +682,18 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
         value = compile_expr(c, unary->value, false);
         set_debug_pos(c, n->token.pos);
         return LLVMBuildXor(c->llvm_builder, value, LLVMConstInt(n->type.llvm, true, false), "");
+
+    case TOKEN_RANGE: {
+        unary->range_for->range_over_llvm = compile_expr(c, unary->value, false);
+
+        assert(n->type.kind == TYPE_GROUP);
+        Type_Group *group = &n->type.spec.group;
+        for (size_t i = 0; i < group->count; i++) {
+            da_push(&c->group_values, LLVMConstNull(compile_type(c, &group->data[i])));
+        }
+
+        return NULL;
+    }
 
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
@@ -781,7 +793,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 91, "");
+        static_assert(COUNT_TOKENS == 92, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -839,7 +851,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 91, "");
+        static_assert(COUNT_TOKENS == 92, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -883,7 +895,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 91, "");
+        static_assert(COUNT_TOKENS == 92, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -1000,7 +1012,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;

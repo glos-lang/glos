@@ -26,6 +26,7 @@ void modules_free(Modules *ms) {
 
 Type type_with_ref(Type t, size_t ref) {
     t.ref = ref;
+    t.llvm = NULL;
     if (t.distinct && t.ref < t.distinct->node.type.ref) {
         t.distinct = NULL;
     }
@@ -34,6 +35,7 @@ Type type_with_ref(Type t, size_t ref) {
 
 Type type_without_ref(Type t) {
     t.ref = 0;
+    t.llvm = NULL;
     if (t.distinct && t.ref < t.distinct->node.type.ref) {
         t.distinct = NULL;
     }
@@ -567,8 +569,13 @@ bool type_meta_kind_eq(Type type, Type_Kind kind) {
 }
 
 bool type_is_numeric(Type type) {
-    return type_is_integer(type) || type_is_float(type) || type_kind_eq(type, TYPE_ENUM) ||
-           type_kind_eq(type, TYPE_UNKNOWN_ENUM) || type_kind_eq(type, TYPE_UNKNOWN_COMPOUND);
+    if (type.ref || type.is_meta) {
+        return false;
+    }
+
+    return type_is_integer(type) || type_is_float(type) ||                       //
+           type.kind == TYPE_CHAR || type.kind == TYPE_ENUM ||                   //
+           type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND; //
 }
 
 static_assert(COUNT_TYPES == 30, "");

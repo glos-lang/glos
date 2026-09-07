@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 92, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -133,7 +133,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -225,7 +225,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -277,6 +277,51 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_assert(c, unary->value, (Type) {.kind = TYPE_BOOL});
         break;
 
+    case TOKEN_RANGE: {
+        check_expr(c, unary->value, REF_NONE);
+
+        const Type operand = unary->value->type;
+        const bool is_array = type_kind_eq(operand, TYPE_ARRAY);
+        const bool is_dynamic_array = type_kind_eq(operand, TYPE_DYNAMIC_ARRAY);
+        const bool is_slice = type_kind_eq(operand, TYPE_SLICE);
+        const bool is_string = type_kind_eq(operand, TYPE_STRING);
+        if (is_array || is_dynamic_array || is_slice || is_string) {
+            if (operand.ref > 1) {
+                error_node(
+                    EK_ERROR,
+                    unary->value,
+                    "Too many layers of indirection in iteration. The type is %s",
+                    type_to_cstr(operand));
+                exit(c, 1);
+            }
+
+            Type_Group group = {0};
+            group.count = 2;
+            group.data = arena_alloc(&default_arena, group.count * sizeof(*group.data));
+            group.data[0] = (Type) {.kind = TYPE_S64};
+            if (is_array) {
+                group.data[1] = *operand.spec.array.element;
+            } else if (is_dynamic_array) {
+                group.data[1] = *operand.spec.dynamic_array.element;
+            } else if (is_slice) {
+                group.data[1] = *operand.spec.slice.element;
+            } else if (is_string) {
+                group.data[1] = (Type) {.kind = TYPE_CHAR};
+            } else {
+                unreachable();
+            }
+
+            if (operand.ref) {
+                group.data[1].ref++;
+            }
+
+            n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
+        } else {
+            error_node(EK_ERROR, unary->value, "Cannot iterator over %s", type_to_cstr(operand));
+            exit(c, 1);
+        }
+    } break;
+
     case TOKEN_SIZEOF:
         check_expr(c, unary->value, REF_NONE);
         check_that_type_is_known(c, unary->value);
@@ -304,7 +349,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 92, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
