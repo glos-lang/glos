@@ -325,8 +325,18 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             compile_type(c, &forr->range->node.type);
 
             assert(forr->range->node.type.kind == TYPE_GROUP);
-            const Type_Group *group = &forr->range->node.type.spec.group;
-            Typed_LLVM_Value *assignees = arena_alloc(&temp_arena, group->count * sizeof(*assignees));
+            Typed_LLVM_Value *assignees = NULL;
+            size_t            assignees_count = 0;
+            if (forr->range->node.type.kind == TYPE_GROUP) {
+                Type_Group *group = &forr->range->node.type.spec.group;
+                assignees_count = group->count;
+                assignees = arena_alloc(&temp_arena, assignees_count * sizeof(*assignees));
+                for (size_t i = 0; i < assignees_count; i++) {
+                    assignees[i].type = &group->data[i];
+                }
+            } else {
+                unreachable();
+            }
 
             LLVMTypeRef  iterator_type = NULL;
             LLVMValueRef iterator_memory = NULL;
@@ -383,7 +393,6 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
                     assert(!it->definition_spec->llvm);
                     compile_var_def(c, it);
-                    assignees[iota].type = &group->data[iota];
                     assignees[iota].value = it->definition_spec->llvm;
                     iota++;
                 }
@@ -393,7 +402,6 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 size_t iota = 0;
                 Node  *it = NULL;
                 while ((it = node_iter(it, binary->lhs))) {
-                    assignees[iota].type = &group->data[iota];
                     assignees[iota].value = compile_expr(c, it, true);
                     iota++;
                 }
@@ -405,11 +413,11 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 todo();
             } else {
                 // Assign the values
-                if (group->count > 0 && assignees[0].value) {
+                if (assignees_count > 0 && assignees[0].value) {
                     LLVMBuildStore(c->llvm_builder, iterator_loaded, assignees[0].value);
                 }
 
-                if (group->count > 1 && assignees[1].value) {
+                if (assignees_count > 1 && assignees[1].value) {
                     Type element_type = *assignees[1].type;
                     if (iterable_node->type.ref) {
                         element_type.ref--;
