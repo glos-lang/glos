@@ -1,0 +1,16 @@
+Box :: struct($T: Type) {
+    v: T
+}
+
+foo :: (b: Box($T)) {
+    Box :: typeof(b)
+    bar(b)
+}
+
+bar :: (b: Box($T)) {
+    println(Box(s64))
+}
+
+main :: () {
+    foo(Box(string) {"Nice!"})
+}

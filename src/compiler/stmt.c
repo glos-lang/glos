@@ -137,7 +137,6 @@ void compile_defers(Compiler *c, size_t from, bool rollback) {
     }
 }
 
-// TODO: Lazily compile constants
 void compile_stmt_define(Compiler *c, Node_Define *define) {
     if (define->is_const) {
         return;

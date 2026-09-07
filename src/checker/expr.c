@@ -2116,17 +2116,16 @@ void check_fn(
 
     Context_Fn context = {0};
     context.fn = fn;
-    if (fn->checked_signature) {
-        for (Context_Fn *f = c->context.fn; f; f = f->outer) {
-            if (f->fn == fn->outer_fn) {
-                context.outer = f;
-                break;
-            }
-        }
 
+    for (Context_Fn *f = c->context.fn; f; f = f->outer) {
+        if (f->fn == fn->outer_fn) {
+            context.outer = f;
+            break;
+        }
+    }
+
+    if (fn->checked_signature) {
         c->context.replace = fn->context_replace;
-    } else {
-        context.outer = c->context.fn;
     }
     context_push_fn(&c->context, &context);
 
