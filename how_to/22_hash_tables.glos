@@ -1,0 +1,71 @@
+main :: () {
+    // The hash table type is defined in the builtin standard module of Glos:
+    //
+    //     Table :: struct($Key: Type, $Value: Type) {
+    //         /* ... */
+    //     }
+    //
+    map: Table(string, s64)
+    defer map.free() // Let us not worry about memory management
+
+    // You can assign entries to a hash table.
+    map["foo"] = 69
+    map["bar"] = 420
+    map["baz"] = 1337
+
+    // You can access entries of a hash table.
+    println(map["foo"])
+    println(map["bar"])
+    println(map["baz"])
+
+    // You can reassign entries as well.
+    map["foo"] = 80085
+    println(map["foo"])
+
+    // Accessing a non existant key will cause a runtime panic.
+    //
+    // println(map["lmao"])
+    //
+    // Use the method 'contains' to check whether a key is present.
+    if map.contains("lmao") {
+        println("What?")
+    }
+
+    // Use the method 'delete' to delete entries from a hash table.
+    println("Contains foo:", map.contains("foo"))
+    map.delete("foo")
+    println("Contains foo:", map.contains("foo"))
+
+    // The field 'count' contains the number of entries of a hash table.
+    println(map.count)
+
+    // Use the method 'clear' to clear the entries of a hash table without freeing the memory.
+    map.clear()
+    println(map.count)
+
+    // Now let's look at custom types as keys.
+    custom_types_as_keys()
+}
+
+Vec2 :: struct {
+    x, y: f32
+}
+
+// For a type to be usable as the key of a hash table, it must implement the '==' operator.
+operator <=> :: (this: Vec2, that: Vec2) -> Equivalence {
+    if this.x == that.x && this.y == that.y {
+        return .EQ
+    }
+    return .NE
+}
+
+custom_types_as_keys :: () {
+    map: Table(Vec2, string)
+    defer map.free()
+
+    map[{4.2, 6.9}]      = "First"
+    map[{13.37, 80.085}] = "Second"
+
+    println(map[{4.2, 6.9}])
+    println(map[{13.37, 80.085}])
+}

@@ -64,6 +64,8 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index);
 
 void make_sure_import_is_ready(Compiler *c, Node_Import *import);
 
+Hash_Infos get_hash_info(Compiler *c, Type type);
+
 // Type Assertions /////////////////////////////////////////////////////////////////////////////////
 bool check_that_type_is_known_noexit(const Node *n);
 void check_that_type_is_known(Compiler *c, const Node *n);
@@ -259,10 +261,6 @@ void check_stmt_return(Compiler *c, Node_Return *returnn);
 void check_stmt(Compiler *c, Node *n);
 
 // Exit Wrapper ////////////////////////////////////////////////////////////////////////////////////
-#ifdef DONT_DEFINE_EXIT_WRAPPER
-#undef DONT_DEFINE_EXIT_WRAPPER
-#else
 #define exit(c, code) (show_current_monomorphization(c), exit(code))
-#endif // DONT_DEFINE_EXIT_WRAPPER
 
 #endif // CHECKER_INTERNAL_H

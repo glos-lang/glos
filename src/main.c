@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
 
-    Compiler compiler = {.optimization_level = O1};
+    static Compiler compiler = {.optimization_level = O1};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {

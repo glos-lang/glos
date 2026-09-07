@@ -248,7 +248,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 90, "");
+static_assert(COUNT_TOKENS == 91, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -291,6 +291,15 @@ Token lexer_iter(Lexer *l) {
             while (l->sv.count > 0 && (isxdigit(*l->sv.data) || *l->sv.data == '_')) {
                 next_char(l);
             }
+        } else if (*l->sv.data == '0' && peek_char(l, 1) == 'h') {
+            base = 16;
+            digit = "hexadecimal digit";
+            next_char(l);
+            next_char(l);
+            token.kind = TOKEN_FLOAT;
+            while (l->sv.count > 0 && (isxdigit(*l->sv.data) || *l->sv.data == '_')) {
+                next_char(l);
+            }
         } else {
             next_char(l);
             while (l->sv.count > 0 && (isdigit(*l->sv.data) || *l->sv.data == '_')) {
@@ -326,14 +335,14 @@ Token lexer_iter(Lexer *l) {
         }
 
         errno = 0;
-        if (token.kind == TOKEN_INT) {
+        if (token.kind == TOKEN_FLOAT && base == 10) {
+            token.as.real = strtod(buffer, NULL);
+        } else {
 #ifdef PLATFORM_X86_64_WINDOWS
             token.as.integer = strtoull(buffer, NULL, base);
 #else
             token.as.integer = strtoul(buffer, NULL, base);
 #endif // PLATFORM_X86_64_WINDOWS
-        } else {
-            token.as.real = strtod(buffer, NULL);
         }
         arena_reset(&temp_arena, buffer);
 
@@ -622,14 +631,16 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_PRIVATE;
         } else if (sv_match(token.sv, "#library")) {
             token.kind = TOKEN_DIRECTIVE_LIBRARY;
-        } else if (sv_match(token.sv, "#main")) {
-            token.kind = TOKEN_DIRECTIVE_MAIN;
-        } else if (sv_match(token.sv, "#platform")) {
-            token.kind = TOKEN_DIRECTIVE_PLATFORM;
         } else if (sv_match(token.sv, "#location")) {
             token.kind = TOKEN_DIRECTIVE_LOCATION;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_DIRECTIVE_CALLER_LOCATION;
+        } else if (sv_match(token.sv, "#main")) {
+            token.kind = TOKEN_DIRECTIVE_MAIN;
+        } else if (sv_match(token.sv, "#platform")) {
+            token.kind = TOKEN_DIRECTIVE_PLATFORM;
+        } else if (sv_match(token.sv, "#hash_info")) {
+            token.kind = TOKEN_DIRECTIVE_HASH_INFO;
         } else {
             error_parts(EK_ERROR, token.sv, token.pos, "Invalid compile time directive '" SV_Fmt "'", SV_Arg(token.sv));
             exit(1);

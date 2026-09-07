@@ -435,6 +435,10 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     }
 
     Node *n = *np;
+    if (n->kind == NODE_ENUM) {
+        return;
+    }
+
     if (first) {
         Node *copy = arena_clone(&default_arena, n, node_size(n->kind));
         memset(&copy->type, 0, sizeof(copy->type));

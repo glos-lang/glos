@@ -1,0 +1,4 @@
+main :: () {
+    map: Table(string, s64)
+    map.delete("Foo")
+}

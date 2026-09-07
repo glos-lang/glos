@@ -800,7 +800,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 90, "");
+static_assert(COUNT_TOKENS == 91, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     const bool allow_methods_without_body = p->state.allow_methods_without_body; // Only lasts a singular level
     p->state.allow_methods_without_body = false;
@@ -819,10 +819,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_FLOAT:
     case TOKEN_IDENT:
     case TOKEN_STRING:
-    case TOKEN_DIRECTIVE_MAIN:
-    case TOKEN_DIRECTIVE_PLATFORM:
     case TOKEN_DIRECTIVE_LOCATION:
     case TOKEN_DIRECTIVE_CALLER_LOCATION:
+
+    case TOKEN_DIRECTIVE_MAIN:
+    case TOKEN_DIRECTIVE_PLATFORM:
         node = node_alloc(p->module_current, NODE_ATOM, token);
         break;
 
@@ -1342,7 +1343,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_SIZEOF:
-    case TOKEN_TYPEOF: {
+    case TOKEN_TYPEOF:
+    case TOKEN_DIRECTIVE_HASH_INFO: {
         node = node_alloc(p->module_current, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);

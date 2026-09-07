@@ -83,7 +83,7 @@ static void range_apply_node(Range *r, const Node *n) {
         range_apply_token(r, n->lparen);
     }
 
-    if (n->lparen.kind == TOKEN_RPAREN) {
+    if (n->rparen.kind == TOKEN_RPAREN) {
         range_apply_token(r, n->rparen);
     }
 

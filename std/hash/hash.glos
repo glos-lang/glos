@@ -1,0 +1,29 @@
+Hasher :: struct {
+    n: u64
+}
+
+init :: (this: &Hasher) {
+    this.n = 0xCBF2_9CE4_8422_2325
+}
+
+bytes :: (this: &Hasher, data: rawptr, count: s64) {
+    for i := 0; i < count; i += 1 {
+        this.n ^= u64(*(&u8(data) + &u8(i)))
+        this.n *= 0x100_0000_01B3
+    }
+}
+
+float :: (this: &Hasher, f: f64) {
+    if f == 0.0 then f = 0.0                   // +0.0 and -0.0 have different bit representations
+    if f != f   then f = 0h7FF8_0000_0000_0000 // NaN
+    this.bytes(rawptr(&f), sizeof(f))
+}
+
+finish :: (this: Hasher) -> u64 {
+    this.n ^= this.n >> 30
+    this.n *= 0xBF58_476D_1CE4_E5B9
+    this.n ^= this.n >> 27
+    this.n *= 0x94D0_49BB_1331_11EB
+    this.n ^= this.n >> 31
+    return this.n
+}

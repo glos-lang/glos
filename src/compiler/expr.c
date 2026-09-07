@@ -1,4 +1,5 @@
 #include "../checker/checker.h"
+#undef exit // Don't use the exit wrapper here
 #include "../error.h"
 #include "compiler.h"
 
@@ -550,7 +551,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -594,12 +595,6 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
     }
 
-    case TOKEN_DIRECTIVE_MAIN:
-        return compile_fn(c, c->main_fn);
-
-    case TOKEN_DIRECTIVE_PLATFORM:
-        return compile_const_value(c, get_platform(c, NULL), n->type);
-
     case TOKEN_DIRECTIVE_LOCATION: {
         LLVMValueRef fields[3];
         fields[0] = compile_string_into_const_value(c, sv_from_cstr(n->token.pos.path));
@@ -615,6 +610,12 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
     }
 
+    case TOKEN_DIRECTIVE_MAIN:
+        return compile_fn(c, c->main_fn);
+
+    case TOKEN_DIRECTIVE_PLATFORM:
+        return compile_const_value(c, get_platform(c, NULL), n->type);
+
     default:
         unreachable();
     }
@@ -624,7 +625,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -684,6 +685,30 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
 
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
+
+    case TOKEN_DIRECTIVE_HASH_INFO: {
+        Hash_Infos infos = get_hash_info(c, unary->value->type);
+
+        LLVMValueRef *items = arena_alloc(&temp_arena, infos.count * sizeof(*items));
+        for (size_t i = 0; i < infos.count; i++) {
+            const Hash_Info it = infos.data[i];
+            LLVMValueRef    item[] = {
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.kind, true),
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.offset, true),
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.size, true),
+            };
+            items[i] = LLVMConstStructInContext(c->llvm_context, item, len(item), false);
+        }
+
+        LLVMValueRef slice[] = {
+            compile_const_value_into_memory(c, LLVMConstArray(compile_type(c, &c->hash_info_type), items, infos.count)),
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), infos.count, true),
+        };
+        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, slice, len(slice), false);
+
+        arena_reset(&temp_arena, items);
+        return result;
+    }
 
     default:
         unreachable();
@@ -756,7 +781,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 90, "");
+        static_assert(COUNT_TOKENS == 91, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -814,14 +839,14 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 90, "");
+        static_assert(COUNT_TOKENS == 91, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
             [TOKEN_LT] = {.i = LLVMIntSLT, .u = LLVMIntULT, .f = LLVMRealOLT},
             [TOKEN_LE] = {.i = LLVMIntSLE, .u = LLVMIntULE, .f = LLVMRealOLE},
             [TOKEN_EQ] = {.i = LLVMIntEQ, .f = LLVMRealOEQ},
-            [TOKEN_NE] = {.i = LLVMIntNE, .f = LLVMRealONE},
+            [TOKEN_NE] = {.i = LLVMIntNE, .f = LLVMRealUNE}, // Usually the convention in languages like C/C++/Rust/...
             [TOKEN_LXOR] = {.i = LLVMIntNE},
         };
 
@@ -858,7 +883,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 90, "");
+        static_assert(COUNT_TOKENS == 91, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -975,7 +1000,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;

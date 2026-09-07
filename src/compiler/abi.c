@@ -1,5 +1,6 @@
-#define DONT_DEFINE_EXIT_WRAPPER
 #include "../checker/checker.h"
+#undef exit // Don't need the special checker exit wrapper here
+
 #include "compiler.h"
 
 typedef struct {

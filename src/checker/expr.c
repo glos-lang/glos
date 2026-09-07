@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 90, "");
+static_assert(COUNT_TOKENS == 91, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -133,7 +133,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -168,14 +168,6 @@ void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_va
         n->type = (Type) {.kind = TYPE_STRING};
         break;
 
-    case TOKEN_DIRECTIVE_MAIN:
-        n->type = c->main_fn_type;
-        break;
-
-    case TOKEN_DIRECTIVE_PLATFORM:
-        get_platform(c, &n->type);
-        break;
-
     case TOKEN_DIRECTIVE_LOCATION:
         n->type = c->source_code_location_type;
         break;
@@ -187,6 +179,14 @@ void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_va
             "Cannot use %s here. It can only be used as the default value for a function argument",
             token_kind_to_cstr(n->token.kind));
         exit(c, 1);
+        break;
+
+    case TOKEN_DIRECTIVE_MAIN:
+        n->type = c->main_fn_type;
+        break;
+
+    case TOKEN_DIRECTIVE_PLATFORM:
+        get_platform(c, &n->type);
         break;
 
     default:
@@ -225,7 +225,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -290,6 +290,13 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_with_meta(unary->value->type);
         break;
 
+    case TOKEN_DIRECTIVE_HASH_INFO:
+        check_expr(c, unary->value, REF_NONE);
+        type_assert_type(c, unary->value);
+        unary->value->type.is_meta = false;
+        n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
+        break;
+
     default:
         unreachable();
     }
@@ -297,7 +304,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 90, "");
+    static_assert(COUNT_TOKENS == 91, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:

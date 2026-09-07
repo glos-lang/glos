@@ -1,5 +1,3 @@
-// Now that methods have been covered in the previous document, we can look at dynamic arrays.
-
 main :: () {
     // The dynamic array type is like this:
     //

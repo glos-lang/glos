@@ -240,6 +240,8 @@ void compiler_build(Compiler *c, const char *output_path) {
     ht_free(&c->methods_table);
     da_free(&c->methods_list);
 
+    ht_free(&c->hash_info_intern);
+
     da_free(&c->partial_stack);
 
     ht_free(&c->monomorph_intern);

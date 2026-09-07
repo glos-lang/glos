@@ -334,6 +334,8 @@ bool type_is_signed(Type type);
 bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
 
+u64 ht_hasheq_type(const void *va, const void *vb, size_t n);
+
 typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FLOAT,

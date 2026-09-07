@@ -25,6 +25,12 @@ enum {
 };
 
 typedef enum {
+    CONTRACT_HASH_INFO_RAW,
+    CONTRACT_HASH_INFO_FLOAT,
+    CONTRACT_HASH_INFO_STRING,
+} Contract_Hash_Info_Kind;
+
+typedef enum {
     CONTRACT_PANIC_INDEX_OUT_OF_BOUNDS,            // (index: s64, count: s64)
     CONTRACT_PANIC_RANGE_OUT_OF_BOUNDS,            // (begin: s64, end: s64, count: s64)
     CONTRACT_PANIC_RANGE_BEGIN_MORE_THAN_END,      // (begin: s64, end: s64)

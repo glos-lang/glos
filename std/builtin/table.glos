@@ -1,0 +1,156 @@
+Table :: struct ($K: Type, $V: Type) {
+    data:     &Entry(K, V)
+    count:    s64
+    capacity: s64
+}
+
+free :: (this: &Table($K, $V)) {
+    C.free(rawptr(this.data))
+    C.memset(rawptr(this), 0, sizeof(*this))
+}
+
+clear :: (this: &Table($K, $V)) {
+    if this.data != null {
+        C.memset(rawptr(this.data), 0, u64(this.capacity) * sizeof(*this.data))
+        this.count = 0
+    }
+}
+
+delete :: (this: &Table($K, $V), key: K, location := #caller_location) -> V {
+    src := find(this.data, this.capacity, key)
+    if src != null && src.state == .OCCUPIED {
+        value := src.value
+        C.memset(rawptr(src), 0, sizeof(*src))
+        this.count -= 1
+        return value
+    }
+    key_not_found(location, key)
+}
+
+contains :: (this: &Table($K, $V), key: K) -> bool {
+    src := find(this.data, this.capacity, key)
+    return src != null && src.state == .OCCUPIED
+}
+
+operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_location) -> &V {
+    Entry :: typeof(*this.data)
+    if assign {
+        LOAD_FACTOR   :: 0.75
+        INIT_CAPACITY :: 128
+
+        if this.count >= s64(f64(this.capacity) * LOAD_FACTOR) {
+            capacity := this.capacity * 2
+            if capacity == 0 then capacity = INIT_CAPACITY
+
+            data := (&Entry)(C.calloc(u64(capacity), sizeof(Entry)))
+            for i := 0; i < this.capacity; i += 1 {
+                src := this.data + (&Entry)(i * sizeof(Entry))
+                if src.state == .OCCUPIED {
+                    dst := find(data, capacity, src.key)
+                    *dst = *src
+                }
+            }
+
+            C.free(rawptr(this.data))
+            this.data = data
+            this.capacity = capacity
+        }
+
+        dst := find(this.data, this.capacity, key)
+        if dst.state != .OCCUPIED {
+            dst.state = .OCCUPIED
+            this.count += 1
+        }
+
+        dst.key = key
+        return &dst.value
+    } else {
+        src := find(this.data, this.capacity, key)
+        if src != null && src.state == .OCCUPIED {
+            return &src.value
+        }
+        key_not_found(location, key)
+    }
+}
+
+#private ...
+Entry :: struct ($K: Type, $V: Type) {
+    state: enum {
+        EMPTY
+        OCCUPIED
+        TOMBSTONE
+    }
+
+    key:   K
+    value: V
+}
+
+find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
+    Entry :: typeof(*data)
+
+    start: u64
+    {
+        data := rawptr(&key)
+        info := #hash_info(K)
+
+        hasher: Hasher
+        hasher.init()
+        for i := 0; i < info.count; i += 1 {
+            it := info[i]
+            if it.kind == {
+            case .RAW
+                hasher.bytes(data + rawptr(it.offset), it.size)
+
+            case .FLOAT
+                if it.size == {
+                case sizeof(f32); hasher.float(f64(*(&f32)(data + rawptr(it.offset))))
+                case sizeof(f64); hasher.float(*(&f64)(data + rawptr(it.offset)))
+                case;             unreachable()
+                }
+
+            case .STRING
+                s := *(&string)(data + rawptr(it.offset))
+                hasher.bytes(rawptr(s.data), s.count)
+            }
+        }
+        start = hasher.finish()
+
+        #import "hash"
+    }
+
+    tombstone: &Entry
+    for i := 0; i < capacity; i += 1 {
+        index := (start + u64(i)) & u64(capacity - 1)
+        entry := data + (&Entry)(index * sizeof(Entry))
+        if entry.state == {
+        case .EMPTY
+            if tombstone != null {
+                return tombstone
+            } else {
+                return entry
+            }
+
+        case .OCCUPIED
+            if entry.key == key {
+                return entry
+            }
+
+        case .TOMBSTONE
+            if tombstone == null {
+                tombstone = entry
+            }
+        }
+    }
+
+    return tombstone
+}
+
+key_not_found :: noreturn (location: Source_Code_Location, key: $K) {
+    wprint(os.stderr, "\{location} Key not found: ")
+    write_value(os.stderr, key, true)
+    wprintln(os.stderr)
+
+    C.fflush(os.stdout)
+    C.fflush(os.stderr)
+    C.abort()
+}

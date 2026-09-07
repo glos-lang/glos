@@ -676,6 +676,22 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
+u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
+    unused(n);
+    if (vb) {
+        return type_eq(*(const Type *) va, *(const Type *) vb);
+    }
+
+    // Technically this is correct, however this will decay to O(n) very often.
+    // TODO: Implement a more specific hashing algorithm for types
+    u64 hash = 14695981039346656037UL;
+    for (size_t i = 0; i < sizeof(Type); i++) {
+        hash ^= *(const uint8_t *) va;
+        hash *= 1099511628211UL;
+    }
+    return hash;
+}
+
 static_assert(COUNT_CONST_VALUES == 13, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
