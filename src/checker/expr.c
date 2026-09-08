@@ -2025,18 +2025,18 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         Node_Range *range = (Node_Range *) n;
         check_expr(c, range->a, REF_NONE);
 
-        const Type operand = range->a->type;
-        const bool is_array = type_kind_eq(operand, TYPE_ARRAY);
-        const bool is_dynamic_array = type_kind_eq(operand, TYPE_DYNAMIC_ARRAY);
-        const bool is_slice = type_kind_eq(operand, TYPE_SLICE);
-        const bool is_string = type_kind_eq(operand, TYPE_STRING);
+        Type      *a_type = &range->a->type;
+        const bool is_array = type_kind_eq(*a_type, TYPE_ARRAY);
+        const bool is_dynamic_array = type_kind_eq(*a_type, TYPE_DYNAMIC_ARRAY);
+        const bool is_slice = type_kind_eq(*a_type, TYPE_SLICE);
+        const bool is_string = type_kind_eq(*a_type, TYPE_STRING);
         if (is_array || is_dynamic_array || is_slice || is_string) {
-            if (operand.ref > 1) {
+            if (a_type->ref > 1) {
                 error_node(
                     EK_ERROR,
                     range->a,
                     "Too many layers of indirection in iteration. The type is %s",
-                    type_to_cstr(operand));
+                    type_to_cstr(*a_type));
                 exit(c, 1);
             }
 
@@ -2045,27 +2045,32 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             group.data = arena_alloc(&default_arena, group.count * sizeof(*group.data));
             group.data[0] = (Type) {.kind = TYPE_S64};
             if (is_array) {
-                group.data[1] = *operand.spec.array.element;
+                group.data[1] = *a_type->spec.array.element;
             } else if (is_dynamic_array) {
-                group.data[1] = *operand.spec.dynamic_array.element;
+                group.data[1] = *a_type->spec.dynamic_array.element;
             } else if (is_slice) {
-                group.data[1] = *operand.spec.slice.element;
+                group.data[1] = *a_type->spec.slice.element;
             } else if (is_string) {
                 group.data[1] = (Type) {.kind = TYPE_CHAR};
             } else {
                 unreachable();
             }
 
-            if (operand.ref) {
+            if (a_type->ref) {
                 group.data[1].ref++;
             }
 
             n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
-        } else if (type_is_integer(operand)) {
-            n->type = operand;
+        } else if (type_is_integer(*a_type)) {
+            if (range->b) {
+                check_expr(c, range->b, REF_NONE);
+                type_assert_node(c, range->b, range->a);
+            }
+
+            n->type = *a_type;
             range->is_integer = true;
         } else {
-            error_node(EK_ERROR, range->a, "Cannot iterator over %s", type_to_cstr(operand));
+            error_node(EK_ERROR, range->a, "Cannot iterate over %s", type_to_cstr(*a_type));
             exit(c, 1);
         }
     } break;

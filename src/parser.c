@@ -1376,6 +1376,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         node = node_alloc(p->module_current, NODE_RANGE, token);
         Node_Range *range = (Node_Range *) node;
         range->a = parse_expr(p, POWER_PRE, false, false, NULL);
+        if (read_token(p, TOKEN_SLICE)) {
+            range->b = parse_expr(p, POWER_PRE, false, false, NULL);
+        }
         range_for->range = range;
     } break;
 

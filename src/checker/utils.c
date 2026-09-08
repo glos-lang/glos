@@ -458,12 +458,20 @@ void finalize_untyped_type(Compiler *c, Node *n) {
             Node_Range *range = (Node_Range *) n;
             assert(range->is_integer);
 
-            if (range->a) {
+            {
                 value = eval_const_expr(c, range->a, false);
                 range->a->type.kind = TYPE_S64;
 
                 assert(value.kind == CONST_VALUE_INT);
                 check_int_limit(c, range->a, value.as.integer);
+            }
+
+            if (range->b) {
+                value = eval_const_expr(c, range->b, false);
+                range->b->type.kind = TYPE_S64;
+
+                assert(value.kind == CONST_VALUE_INT);
+                check_int_limit(c, range->b, value.as.integer);
             }
 
             n->type.kind = TYPE_S64;
@@ -491,12 +499,20 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
                 Node_Range *range = (Node_Range *) n;
                 assert(range->is_integer);
 
-                if (range->a) {
+                {
                     cast_untyped(c, range->a, expected);
                     value = eval_const_expr(c, range->a, false);
 
                     assert(value.kind == CONST_VALUE_INT);
                     check_int_limit(c, range->a, value.as.integer);
+                }
+
+                if (range->b) {
+                    cast_untyped(c, range->b, expected);
+                    value = eval_const_expr(c, range->b, false);
+
+                    assert(value.kind == CONST_VALUE_INT);
+                    check_int_limit(c, range->b, value.as.integer);
                 }
 
                 n->type = expected;
