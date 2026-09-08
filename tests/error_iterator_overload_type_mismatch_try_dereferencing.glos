@@ -1,0 +1,12 @@
+Box :: struct($T: Type) {
+    v: T
+}
+
+range :: (this: Box($T), state: &s64) -> T, bool {
+    return this.v, false
+}
+
+main :: () {
+    b: &Box(s64)
+    for range b {}
+}

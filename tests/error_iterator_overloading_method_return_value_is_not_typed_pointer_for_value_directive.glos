@@ -1,0 +1,2 @@
+Foo :: distinct s64
+range :: (this: &Foo, state: &s64) -> #value s64, bool {}

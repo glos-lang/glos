@@ -2074,7 +2074,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = *a_type;
             range->is_integer = true;
         } else {
-            range->overload = get_operator_overload(c, OPERATOR_RANGE, range->a, (Node *) range, n->module);
+            range->overload = get_operator_overload(c, OPERATOR_RANGE, range->a, range->a, n->module);
 
             assert(type_kind_eq(range->overload->node.type, TYPE_FN));
             const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
@@ -2087,7 +2087,24 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     range->overload_deref = true;
                 }
             }
-            type_assert(c, range->a, receiver); // TODO: Show a "try referencing?" hint like in traits
+
+            if (!type_eq(range->a->type, receiver)) {
+                error_node_begin(EK_ERROR, range->a);
+                fprintf(
+                    stderr,
+                    "Iteration is defined for %s, not %s",
+                    type_to_cstr(receiver),
+                    type_to_cstr(range->a->type));
+
+                if (type_eq(type_without_ref(range->a->type), type_without_ref(receiver))) {
+                    fprintf(
+                        stderr,
+                        ". Perhaps try %s?",
+                        receiver.ref > range->a->type.ref ? "referencing" : "dereferencing");
+                }
+                error_finalize();
+                exit(c, 1);
+            }
 
             n->type = *fn_spec->return_type;
             assert(type_kind_eq(n->type, TYPE_GROUP));

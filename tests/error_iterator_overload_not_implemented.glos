@@ -1,0 +1,3 @@
+main :: () {
+    for range 0.0 {}
+}
