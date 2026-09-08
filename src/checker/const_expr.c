@@ -1062,7 +1062,7 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         return eval_const_expr_call(c, (Node_Call *) n);
 
     case NODE_RANGE:
-        todo();
+        unreachable();
 
     case NODE_INDEX:
         return eval_const_expr_index(c, (Node_Index *) n);

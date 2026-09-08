@@ -1,6 +1,6 @@
 main :: () {
     // Use the '#embed' directive to bake binary resources into the executable.
-    CONTENTS :: #embed "20_some_helpful_compiler_directives.glos"
+    CONTENTS :: #embed "21_some_helpful_compiler_directives.glos"
 
     println("```")
     print(string(CONTENTS))

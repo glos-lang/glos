@@ -1,0 +1,157 @@
+main :: () {
+    for i := range 2 {
+        println(i)
+    }
+
+    for i := range 2..4 {
+        println(i)
+    }
+
+    // You can iterate over arrays, dynamic arrays, slices, strings, hash tables.
+    //
+    // For the sake of brevity, just showing an array example here. But the other mentioned types will also work.
+    xs := []string {"foo", "bar"}
+    for i, x := range xs {
+        println(i, x)
+    }
+
+    // Iterating by reference. Notice that 'xs' is taken by reference.
+    for i, x := range &xs {
+        *x = "deeznuts"[i * 4..(i + 1) * 4]
+    }
+
+    // You can assign instead of define if you want.
+    i: s64; x: string
+    for i, x = range xs {
+        println(i, x)
+    }
+    println("After iteration: i = \{i}; x = \{x}")
+
+    // You can skip assignment entirely.
+    for range xs {
+        println("There are two items, so this should print 2 times.")
+    }
+    println()
+
+    // You can also have custom iterators.
+    custom_iterators()
+}
+
+First :: struct($A: Type, $B: Type, $N: s64) {
+    as: [N]A
+    bs: [N]B
+}
+
+// This is the bare minimum that you must implement:
+//
+//     range :: (this: Iterable, state: &Iterator) -> &V1, &V2, ..., bool {}
+//
+range :: (this: First($A, $B, $N), state: &s64) -> s64, A, B, bool {
+    a: A
+    b: B
+    i := *state
+    if i >= N {
+        // Return the last argument as false to stop the iteration
+        return i, a, b, false
+    }
+
+    a = this.as[i]
+    b = this.bs[i]
+    *state += 1
+
+    // Return the last argument as true to continue the iteration
+    return i, a, b, true
+}
+
+custom_iterators :: () {
+    first := First(s64, string, 2) {
+        {69, 420},
+        {"foo", "bar"},
+    }
+    println("First:")
+
+    for i, a, b := range first {
+        println(i, a, b)
+    }
+    println()
+
+    // However the following line of code is invalid:
+    //
+    // for range &first {}
+    //
+    // That is because user defined iterators must explicitly specify reference semantics.
+
+    // Let's take a look at that.
+    custom_referencable_iterators()
+}
+
+Second :: struct($A: Type, $B: Type, $N: s64) {
+    as: [N]A
+    bs: [N]B
+}
+
+// 1. The receiver must be a pointer.
+// 2. Use the '#reference' directive to mark the return values that you want to make referencable.
+//
+// Here, we marked the second iteration result as referencable.
+range :: (this: &Second($A, $B, $N), state: &s64) -> s64, #reference A, B, bool {
+    a: &A
+    b: B
+    i := *state
+    if i >= N {
+        return i, a, b, false
+    }
+
+    a = &this.as[i]
+    b = this.bs[i]
+    *state += 1
+
+    return i, a, b, true
+}
+
+custom_referencable_iterators :: () {
+    second := Second(s64, string, 2) {
+        {69, 420},
+        {"foo", "bar"},
+    }
+    println("Second (by value):")
+
+    // Normal iteration works fine.
+    for i, a, b := range second {
+        #static showed_types: bool
+        if !showed_types {
+            println("typeof(i) = \{typeof(i)}")
+            println("typeof(a) = \{typeof(a)}")
+            println("typeof(b) = \{typeof(b)}")
+            showed_types = true
+        }
+
+        println(i, a, b)
+    }
+
+    println()
+    println("Second (by reference):")
+
+    // Now let's look at iteration by reference.
+    for i, a, b := range &second {
+        #static showed_types: bool
+        if !showed_types {
+            println("typeof(i) = \{typeof(i)}")
+            println("typeof(a) = \{typeof(a)} // <- Difference here")
+            println("typeof(b) = \{typeof(b)}")
+            showed_types = true
+        }
+
+        // The second iterator value is by reference
+        *a *= 2
+    }
+
+    println()
+    println("After iteration by reference: \{second}")
+}
+
+// Usually, by convention, the index of a container is iterated by value only, whereas the element can
+// be iterated by value or reference.
+//
+// But that is not a hard set rule. You can choose according to your own wish, the return values that
+// you want to make referencable. The sky is the limit.
