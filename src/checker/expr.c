@@ -108,7 +108,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
                     exit(c, 1);
                 }
             } else {
-                type_assert_grouped(c, rhs, lhs->type, rhs_group_index, &lhs->token);
+                type_assert_grouped(c, rhs, lhs->type, rhs_group_index, lhs);
                 if (binary->overloads) {
                     binary->overloads[i] = check_assignment_lhs_for_arithmetics(c, binary, lhs);
                 }

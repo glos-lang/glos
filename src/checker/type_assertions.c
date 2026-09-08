@@ -41,8 +41,7 @@ Type type_assert(Compiler *c, Node *n, Type expected) {
     exit(c, 1);
 }
 
-// TODO: Make this able to print nodes also for the requirement
-bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_index, Token *requirement) {
+bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement) {
     Type actual = n->type;
 
     const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
@@ -86,14 +85,14 @@ bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_i
             type_to_cstr(n->type));
 
         if (requirement) {
-            error_token(EK_NOTE, *requirement, "Required here");
+            error_node(EK_NOTE, requirement, "Required here");
         }
     }
 
     return false;
 }
 
-Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Token *requirement) {
+Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement) {
     if (type_assert_grouped_noexit(c, n, expected, group_index, requirement)) {
         return expected;
     }
