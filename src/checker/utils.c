@@ -302,7 +302,7 @@ Node *get_node_from_group(Node *n, size_t index, i64 *group_index) {
         unreachable();
     }
 
-    if (n->kind == NODE_CALL || (n->kind == NODE_UNARY && n->token.kind == TOKEN_RANGE)) {
+    if (n->kind == NODE_CALL || n->kind == NODE_RANGE) {
         assert(index < n->type.spec.group.count);
         if (group_index) {
             *group_index = index;
@@ -371,7 +371,7 @@ void set_auto_cast(Compiler *c, Node *n, i64 index, Auto_Cast_Kind kind, Type fr
     }
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {

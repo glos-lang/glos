@@ -320,11 +320,10 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
     {
         // Condition
         if (forr->range) {
-            Node        *iterable_node = forr->range->value;
+            Node        *iterable_node = forr->range->a;
             LLVMValueRef iterable = compile_expr(c, iterable_node, false);
             compile_type(c, &forr->range->node.type);
 
-            assert(forr->range->node.type.kind == TYPE_GROUP);
             Typed_LLVM_Value *assignees = NULL;
             size_t            assignees_count = 0;
             if (forr->range->node.type.kind == TYPE_GROUP) {
@@ -379,7 +378,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 set_debug_pos(c, forr->range->node.token.pos);
 
                 // Check the iterator
-                iterator_loaded = LLVMBuildLoad2(c->llvm_builder, i64, iterator_memory, "");
+                iterator_loaded = LLVMBuildLoad2(c->llvm_builder, iterator_type, iterator_memory, "");
                 LLVMBuildCondBr(
                     c->llvm_builder, LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, iterator_loaded, count, ""), body, end);
             }
@@ -759,7 +758,7 @@ void compile_stmt_return(Compiler *c, Node_Return *returnn) {
     c->group_values.count = group_values_count_save;
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

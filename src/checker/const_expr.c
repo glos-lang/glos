@@ -971,7 +971,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1060,6 +1060,9 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_CALL:
         return eval_const_expr_call(c, (Node_Call *) n);
+
+    case NODE_RANGE:
+        todo();
 
     case NODE_INDEX:
         return eval_const_expr_index(c, (Node_Index *) n);

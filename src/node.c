@@ -934,7 +934,7 @@ void const_value_debug(FILE *f, Type type, Const_Value v) {
     default_sb.count = start;
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -958,6 +958,7 @@ size_t node_size(Node_Kind kind) {
         [NODE_COMPOUND] = sizeof(Node_Compound),
 
         [NODE_CALL] = sizeof(Node_Call),
+        [NODE_RANGE] = sizeof(Node_Range),
         [NODE_INDEX] = sizeof(Node_Index),
         [NODE_INDEXABLE] = sizeof(Node_Indexable),
 
@@ -1128,7 +1129,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1280,6 +1281,13 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         fprintf(f, "Call {\n");
         node_debug_impl(f, call->fn_source, depth + 1, "Fn");
         nodes_debug_impl(f, call->args, depth + 1, "Args");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_RANGE: {
+        Node_Range *range = (Node_Range *) n;
+        fprintf(f, "Range {\n");
+        node_debug_impl(f, range->a, depth + 1, "A");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

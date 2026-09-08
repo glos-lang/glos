@@ -277,51 +277,6 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_assert(c, unary->value, (Type) {.kind = TYPE_BOOL});
         break;
 
-    case TOKEN_RANGE: {
-        check_expr(c, unary->value, REF_NONE);
-
-        const Type operand = unary->value->type;
-        const bool is_array = type_kind_eq(operand, TYPE_ARRAY);
-        const bool is_dynamic_array = type_kind_eq(operand, TYPE_DYNAMIC_ARRAY);
-        const bool is_slice = type_kind_eq(operand, TYPE_SLICE);
-        const bool is_string = type_kind_eq(operand, TYPE_STRING);
-        if (is_array || is_dynamic_array || is_slice || is_string) {
-            if (operand.ref > 1) {
-                error_node(
-                    EK_ERROR,
-                    unary->value,
-                    "Too many layers of indirection in iteration. The type is %s",
-                    type_to_cstr(operand));
-                exit(c, 1);
-            }
-
-            Type_Group group = {0};
-            group.count = 2;
-            group.data = arena_alloc(&default_arena, group.count * sizeof(*group.data));
-            group.data[0] = (Type) {.kind = TYPE_S64};
-            if (is_array) {
-                group.data[1] = *operand.spec.array.element;
-            } else if (is_dynamic_array) {
-                group.data[1] = *operand.spec.dynamic_array.element;
-            } else if (is_slice) {
-                group.data[1] = *operand.spec.slice.element;
-            } else if (is_string) {
-                group.data[1] = (Type) {.kind = TYPE_CHAR};
-            } else {
-                unreachable();
-            }
-
-            if (operand.ref) {
-                group.data[1].ref++;
-            }
-
-            n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
-        } else {
-            error_node(EK_ERROR, unary->value, "Cannot iterator over %s", type_to_cstr(operand));
-            exit(c, 1);
-        }
-    } break;
-
     case TOKEN_SIZEOF:
         check_expr(c, unary->value, REF_NONE);
         check_that_type_is_known(c, unary->value);
@@ -1936,7 +1891,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -2065,6 +2020,52 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_CALL:
         check_expr_call(c, (Node_Call *) n);
         break;
+
+    case NODE_RANGE: {
+        Node_Range *range = (Node_Range *) n;
+        check_expr(c, range->a, REF_NONE);
+
+        const Type operand = range->a->type;
+        const bool is_array = type_kind_eq(operand, TYPE_ARRAY);
+        const bool is_dynamic_array = type_kind_eq(operand, TYPE_DYNAMIC_ARRAY);
+        const bool is_slice = type_kind_eq(operand, TYPE_SLICE);
+        const bool is_string = type_kind_eq(operand, TYPE_STRING);
+        if (is_array || is_dynamic_array || is_slice || is_string) {
+            if (operand.ref > 1) {
+                error_node(
+                    EK_ERROR,
+                    range->a,
+                    "Too many layers of indirection in iteration. The type is %s",
+                    type_to_cstr(operand));
+                exit(c, 1);
+            }
+
+            Type_Group group = {0};
+            group.count = 2;
+            group.data = arena_alloc(&default_arena, group.count * sizeof(*group.data));
+            group.data[0] = (Type) {.kind = TYPE_S64};
+            if (is_array) {
+                group.data[1] = *operand.spec.array.element;
+            } else if (is_dynamic_array) {
+                group.data[1] = *operand.spec.dynamic_array.element;
+            } else if (is_slice) {
+                group.data[1] = *operand.spec.slice.element;
+            } else if (is_string) {
+                group.data[1] = (Type) {.kind = TYPE_CHAR};
+            } else {
+                unreachable();
+            }
+
+            if (operand.ref) {
+                group.data[1].ref++;
+            }
+
+            n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
+        } else {
+            error_node(EK_ERROR, range->a, "Cannot iterator over %s", type_to_cstr(operand));
+            exit(c, 1);
+        }
+    } break;
 
     case NODE_INDEX:
         check_expr_index(c, (Node_Index *) n, ref, &is_ref_valid);

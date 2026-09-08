@@ -1792,7 +1792,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -1868,6 +1868,9 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_CALL:
         return compile_expr_call(c, (Node_Call *) n, ref);
+
+    case NODE_RANGE:
+        unreachable();
 
     case NODE_INDEX:
         return compile_expr_index(c, (Node_Index *) n, ref);

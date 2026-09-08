@@ -460,6 +460,7 @@ typedef enum {
     NODE_COMPOUND,
 
     NODE_CALL,
+    NODE_RANGE,
     NODE_INDEX,
     NODE_INDEXABLE,
 
@@ -941,6 +942,11 @@ typedef struct {
 
 typedef struct {
     Node  node;
+    Node *a;
+} Node_Range;
+
+typedef struct {
+    Node  node;
     Node *lhs;
     Node *a;
     Node *b;
@@ -1004,7 +1010,7 @@ typedef struct {
     Node *update;
     Node *body;
 
-    Node_Unary *range;
+    Node_Range *range;
     bool        is_range_custom;
 } Node_For;
 
