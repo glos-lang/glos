@@ -406,7 +406,9 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             }
 
             LLVMPositionBuilderAtEnd(c->llvm_builder, body);
-            if (forr->init->kind == NODE_DEFINE) {
+            if (forr->init->kind == NODE_RANGE) {
+                // Pass
+            } else if (forr->init->kind == NODE_DEFINE) {
                 Node_Define *define = (Node_Define *) forr->init;
 
                 size_t     iota = 0;

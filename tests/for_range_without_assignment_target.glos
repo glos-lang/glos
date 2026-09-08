@@ -1,0 +1,5 @@
+main :: () {
+    for range 5 {
+        println("Hi!")
+    }
+}
