@@ -2061,6 +2061,9 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
+        } else if (type_is_integer(operand)) {
+            n->type = operand;
+            range->is_integer = true;
         } else {
             error_node(EK_ERROR, range->a, "Cannot iterator over %s", type_to_cstr(operand));
             exit(c, 1);

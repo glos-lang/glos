@@ -324,6 +324,10 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             LLVMValueRef iterable = compile_expr(c, iterable_node, false);
             compile_type(c, &forr->range->node.type);
 
+            LLVMTypeRef  iterator_type = NULL;
+            LLVMValueRef iterator_memory = NULL;
+            LLVMValueRef iterator_loaded = NULL;
+
             Typed_LLVM_Value *assignees = NULL;
             size_t            assignees_count = 0;
             if (forr->range->node.type.kind == TYPE_GROUP) {
@@ -334,41 +338,49 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                     assignees[i].type = &group->data[i];
                 }
             } else {
-                unreachable();
+                assert(forr->range->is_integer);
+                assignees_count = 1;
+                assignees = arena_alloc(&temp_arena, assignees_count * sizeof(*assignees));
+                assignees[0].type = &forr->range->node.type;
+
+                iterator_type = assignees[0].type->llvm;
             }
 
-            LLVMTypeRef  iterator_type = NULL;
-            LLVMValueRef iterator_memory = NULL;
-            LLVMValueRef iterator_loaded = NULL;
             if (forr->is_range_custom) {
                 todo();
             } else {
                 LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
-                iterator_type = i64;
+                if (!iterator_type) {
+                    iterator_type = i64;
+                }
                 iterator_memory = compile_alloca(c, iterator_type);
                 LLVMBuildStore(c->llvm_builder, LLVMConstNull(iterator_type), iterator_memory);
 
-                Type iterable_type = iterable_node->type;
-                if (iterable_type.ref) {
-                    iterable_type = type_without_ref(iterable_type);
-                    compile_type(c, &iterable_type);
-                } else {
-                    iterable = undo_load(iterable);
-                }
-
                 LLVMValueRef count = NULL;
-                if (iterable_type.kind == TYPE_ARRAY) {
-                    count = LLVMConstInt(i64, iterable_type.spec.array.count, true);
+                if (forr->range->is_integer) {
+                    count = iterable;
                 } else {
-                    // In all the intrinsic iterable structures, the first two fields are:
-                    //
-                    //     data:  rawptr
-                    //     count: s64
-                    //
-                    count = LLVMBuildStructGEP2(c->llvm_builder, iterable_type.llvm, iterable, 1, "");
-                    count = LLVMBuildLoad2(c->llvm_builder, i64, count, "");
-                    iterable =
-                        LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), iterable, "");
+                    Type iterable_type = iterable_node->type;
+                    if (iterable_type.ref) {
+                        iterable_type = type_without_ref(iterable_type);
+                        compile_type(c, &iterable_type);
+                    } else {
+                        iterable = undo_load(iterable);
+                    }
+
+                    if (iterable_type.kind == TYPE_ARRAY) {
+                        count = LLVMConstInt(i64, iterable_type.spec.array.count, true);
+                    } else {
+                        // In all the intrinsic iterable structures, the first two fields are:
+                        //
+                        //     data:  rawptr
+                        //     count: s64
+                        //
+                        count = LLVMBuildStructGEP2(c->llvm_builder, iterable_type.llvm, iterable, 1, "");
+                        count = LLVMBuildLoad2(c->llvm_builder, i64, count, "");
+                        iterable =
+                            LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), iterable, "");
+                    }
                 }
 
                 // Enter the loop

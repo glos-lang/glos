@@ -453,11 +453,27 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
 
 void finalize_untyped_type(Compiler *c, Node *n) {
     if (type_kind_eq(n->type, TYPE_INT)) {
-        const Const_Value value = eval_const_expr(c, n, false);
-        n->type.kind = TYPE_S64;
+        if (n->kind == NODE_RANGE) {
+            Const_Value value;
+            Node_Range *range = (Node_Range *) n;
+            assert(range->is_integer);
 
-        assert(value.kind == CONST_VALUE_INT);
-        check_int_limit(c, n, value.as.integer);
+            if (range->a) {
+                value = eval_const_expr(c, range->a, false);
+                range->a->type.kind = TYPE_S64;
+
+                assert(value.kind == CONST_VALUE_INT);
+                check_int_limit(c, range->a, value.as.integer);
+            }
+
+            n->type.kind = TYPE_S64;
+        } else {
+            const Const_Value value = eval_const_expr(c, n, false);
+            n->type.kind = TYPE_S64;
+
+            assert(value.kind == CONST_VALUE_INT);
+            check_int_limit(c, n, value.as.integer);
+        }
     }
 
     if (type_kind_eq(n->type, TYPE_FLOAT)) {
@@ -470,13 +486,29 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
         (type_is_integer(expected) || (type_kind_eq(expected, TYPE_ENUM) && !expected.ref))) //
     {
         if (!type_kind_eq(expected, TYPE_INT)) {
-            cast_untyped(c, n, expected);
+            if (n->kind == NODE_RANGE) {
+                Const_Value value;
+                Node_Range *range = (Node_Range *) n;
+                assert(range->is_integer);
 
-            // Only constant expressions can be untyped integers
-            const Const_Value value = eval_const_expr(c, n, false);
-            assert(value.kind == CONST_VALUE_INT);
+                if (range->a) {
+                    cast_untyped(c, range->a, expected);
+                    value = eval_const_expr(c, range->a, false);
 
-            check_int_limit(c, n, value.as.integer);
+                    assert(value.kind == CONST_VALUE_INT);
+                    check_int_limit(c, range->a, value.as.integer);
+                }
+
+                n->type = expected;
+            } else {
+                cast_untyped(c, n, expected);
+
+                // Only constant expressions can be untyped integers
+                const Const_Value value = eval_const_expr(c, n, false);
+                assert(value.kind == CONST_VALUE_INT);
+
+                check_int_limit(c, n, value.as.integer);
+            }
         }
         return true;
     }

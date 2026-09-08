@@ -943,6 +943,8 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *a;
+
+    bool is_integer;
 } Node_Range;
 
 typedef struct {
