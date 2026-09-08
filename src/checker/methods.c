@@ -238,10 +238,12 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
         fprintf(
             stderr,
             "    Iteration can be by reference or by value. By default, when you implement an iterator, it only works by value.\n"
-            "    However you can implement both semantics using the '#value' directive.\n"
+            "    However you can implement both semantics using the '#reference' directive.\n"
 
             "\n"
-            "        range :: (this: &Iterable, state: &Iterator) -> A, #value &B, bool {}\n"
+            "        range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}\n"
+            "\n"
+            "    Notice that now, the receiver is a pointer.\n"
             "\n"
             "        usage :: () {\n"
             "            iterable: Iterable\n"
@@ -254,10 +256,6 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
             "                // Here 'a' is by value and 'b' is by reference.\n"
             "            }\n"
             "        }\n"
-            "\n"
-            "    Points to keep in mind if implementing both semantics:\n"
-            "        - The receiver must be a pointer\n"
-            "        - The type after '#value' must be a pointer\n"
             "\n"
 
         );

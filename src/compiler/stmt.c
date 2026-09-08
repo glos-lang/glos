@@ -484,13 +484,13 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             }
 
             if (range->overload) {
-                Node *value_directive = range->overload_deref ? range->overload->value_directives.head : NULL;
+                Node *reference_directive = range->overload_deref ? range->overload->reference_directives.head : NULL;
                 for (size_t i = 0; i < assignees_count; i++) {
                     if (assignees[i].value) {
                         LLVMValueRef value = c->group_values.data[group_values_count_save + i];
-                        if (value_directive && value_directive->token.as.integer == i) {
+                        if (reference_directive && reference_directive->token.as.integer == i) {
                             value = LLVMBuildLoad2(c->llvm_builder, assignees[i].type->llvm, value, "");
-                            value_directive = value_directive->next;
+                            reference_directive = reference_directive->next;
                         }
                         LLVMBuildStore(c->llvm_builder, value, assignees[i].value);
                     }

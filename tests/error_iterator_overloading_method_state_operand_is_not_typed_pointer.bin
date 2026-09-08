@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 1411
+STDERR 1314
 tests/error_iterator_overloading_method_state_operand_is_not_typed_pointer.glos:2:1: Error: The method 'range' is special because it implements an iterator overload
 
     range :: (this: Foo, that: s64) {}
@@ -11,9 +11,11 @@ tests/error_iterator_overloading_method_state_operand_is_not_typed_pointer.glos:
         range :: (this: Foo, state: &A) -> &V1, &V2, ..., bool {}
 
     Iteration can be by reference or by value. By default, when you implement an iterator, it only works by value.
-    However you can implement both semantics using the '#value' directive.
+    However you can implement both semantics using the '#reference' directive.
 
-        range :: (this: &Iterable, state: &Iterator) -> A, #value &B, bool {}
+        range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}
+
+    Notice that now, the receiver is a pointer.
 
         usage :: () {
             iterable: Iterable
@@ -26,10 +28,6 @@ tests/error_iterator_overloading_method_state_operand_is_not_typed_pointer.glos:
                 // Here 'a' is by value and 'b' is by reference.
             }
         }
-
-    Points to keep in mind if implementing both semantics:
-        - The receiver must be a pointer
-        - The type after '#value' must be a pointer
 
     It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
 

@@ -2081,7 +2081,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
             assert(fn_spec->args_count > 1);
             Type receiver = fn_spec->args[0].type;
-            if (range->overload->value_directives.head) {
+            if (range->overload->reference_directives.head) {
                 if (range->a->type.ref + 1 == receiver.ref) {
                     receiver.ref--;
                     range->overload_deref = true;
@@ -2114,7 +2114,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
             if (range->overload_deref) {
                 group->data = arena_clone(&default_arena, group->data, group->count * sizeof(*group->data));
-                ll_foreach(it, &range->overload->value_directives) {
+                ll_foreach(it, &range->overload->reference_directives) {
                     group->data[it->token.as.integer].ref--;
                 }
             }
@@ -2209,9 +2209,9 @@ void check_fn(
         return;
     }
 
-    if (fn->value_directives.head) {
+    if (fn->reference_directives.head) {
         if (!fn->is_method || !fn->defined_as || !sv_eq(fn->defined_as->node.token.sv, OPERATOR_RANGE)) {
-            const Token token = fn->value_directives.head->token;
+            const Token token = fn->reference_directives.head->token;
             error_token(
                 EK_ERROR,
                 token,
@@ -2382,28 +2382,16 @@ void check_fn(
             fn_spec->returns = arena_alloc(&default_arena, fn->returns_count * sizeof(*fn_spec->returns));
 
             size_t iota = 0;
-            Node  *value_directive = fn->value_directives.head;
+            Node  *reference_directive = fn->reference_directives.head;
             ll_foreach(it, &fn->returns) {
                 check_expr(c, it, REF_NONE);
                 type_assert_type(c, it);
 
-                fn_spec->returns[iota] = type_without_meta(it->type);
-                if (value_directive && value_directive->token.as.integer == iota) {
-                    if (!fn_spec->returns[iota].ref) {
-                        // TODO: Should be this done before monomorphization?
-                        error_node(
-                            EK_ERROR, it, "Expected typed pointer, got %s", type_to_cstr(fn_spec->returns[iota]));
-                        error_token(
-                            EK_NOTE,
-                            value_directive->token,
-                            "Due to this %s directive",
-                            token_kind_to_cstr(value_directive->token.kind));
-                        exit(c, 1);
-                    }
-                    value_directive = value_directive->next;
+                if (reference_directive && reference_directive->token.as.integer == iota) {
+                    it->type.ref++;
+                    reference_directive = reference_directive->next;
                 }
-
-                iota++;
+                fn_spec->returns[iota++] = type_without_meta(it->type);
             }
         }
         fn_spec->returns_count = fn->returns_count;

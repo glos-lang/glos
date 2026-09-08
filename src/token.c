@@ -220,9 +220,6 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_DIRECTIVE_EMBED:
         return "'#embed'";
 
-    case TOKEN_DIRECTIVE_VALUE:
-        return "'#value'";
-
     case TOKEN_DIRECTIVE_IMPORT:
         return "'#import'";
 
@@ -234,6 +231,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_DIRECTIVE_LIBRARY:
         return "'#library'";
+
+    case TOKEN_DIRECTIVE_REFERENCE:
+        return "'#reference'";
 
     case TOKEN_DIRECTIVE_LOCATION:
         return "'#location'";

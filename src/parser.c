@@ -1118,7 +1118,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (read_token(p, TOKEN_ARROW)) {
                 do {
                     token = peek_token(p);
-                    if (token.kind == TOKEN_DIRECTIVE_VALUE) {
+                    if (token.kind == TOKEN_DIRECTIVE_REFERENCE) {
                         if (!fn->is_method) {
                             error_token(
                                 EK_ERROR,
@@ -1130,7 +1130,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                         p->state.peeked = false;
                         token.as.integer = fn->returns_count;
-                        nodes_push(&fn->value_directives, node_alloc(p->module_current, NODE_ATOM, token));
+                        nodes_push(&fn->reference_directives, node_alloc(p->module_current, NODE_ATOM, token));
                     }
 
                     nodes_push(&fn->returns, parse_expr(p, POWER_PRE, false, false, NULL));

@@ -625,8 +625,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_LINK;
         } else if (sv_match(token.sv, "#embed")) {
             token.kind = TOKEN_DIRECTIVE_EMBED;
-        } else if (sv_match(token.sv, "#value")) {
-            token.kind = TOKEN_DIRECTIVE_VALUE;
         } else if (sv_match(token.sv, "#import")) {
             token.kind = TOKEN_DIRECTIVE_IMPORT;
         } else if (sv_match(token.sv, "#static")) {
@@ -635,6 +633,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_PRIVATE;
         } else if (sv_match(token.sv, "#library")) {
             token.kind = TOKEN_DIRECTIVE_LIBRARY;
+        } else if (sv_match(token.sv, "#reference")) {
+            token.kind = TOKEN_DIRECTIVE_REFERENCE;
         } else if (sv_match(token.sv, "#location")) {
             token.kind = TOKEN_DIRECTIVE_LOCATION;
         } else if (sv_match(token.sv, "#caller_location")) {

@@ -73,7 +73,7 @@ operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_
     }
 }
 
-range :: (this: &Table($K, $V), index: &s64) -> K, #value &V, bool {
+range :: (this: &Table($K, $V), index: &s64) -> K, #reference V, bool {
     if this.count != 0 {
         Entry :: typeof(*this.data)
         entry: &Entry

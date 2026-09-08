@@ -221,11 +221,11 @@ void check_nodes(Compiler *c) {
             define->type->type.is_meta = false;
             const Type receiver_type = define->type->type;
 
-            if (fn->value_directives.head && !receiver_type.ref) {
+            if (fn->reference_directives.head && !receiver_type.ref) {
                 error_token(
                     EK_ERROR,
-                    fn->value_directives.head->token,
-                    "This iterator overload has value semantics, yet the receiver is not a typed pointer");
+                    fn->reference_directives.head->token,
+                    "This iterator overload has reference semantics, yet the receiver is not a typed pointer");
 
                 assert(fn->args.head);
                 error_node(

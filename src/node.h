@@ -756,7 +756,7 @@ struct Node_Fn {
     Nodes  returns;
     size_t returns_count;
 
-    Nodes value_directives;
+    Nodes reference_directives;
 
     Polymorphs polymorphs;
     Polymorphs monomorphs;
