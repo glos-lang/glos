@@ -821,7 +821,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 92, "");
+static_assert(COUNT_TOKENS == 93, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1117,6 +1117,22 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
             if (read_token(p, TOKEN_ARROW)) {
                 do {
+                    token = peek_token(p);
+                    if (token.kind == TOKEN_DIRECTIVE_VALUE) {
+                        if (!fn->is_method) {
+                            error_token(
+                                EK_ERROR,
+                                token,
+                                "The directive %s can only be applied to return values of an iterator overload",
+                                token_kind_to_cstr(token.kind));
+                            exit(1);
+                        }
+
+                        p->state.peeked = false;
+                        token.as.integer = fn->returns_count;
+                        nodes_push(&fn->value_directives, node_alloc(p->module_current, NODE_ATOM, token));
+                    }
+
                     nodes_push(&fn->returns, parse_expr(p, POWER_PRE, false, false, NULL));
                     fn->returns_count++;
                 } while (read_token(p, TOKEN_COMMA));
@@ -1867,6 +1883,7 @@ static Node *parse_stmt(Parser *p) {
         break;
 
     case TOKEN_DIRECTIVE_IF: {
+        // TODO: Work on the scoping of '#private...'
         const bool after_private_save = p->state.after_private;
         node = parse_if(p, token, true, ITS_NO);
         p->state.after_private = after_private_save;

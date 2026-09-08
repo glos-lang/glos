@@ -352,6 +352,10 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             }
 
             if (range->overload) {
+                if (range->overload_deref) {
+                    iterable_a = undo_load(iterable_a);
+                }
+
                 assert(range->overload->node.type.kind == TYPE_FN);
                 const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
 
@@ -480,10 +484,15 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             }
 
             if (range->overload) {
+                Node *value_directive = range->overload_deref ? range->overload->value_directives.head : NULL;
                 for (size_t i = 0; i < assignees_count; i++) {
                     if (assignees[i].value) {
-                        LLVMBuildStore(
-                            c->llvm_builder, c->group_values.data[group_values_count_save + i], assignees[i].value);
+                        LLVMValueRef value = c->group_values.data[group_values_count_save + i];
+                        if (value_directive && value_directive->token.as.integer == i) {
+                            value = LLVMBuildLoad2(c->llvm_builder, assignees[i].type->llvm, value, "");
+                            value_directive = value_directive->next;
+                        }
+                        LLVMBuildStore(c->llvm_builder, value, assignees[i].value);
                     }
                 }
             } else {

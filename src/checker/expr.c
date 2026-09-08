@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 92, "");
+static_assert(COUNT_TOKENS == 93, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -133,7 +133,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 92, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -225,7 +225,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 92, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -304,7 +304,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 92, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -2080,11 +2080,27 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
 
             assert(fn_spec->args_count > 1);
-            type_assert(c, range->a, fn_spec->args[0].type); // TODO: Show a "try referencing?" hint like in traits
+            Type receiver = fn_spec->args[0].type;
+            if (range->overload->value_directives.head) {
+                if (range->a->type.ref + 1 == receiver.ref) {
+                    receiver.ref--;
+                    range->overload_deref = true;
+                }
+            }
+            type_assert(c, range->a, receiver); // TODO: Show a "try referencing?" hint like in traits
 
             n->type = *fn_spec->return_type;
             assert(type_kind_eq(n->type, TYPE_GROUP));
-            n->type.spec.group.count--; // Don't include the 'bool'
+
+            Type_Group *group = &n->type.spec.group;
+            group->count--; // Don't include the 'bool'
+
+            if (range->overload_deref) {
+                group->data = arena_clone(&default_arena, group->data, group->count * sizeof(*group->data));
+                ll_foreach(it, &range->overload->value_directives) {
+                    group->data[it->token.as.integer].ref--;
+                }
+            }
         }
     } break;
 
@@ -2174,6 +2190,18 @@ void check_fn(
 {
     if (fn->checked_signature && (only_check_signature || only_check_polymorphic_parameters)) {
         return;
+    }
+
+    if (fn->value_directives.head) {
+        if (!fn->is_method || !fn->defined_as || !sv_eq(fn->defined_as->node.token.sv, OPERATOR_RANGE)) {
+            const Token token = fn->value_directives.head->token;
+            error_token(
+                EK_ERROR,
+                token,
+                "The directive %s can only be applied to return values of an iterator overload",
+                token_kind_to_cstr(token.kind));
+            exit(c, 1);
+        }
     }
 
     Node *n = (Node *) fn;
@@ -2337,10 +2365,28 @@ void check_fn(
             fn_spec->returns = arena_alloc(&default_arena, fn->returns_count * sizeof(*fn_spec->returns));
 
             size_t iota = 0;
+            Node  *value_directive = fn->value_directives.head;
             ll_foreach(it, &fn->returns) {
                 check_expr(c, it, REF_NONE);
                 type_assert_type(c, it);
-                fn_spec->returns[iota++] = type_without_meta(it->type);
+
+                fn_spec->returns[iota] = type_without_meta(it->type);
+                if (value_directive && value_directive->token.as.integer == iota) {
+                    if (!fn_spec->returns[iota].ref) {
+                        // TODO: Should be this done before monomorphization?
+                        error_node(
+                            EK_ERROR, it, "Expected typed pointer, got %s", type_to_cstr(fn_spec->returns[iota]));
+                        error_token(
+                            EK_NOTE,
+                            value_directive->token,
+                            "Due to this %s directive",
+                            token_kind_to_cstr(value_directive->token.kind));
+                        exit(c, 1);
+                    }
+                    value_directive = value_directive->next;
+                }
+
+                iota++;
             }
         }
         fn_spec->returns_count = fn->returns_count;

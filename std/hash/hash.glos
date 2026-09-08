@@ -6,9 +6,9 @@ init :: (this: &Hasher) {
     this.n = 0xCBF2_9CE4_8422_2325
 }
 
-bytes :: (this: &Hasher, data: rawptr, count: s64) {
-    for i := 0; i < count; i += 1 {
-        this.n ^= u64(*(&u8(data) + &u8(i)))
+bytes :: (this: &Hasher, bytes: []char) {
+    for _, c := range bytes {
+        this.n ^= u64(c)
         this.n *= 0x100_0000_01B3
     }
 }
@@ -16,7 +16,7 @@ bytes :: (this: &Hasher, data: rawptr, count: s64) {
 float :: (this: &Hasher, f: f64) {
     if f == 0.0 then f = 0.0                   // +0.0 and -0.0 have different bit representations
     if f != f   then f = 0h7FF8_0000_0000_0000 // NaN
-    this.bytes(rawptr(&f), sizeof(f))
+    this.bytes(&char(&f)[..sizeof(f)])
 }
 
 finish :: (this: Hasher) -> u64 {

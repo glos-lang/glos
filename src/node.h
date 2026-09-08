@@ -756,6 +756,8 @@ struct Node_Fn {
     Nodes  returns;
     size_t returns_count;
 
+    Nodes value_directives;
+
     Polymorphs polymorphs;
     Polymorphs monomorphs;
 
@@ -946,7 +948,9 @@ typedef struct {
     Node *b;
 
     Node_Fn *overload;
-    bool     is_integer;
+    bool     overload_deref;
+
+    bool is_integer;
 } Node_Range;
 
 typedef struct {
