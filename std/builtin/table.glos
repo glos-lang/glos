@@ -87,8 +87,7 @@ range :: (this: &Table($K, $V), index: &s64) -> K, #reference V, bool {
         }
     }
 
-    k: K
-    return k, null, false
+    return K {}, null, false
 }
 
 #private ...

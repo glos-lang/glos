@@ -1115,6 +1115,11 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
 
         Node *it = iter;
         if (compound->is_designated) {
+            if (compound->is_not_compound) {
+                error_node(EK_ERROR, it, "Cannot have designated_initializers for %s", type_to_cstr(n->type));
+                exit(c, 1);
+            }
+
             assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
             Node_Binary *it_binary = (Node_Binary *) it;
 
@@ -1192,7 +1197,12 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
             it_iota = it->token.as.integer;
             it = it_binary->rhs;
         } else {
-            if (n->type.kind == TYPE_STRUCT) {
+            if (compound->is_not_compound) {
+                if (it_iota) {
+                    error_node(EK_ERROR, it, "Too many ordered initializers for %s", type_to_cstr(n->type));
+                    exit(c, 1);
+                }
+            } else if (n->type.kind == TYPE_STRUCT) {
                 if (it_iota >= struct_spec->fields_count) {
                     error_node(EK_ERROR, it, "Too many ordered initializers");
                     error_node(EK_NOTE, (Node *) struct_spec->definition, "Structure defined here");
@@ -1218,7 +1228,9 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
         }
 
         const Type *it_type = NULL;
-        if (n->type.kind == TYPE_STRUCT) {
+        if (compound->is_not_compound) {
+            it_type = &n->type;
+        } else if (n->type.kind == TYPE_STRUCT) {
             it_type = &struct_spec->fields[it_iota].type;
         } else if (n->type.kind == TYPE_ARRAY) {
             it_type = n->type.spec.array.element;
@@ -2005,18 +2017,18 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             type_assert_type(c, compound->lhs);
 
             n->type = type_without_meta(compound->lhs->type);
-            if (n->type.ref ||
-                (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE)) {
-                error_node(EK_ERROR, compound->lhs, "Expected structure or array type, got %s", type_to_cstr(n->type));
-                exit(c, 1);
-            }
+            compound->is_not_compound =
+                (n->type.ref ||
+                 (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE));
         } else {
             n->type = (Type) {.kind = TYPE_UNKNOWN_COMPOUND};
         }
 
         check_expr_compound(c, compound);
-        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
-        n->is_memory = true;
+        if (!compound->is_not_compound) {
+            is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
+            n->is_memory = true;
+        }
     } break;
 
     case NODE_CALL:

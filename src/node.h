@@ -894,6 +894,8 @@ typedef struct {
     // Untyped compound literals are type checked in two phases. This notes that the first phase is complete, ie, the
     // individual child nodes are checked.
     bool are_children_checked;
+
+    bool is_not_compound;
 } Node_Compound;
 
 typedef enum {

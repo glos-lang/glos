@@ -1314,7 +1314,16 @@ LLVMValueRef compile_expr_interpolation(Compiler *c, Node_Interpolation *interpo
 }
 
 LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool ref) {
-    Node        *n = (Node *) compound;
+    Node *n = (Node *) compound;
+    if (compound->is_not_compound) {
+        if (compound->children.head) {
+            assert(!ref);
+            return compile_expr(c, compound->children.head, false);
+        }
+
+        return LLVMConstNull(n->type.llvm);
+    }
+
     LLVMValueRef memory = compile_alloca(c, n->type.llvm);
     LLVMBuildStore(c->llvm_builder, LLVMConstNull(n->type.llvm), memory);
 
