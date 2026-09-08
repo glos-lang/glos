@@ -2025,6 +2025,11 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         Node_Range *range = (Node_Range *) n;
         check_expr(c, range->a, REF_NONE);
 
+        if (range->b) {
+            type_assert_numeric(c, range->a, false, false);
+            check_expr(c, range->b, REF_NONE);
+        }
+
         Type      *a_type = &range->a->type;
         const bool is_array = type_kind_eq(*a_type, TYPE_ARRAY);
         const bool is_dynamic_array = type_kind_eq(*a_type, TYPE_DYNAMIC_ARRAY);
@@ -2063,15 +2068,23 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
         } else if (type_is_integer(*a_type)) {
             if (range->b) {
-                check_expr(c, range->b, REF_NONE);
                 type_assert_node(c, range->b, range->a);
             }
 
             n->type = *a_type;
             range->is_integer = true;
         } else {
-            error_node(EK_ERROR, range->a, "Cannot iterate over %s", type_to_cstr(*a_type));
-            exit(c, 1);
+            range->overload = get_operator_overload(c, OPERATOR_RANGE, range->a, (Node *) range, n->module);
+
+            assert(type_kind_eq(range->overload->node.type, TYPE_FN));
+            const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
+
+            assert(fn_spec->args_count > 1);
+            type_assert(c, range->a, fn_spec->args[0].type); // TODO: Show a "try referencing?" hint like in traits
+
+            n->type = *fn_spec->return_type;
+            assert(type_kind_eq(n->type, TYPE_GROUP));
+            n->type.spec.group.count--; // Don't include the 'bool'
         }
     } break;
 
@@ -2368,17 +2381,19 @@ void check_fn(
 
         assert(fn->defined_as);
         const SV name = fn->defined_as->node.token.sv;
-        if (sv_match(name, "+") || sv_match(name, "-") || sv_match(name, "*") || sv_match(name, "/") ||
-            sv_match(name, "%")) //
+        if (sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
+            sv_eq(name, OPERATOR_MUL) || sv_eq(name, OPERATOR_DIV) || sv_eq(name, OPERATOR_MOD)) //
         {
             check_signature_of_arithmetic_operator(c, fn, fn_spec);
-        } else if (sv_match(name, "<=>")) {
+        } else if (sv_eq(name, OPERATOR_CMP)) {
             check_signature_of_binary_comparison_operator(c, fn, fn_spec);
             fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->ordering_type);
-        } else if (sv_match(name, "[]")) {
+        } else if (sv_eq(name, OPERATOR_INDEX)) {
             check_signature_of_index_operator(c, fn, fn_spec);
-        } else if (sv_match(name, "[..]")) {
+        } else if (sv_eq(name, OPERATOR_SLICE)) {
             check_signature_of_slice_operator(c, fn, fn_spec);
+        } else if (sv_eq(name, OPERATOR_RANGE)) {
+            check_signature_of_range_operator(c, fn, fn_spec);
         }
     }
     fn->checked_signature = true;

@@ -188,10 +188,11 @@ typedef enum {
     OMS_CMP,
     OMS_INDEX,
     OMS_SLICE,
+    OMS_RANGE,
 } OMS;
 
 static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable) {
-    fprintf(stderr, "        operator " SV_Fmt " :: ", SV_Arg(name));
+    fprintf(stderr, "        %s" SV_Fmt " :: ", oms == OMS_RANGE ? "" : "operator ", SV_Arg(name));
 
     const char *T = NULL;
     switch (oms) {
@@ -217,6 +218,11 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
     case OMS_SLICE:
         T = type_to_cstr_raw(*receiver);
         fprintf(stderr, "(this: %s, begin: A, end: A) -> V", T);
+        break;
+
+    case OMS_RANGE:
+        T = type_to_cstr_raw(*receiver);
+        fprintf(stderr, "(this: %s, state: &A) -> &V1, &V2, ...", T);
         break;
     }
     fprintf(stderr, " {}\n\n");
@@ -334,6 +340,8 @@ Node_Fn *get_operator_overload_ex(
         oms = OMS_INDEX;
     } else if (sv_eq(spec.name, OPERATOR_SLICE)) {
         oms = OMS_SLICE;
+    } else if (sv_eq(spec.name, OPERATOR_RANGE)) {
+        oms = OMS_RANGE;
     } else {
         unreachable();
     }
@@ -360,8 +368,9 @@ static void error_operator_method_wrong_signature(Token name, OMS oms, const Typ
     error_token(
         EK_ERROR,
         name,
-        "The method '" SV_Fmt "' is special because it implements an operator overload",
-        SV_Arg(name.sv));
+        "The method '" SV_Fmt "' is special because it implements an %s overload",
+        SV_Arg(name.sv),
+        oms == OMS_RANGE ? "iterator" : "operator");
 
     ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
     fprintf(stderr, "    It should have this signature:\n\n");
@@ -545,6 +554,42 @@ void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
             error_token(
                 EK_NOTE, fn->body->token, "The slice operator cannot return %zu values", fn_spec->returns_count);
         }
+        exit(c, 1);
+    }
+}
+
+void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
+    const Type *receiver = &fn_spec->args[0].type;
+
+    const OMS oms = OMS_RANGE;
+    check_operator_method_signature_args_count(c, fn, fn_spec, 2, oms);
+
+    const Type state_type = fn_spec->args[1].type;
+    if (state_type.is_meta || !state_type.ref) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_parts(
+            EK_NOTE,
+            fn_spec->args[1].name,
+            fn_spec->args[1].pos,
+            "Expected the state argument to be a typed pointer, got %s",
+            type_to_cstr(state_type));
+        exit(c, 1);
+    }
+
+    if (!fn_spec->returns_count) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_token(EK_NOTE, fn->body->token, "The iterator must return atleast one value");
+        exit(c, 1);
+    }
+
+    if (!type_eq(fn_spec->returns[fn_spec->returns_count - 1], (Type) {.kind = TYPE_BOOL})) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_node(
+            EK_NOTE,
+            fn->returns.tail,
+            "Expected the last return value to be %s, got %s",
+            type_to_cstr((Type) {.kind = TYPE_BOOL}),
+            type_to_cstr(fn_spec->returns[fn_spec->returns_count - 1]));
         exit(c, 1);
     }
 }

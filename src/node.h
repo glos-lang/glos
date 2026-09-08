@@ -945,7 +945,8 @@ typedef struct {
     Node *a;
     Node *b;
 
-    bool is_integer;
+    Node_Fn *overload;
+    bool     is_integer;
 } Node_Range;
 
 typedef struct {
@@ -1014,7 +1015,6 @@ typedef struct {
     Node *body;
 
     Node_Range *range;
-    bool        is_range_custom;
 } Node_For;
 
 typedef struct {
