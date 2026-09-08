@@ -633,11 +633,10 @@ typedef struct {
     Node  node;
     Node *value;
 
-    Node_Fn *overload;
-    Module  *module;
-
     // For things like sizeof(), typeof()
     Token end;
+
+    Node_Fn *overload;
 } Node_Unary;
 
 typedef struct {
@@ -647,7 +646,6 @@ typedef struct {
 
     Node_Fn  *overload;
     Node_Fn **overloads;
-    Module   *module;
 
     Node *trait_check;
     Type *trait_check_type;
@@ -822,8 +820,6 @@ struct Node_Enum {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
-    // The module this was parsed in
-    Module  *module;
     Node_Fn *defined_in;
 
     Token end;
@@ -962,7 +958,6 @@ typedef struct {
     bool  is_assign;
 
     Node_Fn *overload;
-    Module  *module;
 
     Token end;
 } Node_Index;
@@ -1081,5 +1076,3 @@ void nodes_debug(FILE *f, Nodes ns);
 Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, size_t method_index);
 
 #endif // NODE_H
-
-// TODO: Remove the individual `module` fields present in specific node types

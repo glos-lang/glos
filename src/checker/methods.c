@@ -86,7 +86,7 @@ bool get_method_spec(
                 *is_named = definition->defined_as != NULL;
             }
 
-            return defining_in_module == definition->module;
+            return defining_in_module == definition->node.module;
         }
 
         check_that_methods_can_be_accessed(c, receiver_node);

@@ -38,7 +38,8 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *b
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:
         if (!type_is_numeric(n->type) && !type_is_pointer(n->type)) {
-            return get_operator_overload(c, token_kind_to_operator_method_name(op), n, (Node *) binary, binary->module);
+            return get_operator_overload(
+                c, token_kind_to_operator_method_name(op), n, (Node *) binary, binary->node.module);
         }
         break;
 
@@ -52,7 +53,8 @@ static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *b
         }
 
         if (!type_is_numeric(n->type)) {
-            return get_operator_overload(c, token_kind_to_operator_method_name(op), n, (Node *) binary, binary->module);
+            return get_operator_overload(
+                c, token_kind_to_operator_method_name(op), n, (Node *) binary, binary->node.module);
         }
         break;
 
@@ -230,7 +232,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
         if (!type_is_numeric(unary->value->type) && !type_is_pointer(unary->value->type)) {
-            unary->overload = get_operator_overload(c, OPERATOR_SUB, unary->value, n, unary->module);
+            unary->overload = get_operator_overload(c, OPERATOR_SUB, unary->value, n, n->module);
         }
         n->type = unary->value->type;
         break;
@@ -315,8 +317,8 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
         }
 
         if (!type_is_numeric(binary->lhs->type) && !type_is_pointer(binary->lhs->type)) {
-            binary->overload = get_operator_overload(
-                c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, binary->module);
+            binary->overload =
+                get_operator_overload(c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, n->module);
         }
         n->type = binary->lhs->type;
         break;
@@ -337,8 +339,8 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
         }
 
         if (!type_is_numeric(binary->lhs->type)) {
-            binary->overload = get_operator_overload(
-                c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, binary->module);
+            binary->overload =
+                get_operator_overload(c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, n->module);
         }
         n->type = binary->lhs->type;
         break;
@@ -390,7 +392,7 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
                 token_kind_to_operator_method_name(n->token.kind),
                 binary->lhs->type,
                 n,
-                binary->module,
+                n->module,
                 true,
                 false,
                 binary->lhs,
@@ -455,7 +457,7 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
                 assert(try_auto_cast_type_to_rtti(c, binary->rhs, c->type_info_pointer_type));
             } else if (!type_is_scalar(binary->lhs->type)) {
                 binary->overload = get_operator_overload(
-                    c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, binary->module);
+                    c, token_kind_to_operator_method_name(n->token.kind), binary->lhs, n, n->module);
             }
         }
         n->type = (Type) {.kind = TYPE_BOOL};
@@ -1723,7 +1725,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
                 n->type.kind = TYPE_SLICE;
             }
         } else {
-            index->overload = get_operator_overload(c, OPERATOR_SLICE, index->lhs, n, index->module);
+            index->overload = get_operator_overload(c, OPERATOR_SLICE, index->lhs, n, n->module);
             assert(index->overload->node.type.kind == TYPE_FN);
             const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
 
@@ -1780,7 +1782,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
         } else {
             if (index->lhs->type.ref) {
                 error_node(EK_ERROR, index->lhs, "Pointers must be converted into slices before they can be indexed");
-                if (is_indexable(c, index->lhs, index->lhs->type, index->module)) {
+                if (is_indexable(c, index->lhs, index->lhs->type, n->module)) {
                     afprintf(
                         stderr,
                         ANSI_COLOR_YELLOW | ANSI_BOLD,
@@ -1800,7 +1802,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
                 exit(c, 1);
             }
 
-            index->overload = get_operator_overload(c, OPERATOR_INDEX, index->lhs, n, index->module);
+            index->overload = get_operator_overload(c, OPERATOR_INDEX, index->lhs, n, n->module);
 
             assert(index->overload->node.type.kind == TYPE_FN);
             const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
