@@ -1,0 +1,38 @@
+EXIT 1
+STDOUT 0
+
+STDERR 1360
+tests/error_iterator_overloading_method_argument_without_default_value_after_second.glos:2:1: Error: The method 'range' is special because it implements an iterator overload
+
+    range :: (this: Foo, that: Foo, other: bool) {}
+
+    It should have this signature:
+
+        range :: (this: Foo, state: &A) -> &V1, &V2, ..., bool {}
+
+    Iteration can be by reference or by value. By default, when you implement an iterator, it only works by value.
+    However you can implement both semantics using the '#reference' directive.
+
+        range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}
+
+    Notice that now, the receiver is a pointer.
+
+        usage :: () {
+            iterable: Iterable
+            for a, b := range iterable {
+                // Here both 'a' and 'b' are by value.
+            }
+
+            // To iterate by reference, take a reference to the iterable value.
+            for a, b := range &iterable {
+                // Here 'a' is by value and 'b' is by reference.
+            }
+        }
+
+    It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
+
+tests/error_iterator_overloading_method_argument_without_default_value_after_second.glos:2:33: Note: All arguments after the 2nd argument must have a default value
+
+    range :: (this: Foo, that: Foo, other: bool) {}
+
+

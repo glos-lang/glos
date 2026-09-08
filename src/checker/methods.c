@@ -1,7 +1,7 @@
 #include "../error.h"
 #include "checker.h"
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 93, "");
 SV token_kind_to_operator_method_name(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -188,10 +188,11 @@ typedef enum {
     OMS_CMP,
     OMS_INDEX,
     OMS_SLICE,
+    OMS_RANGE,
 } OMS;
 
 static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable) {
-    fprintf(stderr, "        operator " SV_Fmt " :: ", SV_Arg(name));
+    fprintf(stderr, "        %s" SV_Fmt " :: ", oms == OMS_RANGE ? "" : "operator ", SV_Arg(name));
 
     const char *T = NULL;
     switch (oms) {
@@ -218,6 +219,11 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
         T = type_to_cstr_raw(*receiver);
         fprintf(stderr, "(this: %s, begin: A, end: A) -> V", T);
         break;
+
+    case OMS_RANGE:
+        T = type_to_cstr_raw(*receiver);
+        fprintf(stderr, "(this: %s, state: &A) -> &V1, &V2, ..., bool", T);
+        break;
     }
     fprintf(stderr, " {}\n\n");
 
@@ -226,6 +232,33 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
             stderr,
             "    Return 'Ordering' if you want this method to implement both equality checking as well as ordered comparisons.\n"
             "    Otherwise return 'Equivalence' to implement just equality checking. Do NOT return 'Ordering | Equivalence' literally.\n\n");
+    }
+
+    if (oms == OMS_RANGE) {
+        fprintf(
+            stderr,
+            "    Iteration can be by reference or by value. By default, when you implement an iterator, it only works by value.\n"
+            "    However you can implement both semantics using the '#reference' directive.\n"
+
+            "\n"
+            "        range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}\n"
+            "\n"
+            "    Notice that now, the receiver is a pointer.\n"
+            "\n"
+            "        usage :: () {\n"
+            "            iterable: Iterable\n"
+            "            for a, b := range iterable {\n"
+            "                // Here both 'a' and 'b' are by value.\n"
+            "            }\n"
+            "\n"
+            "            // To iterate by reference, take a reference to the iterable value.\n"
+            "            for a, b := range &iterable {\n"
+            "                // Here 'a' is by value and 'b' is by reference.\n"
+            "            }\n"
+            "        }\n"
+            "\n"
+
+        );
     }
 
     fprintf(
@@ -334,10 +367,17 @@ Node_Fn *get_operator_overload_ex(
         oms = OMS_INDEX;
     } else if (sv_eq(spec.name, OPERATOR_SLICE)) {
         oms = OMS_SLICE;
+    } else if (sv_eq(spec.name, OPERATOR_RANGE)) {
+        oms = OMS_RANGE;
     } else {
         unreachable();
     }
-    fprintf(stderr, "Operator '" SV_Fmt "' is not defined for %s", SV_Arg(spec.name), type_to_cstr(receiver));
+
+    if (oms == OMS_RANGE) {
+        fprintf(stderr, "Iteration is not defined for %s", type_to_cstr(receiver));
+    } else {
+        fprintf(stderr, "Operator '" SV_Fmt "' is not defined for %s", SV_Arg(spec.name), type_to_cstr(receiver));
+    }
 
     if (group_index != -1) {
         const char *postfix = order_postfix(group_index + 1);
@@ -360,8 +400,9 @@ static void error_operator_method_wrong_signature(Token name, OMS oms, const Typ
     error_token(
         EK_ERROR,
         name,
-        "The method '" SV_Fmt "' is special because it implements an operator overload",
-        SV_Arg(name.sv));
+        "The method '" SV_Fmt "' is special because it implements an %s overload",
+        SV_Arg(name.sv),
+        oms == OMS_RANGE ? "iterator" : "operator");
 
     ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
     fprintf(stderr, "    It should have this signature:\n\n");
@@ -545,6 +586,42 @@ void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
             error_token(
                 EK_NOTE, fn->body->token, "The slice operator cannot return %zu values", fn_spec->returns_count);
         }
+        exit(c, 1);
+    }
+}
+
+void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
+    const Type *receiver = &fn_spec->args[0].type;
+
+    const OMS oms = OMS_RANGE;
+    check_operator_method_signature_args_count(c, fn, fn_spec, 2, oms);
+
+    const Type state_type = fn_spec->args[1].type;
+    if (state_type.is_meta || !state_type.ref) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_parts(
+            EK_NOTE,
+            fn_spec->args[1].name,
+            fn_spec->args[1].pos,
+            "Expected the state argument to be a typed pointer, got %s",
+            type_to_cstr(state_type));
+        exit(c, 1);
+    }
+
+    if (fn_spec->returns_count < 2) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_token(EK_NOTE, fn->body->token, "The iterator must return atleast two values");
+        exit(c, 1);
+    }
+
+    if (!type_eq(fn_spec->returns[fn_spec->returns_count - 1], (Type) {.kind = TYPE_BOOL})) {
+        error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
+        error_node(
+            EK_NOTE,
+            fn->returns.tail,
+            "Expected the last return value to be %s, got %s",
+            type_to_cstr((Type) {.kind = TYPE_BOOL}),
+            type_to_cstr(fn_spec->returns[fn_spec->returns_count - 1]));
         exit(c, 1);
     }
 }

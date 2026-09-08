@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 93, "");
 const char *token_kind_to_cstr(Token_Kind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -21,7 +21,7 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_COMMA:
         return "','";
 
-    case TOKEN_RANGE:
+    case TOKEN_SLICE:
         return "'..'";
 
     case TOKEN_SPREAD:
@@ -178,6 +178,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_STRUCT:
         return "'struct'";
 
+    case TOKEN_RANGE:
+        return "'range'";
+
     case TOKEN_SIZEOF:
         return "'sizeof'";
 
@@ -229,6 +232,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_DIRECTIVE_LIBRARY:
         return "'#library'";
 
+    case TOKEN_DIRECTIVE_REFERENCE:
+        return "'#reference'";
+
     case TOKEN_DIRECTIVE_LOCATION:
         return "'#location'";
 
@@ -279,7 +285,7 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     }
 }
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 93, "");
 Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:

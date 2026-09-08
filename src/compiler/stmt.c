@@ -291,14 +291,16 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
             n->token.pos.row + 1,
             n->token.pos.col + 1);
 
-        compile_stmt(c, forr->init);
+        if (!forr->range) {
+            compile_stmt(c, forr->init);
+        }
     }
 
     LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
     LLVMBasicBlockRef end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
 
     LLVMBasicBlockRef start = body;
-    if (forr->condition) {
+    if (forr->condition || forr->range) {
         start = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
     }
 
@@ -317,18 +319,230 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
     c->loop_defers_start = c->defers.count;
     {
         // Condition
-        if (forr->condition) {
-            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-            LLVMBuildBr(c->llvm_builder, start);
-            LLVMPositionBuilderAtEnd(c->llvm_builder, start);
-            LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
+        Node_Range *range = forr->range;
+        if (range) {
+            const size_t group_values_count_save = c->group_values.count;
+
+            Node        *iterable_node_a = range->a;
+            Node        *iterable_node_b = range->b;
+            LLVMValueRef iterable_a = compile_expr(c, iterable_node_a, false);
+            LLVMValueRef iterable_b = compile_expr(c, iterable_node_b, false);
+            compile_type(c, &range->node.type);
+
+            LLVMTypeRef  iterator_type = NULL;
+            LLVMValueRef iterator_memory = NULL;
+            LLVMValueRef iterator_loaded = NULL;
+
+            Typed_LLVM_Value *assignees = NULL;
+            size_t            assignees_count = 0;
+            if (range->node.type.kind == TYPE_GROUP) {
+                Type_Group *group = &range->node.type.spec.group;
+                assignees_count = group->count;
+                assignees = arena_alloc(&temp_arena, assignees_count * sizeof(*assignees));
+                for (size_t i = 0; i < assignees_count; i++) {
+                    assignees[i].type = &group->data[i];
+                }
+            } else {
+                assert(range->is_integer);
+                assignees_count = 1;
+                assignees = arena_alloc(&temp_arena, assignees_count * sizeof(*assignees));
+                assignees[0].type = &range->node.type;
+
+                iterator_type = assignees[0].type->llvm;
+            }
+
+            if (range->overload) {
+                if (range->overload_deref) {
+                    iterable_a = undo_load(iterable_a);
+                }
+
+                assert(range->overload->node.type.kind == TYPE_FN);
+                const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
+
+                assert(fn_spec->args_count > 1);
+                Type type = fn_spec->args[1].type;
+
+                assert(type.ref);
+                type.ref--;
+                type.llvm = NULL;
+                iterator_type = compile_type(c, &type);
+
+                iterator_memory = compile_alloca(c, iterator_type);
+                LLVMBuildStore(c->llvm_builder, LLVMConstNull(iterator_type), iterator_memory);
+
+                // Enter the loop
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, start);
+                LLVMPositionBuilderAtEnd(c->llvm_builder, start);
+                set_debug_pos(c, range->node.token.pos);
+
+                // Call the iterator
+                {
+                    Typed_LLVM_Value fn = {0};
+                    fn.value = compile_fn(c, range->overload);
+                    fn.type = &range->overload->node.type;
+
+                    Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
+                    args[0].type = &fn_spec->args[0].type;
+                    args[0].value = iterable_a;
+
+                    args[1].type = &fn_spec->args[1].type;
+                    args[1].value = iterator_memory;
+                    compile_optional_arguments(c, args, fn_spec, range->node.token.pos);
+
+                    LLVMValueRef result = undo_load(compile_call(c, fn, args, fn_spec->args_count, false, false));
+                    LLVMTypeRef  result_type = fn_spec->return_type->llvm;
+                    for (size_t i = 0; i < fn_spec->returns_count; i++) {
+                        LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, result_type, result, i, "");
+                        da_push(&c->group_values, LLVMBuildLoad2(c->llvm_builder, fn_spec->returns[i].llvm, ptr, ""));
+                    }
+                }
+
+                // Check the iterator
+                assert(c->group_values.count == group_values_count_save + fn_spec->returns_count);
+                LLVMBuildCondBr(c->llvm_builder, c->group_values.data[c->group_values.count - 1], body, end);
+            } else {
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+                if (!iterator_type) {
+                    iterator_type = i64;
+                }
+
+                iterator_memory = compile_alloca(c, iterator_type);
+                if (!iterable_node_b) {
+                    LLVMBuildStore(c->llvm_builder, LLVMConstNull(iterator_type), iterator_memory);
+                }
+
+                LLVMValueRef count = NULL;
+                if (range->is_integer) {
+                    if (iterable_node_b) {
+                        LLVMBuildStore(c->llvm_builder, iterable_a, iterator_memory);
+                        count = iterable_b;
+                    } else {
+                        count = iterable_a;
+                    }
+                } else {
+                    Type iterable_type = iterable_node_a->type;
+                    if (iterable_type.ref) {
+                        iterable_type = type_without_ref(iterable_type);
+                        compile_type(c, &iterable_type);
+                    } else {
+                        iterable_a = undo_load(iterable_a);
+                    }
+
+                    if (iterable_type.kind == TYPE_ARRAY) {
+                        count = LLVMConstInt(i64, iterable_type.spec.array.count, true);
+                    } else {
+                        // In all the intrinsic iterable structures, the first two fields are:
+                        //
+                        //     data:  rawptr
+                        //     count: s64
+                        //
+                        count = LLVMBuildStructGEP2(c->llvm_builder, iterable_type.llvm, iterable_a, 1, "");
+                        count = LLVMBuildLoad2(c->llvm_builder, i64, count, "");
+                        iterable_a = LLVMBuildLoad2(
+                            c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), iterable_a, "");
+                    }
+                }
+
+                // Enter the loop
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, start);
+                LLVMPositionBuilderAtEnd(c->llvm_builder, start);
+                set_debug_pos(c, range->node.token.pos);
+
+                // Check the iterator
+                iterator_loaded = LLVMBuildLoad2(c->llvm_builder, iterator_type, iterator_memory, "");
+                LLVMBuildCondBr(
+                    c->llvm_builder, LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, iterator_loaded, count, ""), body, end);
+            }
+
+            LLVMPositionBuilderAtEnd(c->llvm_builder, body);
+            if (forr->init->kind == NODE_RANGE) {
+                // Pass
+            } else if (forr->init->kind == NODE_DEFINE) {
+                Node_Define *define = (Node_Define *) forr->init;
+
+                size_t     iota = 0;
+                Node_Atom *it = NULL;
+                while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                    assert(!it->definition_spec->llvm);
+                    compile_var_def(c, it);
+                    assignees[iota].value = it->definition_spec->llvm;
+                    iota++;
+                }
+            } else if (forr->init->kind == NODE_BINARY && forr->init->token.kind == TOKEN_SET) {
+                Node_Binary *binary = (Node_Binary *) forr->init;
+
+                size_t iota = 0;
+                Node  *it = NULL;
+                while ((it = node_iter(it, binary->lhs))) {
+                    assignees[iota].value = compile_expr(c, it, true);
+                    iota++;
+                }
+            } else {
+                unreachable();
+            }
+
+            if (range->overload) {
+                Node *reference_directive = range->overload_deref ? range->overload->reference_directives.head : NULL;
+                for (size_t i = 0; i < assignees_count; i++) {
+                    if (assignees[i].value) {
+                        LLVMValueRef value = c->group_values.data[group_values_count_save + i];
+                        if (reference_directive && reference_directive->token.as.integer == i) {
+                            value = LLVMBuildLoad2(c->llvm_builder, assignees[i].type->llvm, value, "");
+                            reference_directive = reference_directive->next;
+                        }
+                        LLVMBuildStore(c->llvm_builder, value, assignees[i].value);
+                    }
+                }
+            } else {
+                // Assign the values
+                if (assignees_count > 0 && assignees[0].value) {
+                    LLVMBuildStore(c->llvm_builder, iterator_loaded, assignees[0].value);
+                }
+
+                if (assignees_count > 1 && assignees[1].value) {
+                    Type element_type = *assignees[1].type;
+                    if (iterable_node_a->type.ref) {
+                        element_type.ref--;
+                        element_type.llvm = NULL;
+                        compile_type(c, &element_type);
+                    }
+
+                    LLVMValueRef element =
+                        LLVMBuildGEP2(c->llvm_builder, element_type.llvm, iterable_a, &iterator_loaded, 1, "");
+
+                    if (!iterable_node_a->type.ref) {
+                        element = LLVMBuildLoad2(c->llvm_builder, element_type.llvm, element, "");
+                    }
+
+                    LLVMBuildStore(c->llvm_builder, element, assignees[1].value);
+                }
+
+                // Update the iterator
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    LLVMBuildAdd(c->llvm_builder, iterator_loaded, LLVMConstInt(iterator_type, 1, true), ""),
+                    iterator_memory);
+            }
+
+            arena_reset(&temp_arena, assignees);
+            c->group_values.count = group_values_count_save;
         } else {
-            LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
-            LLVMBuildBr(c->llvm_builder, body);
+            if (forr->condition) {
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, start);
+                LLVMPositionBuilderAtEnd(c->llvm_builder, start);
+                LLVMBuildCondBr(c->llvm_builder, compile_expr(c, forr->condition, false), body, end);
+            } else {
+                LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+                LLVMBuildBr(c->llvm_builder, body);
+            }
+
+            LLVMPositionBuilderAtEnd(c->llvm_builder, body);
         }
 
         // Body
-        LLVMPositionBuilderAtEnd(c->llvm_builder, body);
         compile_stmt(c, forr->body);
 
         // Update
@@ -347,6 +561,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
         // End
         LLVMPositionBuilderAtEnd(c->llvm_builder, end);
     }
+
     c->llvm_loop_break = llvm_loop_break_save;
     c->llvm_loop_continue = llvm_loop_condition_save;
     c->loop_defers_start = loop_defers_start_save;
@@ -629,7 +844,7 @@ void compile_stmt_return(Compiler *c, Node_Return *returnn) {
     c->group_values.count = group_values_count_save;
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;

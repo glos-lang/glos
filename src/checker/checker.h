@@ -178,6 +178,8 @@ void        show_note_about_the_function_being_called(Node *fn, bool is_method, 
 #define OPERATOR_INDEX SV_Lit("[]")
 #define OPERATOR_SLICE SV_Lit("[..]")
 
+#define OPERATOR_RANGE SV_Lit("range")
+
 SV token_kind_to_operator_method_name(Token_Kind kind);
 
 void check_that_methods_can_be_accessed(Compiler *c, Node *receiver);
@@ -208,6 +210,7 @@ void check_signature_of_arithmetic_operator(Compiler *c, Node_Fn *fn, const Type
 void check_signature_of_binary_comparison_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
+void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 
 // Monomorphizer ///////////////////////////////////////////////////////////////////////////////////
 void show_current_monomorphization(Compiler *c);

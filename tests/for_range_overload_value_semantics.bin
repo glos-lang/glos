@@ -1,0 +1,10 @@
+EXIT 0
+STDOUT 32
+Foo 69
+Bar 420
+
+Foo 138
+Bar 840
+
+STDERR 0
+

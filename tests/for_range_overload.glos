@@ -1,0 +1,10 @@
+main :: () {
+    t: Table(string, s64)
+    defer t.free()
+
+    t["Foo"] = 69
+    t["Bar"] = 420
+    for k, v := range t {
+        println("\{k} => \{v}")
+    }
+}

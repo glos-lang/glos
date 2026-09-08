@@ -460,6 +460,7 @@ typedef enum {
     NODE_COMPOUND,
 
     NODE_CALL,
+    NODE_RANGE,
     NODE_INDEX,
     NODE_INDEXABLE,
 
@@ -755,6 +756,8 @@ struct Node_Fn {
     Nodes  returns;
     size_t returns_count;
 
+    Nodes reference_directives;
+
     Polymorphs polymorphs;
     Polymorphs monomorphs;
 
@@ -941,6 +944,17 @@ typedef struct {
 
 typedef struct {
     Node  node;
+    Node *a;
+    Node *b;
+
+    Node_Fn *overload;
+    bool     overload_deref;
+
+    bool is_integer;
+} Node_Range;
+
+typedef struct {
+    Node  node;
     Node *lhs;
     Node *a;
     Node *b;
@@ -1003,6 +1017,8 @@ typedef struct {
     Node *condition;
     Node *update;
     Node *body;
+
+    Node_Range *range;
 } Node_For;
 
 typedef struct {
@@ -1066,4 +1082,4 @@ Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, s
 
 #endif // NODE_H
 
-// Remove the individual `module` fields present in specific node types
+// TODO: Remove the individual `module` fields present in specific node types

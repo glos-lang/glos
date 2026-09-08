@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 179
+tests/error_iterator_overload_type_mismatch_try_referencing.glos:11:15: Error: Iteration is defined for '&Box(s64)', not 'Box(s64)'. Perhaps try referencing?
+
+    for range b {}
+
+

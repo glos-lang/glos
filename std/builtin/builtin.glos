@@ -85,3 +85,7 @@ New :: ($T: Type, n := 1, a := &arena.default) -> &T {
 New_Array :: ($T: Type, n: s64, a := &arena.default) -> []T {
     return (&T(a.alloc(n * sizeof(T))))[..n]
 }
+
+Clone :: (v: $T, a := &arena.default) -> &T {
+    return &T(C.memcpy(a.alloc(sizeof(T)), rawptr(&v), sizeof(v)))
+}

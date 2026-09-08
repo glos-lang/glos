@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 93, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -133,7 +133,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -225,7 +225,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -304,7 +304,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 91, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -1891,7 +1891,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -2021,6 +2021,106 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         check_expr_call(c, (Node_Call *) n);
         break;
 
+    case NODE_RANGE: {
+        Node_Range *range = (Node_Range *) n;
+        check_expr(c, range->a, REF_NONE);
+
+        if (range->b) {
+            type_assert_numeric(c, range->a, false, false);
+            check_expr(c, range->b, REF_NONE);
+        }
+
+        Type      *a_type = &range->a->type;
+        const bool is_array = type_kind_eq(*a_type, TYPE_ARRAY);
+        const bool is_dynamic_array = type_kind_eq(*a_type, TYPE_DYNAMIC_ARRAY);
+        const bool is_slice = type_kind_eq(*a_type, TYPE_SLICE);
+        const bool is_string = type_kind_eq(*a_type, TYPE_STRING);
+        if (is_array || is_dynamic_array || is_slice || is_string) {
+            if (a_type->ref > 1) {
+                error_node(
+                    EK_ERROR,
+                    range->a,
+                    "Too many layers of indirection in iteration. The type is %s",
+                    type_to_cstr(*a_type));
+                exit(c, 1);
+            }
+
+            Type_Group group = {0};
+            group.count = 2;
+            group.data = arena_alloc(&default_arena, group.count * sizeof(*group.data));
+            group.data[0] = (Type) {.kind = TYPE_S64};
+            if (is_array) {
+                group.data[1] = *a_type->spec.array.element;
+            } else if (is_dynamic_array) {
+                group.data[1] = *a_type->spec.dynamic_array.element;
+            } else if (is_slice) {
+                group.data[1] = *a_type->spec.slice.element;
+            } else if (is_string) {
+                group.data[1] = (Type) {.kind = TYPE_CHAR};
+            } else {
+                unreachable();
+            }
+
+            if (a_type->ref) {
+                group.data[1].ref++;
+            }
+
+            n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
+        } else if (type_is_integer(*a_type)) {
+            if (range->b) {
+                type_assert_node(c, range->b, range->a);
+            }
+
+            n->type = *a_type;
+            range->is_integer = true;
+        } else {
+            range->overload = get_operator_overload(c, OPERATOR_RANGE, range->a, range->a, n->module);
+
+            assert(type_kind_eq(range->overload->node.type, TYPE_FN));
+            const Type_Fn *fn_spec = range->overload->node.type.spec.fn;
+
+            assert(fn_spec->args_count > 1);
+            Type receiver = fn_spec->args[0].type;
+            if (range->overload->reference_directives.head) {
+                if (range->a->type.ref + 1 == receiver.ref) {
+                    receiver.ref--;
+                    range->overload_deref = true;
+                }
+            }
+
+            if (!type_eq(range->a->type, receiver)) {
+                error_node_begin(EK_ERROR, range->a);
+                fprintf(
+                    stderr,
+                    "Iteration is defined for %s, not %s",
+                    type_to_cstr(receiver),
+                    type_to_cstr(range->a->type));
+
+                if (type_eq(type_without_ref(range->a->type), type_without_ref(receiver))) {
+                    fprintf(
+                        stderr,
+                        ". Perhaps try %s?",
+                        receiver.ref > range->a->type.ref ? "referencing" : "dereferencing");
+                }
+                error_finalize();
+                exit(c, 1);
+            }
+
+            n->type = *fn_spec->return_type;
+            assert(type_kind_eq(n->type, TYPE_GROUP));
+
+            Type_Group *group = &n->type.spec.group;
+            group->count--; // Don't include the 'bool'
+
+            if (range->overload_deref) {
+                group->data = arena_clone(&default_arena, group->data, group->count * sizeof(*group->data));
+                ll_foreach(it, &range->overload->reference_directives) {
+                    group->data[it->token.as.integer].ref--;
+                }
+            }
+        }
+    } break;
+
     case NODE_INDEX:
         check_expr_index(c, (Node_Index *) n, ref, &is_ref_valid);
         break;
@@ -2107,6 +2207,18 @@ void check_fn(
 {
     if (fn->checked_signature && (only_check_signature || only_check_polymorphic_parameters)) {
         return;
+    }
+
+    if (fn->reference_directives.head) {
+        if (!fn->is_method || !fn->defined_as || !sv_eq(fn->defined_as->node.token.sv, OPERATOR_RANGE)) {
+            const Token token = fn->reference_directives.head->token;
+            error_token(
+                EK_ERROR,
+                token,
+                "The directive %s can only be applied to return values of an iterator overload",
+                token_kind_to_cstr(token.kind));
+            exit(c, 1);
+        }
     }
 
     Node *n = (Node *) fn;
@@ -2270,9 +2382,15 @@ void check_fn(
             fn_spec->returns = arena_alloc(&default_arena, fn->returns_count * sizeof(*fn_spec->returns));
 
             size_t iota = 0;
+            Node  *reference_directive = fn->reference_directives.head;
             ll_foreach(it, &fn->returns) {
                 check_expr(c, it, REF_NONE);
                 type_assert_type(c, it);
+
+                if (reference_directive && reference_directive->token.as.integer == iota) {
+                    it->type.ref++;
+                    reference_directive = reference_directive->next;
+                }
                 fn_spec->returns[iota++] = type_without_meta(it->type);
             }
         }
@@ -2314,17 +2432,19 @@ void check_fn(
 
         assert(fn->defined_as);
         const SV name = fn->defined_as->node.token.sv;
-        if (sv_match(name, "+") || sv_match(name, "-") || sv_match(name, "*") || sv_match(name, "/") ||
-            sv_match(name, "%")) //
+        if (sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
+            sv_eq(name, OPERATOR_MUL) || sv_eq(name, OPERATOR_DIV) || sv_eq(name, OPERATOR_MOD)) //
         {
             check_signature_of_arithmetic_operator(c, fn, fn_spec);
-        } else if (sv_match(name, "<=>")) {
+        } else if (sv_eq(name, OPERATOR_CMP)) {
             check_signature_of_binary_comparison_operator(c, fn, fn_spec);
             fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->ordering_type);
-        } else if (sv_match(name, "[]")) {
+        } else if (sv_eq(name, OPERATOR_INDEX)) {
             check_signature_of_index_operator(c, fn, fn_spec);
-        } else if (sv_match(name, "[..]")) {
+        } else if (sv_eq(name, OPERATOR_SLICE)) {
             check_signature_of_slice_operator(c, fn, fn_spec);
+        } else if (sv_eq(name, OPERATOR_RANGE)) {
+            check_signature_of_range_operator(c, fn, fn_spec);
         }
     }
     fn->checked_signature = true;

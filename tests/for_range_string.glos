@@ -1,0 +1,11 @@
+main :: () {
+    s := "Nice!"
+    for i, c := range s {
+        println(i, c)
+    }
+
+    for i, x := range &s {
+        *x = 'A' + char(i)
+    }
+    println(s)
+}

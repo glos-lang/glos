@@ -302,7 +302,7 @@ Node *get_node_from_group(Node *n, size_t index, i64 *group_index) {
         unreachable();
     }
 
-    if (n->kind == NODE_CALL) {
+    if (n->kind == NODE_CALL || n->kind == NODE_RANGE) {
         assert(index < n->type.spec.group.count);
         if (group_index) {
             *group_index = index;
@@ -371,11 +371,11 @@ void set_auto_cast(Compiler *c, Node *n, i64 index, Auto_Cast_Kind kind, Type fr
     }
 }
 
-static_assert(COUNT_NODES == 30, "");
+static_assert(COUNT_NODES == 31, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 91, "");
+        static_assert(COUNT_TOKENS == 93, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -453,11 +453,35 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
 
 void finalize_untyped_type(Compiler *c, Node *n) {
     if (type_kind_eq(n->type, TYPE_INT)) {
-        const Const_Value value = eval_const_expr(c, n, false);
-        n->type.kind = TYPE_S64;
+        if (n->kind == NODE_RANGE) {
+            Const_Value value;
+            Node_Range *range = (Node_Range *) n;
+            assert(range->is_integer);
 
-        assert(value.kind == CONST_VALUE_INT);
-        check_int_limit(c, n, value.as.integer);
+            {
+                value = eval_const_expr(c, range->a, false);
+                range->a->type.kind = TYPE_S64;
+
+                assert(value.kind == CONST_VALUE_INT);
+                check_int_limit(c, range->a, value.as.integer);
+            }
+
+            if (range->b) {
+                value = eval_const_expr(c, range->b, false);
+                range->b->type.kind = TYPE_S64;
+
+                assert(value.kind == CONST_VALUE_INT);
+                check_int_limit(c, range->b, value.as.integer);
+            }
+
+            n->type.kind = TYPE_S64;
+        } else {
+            const Const_Value value = eval_const_expr(c, n, false);
+            n->type.kind = TYPE_S64;
+
+            assert(value.kind == CONST_VALUE_INT);
+            check_int_limit(c, n, value.as.integer);
+        }
     }
 
     if (type_kind_eq(n->type, TYPE_FLOAT)) {
@@ -470,13 +494,37 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
         (type_is_integer(expected) || (type_kind_eq(expected, TYPE_ENUM) && !expected.ref))) //
     {
         if (!type_kind_eq(expected, TYPE_INT)) {
-            cast_untyped(c, n, expected);
+            if (n->kind == NODE_RANGE) {
+                Const_Value value;
+                Node_Range *range = (Node_Range *) n;
+                assert(range->is_integer);
 
-            // Only constant expressions can be untyped integers
-            const Const_Value value = eval_const_expr(c, n, false);
-            assert(value.kind == CONST_VALUE_INT);
+                {
+                    cast_untyped(c, range->a, expected);
+                    value = eval_const_expr(c, range->a, false);
 
-            check_int_limit(c, n, value.as.integer);
+                    assert(value.kind == CONST_VALUE_INT);
+                    check_int_limit(c, range->a, value.as.integer);
+                }
+
+                if (range->b) {
+                    cast_untyped(c, range->b, expected);
+                    value = eval_const_expr(c, range->b, false);
+
+                    assert(value.kind == CONST_VALUE_INT);
+                    check_int_limit(c, range->b, value.as.integer);
+                }
+
+                n->type = expected;
+            } else {
+                cast_untyped(c, n, expected);
+
+                // Only constant expressions can be untyped integers
+                const Const_Value value = eval_const_expr(c, n, false);
+                assert(value.kind == CONST_VALUE_INT);
+
+                check_int_limit(c, n, value.as.integer);
+            }
         }
         return true;
     }

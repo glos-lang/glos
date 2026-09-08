@@ -73,6 +73,24 @@ operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_
     }
 }
 
+range :: (this: &Table($K, $V), index: &s64) -> K, #reference V, bool {
+    if this.count != 0 {
+        Entry :: typeof(*this.data)
+        entry: &Entry
+        for *index < this.capacity {
+            entry = this.data + &Entry(*index * sizeof(Entry))
+            *index += 1
+
+            if entry.state == .OCCUPIED {
+                return entry.key, &entry.value, true
+            }
+        }
+    }
+
+    k: K
+    return k, null, false
+}
+
 #private ...
 Entry :: struct ($K: Type, $V: Type) {
     state: enum {
@@ -99,7 +117,7 @@ find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
             it := info[i]
             if it.kind == {
             case .RAW
-                hasher.bytes(data + rawptr(it.offset), it.size)
+                hasher.bytes(&char(data)[it.offset..it.offset + it.size])
 
             case .FLOAT
                 if it.size == {
@@ -109,8 +127,7 @@ find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
                 }
 
             case .STRING
-                s := *(&string)(data + rawptr(it.offset))
-                hasher.bytes(rawptr(s.data), s.count)
+                hasher.bytes(*(&[]char)(data + rawptr(it.offset)))
             }
         }
         start = hasher.finish()

@@ -248,7 +248,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 91, "");
+static_assert(COUNT_TOKENS == 93, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -376,6 +376,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_UNION;
         } else if (sv_match(token.sv, "struct")) {
             token.kind = TOKEN_STRUCT;
+        } else if (sv_match(token.sv, "range")) {
+            token.kind = TOKEN_RANGE;
         } else if (sv_match(token.sv, "sizeof")) {
             token.kind = TOKEN_SIZEOF;
         } else if (sv_match(token.sv, "typeof")) {
@@ -425,7 +427,7 @@ Token lexer_iter(Lexer *l) {
             if (match_char(l, '.')) {
                 token.kind = TOKEN_SPREAD;
             } else {
-                token.kind = TOKEN_RANGE;
+                token.kind = TOKEN_SLICE;
             }
         } else {
             token.kind = TOKEN_DOT;
@@ -631,6 +633,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_PRIVATE;
         } else if (sv_match(token.sv, "#library")) {
             token.kind = TOKEN_DIRECTIVE_LIBRARY;
+        } else if (sv_match(token.sv, "#reference")) {
+            token.kind = TOKEN_DIRECTIVE_REFERENCE;
         } else if (sv_match(token.sv, "#location")) {
             token.kind = TOKEN_DIRECTIVE_LOCATION;
         } else if (sv_match(token.sv, "#caller_location")) {

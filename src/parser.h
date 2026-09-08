@@ -29,6 +29,8 @@ typedef struct {
     bool allow_methods_without_body;
     bool after_private;
 
+    Node_For *range_for;
+
     Node_Fn            *fn_current;
     Polymorphs_Builder *pb;
 } Parser_State;
