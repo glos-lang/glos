@@ -72,9 +72,13 @@ void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
                 compile_fn(c, it->fn);
 
                 if (!it->wrapper) {
-                    const void *checkpoint = arena_alloc(&temp_arena, 0);
-                    it->wrapper = compile_fn(c, create_trait_method_wrapper(&temp_arena, it->fn, impl->trait, i));
-                    arena_reset(&temp_arena, checkpoint);
+                    if (it->fn == impl->trait->methods[i].fallback) {
+                        it->wrapper = it->fn->llvm;
+                    } else {
+                        const void *checkpoint = arena_alloc(&temp_arena, 0);
+                        it->wrapper = compile_fn(c, create_trait_method_wrapper(&temp_arena, it->fn, impl->trait, i));
+                        arena_reset(&temp_arena, checkpoint);
+                    }
                 }
             }
 

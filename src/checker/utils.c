@@ -89,6 +89,23 @@ void error_undefined(Compiler *c, const Token *t, const char *label, bool no_exi
     }
 }
 
+void error_undefined_in(Compiler *c, const Token *token, const Type *type, const char *label) {
+    error_token(
+        EK_ERROR,
+        *token,
+        "Undefined %s '" SV_Fmt "' in type %s",
+        label,
+        SV_Arg(token->sv),
+        type_to_cstr(type_without_meta(*type)));
+
+    if (type->kind == TYPE_TRAIT) {
+        error_node(EK_NOTE, (Node *) type->spec.trait->definition, "Trait defined here");
+    } else if (type->kind == TYPE_STRUCT) {
+        error_node(EK_NOTE, (Node *) type->spec.structt->definition, "Structure defined here");
+    }
+    exit(c, 1);
+}
+
 void error_redefinition(Compiler *c, const Node *n, const Pos *previous_pos) {
     error_token(EK_ERROR, n->token, "Redefinition of '" SV_Fmt "'", SV_Arg(n->token.sv));
     if (previous_pos) {

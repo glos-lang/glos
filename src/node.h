@@ -292,6 +292,9 @@ struct Type_Trait_Method {
 
     // Used for diagnostic purposes
     Node_Fn *signature;
+
+    // Default trait method (if defined)
+    Node_Fn *fallback;
 };
 
 struct Type_Union_Variant {
@@ -774,6 +777,8 @@ struct Node_Fn {
     //     foo: () // <- This function is a trait method type
     // }
     Node_Trait *trait_method;
+
+    Type_Trait_Method *default_trait_method;
 
     // For generating wrappers of trait implementation methods. (These fields are only be the LLVM generator)
     Node_Fn    *wrapper;

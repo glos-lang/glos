@@ -91,6 +91,22 @@ bool get_method_spec(
 
         check_that_methods_can_be_accessed(c, receiver_node);
         return true;
+    } else if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
+        Node_Trait *definition = receiver_type.spec.trait->definition;
+        if (spec) {
+            spec->uid = (uintptr_t) definition;
+        }
+
+        if (defining_in_module) {
+            if (is_named) {
+                *is_named = definition->defined_as != NULL;
+            }
+
+            return defining_in_module == definition->node.module;
+        }
+
+        check_that_methods_can_be_accessed(c, receiver_node);
+        return true;
     } else if (type_kind_eq(receiver_type, TYPE_UNION)) {
         Node_Union *definition = receiver_type.spec.unionn->definition;
         if (spec) {

@@ -1,0 +1,24 @@
+Foo :: trait {
+    foo: ()
+}
+
+foo :: (this: Foo) {
+    println(this)
+}
+
+foo :: (f: Foo) {
+    f.foo()
+}
+
+Bar :: struct {
+    v: s64
+}
+
+foo :: (this: Bar) {
+    println(this.v)
+}
+
+main :: () {
+    foo(69)
+    foo(Bar {420})
+}

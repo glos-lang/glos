@@ -244,13 +244,13 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
                 Method_Spec spec = {0};
                 if (!get_method_spec(c, n, receiver, it->name, &spec, NULL, NULL)) {
                     errors[i] = (Error) {.kind = UNDEFINED};
-                    goto next;
+                    goto finally;
                 }
 
                 Node_Fn *fn = get_method(c, spec, n->module);
                 if (!fn) {
                     errors[i] = (Error) {.kind = UNDEFINED};
-                    goto next;
+                    goto finally;
                 }
 
                 if (fn->polymorphs.count) {
@@ -278,17 +278,17 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
 
                 if (actual_spec->is_noreturn != expected_spec->is_noreturn) {
                     errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
-                    goto next;
+                    goto finally;
                 }
 
                 if (!type_eq(actual_spec->args[0].type, receiver)) {
                     errors[i] = (Error) {.kind = WRONG_RECEIVER, .fn = fn};
-                    goto next;
+                    goto finally;
                 }
 
                 if (expected_spec->args_count != actual_spec->args_count) {
                     errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
-                    goto next;
+                    goto finally;
                 }
 
                 for (size_t j = 0; j < actual_spec->args_count; j++) {
@@ -298,18 +298,24 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
 
                     if (!type_eq(actual_spec->args[j].type, expected_spec->args[j].type)) {
                         errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
-                        goto next;
+                        goto finally;
                     }
                 }
 
                 if (!type_eq(*actual_spec->return_type, *expected_spec->return_type)) {
                     errors[i] = (Error) {.kind = WRONG_SIGNATURE, .fn = fn};
-                    goto next;
+                    goto finally;
                 }
 
-                impl.methods[i].fn = fn;
+            finally:;
+                if (errors[i].kind == UNDEFINED && it->fallback) {
+                    fn = it->fallback;
+                    errors[i].kind = OK;
+                }
 
-            next:;
+                if (errors[i].kind == OK) {
+                    impl.methods[i].fn = fn;
+                }
             }
 
             bool ok = true;
