@@ -709,6 +709,15 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 bool ok = false;
                 if (member->lhs->type.is_meta) {
                     const Type receiver = type_without_meta(member->lhs->type);
+                    if (member->lhs->type.kind == TYPE_TRAIT) {
+                        error_node(EK_ERROR, n, "Cannot access trait methods from the type itself");
+                        afprintf(
+                            stderr,
+                            ANSI_COLOR_YELLOW | ANSI_BOLD,
+                            "    First create a value of type %s. Then access methods from that value.\n\n",
+                            type_to_cstr(receiver));
+                        exit(c, 1);
+                    }
 
                     Method_Spec spec = {0};
                     if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL, NULL)) {

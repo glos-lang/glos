@@ -1,0 +1,11 @@
+EXIT 1
+STDOUT 0
+
+STDERR 227
+tests/error_cannot_access_trait_methods_from_the_type_itself.glos:2:5: Error: Cannot access trait methods from the type itself
+
+    Writer.write
+
+    First create a value of type 'Writer'. Then access methods from that value.
+
+
