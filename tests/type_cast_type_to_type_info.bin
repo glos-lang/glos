@@ -1,6 +1,6 @@
 EXIT 0
-STDOUT 19
-{8, 8, "", {true}}
+STDOUT 2
+8
 
 STDERR 0
 

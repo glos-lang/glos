@@ -138,7 +138,7 @@ void check_nodes(Compiler *c) {
         assert(c->type_info_pointer_type.kind == TYPE_STRUCT);
         const Type_Struct *type_info_structure = c->type_info_pointer_type.spec.structt;
 
-        assert(type_info_structure->fields_count == 4);
+        assert(type_info_structure->fields_count == 5);
         const Type *type_info_variant = &type_info_structure->fields[3].type;
 
         assert(type_info_variant->kind == TYPE_UNION);
