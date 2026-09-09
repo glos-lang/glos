@@ -164,6 +164,7 @@ main :: () {
         println(my_trait_in_heap.foo())
         println(my_trait_in_heap.bar(351))
     }
+    println()
 
     // Lastly the field 'impl' contains the table of methods that implement the trait.
     //
@@ -177,7 +178,7 @@ main :: () {
     // by 'My_Trait'.
     // my_trait = 69
 
-    // Finally let's look at 'Any'. It is defined like this:
+    // Let's look at 'Any'. It is defined like this:
     //
     //     Any :: trait {}
     //
@@ -190,4 +191,37 @@ main :: () {
     any = []string {"Yee", "Haw"}
     any = 13.37
     any = null
+
+    // You can also define default methods for traits
+    default_trait_methods()
 }
+
+Foo :: trait {
+    bar: ()
+}
+
+// If you define the trait method with the trait as the receiver, you provide a fallback
+// implementation in case the method is not implemented.
+bar :: (this: Foo) {
+    println("Default:", this)
+}
+
+Bar :: struct {
+    v: s64
+}
+
+bar :: (this: Bar) {
+    println(this.v)
+}
+
+default_trait_methods :: () {
+    // The method 'foo' is not defined for 's64' explicitly, so use the default.
+    Foo(69).bar()
+
+    // The method 'foo' is defined for 'Bar' explicitly, so use that.
+    Foo(Bar {420}).bar()
+}
+
+// In this example, the whole trait is implementation using the default method. That is not
+// a strict requirement. For traits with multiple methods, you can choose to provide defaults
+// for only the methods you want, and leave others as needing explicit implementation.
