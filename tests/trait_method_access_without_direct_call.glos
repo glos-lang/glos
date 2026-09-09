@@ -4,11 +4,11 @@ b := Int(420)
 main :: () {
     x: Show : a
     f :: x.show
-    f(rawptr(&a))
+    f(x)
 
     y: Show = b
     g := y.show
-    g(rawptr(&b))
+    g(y)
 }
 
 // Details

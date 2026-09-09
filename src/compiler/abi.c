@@ -614,21 +614,10 @@ LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, b
     return result;
 }
 
-LLVMValueRef compile_call(
-    Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool is_trait_call, bool ref) //
-{
+LLVMValueRef compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref) {
     Call_Compiler call = {0};
     compile_call_begin(c, &call, fn, args_count);
     for (size_t i = 0; i < args_count; i++) {
-        if (i == 0 && is_trait_call) {
-            Type             rawptr = {.kind = TYPE_RAWPTR};
-            Typed_LLVM_Value receiver = {0};
-            receiver.type = &rawptr;
-            receiver.value = args[i].value;
-            compile_call_arg(c, &call, i, &receiver);
-            continue;
-        }
-
         compile_call_arg(c, &call, i, &args[i]);
     }
     return compile_call_finalize(c, &call, false, ref);

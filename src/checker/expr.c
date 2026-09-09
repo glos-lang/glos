@@ -2340,7 +2340,7 @@ void check_fn(
             Type_Fn_Arg *it_arg = &fn_spec->args[iota++];
             it_arg->name = sv_from_cstr("this");
             it_arg->pos = fn->trait_method->node.type.spec.trait->definition->node.token.pos;
-            it_arg->type.kind = TYPE_RAWPTR;
+            it_arg->type = type_without_meta(fn->trait_method->node.type);
         }
 
         for (Node *arg = fn->args.head; arg; arg = arg->next) {

@@ -326,7 +326,10 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             Typed_LLVM_Value receiver = {0};
             receiver.type = &call.fn_spec->args[0].type;
             receiver.value =
-                LLVMBuildLoad2(c->llvm_builder, compile_type(c, receiver.type), LLVMGetParam(fn->llvm, arg_iota), "");
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_trait_type, LLVMGetParam(fn->llvm, arg_iota), 1, "");
+            receiver.value =
+                LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), receiver.value, "");
+            receiver.value = LLVMBuildLoad2(c->llvm_builder, compile_type(c, receiver.type), receiver.value, "");
 
             compile_call_arg(c, &call, 0, &receiver);
             for (size_t i = 0; i < call.args_count; i++) {
@@ -649,7 +652,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
             args[1].value = value;
 
             compile_optional_arguments(c, args, fn_spec, get_leftmost_token_of_node(n).pos);
-            LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false, false);
+            LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
 
             arena_reset(&temp_arena, checkpoint);
             return result;
@@ -739,7 +742,7 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     args[1].type = &fn_spec->args[1].type;
 
     compile_optional_arguments(c, args, fn_spec, get_leftmost_token_of_node((Node *) binary).pos);
-    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false, false);
+    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
 
     arena_reset(&temp_arena, checkpoint);
     return result;
@@ -1134,10 +1137,9 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
     }
 
     if (member->is_trait) {
-        LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-        member->method_receiver_llvm =
-            LLVMBuildLoad2(c->llvm_builder, ptr_type, LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, ""), "");
+        member->method_receiver_llvm = LLVMBuildLoad2(c->llvm_builder, c->llvm_trait_type, lhs, "");
 
+        LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
         LLVMValueRef impl =
             LLVMBuildLoad2(c->llvm_builder, ptr_type, LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 2, ""), "");
 
@@ -1159,7 +1161,6 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
         }
 
         LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), member->trait_method, true)};
-
         return LLVMBuildLoad2(
             c->llvm_builder, ptr_type, LLVMBuildGEP2(c->llvm_builder, ptr_type, impl, indices, len(indices), ""), "");
     }
@@ -1415,7 +1416,6 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
     }
     Typed_LLVM_Value *args = arena_alloc(&temp_arena, args_count * sizeof(*args));
 
-    bool   is_trait_call = false;
     size_t args_iota = 0;
     if (call->fn->kind == NODE_MEMBER) {
         Node_Member *member = (Node_Member *) call->fn;
@@ -1427,7 +1427,6 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
             args[args_iota].type = &fn_spec->args[0].type;
             args_iota++;
         }
-        is_trait_call = member->is_trait;
     }
 
     LLVMTypeRef  variadics_type = NULL;
@@ -1538,7 +1537,7 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
     compile_optional_arguments(c, args, fn_spec, location);
 
     const bool   is_group = n->type.kind == TYPE_GROUP;
-    LLVMValueRef result = compile_call(c, fn, args, args_count, is_trait_call, ref || is_group);
+    LLVMValueRef result = compile_call(c, fn, args, args_count, ref || is_group);
     if (fn_spec->is_noreturn && c->optimization_level != O3) {
         compile_panic(c, location, CONTRACT_PANIC_UNREACHABLE, NULL, NULL, NULL);
         LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
@@ -1598,11 +1597,11 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
 
         compile_optional_arguments(c, args, fn_spec, get_leftmost_token_of_node(n).pos);
         if (index->is_ranged) {
-            LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, false, ref);
+            LLVMValueRef value = compile_call(c, fn, args, fn_spec->args_count, ref);
             arena_reset(&temp_arena, checkpoint);
             return value;
         } else {
-            LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false, false);
+            LLVMValueRef ptr = compile_call(c, fn, args, fn_spec->args_count, false);
             arena_reset(&temp_arena, checkpoint);
             if (ref) {
                 return ptr;

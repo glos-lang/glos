@@ -105,8 +105,7 @@ typedef struct {
 void         compile_call_begin(Compiler *c, Call_Compiler *call, Typed_LLVM_Value fn, size_t args_count);
 void         compile_call_arg(Compiler *c, Call_Compiler *call, size_t arg_index, Typed_LLVM_Value *arg);
 LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, bool ref);
-LLVMValueRef
-compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool is_trait_call, bool ref);
+LLVMValueRef compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref);
 
 // Constant Values /////////////////////////////////////////////////////////////////////////////////
 LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value);
