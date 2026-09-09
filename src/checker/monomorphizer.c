@@ -435,10 +435,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     }
 
     Node *n = *np;
-    if (n->kind == NODE_ENUM) {
-        return;
-    }
-
+    Node *from = n;
     if (first) {
         Node *copy = arena_clone(&default_arena, n, node_size(n->kind));
         memset(&copy->type, 0, sizeof(copy->type));
@@ -580,7 +577,12 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         monomorphize_node(c, &enumm->underlying, first);
         monomorphize_nodes(c, &enumm->values, first);
 
-        if (!first) {
+        if (first) {
+            enumm->original = (Node_Enum *) from;
+            while (enumm->original->original) {
+                enumm->original = enumm->original->original;
+            }
+        } else {
             monomorphize_replace(c, (Node **) &enumm->defined_as);
             monomorphize_replace(c, (Node **) &enumm->defined_in);
         }

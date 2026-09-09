@@ -820,6 +820,9 @@ struct Node_Enum {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
+    // Needed because of monomorphization
+    Node_Enum *original;
+
     Node_Fn *defined_in;
 
     Token end;

@@ -744,6 +744,9 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
 
 void check_expr_enum(Compiler *c, Node_Enum *enumm) {
     Node *n = (Node *) enumm;
+    if (!enumm->original) {
+        enumm->original = enumm;
+    }
 
     Type_Enum spec = {.underlying = TYPE_INT, .definition = enumm};
     Type      underlying = {.kind = spec.underlying};
@@ -1998,9 +2001,9 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         check_expr_enum(c, (Node_Enum *) n);
         break;
 
-    case NODE_TRAIT: {
+    case NODE_TRAIT:
         check_expr_trait(c, (Node_Trait *) n);
-    } break;
+        break;
 
     case NODE_UNION:
         check_expr_union(c, (Node_Union *) n);
