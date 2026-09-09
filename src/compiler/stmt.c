@@ -390,7 +390,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                     args[1].value = iterator_memory;
                     compile_optional_arguments(c, args, fn_spec, range->node.token.pos);
 
-                    LLVMValueRef result = undo_load(compile_call(c, fn, args, fn_spec->args_count, false, false));
+                    LLVMValueRef result = undo_load(compile_call(c, fn, args, fn_spec->args_count, false));
                     LLVMTypeRef  result_type = fn_spec->return_type->llvm;
                     for (size_t i = 0; i < fn_spec->returns_count; i++) {
                         LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, result_type, result, i, "");
@@ -642,7 +642,7 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
                     args[1].type = &fn_spec->args[1].type;
 
                     compile_optional_arguments(c, args, fn_spec, get_leftmost_token_of_node(pred).pos);
-                    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false, false);
+                    LLVMValueRef result = compile_call(c, fn, args, fn_spec->args_count, false);
 
                     arena_reset(&temp_arena, checkpoint);
                     match = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, result, LLVMConstNull(LLVMTypeOf(result)), "");

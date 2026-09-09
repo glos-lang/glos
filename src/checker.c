@@ -3,6 +3,7 @@
 #include "compiler.h"
 #include "contract.h"
 #include "error.h"
+#include "node.h"
 
 Const_Value get_platform(Compiler *c, Type *type) {
     Const_Value platform = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Platform"), NULL);
@@ -238,15 +239,7 @@ void check_nodes(Compiler *c) {
 
             bool        is_named = false;
             Method_Spec spec = {0};
-            if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
-                error_node(
-                    EK_ERROR,
-                    define->type,
-                    "Cannot define methods on %s. (It is a trait)",
-                    type_to_cstr(receiver_type));
-                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
-                exit(c, 1);
-            } else if (get_method_spec(c, define->type, receiver_type, name, &spec, fn->node.module, &is_named)) {
+            if (get_method_spec(c, define->type, receiver_type, name, &spec, fn->node.module, &is_named)) {
                 if (!is_named) {
                     error_node(EK_ERROR, define->type, "The receiver of a method cannot have an anonymous type");
                     error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
@@ -258,6 +251,36 @@ void check_nodes(Compiler *c) {
                         if (sv_eq(it->token.sv, name)) {
                             error_redefinition(c, (Node *) fn->defined_as, &it->token.pos);
                         }
+                    }
+                } else if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
+                    Type_Trait *trait = receiver_type.spec.trait;
+                    for (size_t i = 0; i < trait->methods_count; i++) {
+                        Type_Trait_Method *it = &trait->methods[i];
+                        if (sv_eq(it->name, name)) {
+                            it->fallback = fn;
+                            assert(type_kind_eq(it->signature->node.type, TYPE_FN));
+                            fn->default_trait_method = it;
+                            break;
+                        }
+                    }
+
+                    if (!fn->default_trait_method) {
+                        error_undefined_in(c, &fn->defined_as->node.token, &receiver_type, "method");
+                    }
+
+                    if (receiver_type.ref) {
+                        error_node(
+                            EK_ERROR, define->type, "The receiver of a default trait method cannot be a pointer");
+                        error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+                        exit(c, 1);
+                    }
+
+                    if (fn->polymorphs.head) {
+                        error_node(
+                            EK_ERROR,
+                            (Node *) fn->polymorphs.head,
+                            "A default trait method cannot have polymorphic parameters");
+                        exit(c, 1);
                     }
                 } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
                     for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {

@@ -1,0 +1,13 @@
+EXIT 1
+STDOUT 0
+
+STDERR 313
+tests/error_default_trait_method_receiver_cannot_be_pointer.glos:5:15: Error: The receiver of a default trait method cannot be a pointer
+
+    foo :: (this: &Foo) {}
+
+tests/error_default_trait_method_receiver_cannot_be_pointer.glos:5:9: Note: This argument is taken to be the receiver
+
+    foo :: (this: &Foo) {}
+
+

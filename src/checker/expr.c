@@ -482,23 +482,6 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     }
 }
 
-static void error_undefined_in(Compiler *c, const Token *token, const Type *type, const char *label) {
-    error_token(
-        EK_ERROR,
-        *token,
-        "Undefined %s '" SV_Fmt "' in type %s",
-        label,
-        SV_Arg(token->sv),
-        type_to_cstr(type_without_meta(*type)));
-
-    if (type->kind == TYPE_TRAIT) {
-        error_node(EK_NOTE, (Node *) type->spec.trait->definition, "Trait defined here");
-    } else if (type->kind == TYPE_STRUCT) {
-        error_node(EK_NOTE, (Node *) type->spec.structt->definition, "Structure defined here");
-    }
-    exit(c, 1);
-}
-
 void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) member;
     if (member->lhs) {
@@ -530,7 +513,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
 
         // Method
         bool can_have_methods = false;
-        {
+        if (!type_kind_eq(member->lhs->type, TYPE_TRAIT)) {
             Method_Spec spec = {0};
             if (get_method_spec(c, member->lhs, member->lhs->type, n->token.sv, &spec, NULL, NULL)) {
                 can_have_methods = true;
@@ -709,6 +692,15 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 bool ok = false;
                 if (member->lhs->type.is_meta) {
                     const Type receiver = type_without_meta(member->lhs->type);
+                    if (member->lhs->type.kind == TYPE_TRAIT) {
+                        error_node(EK_ERROR, n, "Cannot access trait methods from the type itself");
+                        afprintf(
+                            stderr,
+                            ANSI_COLOR_YELLOW | ANSI_BOLD,
+                            "    First create a value of type %s. Then access methods from that value.\n\n",
+                            type_to_cstr(receiver));
+                        exit(c, 1);
+                    }
 
                     Method_Spec spec = {0};
                     if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL, NULL)) {
@@ -2340,7 +2332,7 @@ void check_fn(
             Type_Fn_Arg *it_arg = &fn_spec->args[iota++];
             it_arg->name = sv_from_cstr("this");
             it_arg->pos = fn->trait_method->node.type.spec.trait->definition->node.token.pos;
-            it_arg->type.kind = TYPE_RAWPTR;
+            it_arg->type = type_without_meta(fn->trait_method->node.type);
         }
 
         for (Node *arg = fn->args.head; arg; arg = arg->next) {
@@ -2449,7 +2441,52 @@ void check_fn(
 
         assert(fn->defined_as);
         const SV name = fn->defined_as->node.token.sv;
-        if (sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
+        if (type_kind_eq(fn_spec->args[0].type, TYPE_TRAIT)) {
+            Type_Fn *expected_spec = fn->default_trait_method->type.spec.fn;
+
+            bool ok = true;
+            if (fn_spec->is_noreturn != expected_spec->is_noreturn) {
+                ok = false;
+                goto finally;
+            }
+
+            if (expected_spec->args_count != fn_spec->args_count) {
+                ok = false;
+                goto finally;
+            }
+
+            for (size_t j = 0; j < fn_spec->args_count; j++) {
+                if (j == 0) {
+                    continue;
+                }
+
+                if (!type_eq(fn_spec->args[j].type, expected_spec->args[j].type)) {
+                    ok = false;
+                    goto finally;
+                }
+            }
+
+            if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
+                ok = false;
+                goto finally;
+            }
+
+        finally:
+            if (!ok) {
+                fn->body = NULL;
+                error_node(
+                    EK_NOTE, (Node *) fn, "The default trait method '" SV_Fmt "' has wrong signature", SV_Arg(name));
+                afprintf(
+                    stderr,
+                    ANSI_COLOR_YELLOW | ANSI_BOLD,
+                    "    Expected: %s\n"
+                    "    Actual:   %s\n\n",
+                    type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}),
+                    type_to_cstr_raw(fn->node.type));
+                exit(c, 1);
+            }
+        } else if (
+            sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
             sv_eq(name, OPERATOR_MUL) || sv_eq(name, OPERATOR_DIV) || sv_eq(name, OPERATOR_MOD)) //
         {
             check_signature_of_arithmetic_operator(c, fn, fn_spec);

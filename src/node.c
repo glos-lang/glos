@@ -1442,8 +1442,7 @@ Node_Fn *create_trait_method_wrapper(Arena *a, Node_Fn *fn, Type_Trait *trait, s
     Type_Fn *wrapper_spec = arena_clone(a, fn->node.type.spec.fn, sizeof(*fn->node.type.spec.fn));
     wrapper_spec->args = arena_clone(a, wrapper_spec->args, wrapper_spec->args_count * sizeof(*wrapper_spec->args));
 
-    wrapper_spec->args[0].type.ref++;
-    wrapper_spec->args[0].type.llvm = NULL;
+    wrapper_spec->args[0].type = (Type) {.kind = TYPE_TRAIT, .spec.trait = trait};
     wrapper_spec->llvm = NULL;
     assert(wrapper_spec->variadics_kind != VARIADICS_UNTYPED);
 

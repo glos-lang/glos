@@ -30,6 +30,7 @@ bool is_node_caller_location(Node *n);
 bool node_is_runtime_polymorphic_expression(Node *n);
 
 void error_undefined(Compiler *c, const Token *t, const char *label, bool no_exit);
+void error_undefined_in(Compiler *c, const Token *token, const Type *type, const char *label);
 void error_redefinition(Compiler *c, const Node *n, const Pos *previous_pos);
 void error_redefinition_add_helper_message_for_import(
     const Node *this, const Module *module, const Context *context, const char *label);
