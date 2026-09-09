@@ -64,7 +64,7 @@ static void range_apply_token(Range *r, Token t) {
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 static void range_apply_node(Range *r, const Node *n) {
     if (!n) {
         return;
@@ -170,6 +170,11 @@ static void range_apply_node(Range *r, const Node *n) {
         range_apply_token(r, fn->args_end_token);
         range_apply_node(r, fn->returns.tail);
         range_apply_node(r, fn->body);
+    } break;
+
+    case NODE_MAP: {
+        Node_Map *map = (Node_Map *) n;
+        range_apply_node(r, map->value);
     } break;
 
     case NODE_ENUM: {

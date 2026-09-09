@@ -122,6 +122,9 @@ write_type :: (w: Writer, t: Type) {
     case Type_Info_Dynamic_Array
         wprint(w, "[..]\{v.underlying}")
 
+    case Type_Info_Map
+        wprint(w, "map[\{v.key}]\{v.value}")
+
     case Type_Info_Slice
         wprint(w, "[]\{v.underlying}")
 
@@ -319,8 +322,8 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("}"))
 
     case Type_Info_Dynamic_Array
-        count := *&s64(a.data + rawptr(8))
         data  := *&rawptr(a.data)
+        count := *&s64(a.data + rawptr(8))
 
         w.write([]char("{"))
         for i := 0; i < count; i += 1 {
@@ -332,6 +335,39 @@ write_value :: (w: Writer, a: Any, nested: bool) {
             item.type = v.underlying
             item.data = data + rawptr(i * v.underlying.size)
             write_value(w, item, true)
+        }
+        w.write([]char("}"))
+
+    case Type_Info_Map
+        data     := *&rawptr(a.data)
+        count    := *&s64(a.data + rawptr(8))
+        capacity := *&s64(a.data + rawptr(16))
+
+        w.write([]char("{"))
+        if count != 0 {
+            first := true
+            for i := range capacity {
+                entry, key_ptr, value_ptr := map_entry_get_raw(data, v.key, v.value, i)
+                if entry != .OCCUPIED {
+                    continue
+                }
+
+                if first {
+                    first = false
+                } else {
+                    w.write([]char(", "))
+                }
+
+                a: Any
+                a.type = v.key
+                a.data = key_ptr
+                write_value(w, a, true)
+
+                w.write([]char(" = "))
+                a.type = v.value
+                a.data = value_ptr
+                write_value(w, a, true)
+            }
         }
         w.write([]char("}"))
 

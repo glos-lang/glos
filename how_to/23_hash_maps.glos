@@ -1,0 +1,65 @@
+main :: () {
+    m: map[string]s64
+    defer m.free() // Let us not worry about memory management
+
+    // You can assign entries to a map.
+    m["foo"] = 69
+    m["bar"] = 420
+    m["baz"] = 1337
+
+    // You can access entries of a map.
+    println(m["foo"])
+    println(m["bar"])
+    println(m["baz"])
+
+    // You can reassign entries as well.
+    m["foo"] = 80085
+    println(m["foo"])
+
+    // Accessing a non existant key will cause a runtime panic.
+    //
+    // println(m["lmao"])
+    //
+    // Use the method 'contains' to check whether a key is present.
+    if m.contains("lmao") {
+        println("What?")
+    }
+
+    // Use the method 'delete' to delete entries from a map.
+    println("Contains foo:", m.contains("foo"))
+    m.delete("foo")
+    println("Contains foo:", m.contains("foo"))
+
+    // The field 'count' contains the number of entries of a map.
+    println(m.count)
+
+    // Use the method 'clear' to clear the entries of a map without freeing the memory.
+    m.clear()
+    println(m.count)
+
+    // Now let's look at custom types as keys.
+    custom_types_as_keys()
+}
+
+Vec2 :: struct {
+    x, y: f32
+}
+
+// For a type to be usable as the key of a map, it must implement the '==' operator.
+operator <=> :: (this: Vec2, that: Vec2) -> Equivalence {
+    if this.x == that.x && this.y == that.y {
+        return .EQ
+    }
+    return .NE
+}
+
+custom_types_as_keys :: () {
+    m: map[Vec2]string
+    defer m.free()
+
+    m[{4.2, 6.9}]      = "First"
+    m[{13.37, 80.085}] = "Second"
+
+    println(m[{4.2, 6.9}])
+    println(m[{13.37, 80.085}])
+}

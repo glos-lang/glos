@@ -35,7 +35,7 @@ LLVMValueRef create_const_struct_from_single_value_if_not_already(Compiler *c, L
     return LLVMConstStructInContext(c->llvm_context, &value, 1, false);
 }
 
-static_assert(COUNT_CONST_VALUES == 13, "");
+static_assert(COUNT_CONST_VALUES == 14, "");
 LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     switch (value.kind) {
     case CONST_VALUE_INT:
@@ -168,7 +168,8 @@ LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
     }
 
     case CONST_VALUE_DYNAMIC_ARRAY:
-        return LLVMConstNull(c->llvm_dynamic_array_type);
+    case CONST_VALUE_MAP:
+        return LLVMConstNull(c->llvm_dynamic_array_or_map_type);
 
     case CONST_VALUE_STRING:
         return compile_string_into_const_value(c, value.as.string);

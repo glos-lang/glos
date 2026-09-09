@@ -1,7 +1,7 @@
 #include "../dwarf.h"
 #include "compiler.h"
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 LLVMTypeRef compile_type(Compiler *c, Type *type) {
     if (!type) {
         return NULL;
@@ -133,7 +133,8 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
         break;
 
     case TYPE_DYNAMIC_ARRAY:
-        type->llvm = c->llvm_dynamic_array_type;
+    case TYPE_MAP:
+        type->llvm = c->llvm_dynamic_array_or_map_type;
         break;
 
     case TYPE_SLICE:
@@ -261,7 +262,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -676,7 +677,8 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         return metadata;
     } break;
 
-    case TYPE_DYNAMIC_ARRAY: {
+    case TYPE_DYNAMIC_ARRAY:
+    case TYPE_MAP: {
         const void *checkpoint = arena_alloc(&temp_arena, 0);
 
         SV name = sv_from_cstr(type_to_cstr_raw(*type));

@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -135,7 +135,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -227,7 +227,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -306,7 +306,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -662,6 +662,20 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
+            } else if (type_kind_eq(member->lhs->type, TYPE_MAP)) {
+                check_whether_member_access_is_valid(c, member);
+                if (sv_match(n->token.sv, "data")) {
+                    n->type = (Type) {.kind = TYPE_RAWPTR};
+                    member->field_index = 0;
+                } else if (sv_match(n->token.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_S64};
+                    member->field_index = 1;
+                } else if (sv_match(n->token.sv, "capacity")) {
+                    n->type = (Type) {.kind = TYPE_S64};
+                    member->field_index = 2;
+                } else {
+                    error_undefined_in(c, &n->token, &member->lhs->type, "field");
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
                 check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
@@ -732,6 +746,26 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         n->type = (Type) {.kind = TYPE_UNKNOWN_ENUM};
         member->is_enum = true;
     }
+}
+
+void check_expr_map(Compiler *c, Node_Map *map, Ref_Kind ref, bool *is_ref_valid) {
+    Node *n = (Node *) map;
+    check_expr(c, map->key, REF_NONE);
+    type_assert_type(c, map->key);
+    map->key->type.is_meta = false;
+
+    check_expr(c, map->value, REF_NONE);
+    type_assert_type(c, map->value);
+    map->value->type.is_meta = false;
+
+    n->type = (Type) {
+        .is_meta = true,
+        .kind = TYPE_MAP,
+        .spec.map.key = &map->key->type,
+        .spec.map.value = &map->value->type,
+    };
+
+    *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
 void check_expr_enum(Compiler *c, Node_Enum *enumm) {
@@ -1900,7 +1934,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1987,6 +2021,10 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_FN:
         check_fn(c, (Node_Fn *) n, ref, &is_ref_valid, false, false);
+        break;
+
+    case NODE_MAP:
+        check_expr_map(c, (Node_Map *) n, ref, &is_ref_valid);
         break;
 
     case NODE_ENUM:

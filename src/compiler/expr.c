@@ -154,13 +154,14 @@ LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref
         }
 
         if (const_value) {
-            static_assert(COUNT_CONST_VALUES == 13, "");
+            static_assert(COUNT_CONST_VALUES == 14, "");
             switch (const_value->kind) {
             case CONST_VALUE_TRAIT:
             case CONST_VALUE_UNION:
             case CONST_VALUE_STRUCT:
             case CONST_VALUE_ARRAY:
             case CONST_VALUE_DYNAMIC_ARRAY:
+            case CONST_VALUE_MAP:
             case CONST_VALUE_STRING:
                 if (!definition->definition_spec->llvm) {
                     definition->definition_spec->llvm =
@@ -518,13 +519,14 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
             value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, memory, "");
         } else {
-            static_assert(COUNT_CONST_VALUES == 13, "");
+            static_assert(COUNT_CONST_VALUES == 14, "");
             switch (arg->default_value->kind) {
             case CONST_VALUE_TRAIT:
             case CONST_VALUE_UNION:
             case CONST_VALUE_STRUCT:
             case CONST_VALUE_ARRAY:
             case CONST_VALUE_DYNAMIC_ARRAY:
+            case CONST_VALUE_MAP:
             case CONST_VALUE_STRING:
                 if (!arg->default_value_llvm) {
                     arg->default_value_llvm =
@@ -558,7 +560,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -632,7 +634,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -788,7 +790,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -846,7 +848,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -890,7 +892,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -1007,7 +1009,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;
@@ -1620,7 +1622,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     if (index->lhs->type.ref) {
         element_type = n->type.spec.slice.element;
     } else {
-        static_assert(COUNT_TYPES == 30, "");
+        static_assert(COUNT_TYPES == 31, "");
         switch (index->lhs->type.kind) {
         case TYPE_ARRAY:
             element_type = index->lhs->type.spec.array.element;
@@ -1804,7 +1806,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;

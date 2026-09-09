@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -62,6 +62,9 @@ Const_Value default_const_value(Compiler *c, Type type) {
 
     case TYPE_DYNAMIC_ARRAY:
         return const_value_dynamic_array(type.spec.dynamic_array.element);
+
+    case TYPE_MAP:
+        return const_value_map(type.spec.map);
 
     case TYPE_SLICE: {
         Const_Value_Array array = {0};
@@ -166,7 +169,7 @@ Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
 Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -274,7 +277,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
     Const_Value value = {0};
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = eval_const_expr(c, unary->value, false);
@@ -421,7 +424,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             double (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = int128_add, .f = fadd},
             [TOKEN_SUB] = {.i = int128_sub, .f = fsub},
@@ -461,7 +464,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             bool (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = int128_gt, .f = fgt},
             [TOKEN_GE] = {.i = int128_ge, .f = fge},
@@ -483,7 +486,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_LOR:
         lhs = eval_const_expr(c, binary->lhs, false);
@@ -539,7 +542,7 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         lhs = const_value_of_var(c, lhs.as.var);
     }
 
-    static_assert(COUNT_CONST_VALUES == 13, "");
+    static_assert(COUNT_CONST_VALUES == 14, "");
     switch (lhs.kind) {
     case CONST_VALUE_TRAIT: {
         if (member->rhs) {
@@ -615,11 +618,12 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         }
 
     case CONST_VALUE_DYNAMIC_ARRAY:
+    case CONST_VALUE_MAP:
         if (member->field_index == 0) {
             error_node(EK_ERROR, n, "Cannot access pointers in constant expressions");
             exit(c, 1);
         } else if (member->field_index == 1 || member->field_index == 2) {
-            return const_value_u64(0); // Dynamic arrays in constant expressions can only be empty ones
+            return const_value_u64(0); // Dynamic arrays or maps in constant expressions can only be empty ones
         } else {
             unreachable();
         }
@@ -839,7 +843,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
             exit(c, 1);
         }
 
-        static_assert(COUNT_CONST_VALUES == 13, "");
+        static_assert(COUNT_CONST_VALUES == 14, "");
         switch (lhs.kind) {
         case CONST_VALUE_ARRAY: {
             Const_Value_Array array = lhs.as.array;
@@ -943,7 +947,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     } else {
         const i64 at = i64_from_int128(c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "index");
 
-        static_assert(COUNT_CONST_VALUES == 13, "");
+        static_assert(COUNT_CONST_VALUES == 14, "");
         switch (lhs.kind) {
         case CONST_VALUE_ARRAY: {
             if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -975,7 +979,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1053,6 +1057,7 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         }
     }
 
+    case NODE_MAP:
     case NODE_ENUM:
     case NODE_TRAIT:
     case NODE_UNION:

@@ -248,7 +248,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -368,6 +368,8 @@ Token lexer_iter(Lexer *l) {
             token.as.integer = false;
         } else if (sv_match(token.sv, "null")) {
             token.kind = TOKEN_NULL;
+        } else if (sv_match(token.sv, "map")) {
+            token.kind = TOKEN_MAP;
         } else if (sv_match(token.sv, "enum")) {
             token.kind = TOKEN_ENUM;
         } else if (sv_match(token.sv, "trait")) {

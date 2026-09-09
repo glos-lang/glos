@@ -820,7 +820,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -923,7 +923,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 31, "");
+        static_assert(COUNT_NODES == 32, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1194,6 +1194,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         }
         expect_token(p, TOKEN_RBRACKET);
         indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
+    } break;
+
+    case TOKEN_MAP: {
+        node = node_alloc(p->module_current, NODE_MAP, token);
+        Node_Map *map = (Node_Map *) node;
+        expect_token(p, TOKEN_LBRACKET);
+        map->key = parse_expr(p, POWER_SET, false, true, NULL);
+        expect_token(p, TOKEN_RBRACKET);
+        map->value = parse_expr(p, POWER_PRE, false, false, NULL);
     } break;
 
     case TOKEN_ENUM: {
@@ -1663,7 +1672,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

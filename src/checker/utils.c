@@ -176,7 +176,7 @@ void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 Int_Limit get_int_limit(Type type) {
     const Type_Kind type_kind = type_kind_eq(type, TYPE_ENUM) ? type.spec.enumm.underlying : type.kind;
     if (type_is_signed(type)) {
@@ -223,7 +223,7 @@ void check_int_limit(Compiler *c, Node *n, Int128 value) {
 }
 
 bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 30, "");
+    static_assert(COUNT_TYPES == 31, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -388,11 +388,11 @@ void set_auto_cast(Compiler *c, Node *n, i64 index, Auto_Cast_Kind kind, Type fr
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -682,7 +682,7 @@ void make_sure_import_is_ready(Compiler *c, Node_Import *import) {
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
     if (!size) {
         return;
@@ -712,6 +712,7 @@ static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, s
     case TYPE_UNION:
     case TYPE_ARRAY:
     case TYPE_DYNAMIC_ARRAY:
+    case TYPE_MAP:
     case TYPE_SLICE: {
         if (infos->count) {
             Hash_Info *last = &infos->data[infos->count - 1];

@@ -1,39 +1,36 @@
-Table :: struct ($K: Type, $V: Type) {
-    data:     &Entry(K, V)
-    count:    s64
-    capacity: s64
-}
-
-free :: (this: &Table($K, $V)) {
-    C.free(rawptr(this.data))
+free :: (this: &map[$K]$V) {
+    C.free(this.data)
     C.memset(rawptr(this), 0, sizeof(*this))
 }
 
-clear :: (this: &Table($K, $V)) {
+clear :: (this: &map[$K]$V) {
+    KV :: Map_Entry(K, V)
     if this.data != null {
-        C.memset(rawptr(this.data), 0, u64(this.capacity) * sizeof(*this.data))
+        C.memset(this.data, 0, u64(this.capacity) * sizeof(KV))
         this.count = 0
     }
 }
 
-delete :: (this: &Table($K, $V), key: K, location := #caller_location) -> V {
-    src := find(this.data, this.capacity, key)
+delete :: (this: &map[$K]$V, key: K, location := #caller_location) -> V {
+    KV  :: Map_Entry(K, V)
+    src := map_entry_find(&KV(this.data), this.capacity, key)
     if src != null && src.state == .OCCUPIED {
         value := src.value
         C.memset(rawptr(src), 0, sizeof(*src))
         this.count -= 1
         return value
     }
-    key_not_found(location, key)
+    map_entry_not_found(location, key)
 }
 
-contains :: (this: &Table($K, $V), key: K) -> bool {
-    src := find(this.data, this.capacity, key)
+contains :: (this: &map[$K]$V, key: K) -> bool {
+    KV  :: Map_Entry(K, V)
+    src := map_entry_find(&KV(this.data), this.capacity, key)
     return src != null && src.state == .OCCUPIED
 }
 
-operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_location) -> &V {
-    Entry :: typeof(*this.data)
+operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_location) -> &V {
+    KV :: Map_Entry(K, V)
     if assign {
         LOAD_FACTOR   :: 0.75
         INIT_CAPACITY :: 128
@@ -42,21 +39,21 @@ operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_
             capacity := this.capacity * 2
             if capacity == 0 then capacity = INIT_CAPACITY
 
-            data := (&Entry)(C.calloc(u64(capacity), sizeof(Entry)))
+            data := &KV(C.calloc(u64(capacity), sizeof(KV)))
             for i := 0; i < this.capacity; i += 1 {
-                src := this.data + (&Entry)(i * sizeof(Entry))
+                src := &KV(this.data) + &KV(i * sizeof(KV))
                 if src.state == .OCCUPIED {
-                    dst := find(data, capacity, src.key)
+                    dst := map_entry_find(data, capacity, src.key)
                     *dst = *src
                 }
             }
 
-            C.free(rawptr(this.data))
-            this.data = data
+            C.free(this.data)
+            this.data = rawptr(data)
             this.capacity = capacity
         }
 
-        dst := find(this.data, this.capacity, key)
+        dst := map_entry_find(&KV(this.data), this.capacity, key)
         if dst.state != .OCCUPIED {
             dst.state = .OCCUPIED
             this.count += 1
@@ -65,20 +62,20 @@ operator [] :: (this: &Table($K, $V), key: K, assign: bool, location := #caller_
         dst.key = key
         return &dst.value
     } else {
-        src := find(this.data, this.capacity, key)
+        src := map_entry_find(&KV(this.data), this.capacity, key)
         if src != null && src.state == .OCCUPIED {
             return &src.value
         }
-        key_not_found(location, key)
+        map_entry_not_found(location, key)
     }
 }
 
-range :: (this: &Table($K, $V), index: &s64) -> K, #reference V, bool {
+range :: (this: &map[$K]$V, index: &s64) -> K, #reference V, bool {
     if this.count != 0 {
-        Entry :: typeof(*this.data)
-        entry: &Entry
+        KV :: Map_Entry(K, V)
+        entry: &KV
         for *index < this.capacity {
-            entry = this.data + &Entry(*index * sizeof(Entry))
+            entry = &KV(this.data) + &KV(*index * sizeof(KV))
             *index += 1
 
             if entry.state == .OCCUPIED {
@@ -91,19 +88,20 @@ range :: (this: &Table($K, $V), index: &s64) -> K, #reference V, bool {
 }
 
 #private ...
-Entry :: struct ($K: Type, $V: Type) {
-    state: enum {
-        EMPTY
-        OCCUPIED
-        TOMBSTONE
-    }
+Map_Entry_State :: enum {
+    EMPTY
+    OCCUPIED
+    TOMBSTONE
+}
 
+Map_Entry :: struct ($K: Type, $V: Type) {
+    state: Map_Entry_State
     key:   K
     value: V
 }
 
-find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
-    Entry :: typeof(*data)
+map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, key: K) -> &Map_Entry(K, V) {
+    KV :: typeof(*data)
 
     start: u64
     {
@@ -134,10 +132,10 @@ find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
         #import "hash"
     }
 
-    tombstone: &Entry
+    tombstone: &KV
     for i := 0; i < capacity; i += 1 {
         index := (start + u64(i)) & u64(capacity - 1)
-        entry := data + (&Entry)(index * sizeof(Entry))
+        entry := data + &KV(index * sizeof(KV))
         if entry.state == {
         case .EMPTY
             if tombstone != null {
@@ -161,12 +159,20 @@ find :: (data: &Entry($K, $V), capacity: s64, key: K) -> &Entry(K, V) {
     return tombstone
 }
 
-key_not_found :: noreturn (location: Source_Code_Location, key: $K) {
-    wprint(os.stderr, "\{location} Key not found: ")
+map_entry_not_found :: noreturn (location: Source_Code_Location, key: $K) {
+    wprint(os.stderr, "\{location} Entry not found: ")
     write_value(os.stderr, key, true)
     wprintln(os.stderr)
 
     C.fflush(os.stdout)
     C.fflush(os.stderr)
     C.abort()
+}
+
+map_entry_get_raw :: inline (data: rawptr, key: Type, value: Type, index: s64) -> Map_Entry_State, rawptr, rawptr {
+    Key_Offset   :: sizeof(Map_Entry_State)
+    Value_Offset := (Key_Offset + key.size + 7) & -8
+    Entry_Size   := (Value_Offset + value.size + 7) & -8
+    entry        := data + rawptr(Entry_Size * index)
+    return *(&Map_Entry_State)(entry), entry + rawptr(Key_Offset), entry + rawptr(Value_Offset)
 }

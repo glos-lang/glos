@@ -92,7 +92,7 @@ static void sb_push_polymorphs(SB *sb, Polymorphs ps) {
     sb_push(sb, ')');
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 void sb_push_type(SB *sb, Type type) {
     assert(!type.is_meta);
     if (type.distinct) {
@@ -336,6 +336,13 @@ void sb_push_type(SB *sb, Type type) {
         sb_push_type(sb, *type.spec.dynamic_array.element);
         break;
 
+    case TYPE_MAP:
+        sb_push_cstr(sb, "map[");
+        sb_push_type(sb, *type.spec.map.key);
+        sb_push_cstr(sb, "]");
+        sb_push_type(sb, *type.spec.map.value);
+        break;
+
     case TYPE_SLICE:
         sb_push_cstr(sb, "[]");
         sb_push_type(sb, *type.spec.slice.element);
@@ -472,7 +479,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_eq(Type a, Type b) {
     if (a.is_meta) {
         return b.is_meta;
@@ -549,6 +556,9 @@ bool type_eq(Type a, Type b) {
     case TYPE_DYNAMIC_ARRAY:
         return type_eq(*a.spec.dynamic_array.element, *b.spec.dynamic_array.element);
 
+    case TYPE_MAP:
+        return type_eq(*a.spec.map.key, *b.spec.map.key) && type_eq(*a.spec.map.value, *b.spec.map.value);
+
     case TYPE_SLICE:
         return type_eq(*a.spec.slice.element, *b.spec.slice.element);
 
@@ -594,7 +604,7 @@ bool type_is_numeric(Type type) {
            type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND; //
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -619,7 +629,7 @@ bool type_is_integer(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_float(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -650,7 +660,7 @@ bool type_is_scalar(Type type) {
     return false;
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -681,7 +691,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_untyped(Type type) {
     if (type.is_meta || type.ref) {
         return false;
@@ -690,7 +700,7 @@ bool type_is_untyped(Type type) {
     return type.kind == TYPE_INT || type.kind == TYPE_FLOAT;
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta || type.ref) {
         return false;
@@ -715,7 +725,7 @@ u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
     return hash;
 }
 
-static_assert(COUNT_CONST_VALUES == 13, "");
+static_assert(COUNT_CONST_VALUES == 14, "");
 bool const_value_eq(Const_Value a, Const_Value b) {
     if (a.kind != b.kind) {
         return false;
@@ -806,6 +816,9 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     case CONST_VALUE_DYNAMIC_ARRAY:
         return type_eq(*a.as.dynamic_array, *b.as.dynamic_array);
 
+    case CONST_VALUE_MAP:
+        return type_eq(*a.as.map.key, *b.as.map.key) && type_eq(*a.as.map.value, *b.as.map.value);
+
     case CONST_VALUE_STRING:
         return sv_eq(a.as.string, b.as.string);
 
@@ -822,7 +835,7 @@ bool const_value_eq(Const_Value a, Const_Value b) {
     }
 }
 
-static_assert(COUNT_CONST_VALUES == 13, "");
+static_assert(COUNT_CONST_VALUES == 14, "");
 static void sb_push_const_value_impl(SB *sb, Type type, Const_Value v, bool raw) {
     switch (v.kind) {
     case CONST_VALUE_INT:
@@ -900,6 +913,7 @@ static void sb_push_const_value_impl(SB *sb, Type type, Const_Value v, bool raw)
     } break;
 
     case CONST_VALUE_DYNAMIC_ARRAY:
+    case CONST_VALUE_MAP:
         sb_push_cstr(sb, "{}");
         break;
 
@@ -950,7 +964,7 @@ void const_value_debug(FILE *f, Type type, Const_Value v) {
     default_sb.count = start;
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -967,6 +981,7 @@ size_t node_size(Node_Kind kind) {
 
         // This comment is here to prevent clang-format from messing this up
         [NODE_FN] = sizeof(Node_Fn),
+        [NODE_MAP] = sizeof(Node_Map),
         [NODE_ENUM] = sizeof(Node_Enum),
         [NODE_TRAIT] = sizeof(Node_Trait),
         [NODE_UNION] = sizeof(Node_Union),
@@ -1145,7 +1160,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1252,6 +1267,14 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         nodes_debug_impl(f, fn->args, depth + 1, "Args");
         nodes_debug_impl(f, fn->returns, depth + 1, "Returns");
         node_debug_impl(f, fn->body, depth + 1, "Body");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_MAP: {
+        Node_Map *map = (Node_Map *) n;
+        fprintf(f, "Map {\n");
+        node_debug_impl(f, map->key, depth + 1, "Key");
+        node_debug_impl(f, map->value, depth + 1, "Value");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

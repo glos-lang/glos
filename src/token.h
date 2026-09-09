@@ -77,6 +77,7 @@ typedef enum {
     TOKEN_EQ,
     TOKEN_NE,
 
+    TOKEN_MAP,
     TOKEN_ENUM,
     TOKEN_TRAIT,
     TOKEN_UNION,

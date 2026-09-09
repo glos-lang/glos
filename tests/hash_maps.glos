@@ -1,0 +1,13 @@
+main :: () {
+    m: map[string]s64
+    defer m.free()
+
+    m["Foo"] = 69
+    m["Bar"] = 420
+    println(m["Foo"])
+    println(m["Bar"])
+
+    m["Bar"] = 1337
+    println(m["Foo"])
+    println(m["Bar"])
+}

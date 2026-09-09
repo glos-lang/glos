@@ -1,5 +1,6 @@
 #include "../error.h"
 #include "checker.h"
+#include <assert.h>
 
 // #define MONOMORPHIZATION_LOG
 
@@ -182,7 +183,7 @@ void add_monomorph_parameter_default_value(
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *expected, Node *n, i64 group_index) {
     if (actual->ref < expected->ref) {
         return;
@@ -304,6 +305,13 @@ void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *exp
             Type *ae = actual->spec.dynamic_array.element;
             Type *ee = expected->spec.dynamic_array.element;
             infer_monomorph_parameters(c, ae, ee, n, group_index);
+        }
+        break;
+
+    case TYPE_MAP:
+        if (type_kind_eq(*actual, expected->kind) && actual->ref == expected->ref) {
+            infer_monomorph_parameters(c, actual->spec.map.key, expected->spec.map.key, n, group_index);
+            infer_monomorph_parameters(c, actual->spec.map.value, expected->spec.map.value, n, group_index);
         }
         break;
 
@@ -429,6 +437,7 @@ static void monomorphize_replace(Compiler *c, Node **from) {
     }
 }
 
+static_assert(COUNT_NODES == 32, "");
 static void monomorphize_node(Compiler *c, Node **np, bool first) {
     if (!*np) {
         return;
@@ -570,6 +579,12 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
         fn->checked_fully = false;
         fn->checked_signature = false;
+    } break;
+
+    case NODE_MAP: {
+        Node_Map *map = (Node_Map *) n;
+        monomorphize_node(c, &map->key, first);
+        monomorphize_node(c, &map->value, first);
     } break;
 
     case NODE_ENUM: {
@@ -715,11 +730,12 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     } break;
 
     default:
+        unreachable();
         break;
     }
 }
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 static bool type_is_polymorphic(Type type) {
     switch (type.kind) {
     case TYPE_FN: {
@@ -744,6 +760,9 @@ static bool type_is_polymorphic(Type type) {
 
     case TYPE_DYNAMIC_ARRAY:
         return type_is_polymorphic(*type.spec.dynamic_array.element);
+
+    case TYPE_MAP:
+        return type_is_polymorphic(*type.spec.map.key) || type_is_polymorphic(*type.spec.map.value);
 
     case TYPE_SLICE:
         return type_is_polymorphic(*type.spec.slice.element);

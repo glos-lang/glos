@@ -1,5 +1,5 @@
 EXIT 0
-STDOUT 713
+STDOUT 728
 bool
 char
 s8
@@ -52,6 +52,7 @@ struct {
 [69]string
 [69][420]u8
 [..]string
+map[string]s64
 []string
 struct {
     name: string // offset = 0
