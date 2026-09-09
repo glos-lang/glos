@@ -65,8 +65,6 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index);
 
 void make_sure_import_is_ready(Compiler *c, Node_Import *import);
 
-Hash_Infos get_hash_info(Compiler *c, Type type);
-
 // Type Assertions /////////////////////////////////////////////////////////////////////////////////
 bool check_that_type_is_known_noexit(const Node *n);
 void check_that_type_is_known(Compiler *c, const Node *n);
@@ -234,6 +232,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid);
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children);
 void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_ref_valid);
+void check_expr_map(Compiler *c, Node_Map *map, Ref_Kind ref, bool *is_ref_valid);
 void check_expr_enum(Compiler *c, Node_Enum *enumm);
 void check_expr_trait(Compiler *c, Node_Trait *trait);
 void check_expr_union(Compiler *c, Node_Union *unionn);

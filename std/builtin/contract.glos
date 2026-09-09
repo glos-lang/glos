@@ -37,6 +37,7 @@ Type_Info :: struct {
         Type_Info_Structure
         Type_Info_Array
         Type_Info_Dynamic_Array
+        Type_Info_Map
         Type_Info_Slice
         Type_Info_String
     }
@@ -94,6 +95,11 @@ Type_Info_Array :: struct {
 
 Type_Info_Dynamic_Array :: struct {
     underlying: Type
+}
+
+Type_Info_Map :: struct {
+    key:   Type
+    value: Type
 }
 
 Type_Info_Slice :: struct {

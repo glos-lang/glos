@@ -368,6 +368,8 @@ Token lexer_iter(Lexer *l) {
             token.as.integer = false;
         } else if (sv_match(token.sv, "null")) {
             token.kind = TOKEN_NULL;
+        } else if (sv_match(token.sv, "map")) {
+            token.kind = TOKEN_MAP;
         } else if (sv_match(token.sv, "enum")) {
             token.kind = TOKEN_ENUM;
         } else if (sv_match(token.sv, "trait")) {
@@ -643,8 +645,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_MAIN;
         } else if (sv_match(token.sv, "#platform")) {
             token.kind = TOKEN_DIRECTIVE_PLATFORM;
-        } else if (sv_match(token.sv, "#hash_info")) {
-            token.kind = TOKEN_DIRECTIVE_HASH_INFO;
         } else {
             error_parts(EK_ERROR, token.sv, token.pos, "Invalid compile time directive '" SV_Fmt "'", SV_Arg(token.sv));
             exit(1);

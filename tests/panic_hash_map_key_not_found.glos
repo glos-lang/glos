@@ -1,0 +1,4 @@
+main :: () {
+    m: map[string]s64
+    m.delete("Foo")
+}

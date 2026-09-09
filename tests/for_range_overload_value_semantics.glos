@@ -1,20 +1,20 @@
 main :: () {
-    t: Table(string, s64)
-    defer t.free()
+    m: map[string]s64
+    defer m.free()
 
-    t["Foo"] = 69
-    t["Bar"] = 420
+    m["Foo"] = 69
+    m["Bar"] = 420
 
-    for k, v := range t {
+    for k, v := range m {
         println(k, v)
     }
 
-    for _, v := range &t {
+    for _, v := range &m {
         *v *= 2
     }
 
     println()
-    for k, v := range t {
+    for k, v := range m {
         println(k, v)
     }
 }

@@ -73,7 +73,7 @@ static void compiler_init_llvm_target_data(Compiler *c) {
             LLVMInt64TypeInContext(c->llvm_context),
             LLVMInt64TypeInContext(c->llvm_context),
         };
-        c->llvm_dynamic_array_type =
+        c->llvm_dynamic_array_or_map_type =
             LLVMStructTypeInContext(c->llvm_context, dynamic_array_fields, len(dynamic_array_fields), false);
 
         LLVMTypeRef slice_fields[] = {

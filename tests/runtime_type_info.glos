@@ -88,6 +88,11 @@ main :: () {
         write_type([..]string)
     }
 
+    // Maps
+    {
+        write_type(map[string]s64)
+    }
+
     // Slices
     {
         write_type([]string)
@@ -268,6 +273,12 @@ write_type :: (ti: Type) {
         case Type_Info_Dynamic_Array
             write_string("[..]")
             write_type(variant.underlying)
+
+        case Type_Info_Map
+            write_string("map[")
+            write_type(variant.key)
+            write_string("]")
+            write_type(variant.value)
 
         case Type_Info_Slice
             write_string("[]")

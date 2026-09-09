@@ -1,7 +1,7 @@
 #include "../checker.h"
 #include "compiler.h"
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -13,6 +13,7 @@ bool type_is_compound(Type type) {
     case TYPE_STRUCT:
     case TYPE_ARRAY:
     case TYPE_DYNAMIC_ARRAY:
+    case TYPE_MAP:
     case TYPE_SLICE:
     case TYPE_STRING:
     case TYPE_GROUP:

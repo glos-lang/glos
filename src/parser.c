@@ -923,7 +923,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 31, "");
+        static_assert(COUNT_NODES == 32, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1196,6 +1196,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
     } break;
 
+    case TOKEN_MAP: {
+        node = node_alloc(p->module_current, NODE_MAP, token);
+        Node_Map *map = (Node_Map *) node;
+        expect_token(p, TOKEN_LBRACKET);
+        map->key = parse_expr(p, POWER_SET, false, true, NULL);
+        expect_token(p, TOKEN_RBRACKET);
+        map->value = parse_expr(p, POWER_PRE, false, false, NULL);
+    } break;
+
     case TOKEN_ENUM: {
         Polymorphs_Builder *pb_save = p->state.pb;
         p->state.pb = NULL;
@@ -1393,8 +1402,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_SIZEOF:
-    case TOKEN_TYPEOF:
-    case TOKEN_DIRECTIVE_HASH_INFO: {
+    case TOKEN_TYPEOF: {
         node = node_alloc(p->module_current, NODE_UNARY, token);
         Node_Unary *unary = (Node_Unary *) node;
         expect_token(p, TOKEN_LPAREN);
@@ -1663,7 +1671,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 30, "");
+static_assert(COUNT_TYPES == 31, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -62,6 +62,9 @@ Const_Value default_const_value(Compiler *c, Type type) {
 
     case TYPE_DYNAMIC_ARRAY:
         return const_value_dynamic_array(type.spec.dynamic_array.element);
+
+    case TYPE_MAP:
+        return const_value_map(type.spec.map);
 
     case TYPE_SLICE: {
         Const_Value_Array array = {0};
@@ -329,11 +332,6 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
         return const_value_type(type);
     }
 
-    case TOKEN_DIRECTIVE_HASH_INFO:
-        error_node(EK_ERROR, n, "This expression is not constant at compile time");
-        exit(c, 1);
-        break;
-
     default:
         unreachable();
     }
@@ -539,7 +537,7 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         lhs = const_value_of_var(c, lhs.as.var);
     }
 
-    static_assert(COUNT_CONST_VALUES == 13, "");
+    static_assert(COUNT_CONST_VALUES == 14, "");
     switch (lhs.kind) {
     case CONST_VALUE_TRAIT: {
         if (member->rhs) {
@@ -615,6 +613,12 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         }
 
     case CONST_VALUE_DYNAMIC_ARRAY:
+    case CONST_VALUE_MAP:
+        if (member->is_map_info) {
+            error_node(EK_ERROR, n, "This expression is not constant at compile time");
+            exit(c, 1);
+        }
+
         if (member->field_index == 0) {
             error_node(EK_ERROR, n, "Cannot access pointers in constant expressions");
             exit(c, 1);
@@ -839,7 +843,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
             exit(c, 1);
         }
 
-        static_assert(COUNT_CONST_VALUES == 13, "");
+        static_assert(COUNT_CONST_VALUES == 14, "");
         switch (lhs.kind) {
         case CONST_VALUE_ARRAY: {
             Const_Value_Array array = lhs.as.array;
@@ -943,7 +947,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     } else {
         const i64 at = i64_from_int128(c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "index");
 
-        static_assert(COUNT_CONST_VALUES == 13, "");
+        static_assert(COUNT_CONST_VALUES == 14, "");
         switch (lhs.kind) {
         case CONST_VALUE_ARRAY: {
             if (at < 0 || (size_t) at >= lhs.as.array.count) {
@@ -975,7 +979,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1053,6 +1057,7 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         }
     }
 
+    case NODE_MAP:
     case NODE_ENUM:
     case NODE_TRAIT:
     case NODE_UNION:
@@ -1133,3 +1138,5 @@ Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
 
     return result;
 }
+
+// TODO: Make all errors "not constant at compile time" whenever relevant for consistency

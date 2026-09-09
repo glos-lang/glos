@@ -166,6 +166,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_NE:
         return "'!='";
 
+    case TOKEN_MAP:
+        return "'map'";
+
     case TOKEN_ENUM:
         return "'enum'";
 
@@ -246,9 +249,6 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_DIRECTIVE_PLATFORM:
         return "'#platform'";
-
-    case TOKEN_DIRECTIVE_HASH_INFO:
-        return "'#hash_info'";
 
     case TOKEN_IF:
         return "'if'";

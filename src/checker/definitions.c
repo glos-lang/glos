@@ -91,7 +91,7 @@ Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_IMPORT: {
@@ -388,7 +388,7 @@ void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from
     if (replace->to->definition_spec->is_const) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
-        static_assert(COUNT_CONST_VALUES == 13, "");
+        static_assert(COUNT_CONST_VALUES == 14, "");
         switch (value->kind) {
         case CONST_VALUE_TRAIT: {
             const Const_Value_Trait trait = value->as.trait;

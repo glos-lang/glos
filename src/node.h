@@ -96,6 +96,8 @@ typedef enum {
     TYPE_ARRAY,
     TYPE_DYNAMIC_ARRAY,
 
+    TYPE_MAP,
+
     TYPE_SLICE,
     TYPE_STRING,
 
@@ -203,6 +205,11 @@ typedef struct {
 } Type_Dynamic_Array;
 
 typedef struct {
+    Type *key;
+    Type *value;
+} Type_Map;
+
+typedef struct {
     Type *element;
 } Type_Slice;
 
@@ -239,6 +246,8 @@ struct Type {
 
         Type_Array         array;
         Type_Dynamic_Array dynamic_array;
+
+        Type_Map map;
 
         Type_Slice slice;
 
@@ -353,6 +362,7 @@ typedef enum {
 
     CONST_VALUE_ARRAY,
     CONST_VALUE_DYNAMIC_ARRAY,
+    CONST_VALUE_MAP,
 
     CONST_VALUE_STRING,
 
@@ -407,14 +417,17 @@ struct Const_Value {
 
         Const_Value_Array array;
         Type             *dynamic_array;
-        SV                string;
+
+        Type_Map map;
+
+        SV string;
 
         Module               *module;
         Const_Value_Polymorph polymorph;
     } as;
 };
 
-static_assert(COUNT_CONST_VALUES == 13, "");
+static_assert(COUNT_CONST_VALUES == 14, "");
 #define const_value_int(v)   ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = (v)})
 #define const_value_i64(v)   ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_i64(v)})
 #define const_value_u64(v)   ((Const_Value) {.kind = CONST_VALUE_INT, .as.integer = int128_from_u64(v)})
@@ -430,6 +443,7 @@ static_assert(COUNT_CONST_VALUES == 13, "");
 
 #define const_value_array(v)         ((Const_Value) {.kind = CONST_VALUE_ARRAY, .as.array = (v)})
 #define const_value_dynamic_array(v) ((Const_Value) {.kind = CONST_VALUE_DYNAMIC_ARRAY, .as.dynamic_array = (v)})
+#define const_value_map(v)           ((Const_Value) {.kind = CONST_VALUE_MAP, .as.map = (v)})
 
 #define const_value_string(v) ((Const_Value) {.kind = CONST_VALUE_STRING, .as.string = (v)})
 
@@ -456,6 +470,7 @@ typedef enum {
     NODE_INTERPOLATION,
 
     NODE_FN,
+    NODE_MAP,
     NODE_ENUM,
     NODE_TRAIT,
     NODE_UNION,
@@ -684,6 +699,7 @@ typedef struct {
 
     bool is_enum;
     bool is_trait;
+    bool is_map_info;
 } Node_Member;
 
 typedef struct {
@@ -807,6 +823,12 @@ struct Node_Fn {
 };
 
 void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module);
+
+typedef struct {
+    Node  node;
+    Node *key;
+    Node *value;
+} Node_Map;
 
 // This represents a type
 struct Node_Enum {

@@ -1,0 +1,6 @@
+EXIT 134
+STDOUT 0
+
+STDERR 68
+tests/panic_hash_map_key_not_found.glos:3:5: Entry not found: "Foo"
+

@@ -90,7 +90,7 @@ typedef struct {
     Type interpolation_type;
     Type interpolation_marker_type;
 
-    HT(Type, Hash_Infos) hash_info_intern;
+    HT(Type, LLVMValueRef) hash_info_intern;
     Type hash_info_type;
 
     DA(Node *) partial_stack;
@@ -171,12 +171,12 @@ typedef struct {
 
     HT(Type, LLVMValueRef) type_info_cache;
 
-    // Dynamic_Array :: struct {
+    // Dynamic_Array_Or_Map :: struct {
     //     data:     rawptr
     //     count:    s64
     //     capacity: s64
     // }
-    LLVMTypeRef llvm_dynamic_array_type;
+    LLVMTypeRef llvm_dynamic_array_or_map_type;
 
     // Slice :: struct {
     //     data:  rawptr

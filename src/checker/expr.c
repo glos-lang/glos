@@ -292,13 +292,6 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_with_meta(unary->value->type);
         break;
 
-    case TOKEN_DIRECTIVE_HASH_INFO:
-        check_expr(c, unary->value, REF_NONE);
-        type_assert_type(c, unary->value);
-        unary->value->type.is_meta = false;
-        n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
-        break;
-
     default:
         unreachable();
     }
@@ -662,6 +655,23 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
+            } else if (type_kind_eq(member->lhs->type, TYPE_MAP)) {
+                check_whether_member_access_is_valid(c, member);
+                if (sv_match(n->token.sv, "data")) {
+                    n->type = (Type) {.kind = TYPE_RAWPTR};
+                    member->field_index = 0;
+                } else if (sv_match(n->token.sv, "count")) {
+                    n->type = (Type) {.kind = TYPE_S64};
+                    member->field_index = 1;
+                } else if (sv_match(n->token.sv, "capacity")) {
+                    n->type = (Type) {.kind = TYPE_S64};
+                    member->field_index = 2;
+                } else if (sv_match(n->token.sv, "info")) {
+                    n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
+                    member->is_map_info = true;
+                } else {
+                    error_undefined_in(c, &n->token, &member->lhs->type, "field");
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
                 check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
@@ -732,6 +742,26 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         n->type = (Type) {.kind = TYPE_UNKNOWN_ENUM};
         member->is_enum = true;
     }
+}
+
+void check_expr_map(Compiler *c, Node_Map *map, Ref_Kind ref, bool *is_ref_valid) {
+    Node *n = (Node *) map;
+    check_expr(c, map->key, REF_NONE);
+    type_assert_type(c, map->key);
+    map->key->type.is_meta = false;
+
+    check_expr(c, map->value, REF_NONE);
+    type_assert_type(c, map->value);
+    map->value->type.is_meta = false;
+
+    n->type = (Type) {
+        .is_meta = true,
+        .kind = TYPE_MAP,
+        .spec.map.key = &map->key->type,
+        .spec.map.value = &map->value->type,
+    };
+
+    *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
 void check_expr_enum(Compiler *c, Node_Enum *enumm) {
@@ -1900,7 +1930,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 31, "");
+static_assert(COUNT_NODES == 32, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -1987,6 +2017,10 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_FN:
         check_fn(c, (Node_Fn *) n, ref, &is_ref_valid, false, false);
+        break;
+
+    case NODE_MAP:
+        check_expr_map(c, (Node_Map *) n, ref, &is_ref_valid);
         break;
 
     case NODE_ENUM:
