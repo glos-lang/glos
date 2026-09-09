@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 93, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -135,7 +135,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -227,7 +227,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -292,13 +292,6 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_with_meta(unary->value->type);
         break;
 
-    case TOKEN_DIRECTIVE_HASH_INFO:
-        check_expr(c, unary->value, REF_NONE);
-        type_assert_type(c, unary->value);
-        unary->value->type.is_meta = false;
-        n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
-        break;
-
     default:
         unreachable();
     }
@@ -306,7 +299,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -673,6 +666,9 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else if (sv_match(n->token.sv, "capacity")) {
                     n->type = (Type) {.kind = TYPE_S64};
                     member->field_index = 2;
+                } else if (sv_match(n->token.sv, "info")) {
+                    n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
+                    member->is_map_info = true;
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }

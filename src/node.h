@@ -699,6 +699,7 @@ typedef struct {
 
     bool is_enum;
     bool is_trait;
+    bool is_map_info;
 } Node_Member;
 
 typedef struct {

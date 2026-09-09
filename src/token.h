@@ -114,7 +114,6 @@ typedef enum {
     // Compiler directives intended for Glos development, not users. (Although they can still use these)
     TOKEN_DIRECTIVE_MAIN,
     TOKEN_DIRECTIVE_PLATFORM,
-    TOKEN_DIRECTIVE_HASH_INFO,
 
     TOKEN_IF,
     TOKEN_THEN,

@@ -65,8 +65,6 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index);
 
 void make_sure_import_is_ready(Compiler *c, Node_Import *import);
 
-Hash_Infos get_hash_info(Compiler *c, Type type);
-
 // Type Assertions /////////////////////////////////////////////////////////////////////////////////
 bool check_that_type_is_known_noexit(const Node *n);
 void check_that_type_is_known(Compiler *c, const Node *n);

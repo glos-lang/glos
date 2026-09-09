@@ -90,7 +90,7 @@ typedef struct {
     Type interpolation_type;
     Type interpolation_marker_type;
 
-    HT(Type, Hash_Infos) hash_info_intern;
+    HT(Type, LLVMValueRef) hash_info_intern;
     Type hash_info_type;
 
     DA(Node *) partial_stack;

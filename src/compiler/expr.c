@@ -560,7 +560,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -634,7 +634,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -694,30 +694,6 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
 
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
-
-    case TOKEN_DIRECTIVE_HASH_INFO: {
-        Hash_Infos infos = get_hash_info(c, unary->value->type);
-
-        LLVMValueRef *items = arena_alloc(&temp_arena, infos.count * sizeof(*items));
-        for (size_t i = 0; i < infos.count; i++) {
-            const Hash_Info it = infos.data[i];
-            LLVMValueRef    item[] = {
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.kind, true),
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.offset, true),
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.size, true),
-            };
-            items[i] = LLVMConstStructInContext(c->llvm_context, item, len(item), false);
-        }
-
-        LLVMValueRef slice[] = {
-            compile_const_value_into_memory(c, LLVMConstArray(compile_type(c, &c->hash_info_type), items, infos.count)),
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), infos.count, true),
-        };
-        LLVMValueRef result = LLVMConstStructInContext(c->llvm_context, slice, len(slice), false);
-
-        arena_reset(&temp_arena, items);
-        return result;
-    }
 
     default:
         unreachable();
@@ -790,7 +766,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 93, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -848,7 +824,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 93, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -892,7 +868,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 93, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -1009,7 +985,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 93, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;
@@ -1104,6 +1080,128 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 }
 
+static_assert(COUNT_TYPES == 31, "");
+static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
+    if (!size) {
+        return;
+    }
+
+    switch (type->kind) {
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_INT:
+    case TYPE_ENUM:
+
+    case TYPE_FN:
+    case TYPE_RAWPTR:
+
+    case TYPE_TRAIT:
+    case TYPE_UNION:
+    case TYPE_ARRAY:
+    case TYPE_DYNAMIC_ARRAY:
+    case TYPE_MAP:
+    case TYPE_SLICE: {
+        if (infos->count) {
+            Hash_Info *last = &infos->data[infos->count - 1];
+            if (last->kind == CONTRACT_HASH_INFO_RAW && last->offset + last->size == offset) {
+                // Merge consecutive raw infos
+                last->size += size;
+                return;
+            }
+        }
+
+        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
+        info->kind = CONTRACT_HASH_INFO_RAW;
+        info->offset = offset;
+        info->size = size;
+        assert(infos->data + infos->count == info);
+        infos->count++;
+    } break;
+
+    case TYPE_F32:
+    case TYPE_F64:
+    case TYPE_FLOAT: {
+        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
+        info->kind = CONTRACT_HASH_INFO_FLOAT;
+        info->offset = offset;
+        info->size = size;
+        assert(infos->data + infos->count == info);
+        infos->count++;
+    } break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = type->spec.structt;
+        assert(!spec->polymorphs_count);
+
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            const Type_Struct_Field *it = &spec->fields[i];
+            push_hash_info(&it->type, infos, offset + it->offset, it->size);
+        }
+    } break;
+
+    case TYPE_STRING: {
+        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
+        info->kind = CONTRACT_HASH_INFO_STRING;
+        info->offset = offset;
+        info->size = size;
+        assert(infos->data + infos->count == info);
+        infos->count++;
+    } break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
+static LLVMValueRef get_hash_info(Compiler *c, Type type) {
+    if (!c->hash_info_intern.hasheq) {
+        c->hash_info_intern.hasheq = ht_hasheq_type;
+    }
+
+    LLVMValueRef *previous = ht_get(&c->hash_info_intern, type);
+    if (previous) {
+        return *previous;
+    }
+
+    Hash_Infos infos = {.data = arena_alloc(&default_arena, 0)};
+    push_hash_info(&type, &infos, 0, compile_sizeof(c, &type));
+
+    LLVMValueRef *items = arena_alloc(&temp_arena, infos.count * sizeof(*items));
+    for (size_t i = 0; i < infos.count; i++) {
+        const Hash_Info it = infos.data[i];
+        LLVMValueRef    item[] = {
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.kind, true),
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.offset, true),
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.size, true),
+        };
+        items[i] = LLVMConstStructInContext(c->llvm_context, item, len(item), false);
+    }
+
+    LLVMValueRef slice[] = {
+        compile_const_value_into_memory(c, LLVMConstArray(compile_type(c, &c->hash_info_type), items, infos.count)),
+        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), infos.count, true),
+    };
+    arena_reset(&temp_arena, items);
+
+    LLVMValueRef result =
+        compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, slice, len(slice), false));
+
+    ht_set(&c->hash_info_intern, type, result);
+    return result;
+}
+
 LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
     Node *n = (Node *) member;
     if (member->is_enum) {
@@ -1116,6 +1214,12 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
 
     if (member->method && member->lhs->type.is_meta) {
         return compile_fn(c, member->method);
+    }
+
+    if (member->is_map_info) {
+        assert(member->lhs->type.kind == TYPE_MAP);
+        LLVMValueRef result = get_hash_info(c, *member->lhs->type.spec.map.key);
+        return ref ? result : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, result, "");
     }
 
     LLVMValueRef lhs = NULL;

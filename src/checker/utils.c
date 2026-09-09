@@ -392,7 +392,7 @@ static_assert(COUNT_NODES == 32, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 93, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -680,105 +680,4 @@ void make_sure_import_is_ready(Compiler *c, Node_Import *import) {
         define_orderless_nodes_of_module(c, import->module, &import->node.token);
         c->context = context_save;
     }
-}
-
-static_assert(COUNT_TYPES == 31, "");
-static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
-    if (!size) {
-        return;
-    }
-
-    switch (type->kind) {
-    case TYPE_BOOL:
-    case TYPE_CHAR:
-
-    case TYPE_S8:
-    case TYPE_S16:
-    case TYPE_S32:
-    case TYPE_S64:
-
-    case TYPE_U8:
-    case TYPE_U16:
-    case TYPE_U32:
-    case TYPE_U64:
-
-    case TYPE_INT:
-    case TYPE_ENUM:
-
-    case TYPE_FN:
-    case TYPE_RAWPTR:
-
-    case TYPE_TRAIT:
-    case TYPE_UNION:
-    case TYPE_ARRAY:
-    case TYPE_DYNAMIC_ARRAY:
-    case TYPE_MAP:
-    case TYPE_SLICE: {
-        if (infos->count) {
-            Hash_Info *last = &infos->data[infos->count - 1];
-            if (last->kind == CONTRACT_HASH_INFO_RAW && last->offset + last->size == offset) {
-                // Merge consecutive raw infos
-                last->size += size;
-                return;
-            }
-        }
-
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_RAW;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
-
-    case TYPE_F32:
-    case TYPE_F64:
-    case TYPE_FLOAT: {
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_FLOAT;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
-
-    case TYPE_STRUCT: {
-        const Type_Struct *spec = type->spec.structt;
-        assert(!spec->polymorphs_count);
-
-        for (size_t i = 0; i < spec->fields_count; i++) {
-            const Type_Struct_Field *it = &spec->fields[i];
-            push_hash_info(&it->type, infos, offset + it->offset, it->size);
-        }
-    } break;
-
-    case TYPE_STRING: {
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_STRING;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
-
-    default:
-        unreachable();
-        break;
-    }
-}
-
-Hash_Infos get_hash_info(Compiler *c, Type type) {
-    if (!c->hash_info_intern.hasheq) {
-        c->hash_info_intern.hasheq = ht_hasheq_type;
-    }
-
-    Hash_Infos *previous = ht_get(&c->hash_info_intern, type);
-    if (previous) {
-        return *previous;
-    }
-
-    Hash_Infos infos = {.data = arena_alloc(&default_arena, 0)};
-    push_hash_info(&type, &infos, 0, compile_sizeof(c, &type));
-    ht_set(&c->hash_info_intern, type, infos);
-    return infos;
 }

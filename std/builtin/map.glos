@@ -13,7 +13,7 @@ clear :: (this: &map[$K]$V) {
 
 delete :: (this: &map[$K]$V, key: K, location := #caller_location) -> V {
     KV  :: Map_Entry(K, V)
-    src := map_entry_find(&KV(this.data), this.capacity, key)
+    src := map_entry_find(&KV(this.data), this.capacity, this.info, key)
     if src != null && src.state == .OCCUPIED {
         value := src.value
         C.memset(rawptr(src), 0, sizeof(*src))
@@ -25,7 +25,7 @@ delete :: (this: &map[$K]$V, key: K, location := #caller_location) -> V {
 
 contains :: (this: &map[$K]$V, key: K) -> bool {
     KV  :: Map_Entry(K, V)
-    src := map_entry_find(&KV(this.data), this.capacity, key)
+    src := map_entry_find(&KV(this.data), this.capacity, this.info, key)
     return src != null && src.state == .OCCUPIED
 }
 
@@ -43,7 +43,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
             for i := 0; i < this.capacity; i += 1 {
                 src := &KV(this.data) + &KV(i * sizeof(KV))
                 if src.state == .OCCUPIED {
-                    dst := map_entry_find(data, capacity, src.key)
+                    dst := map_entry_find(data, capacity, this.info, src.key)
                     *dst = *src
                 }
             }
@@ -53,7 +53,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
             this.capacity = capacity
         }
 
-        dst := map_entry_find(&KV(this.data), this.capacity, key)
+        dst := map_entry_find(&KV(this.data), this.capacity, this.info, key)
         if dst.state != .OCCUPIED {
             dst.state = .OCCUPIED
             this.count += 1
@@ -62,7 +62,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
         dst.key = key
         return &dst.value
     } else {
-        src := map_entry_find(&KV(this.data), this.capacity, key)
+        src := map_entry_find(&KV(this.data), this.capacity, this.info, key)
         if src != null && src.state == .OCCUPIED {
             return &src.value
         }
@@ -100,14 +100,12 @@ Map_Entry :: struct ($K: Type, $V: Type) {
     value: V
 }
 
-map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, key: K) -> &Map_Entry(K, V) {
+map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, key: K) -> &Map_Entry(K, V) {
     KV :: typeof(*data)
 
     start: u64
     {
         data := rawptr(&key)
-        info := #hash_info(K)
-
         hasher: Hasher
         hasher.init()
         for i := 0; i < info.count; i += 1 {
