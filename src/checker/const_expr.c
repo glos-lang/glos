@@ -685,8 +685,12 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
 }
 
 Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
-    Node       *n = (Node *) compound;
+    Node *n = (Node *) compound;
+
     Const_Value value = default_const_value(c, n->type);
+    if (compound->is_not_compound) {
+        return (compound->children.head) ? eval_const_expr(c, compound->children.head, false) : value;
+    }
 
     size_t ordered_iota = 0;
     ll_foreach(iter, &compound->children) {
