@@ -1559,95 +1559,104 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                     same = true;
                 } else if (type_eq(*from_type, string_type) && type_eq(*to_type, char_slice_type)) {
                     same = true;
+                } else if (
+                    type_eq(*to_type, string_type) &&                                     //
+                    (from_type->ref == 0 &&                                               //
+                     type_kind_eq(*from_type, TYPE_ARRAY) &&                              //
+                     type_eq(*from_type->spec.array.element, (Type) {.kind = TYPE_CHAR})) //
+                ) {
+                    call->type_cast = TYPE_CAST_ARRAY_TO_SLICE;
                 } else {
                     error_node(EK_ERROR, call->fn_source, "Cannot cast to %s", type_to_cstr(*to_type));
                     exit(c, 1);
                 }
             }
 
-            if (!same) {
-                if (to_any) {
-                    // Pass
-                } else if (to_trait) {
-                    finalize_untyped_type(c, from);
-                    call->type_cast_trait_impl =
-                        check_type_satisfies_trait(c, *from_type, to_type->spec.trait, from, -1);
-                } else if (to_union) {
-                    finalize_untyped_type(c, from);
-                    call->type_cast_union_index = get_union_type_index(c, from, *to_type);
-                } else if (type_eq_without_distinct(*to_type, c->type_info_pointer_type) && from_type->is_meta) {
-                    from->emit_type_info = arena_clone(&default_arena, &from->type, sizeof(from->type));
-                    from->emit_type_info->is_meta = false;
-                    from->type = c->type_info_pointer_type;
-                    same = true;
-                } else if (
-                    type_eq(*to_type, (Type) {.kind = TYPE_CHAR, .ref = 1}) &&   //
-                    from->kind == NODE_ATOM && from->token.kind == TOKEN_STRING) //
-                {
-                    same = true;
-                    from->type = *to_type;
-                } else if (type_is_scalar(*to_type)) {
-                    type_assert_scalar(c, from);
-
-                    bool ok = true;
-                    if (type_kind_eq(*from_type, TYPE_FN) && !from_type->ref) {
-                        // fn -> rawptr
-                        ok = type_eq(*to_type, (Type) {.kind = TYPE_RAWPTR});
-                    } else if (type_kind_eq(*to_type, TYPE_FN) && !to_type->ref) {
-                        // rawptr -> fn
-                        ok = type_eq(*from_type, (Type) {.kind = TYPE_RAWPTR});
-                    } else if (!type_is_pointer(*from_type) && type_is_pointer(*to_type)) {
-                        // s64/u64 -> ptr
-                        ok = type_kind_eq(*from_type, TYPE_S64) || type_kind_eq(*from_type, TYPE_U64) ||
-                             type_kind_eq(*from_type, TYPE_INT);
-                    } else if (type_is_pointer(*from_type) && !type_is_pointer(*to_type)) {
-                        // ptr -> s64/u64
-                        ok = type_kind_eq(*to_type, TYPE_S64) || type_kind_eq(*to_type, TYPE_U64) ||
-                             type_kind_eq(*to_type, TYPE_INT);
-                    } else if (!type_is_float(*from_type) && type_is_float(*to_type)) {
-                        // integer -> float
-                        ok = type_is_integer(*from_type);
-                    } else if (type_is_float(*from_type) && !type_is_float(*to_type)) {
-                        // float -> integer
-                        ok = type_is_integer(*to_type);
-                        if (ok && type_kind_eq(*from_type, TYPE_FLOAT)) {
-                            call->type_cast = TYPE_CAST_NORMAL;
-
-                            // This is guaranted to be a constant expression, since we are casting from 'float'
-                            eval_const_expr(c, n, false);
-                        }
-                    } else if (
-                        type_kind_eq(*from_type, TYPE_INT) &&
-                        (type_is_integer(*to_type) || type_kind_eq(*to_type, TYPE_ENUM))) //
-                    {
-                        ok = try_auto_cast_untyped(c, from, n->type);
+            if (!call->type_cast) {
+                if (!same) {
+                    if (to_any) {
+                        // Pass
+                    } else if (to_trait) {
+                        finalize_untyped_type(c, from);
+                        call->type_cast_trait_impl =
+                            check_type_satisfies_trait(c, *from_type, to_type->spec.trait, from, -1);
+                    } else if (to_union) {
+                        finalize_untyped_type(c, from);
+                        call->type_cast_union_index = get_union_type_index(c, from, *to_type);
+                    } else if (type_eq_without_distinct(*to_type, c->type_info_pointer_type) && from_type->is_meta) {
+                        from->emit_type_info = arena_clone(&default_arena, &from->type, sizeof(from->type));
+                        from->emit_type_info->is_meta = false;
+                        from->type = c->type_info_pointer_type;
                         same = true;
-                    }
+                    } else if (
+                        type_eq(*to_type, (Type) {.kind = TYPE_CHAR, .ref = 1}) &&   //
+                        from->kind == NODE_ATOM && from->token.kind == TOKEN_STRING) //
+                    {
+                        same = true;
+                        from->type = *to_type;
+                    } else if (type_is_scalar(*to_type)) {
+                        type_assert_scalar(c, from);
 
-                    if (!ok) {
-                        error_node(
-                            EK_ERROR,
-                            (Node *) call,
-                            "Cannot cast %s to %s",
-                            type_to_cstr(*from_type),
-                            type_to_cstr(*to_type));
-                        exit(c, 1);
+                        bool ok = true;
+                        if (type_kind_eq(*from_type, TYPE_FN) && !from_type->ref) {
+                            // fn -> rawptr
+                            ok = type_eq(*to_type, (Type) {.kind = TYPE_RAWPTR});
+                        } else if (type_kind_eq(*to_type, TYPE_FN) && !to_type->ref) {
+                            // rawptr -> fn
+                            ok = type_eq(*from_type, (Type) {.kind = TYPE_RAWPTR});
+                        } else if (!type_is_pointer(*from_type) && type_is_pointer(*to_type)) {
+                            // s64/u64 -> ptr
+                            ok = type_kind_eq(*from_type, TYPE_S64) || type_kind_eq(*from_type, TYPE_U64) ||
+                                 type_kind_eq(*from_type, TYPE_INT);
+                        } else if (type_is_pointer(*from_type) && !type_is_pointer(*to_type)) {
+                            // ptr -> s64/u64
+                            ok = type_kind_eq(*to_type, TYPE_S64) || type_kind_eq(*to_type, TYPE_U64) ||
+                                 type_kind_eq(*to_type, TYPE_INT);
+                        } else if (!type_is_float(*from_type) && type_is_float(*to_type)) {
+                            // integer -> float
+                            ok = type_is_integer(*from_type);
+                        } else if (type_is_float(*from_type) && !type_is_float(*to_type)) {
+                            // float -> integer
+                            ok = type_is_integer(*to_type);
+                            if (ok && type_kind_eq(*from_type, TYPE_FLOAT)) {
+                                call->type_cast = TYPE_CAST_NORMAL;
+
+                                // This is guaranted to be a constant expression, since we are casting from 'float'
+                                eval_const_expr(c, n, false);
+                            }
+                        } else if (
+                            type_kind_eq(*from_type, TYPE_INT) &&
+                            (type_is_integer(*to_type) || type_kind_eq(*to_type, TYPE_ENUM))) //
+                        {
+                            ok = try_auto_cast_untyped(c, from, n->type);
+                            same = true;
+                        }
+
+                        if (!ok) {
+                            error_node(
+                                EK_ERROR,
+                                (Node *) call,
+                                "Cannot cast %s to %s",
+                                type_to_cstr(*from_type),
+                                type_to_cstr(*to_type));
+                            exit(c, 1);
+                        }
+                    } else {
+                        unreachable();
                     }
-                } else {
-                    unreachable();
                 }
-            }
 
-            if (same) {
-                call->type_cast = TYPE_CAST_NOP;
-            } else if (type_eq(*to_type, (Type) {.kind = TYPE_BOOL})) {
-                call->type_cast = TYPE_CAST_TO_BOOL;
-            } else if (to_trait) {
-                call->type_cast = TYPE_CAST_TO_TRAIT;
-            } else if (to_union) {
-                call->type_cast = TYPE_CAST_TO_UNION;
-            } else {
-                call->type_cast = TYPE_CAST_NORMAL;
+                if (same) {
+                    call->type_cast = TYPE_CAST_NOP;
+                } else if (type_eq(*to_type, (Type) {.kind = TYPE_BOOL})) {
+                    call->type_cast = TYPE_CAST_TO_BOOL;
+                } else if (to_trait) {
+                    call->type_cast = TYPE_CAST_TO_TRAIT;
+                } else if (to_union) {
+                    call->type_cast = TYPE_CAST_TO_UNION;
+                } else {
+                    call->type_cast = TYPE_CAST_NORMAL;
+                }
             }
         }
     } else {

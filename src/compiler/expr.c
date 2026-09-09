@@ -1492,7 +1492,7 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
         LLVMTypeRef  from_type = from->type.llvm;
 
         set_debug_pos(c, call->fn_source->token.pos);
-        static_assert(COUNT_TYPE_CASTS == 5, "");
+        static_assert(COUNT_TYPE_CASTS == 6, "");
         switch (call->type_cast) {
         case TYPE_CAST_NORMAL:
             set_debug_pos(c, n->token.pos);
@@ -1507,6 +1507,20 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
 
         case TYPE_CAST_TO_UNION:
             return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
+
+        case TYPE_CAST_ARRAY_TO_SLICE: {
+            LLVMValueRef memory = undo_load(from_value);
+            assert(from->type.kind == TYPE_ARRAY);
+
+            LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
+            LLVMBuildStore(c->llvm_builder, memory, slice);
+            LLVMBuildStore(
+                c->llvm_builder,
+                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), from->type.spec.array.count, true),
+                LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
+
+            return ref ? slice : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
+        }
 
         default:
             unreachable();

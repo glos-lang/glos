@@ -934,6 +934,7 @@ typedef enum {
     TYPE_CAST_TO_BOOL,
     TYPE_CAST_TO_TRAIT,
     TYPE_CAST_TO_UNION,
+    TYPE_CAST_ARRAY_TO_SLICE,
     COUNT_TYPE_CASTS,
 } Type_Cast;
 

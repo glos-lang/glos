@@ -1,0 +1,3 @@
+main :: () {
+    println(string([]char {'H', 'i', '!'}))
+}

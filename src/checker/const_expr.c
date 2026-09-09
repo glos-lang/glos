@@ -735,13 +735,13 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
     }
     Node *from = call->args.head;
 
-    const Const_Value value = eval_const_expr(c, from, false);
+    Const_Value value = eval_const_expr(c, from, false);
     if (value.kind == CONST_VALUE_VAR || (!n->type.is_meta && n->type.ref)) {
         error_node(EK_ERROR, n, "This expression is not constant at compile time");
         exit(c, 1);
     }
 
-    static_assert(COUNT_TYPE_CASTS == 5, "");
+    static_assert(COUNT_TYPE_CASTS == 6, "");
     switch (call->type_cast) {
     case TYPE_CAST_NOP:
         return value;
@@ -822,6 +822,11 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
 
     case TYPE_CAST_TO_UNION:
         return const_value_to_union(n->type, call->type_cast_union_index, value);
+
+    case TYPE_CAST_ARRAY_TO_SLICE:
+        assert(value.kind == CONST_VALUE_ARRAY);
+        value.as.array.is_slice = true;
+        return value;
 
     default:
         unreachable();
