@@ -97,6 +97,7 @@ typedef struct {
 
     HT(Method_Spec, Node_Fn *) methods_table;
     DA(Node_Fn *) methods_list;
+    HT(Type, Node_Fn *) custom_formatters_table;
 
     Type ordering_type;
     Type equivalence_type;

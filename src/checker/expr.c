@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -135,7 +135,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -227,7 +227,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -306,7 +306,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -2206,6 +2206,72 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     }
 }
 
+static void check_method_for_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *actual) {
+    assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
+    Type_Struct *structure = c->type_info_type.spec.structt;
+
+    assert(structure->fields_count == 5);
+    assert(type_kind_eq(structure->fields[4].type, TYPE_FN));
+    const Type_Fn *expected = structure->fields[4].type.spec.fn;
+
+    if (actual->args_count != expected->args_count) {
+        goto error;
+    }
+    assert(actual->args_count);
+
+    Type receiver = actual->args[0].type;
+    if (receiver.distinct) {
+        receiver.ref -= receiver.distinct->node.type.ref;
+    }
+
+    if (receiver.ref != 1) {
+        goto error;
+    }
+
+    for (size_t i = 1; i < actual->args_count; i++) {
+        if (!type_eq(actual->args[i].type, expected->args[i].type)) {
+            goto error;
+        }
+    }
+
+    if (!type_eq(*actual->return_type, *expected->return_type)) {
+        goto error;
+    }
+
+    if (!c->custom_formatters_table.hasheq) {
+        c->custom_formatters_table.hasheq = ht_hasheq_type;
+    }
+    ht_set(&c->custom_formatters_table, receiver, fn);
+    return;
+
+error:;
+
+    const Token end = get_rightmost_token_of_node((Node *) fn);
+    fn->body = NULL;
+    error_node(
+        EK_ERROR,
+        (Node *) fn,
+        "The method '" SV_Fmt "' is special because it implements a custom formatter",
+        SV_Arg(fn->defined_as->node.token.sv));
+
+    receiver = actual->args[0].type;
+    expected->args[0].name = sv_from_cstr("this");
+    expected->args[0].type = type_with_ref(receiver, receiver.ref + 1);
+    afprintf(
+        stderr,
+        ANSI_COLOR_YELLOW | ANSI_BOLD,
+        "    It should have this signature:\n"
+        "\n"
+        "        format :: %s {}\n\n",
+        type_to_cstr_raw(structure->fields[4].type));
+
+    error_token(
+        EK_NOTE,
+        end,
+        "If this method is not meant to be a custom formatter, then add the '#not_formatter' directive at the end");
+    exit(c, 1);
+}
+
 void check_fn(
     Compiler *c,
     Node_Fn  *fn,
@@ -2439,7 +2505,6 @@ void check_fn(
             exit(c, 1);
         }
 
-        assert(fn->defined_as);
         const SV name = fn->defined_as->node.token.sv;
         if (type_kind_eq(fn_spec->args[0].type, TYPE_TRAIT)) {
             Type_Fn *expected_spec = fn->default_trait_method->type.spec.fn;
@@ -2508,19 +2573,24 @@ void check_fn(
         if (is_ref_valid) {
             *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
         }
-    } else if (fn->body && !fn->polymorphs.count && !only_check_signature) {
-        check_stmt(c, fn->body);
-
-        if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
-            assert(fn->body->kind == NODE_BLOCK);
-            Node_Block *block = (Node_Block *) fn->body;
-            if (fn_spec->is_noreturn) {
-                error_token(
-                    EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
-            } else {
-                error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
+    } else if (!fn->polymorphs.count && !only_check_signature) {
+        if (fn->body) {
+            check_stmt(c, fn->body);
+            if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
+                assert(fn->body->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) fn->body;
+                if (fn_spec->is_noreturn) {
+                    error_token(
+                        EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
+                } else {
+                    error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
+                }
+                exit(c, 1);
             }
-            exit(c, 1);
+        }
+
+        if (fn->is_method && sv_match(fn->defined_as->node.token.sv, "format") && !fn->is_not_formatter) {
+            check_method_for_custom_formatter(c, fn, fn_spec);
         }
     }
 

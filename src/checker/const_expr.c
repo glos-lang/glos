@@ -166,7 +166,7 @@ Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
 Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -274,7 +274,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
     Const_Value value = {0};
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = eval_const_expr(c, unary->value, false);
@@ -421,7 +421,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             double (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = int128_add, .f = fadd},
             [TOKEN_SUB] = {.i = int128_sub, .f = fsub},
@@ -461,7 +461,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             bool (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 93, "");
+        static_assert(COUNT_TOKENS == 94, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = int128_gt, .f = fgt},
             [TOKEN_GE] = {.i = int128_ge, .f = fge},
@@ -483,7 +483,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_LOR:
         lhs = eval_const_expr(c, binary->lhs, false);
@@ -686,11 +686,13 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
 
 Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
     Node *n = (Node *) compound;
-
-    Const_Value value = default_const_value(c, n->type);
     if (compound->is_not_compound) {
-        return (compound->children.head) ? eval_const_expr(c, compound->children.head, false) : value;
+        if (compound->children.head) {
+            return eval_const_expr(c, compound->children.head, false);
+        }
+        return default_const_value(c, n->type);
     }
+    Const_Value value = default_const_value(c, n->type);
 
     size_t ordered_iota = 0;
     ll_foreach(iter, &compound->children) {

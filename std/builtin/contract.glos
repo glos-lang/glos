@@ -41,7 +41,7 @@ Type_Info :: struct {
         Type_Info_String
     }
 
-    show: typeof(Show {}.show)
+    format: (p: rawptr, w: Writer, nested: bool)
 }
 
 Type_Info_Boolean :: struct {}
@@ -106,10 +106,6 @@ Type_Info_String :: struct {}
 
 // Builtin compound types
 Any :: trait {}
-
-Show :: trait {
-    show: (w: Writer, nested := false)
-}
 
 Source_Code_Location :: struct {
     path: string

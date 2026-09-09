@@ -769,6 +769,7 @@ struct Node_Fn {
     bool is_method;
     bool is_inline;
     bool is_noreturn;
+    bool is_not_formatter;
 
     Token inline_token;
     Token noreturn_token;

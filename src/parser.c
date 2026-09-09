@@ -820,7 +820,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1144,6 +1144,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->body = parse_block(p, next_token(p));
+                if (read_token(p, TOKEN_DIRECTIVE_NOT_FORMATTER)) {
+                    fn->is_not_formatter = true;
+                }
             } else {
                 if (fn->is_method && !allow_methods_without_body && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
@@ -1159,6 +1162,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->is_type = true;
+                if (p->state.in_extern && read_token(p, TOKEN_DIRECTIVE_NOT_FORMATTER)) {
+                    fn->is_not_formatter = true;
+                }
             }
 
             if (fn->is_method && fn->outer_fn) {

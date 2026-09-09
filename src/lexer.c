@@ -248,7 +248,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -639,6 +639,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_LOCATION;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_DIRECTIVE_CALLER_LOCATION;
+        } else if (sv_match(token.sv, "#not_formatter")) {
+            token.kind = TOKEN_DIRECTIVE_NOT_FORMATTER;
         } else if (sv_match(token.sv, "#main")) {
             token.kind = TOKEN_DIRECTIVE_MAIN;
         } else if (sv_match(token.sv, "#platform")) {

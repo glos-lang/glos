@@ -1,0 +1,12 @@
+main :: () {
+    v := Vec2 {69, 420}
+    println(v)
+}
+
+Vec2 :: struct {
+    x, y: s32
+}
+
+format :: (this: Vec2, w: Writer, nested := false) {
+    wprint(w, "Vec2(\{this.x}, \{this.y})")
+}

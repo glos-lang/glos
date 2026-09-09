@@ -239,6 +239,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     ht_free(&c->methods_table);
     da_free(&c->methods_list);
+    ht_free(&c->custom_formatters_table);
 
     ht_free(&c->hash_info_intern);
 

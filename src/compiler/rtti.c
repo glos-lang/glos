@@ -1,3 +1,4 @@
+#include "../error.h" // TODO: Remove
 #include "compiler.h"
 
 static void compile_type_info_init(Compiler *c, Type_Info_Compiler *tic, Type *type) {
@@ -307,7 +308,21 @@ static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *
     tic->ti_fields[tic->ti_fields_iota++] =
         LLVMConstStructInContext(c->llvm_context, tic->tiv_fields, tic->tiv_fields_iota, false);
 
-    tic->ti_fields[tic->ti_fields_iota++] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+    LLVMValueRef *formatter = &tic->ti_fields[tic->ti_fields_iota++];
+
+    // This solves two problems at once:
+    // 1. Ensures that the hashing function is present
+    // 2. Skips the lookup if no custom formatters were registered
+    if (c->custom_formatters_table.hasheq) {
+        Node_Fn **fn = ht_get(&c->custom_formatters_table, type_with_ref(*tic->type, tic->type->ref + 1));
+        if (fn) {
+            *formatter = compile_fn(c, *fn);
+        }
+    }
+
+    if (!*formatter) {
+        *formatter = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+    }
 
     LLVMValueRef real = compile_const_value_into_memory(
         c, LLVMConstStructInContext(c->llvm_context, tic->ti_fields, tic->ti_fields_iota, false));

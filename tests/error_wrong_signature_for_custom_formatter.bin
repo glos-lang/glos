@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 475
+tests/error_wrong_signature_for_custom_formatter.glos:10:11: Error: The method 'format' is special because it implements a custom formatter
+
+    format :: (this: Vec2, w: Writer, nested := false) {
+
+    It should have this signature:
+
+        format :: (this: &Vec2, w: Writer, nested: bool) {}
+
+tests/error_wrong_signature_for_custom_formatter.glos:12:1: Note: If this method is not meant to be a custom formatter, then add the '#not_formatter' directive at the end
+
+    }
+
+
