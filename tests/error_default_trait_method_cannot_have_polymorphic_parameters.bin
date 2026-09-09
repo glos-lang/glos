@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 179
+tests/error_default_trait_method_cannot_have_polymorphic_parameters.glos:5:23: Error: A default trait method cannot have polymorphic parameters
+
+    foo :: (this: Foo, x: $T) {}
+
+

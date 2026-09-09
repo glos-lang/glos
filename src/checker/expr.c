@@ -2474,7 +2474,8 @@ void check_fn(
         finally:
             if (!ok) {
                 fn->body = NULL;
-                error_node(EK_NOTE, (Node *) fn, "The method '" SV_Fmt "' has wrong signature", SV_Arg(name));
+                error_node(
+                    EK_NOTE, (Node *) fn, "The default trait method '" SV_Fmt "' has wrong signature", SV_Arg(name));
                 afprintf(
                     stderr,
                     ANSI_COLOR_YELLOW | ANSI_BOLD,

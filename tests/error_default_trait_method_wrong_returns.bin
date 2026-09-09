@@ -1,0 +1,12 @@
+EXIT 1
+STDOUT 0
+
+STDERR 209
+tests/error_default_trait_method_wrong_returns.glos:5:8: Note: The default trait method 'foo' has wrong signature
+
+    foo :: (this: Foo) -> s64 {}
+
+    Expected: (this: Foo)
+    Actual:   (this: Foo) -> s64
+
+

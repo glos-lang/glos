@@ -1,0 +1,5 @@
+Foo :: trait {
+    foo: ()
+}
+
+foo :: (this: Foo, x: $T) {}

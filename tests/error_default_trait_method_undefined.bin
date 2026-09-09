@@ -1,0 +1,13 @@
+EXIT 1
+STDOUT 0
+
+STDERR 225
+tests/error_default_trait_method_undefined.glos:2:1: Error: Undefined method 'foo' in type 'Foo'
+
+    foo :: (this: Foo) {}
+
+tests/error_default_trait_method_undefined.glos:1:8: Note: Trait defined here
+
+    Foo :: trait {}
+
+
