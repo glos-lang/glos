@@ -730,6 +730,10 @@ static LLVMValueRef compile_binary_with_overloaded_operator(
     return result;
 }
 
+static bool is_empty_string(Node *n) {
+    return n->kind == NODE_ATOM && n->token.kind == TOKEN_STRING && n->token.as.string.count == 0;
+}
+
 LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     Node *n = (Node *) binary;
     if (binary->trait_check) {
@@ -843,6 +847,24 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
 
         if (op.i) {
+            // Empty string comparison optimizations
+            if (type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING}) &&
+                (n->token.kind == TOKEN_EQ || n->token.kind == TOKEN_NE)) //
+            {
+                LLVMValueRef check_empty = NULL;
+                if (is_empty_string(binary->lhs)) {
+                    check_empty = compile_expr(c, binary->rhs, false);
+                } else if (is_empty_string(binary->rhs)) {
+                    check_empty = compile_expr(c, binary->lhs, false);
+                }
+
+                if (check_empty) {
+                    LLVMValueRef count = LLVMBuildExtractValue(c->llvm_builder, check_empty, 1, "");
+                    return LLVMBuildICmp(
+                        c->llvm_builder, op.i, count, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), "");
+                }
+            }
+
             LLVMValueRef lhs = compile_expr(c, binary->lhs, false);
             LLVMValueRef rhs = compile_expr(c, binary->rhs, false);
 
@@ -856,8 +878,6 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                 return LLVMBuildICmp(c->llvm_builder, op.i, lhs, rhs, "");
             }
         }
-
-        // TODO: Optimize: `s == ""` and `s != ""`
     }
 
     // Arithmetic assignment
