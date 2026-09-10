@@ -1586,8 +1586,8 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                         from->type = c->type_info_pointer_type;
                         same = true;
                     } else if (
-                        type_eq(*to_type, (Type) {.kind = TYPE_CHAR, .ref = 1}) &&   //
-                        from->kind == NODE_ATOM && from->token.kind == TOKEN_STRING) //
+                        type_eq_without_distinct(*to_type, (Type) {.kind = TYPE_CHAR, .ref = 1}) && //
+                        from->kind == NODE_ATOM && from->token.kind == TOKEN_STRING)                //
                     {
                         same = true;
                         from->type = *to_type;
