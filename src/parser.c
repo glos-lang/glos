@@ -836,9 +836,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
 
-    const bool allow_methods_without_body = p->state.allow_methods_without_body; // Only lasts a singular level
-    p->state.allow_methods_without_body = false;
-
     Node *node = NULL;
     Token token = next_token(p);
     if (token.kind == TOKEN_LAND) {
@@ -990,11 +987,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = parse_expr(p, POWER_SET, false, true, NULL);
             node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, true, false, false);
         } else {
-            p->state.range_for = range_for;                                   // '(EXPR)' == 'EXPR' semantically
-            p->state.allow_methods_without_body = allow_methods_without_body; // '(EXPR)' == 'EXPR' semantically
+            p->state.range_for = range_for; // '(EXPR)' == 'EXPR' semantically
             node = parse_expr(p, POWER_SET, false, true, NULL);
             p->state.range_for = false;
-            p->state.allow_methods_without_body = false;
 
             if (peek_token(p).kind == TOKEN_COLON) {
                 fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
@@ -1159,7 +1154,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 fn->body = parse_block(p, next_token(p));
             } else {
-                if (fn->is_method && !allow_methods_without_body && !p->state.in_extern) {
+                if (fn->is_method && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
                     assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
                     error_node(EK_ERROR, (Node *) fn, "A method must have a body");
