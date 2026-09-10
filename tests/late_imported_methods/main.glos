@@ -1,0 +1,8 @@
+main :: () {
+    f := Foo {69}
+    f.nice()
+
+    #if true {
+        #import "foo"
+    }
+}

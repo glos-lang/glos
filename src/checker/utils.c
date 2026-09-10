@@ -678,6 +678,7 @@ void make_sure_import_is_ready(Compiler *c, Node_Import *import) {
         const Context context_save = c->context;
         memset(&c->context, 0, sizeof(c->context));
         define_orderless_nodes_of_module(c, import->module, &import->node.token);
+        define_orderless_methods(c);
         c->context = context_save;
     }
 }

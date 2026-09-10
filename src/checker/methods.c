@@ -641,3 +641,113 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
         exit(c, 1);
     }
 }
+
+void define_orderless_methods(Compiler *c) {
+    const Context context_save = c->context;
+    memset(&c->context, 0, sizeof(c->context));
+
+    for (size_t i = 0; i < c->methods_list.count; i++) {
+        Node_Fn *fn = c->methods_list.data[i];
+        assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
+
+        // Define the polymorphic parameters
+        check_fn(c, fn, REF_NONE, NULL, true, true);
+
+        Node_Define *define = (Node_Define *) fn->args.head;
+        assert(define->name->kind == NODE_ATOM && define->type); // Guaranteed by the parser
+
+        if (!fn->defined_as) {
+            error_node(EK_ERROR, (Node *) fn, "Anonymous function cannot be a method");
+            error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+            exit(c, 1);
+        }
+        const SV name = fn->defined_as->node.token.sv;
+
+        check_expr(c, define->type, REF_NONE);
+        type_assert_type(c, define->type);
+        define->type->type.is_meta = false;
+        const Type receiver_type = define->type->type;
+
+        if (fn->reference_directives.head && !receiver_type.ref) {
+            error_token(
+                EK_ERROR,
+                fn->reference_directives.head->token,
+                "This iterator overload has reference semantics, yet the receiver is not a typed pointer");
+
+            assert(fn->args.head);
+            error_node(
+                EK_NOTE,
+                fn->args.head,
+                "This argument is taken to be the receiver. Its type is %s",
+                type_to_cstr(receiver_type));
+            exit(c, 1);
+        }
+
+        bool        is_named = false;
+        Method_Spec spec = {0};
+        if (get_method_spec(c, define->type, receiver_type, name, &spec, fn->node.module, &is_named)) {
+            if (!is_named) {
+                error_node(EK_ERROR, define->type, "The receiver of a method cannot have an anonymous type");
+                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+                exit(c, 1);
+            }
+
+            if (type_kind_eq(receiver_type, TYPE_ENUM)) {
+                ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
+                    if (sv_eq(it->token.sv, name)) {
+                        error_redefinition(c, (Node *) fn->defined_as, &it->token.pos);
+                    }
+                }
+            } else if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
+                Type_Trait *trait = receiver_type.spec.trait;
+                for (size_t i = 0; i < trait->methods_count; i++) {
+                    Type_Trait_Method *it = &trait->methods[i];
+                    if (sv_eq(it->name, name)) {
+                        it->fallback = fn;
+                        assert(type_kind_eq(it->signature->node.type, TYPE_FN));
+                        fn->default_trait_method = it;
+                        break;
+                    }
+                }
+
+                if (!fn->default_trait_method) {
+                    error_undefined_in(c, &fn->defined_as->node.token, &receiver_type, "method");
+                }
+
+                if (receiver_type.ref) {
+                    error_node(EK_ERROR, define->type, "The receiver of a default trait method cannot be a pointer");
+                    error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+                    exit(c, 1);
+                }
+
+                if (fn->polymorphs.head) {
+                    error_node(
+                        EK_ERROR,
+                        (Node *) fn->polymorphs.head,
+                        "A default trait method cannot have polymorphic parameters");
+                    exit(c, 1);
+                }
+            } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
+                for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {
+                    const Type_Struct_Field it = receiver_type.spec.structt->fields[i];
+                    if (sv_eq(it.name, name)) {
+                        error_redefinition(c, (Node *) fn->defined_as, &it.pos);
+                    }
+                }
+            }
+
+            Node_Fn **previous = ht_get(&c->methods_table, spec);
+            if (previous) {
+                error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
+            }
+            ht_set(&c->methods_table, spec, fn);
+        } else {
+            error_node(EK_ERROR, define->type, "Can only define methods on types defined in the same module");
+            error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+            exit(c, 1);
+        }
+    }
+
+    c->methods_list.count = 0;
+    c->context = context_save;
+}
