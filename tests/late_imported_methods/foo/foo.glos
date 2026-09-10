@@ -1,0 +1,7 @@
+Foo :: struct {
+    v: s64
+}
+
+nice :: (this: Foo) {
+    println(this)
+}

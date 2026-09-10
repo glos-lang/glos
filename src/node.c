@@ -1240,10 +1240,10 @@ void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module) {
     }
 
     if (fn->wrapper) {
-        assert(fn->defined_as && !fn->outer_fn && fn->wrapper_for_trait);
+        assert(fn->defined_as && fn->wrapper_for_trait);
 
         Node_Trait *definition = fn->wrapper_for_trait->definition;
-        sb_push_fn_name(sb, definition->defined_in, definition->node.module);
+        sb_push_fn_name(sb, definition->defined_in_fn, definition->node.module);
         sb_push(sb, '.');
         sb_push_type(sb, (Type) {.kind = TYPE_TRAIT, .spec.trait = fn->wrapper_for_trait});
         sb_push(sb, '(');
@@ -1254,9 +1254,6 @@ void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module) {
 
     sb_push_fn_name(sb, fn->outer_fn, module);
     if (fn->is_method) {
-        assert(fn->defined_as);
-        assert(!fn->outer_fn);
-
         assert(fn->node.type.kind == TYPE_FN);
         const Type_Fn *fn_spec = fn->node.type.spec.fn;
 

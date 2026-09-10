@@ -183,14 +183,15 @@ SV token_kind_to_operator_method_name(Token_Kind kind);
 
 void check_that_methods_can_be_accessed(Compiler *c, Node *receiver);
 
+typedef struct {
+    Node_Atom  *defined_as;
+    Node_Block *block;
+    Module     *module;
+    bool        is_named;
+} Method_Defining;
+
 bool get_method_spec(
-    Compiler    *c,
-    Node        *receiver_node,
-    Type         receiver_type,
-    SV           name,
-    Method_Spec *spec,
-    Module      *defining_in_module,
-    bool        *is_named);
+    Compiler *c, Node *receiver_node, Type receiver_type, SV name, Method_Spec *spec, Method_Defining *defining);
 
 Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module);
 Node_Fn *get_operator_overload(Compiler *c, SV operator, Node * receiver, Node *op, Module *module);
@@ -210,6 +211,8 @@ void check_signature_of_binary_comparison_operator(Compiler *c, Node_Fn *fn, con
 void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
+
+void define_orderless_methods(Compiler *c);
 
 // Monomorphizer ///////////////////////////////////////////////////////////////////////////////////
 void show_current_monomorphization(Compiler *c);

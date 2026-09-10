@@ -21,6 +21,8 @@ typedef struct Node_Struct    Node_Struct;
 typedef struct Node_Import    Node_Import;
 typedef struct Node_Polymorph Node_Polymorph;
 
+typedef struct Node_Block Node_Block;
+
 typedef struct {
     Node *head;
     Node *tail;
@@ -605,6 +607,8 @@ typedef struct {
     Context_Fn      *fn_context;
     Context_Replace *replace_context;
 
+    Node_Block *defined_in_block;
+
     Check_Status check_status;
     size_t       partial_stack_index;
 
@@ -812,7 +816,8 @@ struct Node_Fn {
     // <=> :: (this: $T, that: T) -> Comparison // Complete, implements equality AND ordering
     bool is_compare_operator_complete;
 
-    Node_Fn *outer_fn;
+    Node_Fn    *outer_fn;
+    Node_Block *outer_block;
 
     bool             checked_fully;
     bool             checked_signature;
@@ -850,7 +855,8 @@ struct Node_Enum {
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;
 
-    Node_Fn *defined_in;
+    Node_Fn    *defined_in_fn;
+    Node_Block *defined_in_block;
 
     Token end;
 
@@ -869,7 +875,8 @@ struct Node_Trait {
 
     Token end;
 
-    Node_Fn *defined_in;
+    Node_Fn    *defined_in_fn;
+    Node_Block *defined_in_block;
 };
 
 // This represents a type
@@ -883,7 +890,8 @@ struct Node_Union {
 
     Token end;
 
-    Node_Fn *defined_in;
+    Node_Fn    *defined_in_fn;
+    Node_Block *defined_in_block;
 };
 
 // This represents a type
@@ -900,7 +908,8 @@ struct Node_Struct {
     Token fields_end;
     Token polymorphs_end;
 
-    Node_Fn *defined_in;
+    Node_Fn    *defined_in_fn;
+    Node_Block *defined_in_block;
 };
 
 typedef struct {
@@ -1021,11 +1030,11 @@ struct Node_Define {
     size_t count;
 };
 
-typedef struct {
+struct Node_Block {
     Node  node;
     Nodes body;
     Token end;
-} Node_Block;
+};
 
 typedef struct {
     Node  node;

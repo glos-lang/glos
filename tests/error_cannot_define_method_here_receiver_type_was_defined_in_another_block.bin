@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 527
+tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_block.glos:4:23: Error: Can only define methods on types that are defined in the same block
+
+    foo :: (this: Foo) {}
+
+tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_block.glos:4:17: Note: This argument is taken to be the receiver
+
+    foo :: (this: Foo) {}
+
+tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_block.glos:2:5: Note: Here is the definition of the receiver type
+
+    Foo :: struct {}
+
+

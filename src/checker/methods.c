@@ -63,13 +63,7 @@ void check_that_methods_can_be_accessed(Compiler *c, Node *receiver) {
 }
 
 bool get_method_spec(
-    Compiler    *c,
-    Node        *receiver_node,
-    Type         receiver_type,
-    SV           name,
-    Method_Spec *spec,
-    Module      *defining_in_module,
-    bool        *is_named) //
+    Compiler *c, Node *receiver_node, Type receiver_type, SV name, Method_Spec *spec, Method_Defining *defining) //
 {
     if (spec) {
         spec->name = name;
@@ -81,15 +75,15 @@ bool get_method_spec(
             spec->uid = (uintptr_t) definition;
         }
 
-        if (defining_in_module) {
-            if (is_named) {
-                *is_named = definition->defined_as != NULL;
-            }
-
-            return defining_in_module == definition->node.module;
+        if (defining) {
+            defining->defined_as = definition->defined_as;
+            defining->block = definition->defined_in_block;
+            defining->module = definition->node.module;
+            defining->is_named = definition->defined_as != NULL;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
         }
 
-        check_that_methods_can_be_accessed(c, receiver_node);
         return true;
     } else if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
         Node_Trait *definition = receiver_type.spec.trait->definition;
@@ -97,15 +91,15 @@ bool get_method_spec(
             spec->uid = (uintptr_t) definition;
         }
 
-        if (defining_in_module) {
-            if (is_named) {
-                *is_named = definition->defined_as != NULL;
-            }
-
-            return defining_in_module == definition->node.module;
+        if (defining) {
+            defining->defined_as = definition->defined_as;
+            defining->is_named = definition->defined_as != NULL;
+            defining->block = definition->defined_in_block;
+            defining->module = definition->node.module;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
         }
 
-        check_that_methods_can_be_accessed(c, receiver_node);
         return true;
     } else if (type_kind_eq(receiver_type, TYPE_UNION)) {
         Node_Union *definition = receiver_type.spec.unionn->definition;
@@ -113,15 +107,15 @@ bool get_method_spec(
             spec->uid = (uintptr_t) definition;
         }
 
-        if (defining_in_module) {
-            if (is_named) {
-                *is_named = definition->defined_as != NULL;
-            }
-
-            return defining_in_module == definition->node.module;
+        if (defining) {
+            defining->defined_as = definition->defined_as;
+            defining->is_named = definition->defined_as != NULL;
+            defining->block = definition->defined_in_block;
+            defining->module = definition->node.module;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
         }
 
-        check_that_methods_can_be_accessed(c, receiver_node);
         return true;
     } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
         Node_Struct *definition = receiver_type.spec.structt->original_definition;
@@ -129,30 +123,30 @@ bool get_method_spec(
             spec->uid = (uintptr_t) definition;
         }
 
-        if (defining_in_module) {
-            if (is_named) {
-                *is_named = definition->defined_as != NULL;
-            }
-
-            return defining_in_module == definition->node.module;
+        if (defining) {
+            defining->defined_as = definition->defined_as;
+            defining->is_named = definition->defined_as != NULL;
+            defining->block = definition->defined_in_block;
+            defining->module = definition->node.module;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
         }
 
-        check_that_methods_can_be_accessed(c, receiver_node);
         return true;
     } else if (receiver_type.distinct) {
         if (spec) {
             spec->uid = (uintptr_t) receiver_type.distinct;
         }
 
-        if (defining_in_module) {
-            if (is_named) {
-                *is_named = true;
-            }
-
-            return defining_in_module == receiver_type.distinct->node.module;
+        if (defining) {
+            defining->defined_as = receiver_type.distinct;
+            defining->is_named = true;
+            defining->block = receiver_type.distinct->definition_spec->defined_in_block;
+            defining->module = receiver_type.distinct->node.module;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
         }
 
-        check_that_methods_can_be_accessed(c, receiver_node);
         return true;
     }
 
@@ -163,15 +157,14 @@ bool get_method_spec(
                 spec->uid = (uintptr_t) &builtin_type_kinds[kind];
             }
 
-            if (defining_in_module) {
-                if (is_named) {
-                    *is_named = true;
-                }
-
-                return defining_in_module == c->builtin_module;
+            if (defining) {
+                defining->is_named = true;
+                defining->block = NULL;
+                defining->module = c->builtin_module;
+            } else {
+                check_that_methods_can_be_accessed(c, receiver_node);
             }
 
-            check_that_methods_can_be_accessed(c, receiver_node);
             return true;
         }
     }
@@ -302,7 +295,7 @@ Node_Fn *get_operator_overload_ex(
 {
     unused(partial_comparison_acceptable);
     Method_Spec spec = {0};
-    if (get_method_spec(c, n, receiver, operator, &spec, NULL, NULL)) {
+    if (get_method_spec(c, n, receiver, operator, &spec, NULL)) {
         if (sv_eq(operator, OPERATOR_MUL) || sv_eq(operator, OPERATOR_DIV) || sv_eq(operator, OPERATOR_MOD)) {
             if (type_is_pointer(receiver)) {
                 error_node(EK_ERROR, n, "The operator '" SV_Fmt "' is not valid for pointers", SV_Arg(operator));
@@ -640,4 +633,126 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
             type_to_cstr(fn_spec->returns[fn_spec->returns_count - 1]));
         exit(c, 1);
     }
+}
+
+void define_orderless_methods(Compiler *c) {
+    for (size_t i = 0; i < c->methods_list.count; i++) {
+        Node_Fn *fn = c->methods_list.data[i];
+        assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
+
+        // Define the polymorphic parameters
+        check_fn(c, fn, REF_NONE, NULL, true, true);
+
+        Node_Define *define = (Node_Define *) fn->args.head;
+        assert(define->name->kind == NODE_ATOM && define->type); // Guaranteed by the parser
+
+        if (!fn->defined_as) {
+            error_node(EK_ERROR, (Node *) fn, "Anonymous function cannot be a method");
+            error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+            exit(c, 1);
+        }
+        const SV name = fn->defined_as->node.token.sv;
+
+        check_expr(c, define->type, REF_NONE);
+        type_assert_type(c, define->type);
+        define->type->type.is_meta = false;
+        const Type receiver_type = define->type->type;
+
+        if (fn->reference_directives.head && !receiver_type.ref) {
+            error_token(
+                EK_ERROR,
+                fn->reference_directives.head->token,
+                "This iterator overload has reference semantics, yet the receiver is not a typed pointer");
+
+            assert(fn->args.head);
+            error_node(
+                EK_NOTE,
+                fn->args.head,
+                "This argument is taken to be the receiver. Its type is %s",
+                type_to_cstr(receiver_type));
+            exit(c, 1);
+        }
+
+        Method_Spec     spec = {0};
+        Method_Defining defining = {0};
+
+        bool can_define = get_method_spec(c, define->type, receiver_type, name, &spec, &defining);
+        if (can_define) {
+            if (!defining.is_named) {
+                error_node(EK_ERROR, define->type, "The receiver of a method cannot have an anonymous type");
+                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+                exit(c, 1);
+            }
+
+            if (defining.block != fn->outer_block || defining.module != fn->node.module) {
+                can_define = false;
+            }
+        }
+
+        if (!can_define) {
+            error_node(
+                EK_ERROR,
+                define->type,
+                "Can only define methods on types that are defined in the same %s",
+                defining.module == fn->node.module ? "block" : "module");
+
+            error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+            if (defining.defined_as) {
+                error_node(EK_NOTE, (Node *) defining.defined_as, "Here is the definition of the receiver type");
+            }
+            exit(c, 1);
+        }
+
+        if (type_kind_eq(receiver_type, TYPE_ENUM)) {
+            ll_foreach(it, &receiver_type.spec.enumm.definition->values) {
+                if (sv_eq(it->token.sv, name)) {
+                    error_redefinition(c, (Node *) fn->defined_as, &it->token.pos);
+                }
+            }
+        } else if (type_kind_eq(receiver_type, TYPE_TRAIT)) {
+            Type_Trait *trait = receiver_type.spec.trait;
+            for (size_t i = 0; i < trait->methods_count; i++) {
+                Type_Trait_Method *it = &trait->methods[i];
+                if (sv_eq(it->name, name)) {
+                    it->fallback = fn;
+                    assert(type_kind_eq(it->signature->node.type, TYPE_FN));
+                    fn->default_trait_method = it;
+                    break;
+                }
+            }
+
+            if (!fn->default_trait_method) {
+                error_undefined_in(c, &fn->defined_as->node.token, &receiver_type, "method");
+            }
+
+            if (receiver_type.ref) {
+                error_node(EK_ERROR, define->type, "The receiver of a default trait method cannot be a pointer");
+                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+                exit(c, 1);
+            }
+
+            if (fn->polymorphs.head) {
+                error_node(
+                    EK_ERROR,
+                    (Node *) fn->polymorphs.head,
+                    "A default trait method cannot have polymorphic parameters");
+                exit(c, 1);
+            }
+        } else if (type_kind_eq(receiver_type, TYPE_STRUCT)) {
+            for (size_t i = 0; i < receiver_type.spec.structt->fields_count; i++) {
+                const Type_Struct_Field it = receiver_type.spec.structt->fields[i];
+                if (sv_eq(it.name, name)) {
+                    error_redefinition(c, (Node *) fn->defined_as, &it.pos);
+                }
+            }
+        }
+
+        Node_Fn **previous = ht_get(&c->methods_table, spec);
+        if (previous) {
+            error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
+        }
+        ht_set(&c->methods_table, spec, fn);
+    }
+
+    c->methods_list.count = 0;
 }

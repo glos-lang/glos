@@ -156,7 +156,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 static Node *parse_stmt(Parser *p);
 
 static Node *parse_block(Parser *p, Token token) {
+    Node_Block *block_current_save = p->state.block_current;
+
     Node_Block *block = (Node_Block *) node_alloc(p->module_current, NODE_BLOCK, token);
+    p->state.block_current = block;
+
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
         expect_stmt_terminator(p);
@@ -164,6 +168,8 @@ static Node *parse_block(Parser *p, Token token) {
 
     assert(p->state.ahead.kind == TOKEN_RBRACE);
     block->end = p->state.ahead;
+
+    p->state.block_current = block_current_save;
     return (Node *) block;
 }
 
@@ -376,6 +382,7 @@ static void definition_lhs_atom_setup(
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
     it->definition_spec->polymorph = define->name_polymorph;
+    it->definition_spec->defined_in_block = p->state.block_current;
 
     if (is_static) {
         it->definition_spec->static_var_fn = p->state.fn_current;
@@ -829,9 +836,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
 
-    const bool allow_methods_without_body = p->state.allow_methods_without_body; // Only lasts a singular level
-    p->state.allow_methods_without_body = false;
-
     Node *node = NULL;
     Token token = next_token(p);
     if (token.kind == TOKEN_LAND) {
@@ -955,6 +959,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         if (read_token(p, TOKEN_RPAREN)) {
             fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
             fn->outer_fn = p->state.fn_current;
+            fn->outer_block = p->state.block_current;
             p->state.fn_current = fn;
 
             assert(p->state.ahead.kind == TOKEN_RPAREN);
@@ -962,6 +967,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } else if (peek_token(p).kind == TOKEN_DOLLAR) {
             fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
             fn->outer_fn = p->state.fn_current;
+            fn->outer_block = p->state.block_current;
 
             pb.polymorphs = &fn->polymorphs;
             if (pb_save) {
@@ -981,15 +987,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = parse_expr(p, POWER_SET, false, true, NULL);
             node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, true, false, false);
         } else {
-            p->state.range_for = range_for;                                   // '(EXPR)' == 'EXPR' semantically
-            p->state.allow_methods_without_body = allow_methods_without_body; // '(EXPR)' == 'EXPR' semantically
+            p->state.range_for = range_for; // '(EXPR)' == 'EXPR' semantically
             node = parse_expr(p, POWER_SET, false, true, NULL);
             p->state.range_for = false;
-            p->state.allow_methods_without_body = false;
 
             if (peek_token(p).kind == TOKEN_COLON) {
                 fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
                 fn->outer_fn = p->state.fn_current;
+                fn->outer_block = p->state.block_current;
 
                 pb.polymorphs = &fn->polymorphs;
                 if (!pb_save) {
@@ -1149,7 +1154,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 fn->body = parse_block(p, next_token(p));
             } else {
-                if (fn->is_method && !allow_methods_without_body && !p->state.in_extern) {
+                if (fn->is_method && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
                     assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
                     error_node(EK_ERROR, (Node *) fn, "A method must have a body");
@@ -1163,14 +1168,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->is_type = true;
-            }
-
-            if (fn->is_method && fn->outer_fn) {
-                assert(fn->args.head);
-                Node_Define *define = (Node_Define *) fn->args.head;
-                error_node(EK_ERROR, (Node *) fn, "Local function cannot be a method");
-                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
-                exit(1);
             }
 
             p->state.fn_current = fn->outer_fn;
@@ -1215,7 +1212,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_ENUM, token);
         Node_Enum *enumm = (Node_Enum *) node;
-        enumm->defined_in = p->state.fn_current;
+        enumm->defined_in_fn = p->state.fn_current;
+        enumm->defined_in_block = p->state.block_current;
 
         token = peek_token(p);
         if (token.kind != TOKEN_LBRACE) {
@@ -1247,7 +1245,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_TRAIT, token);
         Node_Trait *trait = (Node_Trait *) node;
-        trait->defined_in = p->state.fn_current;
+        trait->defined_in_fn = p->state.fn_current;
+        trait->defined_in_block = p->state.block_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -1308,7 +1307,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_UNION, token);
         Node_Union *unionn = (Node_Union *) node;
-        unionn->defined_in = p->state.fn_current;
+        unionn->defined_in_fn = p->state.fn_current;
+        unionn->defined_in_block = p->state.block_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -1326,7 +1326,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_STRUCT: {
         node = node_alloc(p->module_current, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
-        structt->defined_in = p->state.fn_current;
+        structt->defined_in_fn = p->state.fn_current;
+        structt->defined_in_block = p->state.block_current;
 
         token = expect_token(p, TOKEN_LBRACE, TOKEN_LPAREN);
         if (token.kind == TOKEN_LPAREN) {
@@ -1684,8 +1685,6 @@ static Node *parse_stmt(Parser *p) {
     switch (token.kind) {
     case TOKEN_RANGE:
     case TOKEN_OPERATOR: {
-        local_assert(p, false, token, NULL);
-
         const bool is_operator = token.kind == TOKEN_OPERATOR;
         if (is_operator) {
             p->state.lexer.after_operator_keyword = true;

@@ -142,9 +142,19 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
         Node_Atom *it = NULL;
         while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
             if (!sv_match(it->node.token.sv, "_")) {
+                bool is_method = false;
+                if (it->definition_spec->is_const && it->definition_spec->assignment_node->kind == NODE_FN) {
+                    Node_Fn *fn = (Node_Fn *) it->definition_spec->assignment_node;
+                    is_method = fn->is_method;
+
+                    if (is_method) {
+                        da_push(&c->methods_list, fn);
+                    }
+                }
+
                 if (it->definition_spec->is_local) {
                     it->definition_spec->fn_context = c->context.fn;
-                    if (it->definition_spec->is_const) {
+                    if (!is_method && it->definition_spec->is_const) {
                         const Context_Fn *fn = c->context.fn;
 
                         assert(fn->defines_end <= c->context.defines.count);
@@ -167,16 +177,6 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                 } else {
                     if (get_builtin_type_kind(it->node.token.sv, NULL)) {
                         error_redefinition(c, (Node *) it, NULL);
-                    }
-
-                    bool is_method = false;
-                    if (it->definition_spec->assignment_node && it->definition_spec->assignment_node->kind == NODE_FN) {
-                        Node_Fn *fn = (Node_Fn *) it->definition_spec->assignment_node;
-                        is_method = fn->is_method;
-
-                        if (is_method) {
-                            da_push(&c->methods_list, fn);
-                        }
                     }
 
                     if (!is_method) {

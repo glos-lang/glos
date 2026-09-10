@@ -368,7 +368,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
                     const size_t start = default_sb.count;
-                    sb_push_fn_name(&default_sb, spec->definition->defined_in, spec->definition->node.module);
+                    sb_push_fn_name(&default_sb, spec->definition->defined_in_fn, spec->definition->node.module);
                     sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(defined_as->node.token.sv));
                     name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
                 }
@@ -403,7 +403,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
                     const size_t start = default_sb.count;
-                    sb_push_fn_name(&default_sb, spec->definition->defined_in, spec->definition->node.module);
+                    sb_push_fn_name(&default_sb, spec->definition->defined_in_fn, spec->definition->node.module);
                     sb_sprintf(&default_sb, "." SV_Fmt, SV_Arg(defined_as->node.token.sv));
                     name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));
                 }
@@ -566,7 +566,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 Node_Atom *defined_as = spec->definition->defined_as;
                 if (defined_as) {
                     const size_t start = default_sb.count;
-                    sb_push_fn_name(&default_sb, spec->definition->defined_in, spec->definition->node.module);
+                    sb_push_fn_name(&default_sb, spec->definition->defined_in_fn, spec->definition->node.module);
                     sb_push(&default_sb, '.');
                     sb_push_type(&default_sb, type_without_meta(*type));
                     name = sv_from_cstr(arena_sb_to_cstr(&temp_arena, &default_sb, start));

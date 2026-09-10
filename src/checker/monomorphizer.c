@@ -613,7 +613,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
         if (!first) {
             monomorphize_replace(c, (Node **) &enumm->defined_as);
-            monomorphize_replace(c, (Node **) &enumm->defined_in);
+            monomorphize_replace(c, (Node **) &enumm->defined_in_fn);
         }
     } break;
 
@@ -623,7 +623,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
         if (!first) {
             monomorphize_replace(c, (Node **) &trait->defined_as);
-            monomorphize_replace(c, (Node **) &trait->defined_in);
+            monomorphize_replace(c, (Node **) &trait->defined_in_fn);
         }
     } break;
 
@@ -633,7 +633,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
         if (!first) {
             monomorphize_replace(c, (Node **) &unionn->defined_as);
-            monomorphize_replace(c, (Node **) &unionn->defined_in);
+            monomorphize_replace(c, (Node **) &unionn->defined_in_fn);
         }
     } break;
 
@@ -644,7 +644,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
         if (!first) {
             monomorphize_replace(c, (Node **) &structt->defined_as);
-            monomorphize_replace(c, (Node **) &structt->defined_in);
+            monomorphize_replace(c, (Node **) &structt->defined_in_fn);
         }
     } break;
 

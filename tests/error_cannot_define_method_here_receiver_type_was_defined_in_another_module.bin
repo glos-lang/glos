@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 499
+tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_module.glos:1:15: Error: Can only define methods on types that are defined in the same module
+
+    foo :: (this: Interpolation) {}
+
+tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_module.glos:1:9: Note: This argument is taken to be the receiver
+
+    foo :: (this: Interpolation) {}
+
+std/builtin/contract.glos:133:1: Note: Here is the definition of the receiver type
+
+    Interpolation :: union {
+
+

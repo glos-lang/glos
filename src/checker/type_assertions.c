@@ -242,7 +242,7 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
                 const Type_Trait_Method *it = &trait->methods[i];
 
                 Method_Spec spec = {0};
-                if (!get_method_spec(c, n, receiver, it->name, &spec, NULL, NULL)) {
+                if (!get_method_spec(c, n, receiver, it->name, &spec, NULL)) {
                     errors[i] = (Error) {.kind = UNDEFINED};
                     goto finally;
                 }

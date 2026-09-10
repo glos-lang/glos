@@ -116,6 +116,7 @@ void check_stmt_block(Compiler *c, Node_Block *block) {
     for (Node *it = block->body.head; it; it = it->next) {
         define_orderless_node(c, it, context_defines_end_save);
     }
+    define_orderless_methods(c);
 
     for (Node *it = block->body.head; it; it = it->next) {
         check_stmt(c, it);

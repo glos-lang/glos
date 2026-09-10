@@ -26,12 +26,12 @@ typedef struct {
     bool in_defer;
     bool in_extern;
     bool in_compile_time_condition;
-    bool allow_methods_without_body;
     bool after_private;
 
     Node_For *range_for;
 
     Node_Fn            *fn_current;
+    Node_Block         *block_current;
     Polymorphs_Builder *pb;
 } Parser_State;
 
