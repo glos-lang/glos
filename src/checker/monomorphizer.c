@@ -375,10 +375,6 @@ static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
             return false;
         }
 
-        // @log
-        // error_node(EK_NOTE, a.from, "ht_hasheq_monomorph_spec.a.from = %p", (void *) a.from);
-        // error_node(EK_NOTE, b.from, "ht_hasheq_monomorph_spec.b.from = %p", (void *) b.from);
-
         for (size_t i = 0; i < a.params_count; i++) {
             const Const_Value *va = &a.param_values[i];
             const Const_Value *vb = &b.param_values[i];
@@ -408,11 +404,6 @@ static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
     hasher_init(&h);
     hasher_add_bytes(&h, &a.from, sizeof((void *) a.from));
     hasher_add_bytes(&h, &a.params_count, sizeof(a.params_count));
-
-    // @log
-    // error_node_begin(EK_NOTE, a.from);
-    // fprintf(stderr, "ht_hasheq_monomorph_spec: from = %p; params_count = %zu (", (void *) a.from, a.params_count);
-
     for (size_t i = 0; i < a.params_count; i++) {
         const Const_Value *value = &a.param_values[i];
         if (value->kind == CONST_VALUE_TYPE) {
@@ -421,18 +412,7 @@ static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
             hasher_add_type(&h, &a.param_types[i]);
             hasher_add_const_value(&h, value);
         }
-
-        // @log
-        // if (i) {
-        //     fprintf(stderr, ", ");
-        // }
-        // const_value_debug(stderr, a.param_types[i], a.param_values[i]);
     }
-
-    // @log
-    // fprintf(stderr, ") => %zu", hasher_finish(h));
-    // error_finalize();
-
     return hasher_finish(h);
 }
 

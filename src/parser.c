@@ -215,6 +215,8 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
 
             case_->body = node_alloc(p->module_current, NODE_BLOCK, token);
             Node_Block *block = (Node_Block *) case_->body;
+
+            const bool after_private_save = p->state.after_private;
             while (true) {
                 expect_stmt_terminator(p);
                 ahead = peek_token(p);
@@ -223,6 +225,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
                 }
                 nodes_push(&block->body, parse_stmt(p));
             }
+            p->state.after_private = after_private_save;
 
             nodes_push(&sw->cases, (Node *) case_);
             if (fallback) {
@@ -244,6 +247,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
             token = expect_token(p, TOKEN_LBRACE, TOKEN_THEN);
         }
 
+        const bool after_private_save = p->state.after_private;
         if (token.kind == TOKEN_LBRACE) {
             its = ITS_NO;
             iff->consequence = parse_block(p, token);
@@ -256,6 +260,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
             }
             iff->consequence = parse_stmt(p);
         }
+        p->state.after_private = after_private_save;
 
         if (read_token(p, TOKEN_ELSE)) {
             if (its == ITS_YES) {
@@ -282,6 +287,8 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
                     iff->antecedence = parse_if(p, token, is_compile_time, its);
                 }
             }
+
+            p->state.after_private = after_private_save;
         }
 
         node = (Node *) iff;
@@ -1880,12 +1887,9 @@ static Node *parse_stmt(Parser *p) {
         node = parse_if(p, token, false, ITS_UNKNOWN);
         break;
 
-    case TOKEN_DIRECTIVE_IF: {
-        // TODO: Work on the scoping of '#private...'
-        const bool after_private_save = p->state.after_private;
+    case TOKEN_DIRECTIVE_IF:
         node = parse_if(p, token, true, ITS_NO);
-        p->state.after_private = after_private_save;
-    } break;
+        break;
 
     case TOKEN_FOR:
         not_in_extern_assert(p, token);

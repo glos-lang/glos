@@ -773,9 +773,7 @@ void hasher_add_type(Hasher *h, const Type *t) {
             hasher_add_bytes(h, &enumm->defined_as, sizeof((void *) enumm->defined_as));
             return;
         }
-
         hasher_add_bytes(h, &enumm, sizeof((void *) enumm));
-        // TODO: In case of outer scope monomorphization, this might not be valid
     } break;
 
     case TYPE_TRAIT: {
@@ -792,8 +790,6 @@ void hasher_add_type(Hasher *h, const Type *t) {
             assert(type_kind_eq(it->type, TYPE_FN));
             hasher_add_type_fn(h, it->type.spec.fn, true);
         }
-
-        // TODO: In case of outer scope monomorphization, this might not be valid
     } break;
 
     case TYPE_UNION:
