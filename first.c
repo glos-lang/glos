@@ -650,15 +650,15 @@ static void tests_flush(
                 }
 
                 const char *descriptions[] = {
-                    "Record",
                     "Skip",
+                    "Record",
                     "Rerun",
                     "Quit",
                 };
 
                 ansi_set(stderr, ANSI_COLOR_CYAN | ANSI_BOLD);
                 fprintf(stderr, "\nWhat to do for test case '%s'", it->name);
-                const char choice = single_char_prompt(stdin, stderr, "ynrq", descriptions);
+                const char choice = single_char_prompt(stdin, stderr, "nyrq", descriptions);
                 if (choice == 'y') {
                     need_to_record = true;
                 } else if (choice == 'r') {
