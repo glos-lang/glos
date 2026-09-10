@@ -9,7 +9,7 @@ static bool is_indexable(Compiler *c, Node *n, Type type, Module *module) {
     }
 
     Method_Spec spec = {0};
-    if (get_method_spec(c, n, type, OPERATOR_INDEX, &spec, NULL, NULL)) {
+    if (get_method_spec(c, n, type, OPERATOR_INDEX, &spec, NULL)) {
         return get_method(c, spec, module) != NULL;
     }
 
@@ -508,7 +508,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         bool can_have_methods = false;
         if (!type_kind_eq(member->lhs->type, TYPE_TRAIT)) {
             Method_Spec spec = {0};
-            if (get_method_spec(c, member->lhs, member->lhs->type, n->token.sv, &spec, NULL, NULL)) {
+            if (get_method_spec(c, member->lhs, member->lhs->type, n->token.sv, &spec, NULL)) {
                 can_have_methods = true;
                 member->method = get_method(c, spec, member->node.module);
                 if (member->method) {
@@ -713,7 +713,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     }
 
                     Method_Spec spec = {0};
-                    if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL, NULL)) {
+                    if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL)) {
                         member->method = get_method(c, spec, member->node.module);
                         if (member->method) {
                             ok = true;
@@ -2395,7 +2395,7 @@ void check_fn(
             it_arg->pos = it->node.token.pos;
             it_arg->polymorph = define->name_polymorph;
 
-            check_stmt(c, arg);
+            check_stmt_define(c, define);
             if (define->has_spread) {
                 fn_spec->variadics_index = iota;
                 it->node.type.kind = TYPE_SLICE;

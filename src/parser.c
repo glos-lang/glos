@@ -156,7 +156,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 static Node *parse_stmt(Parser *p);
 
 static Node *parse_block(Parser *p, Token token) {
+    Node_Block *block_current_save = p->state.block_current;
+
     Node_Block *block = (Node_Block *) node_alloc(p->module_current, NODE_BLOCK, token);
+    p->state.block_current = block;
+
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
         expect_stmt_terminator(p);
@@ -164,6 +168,8 @@ static Node *parse_block(Parser *p, Token token) {
 
     assert(p->state.ahead.kind == TOKEN_RBRACE);
     block->end = p->state.ahead;
+
+    p->state.block_current = block_current_save;
     return (Node *) block;
 }
 
@@ -376,6 +382,7 @@ static void definition_lhs_atom_setup(
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
     it->definition_spec->polymorph = define->name_polymorph;
+    it->definition_spec->defined_in_block = p->state.block_current;
 
     if (is_static) {
         it->definition_spec->static_var_fn = p->state.fn_current;
@@ -955,6 +962,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         if (read_token(p, TOKEN_RPAREN)) {
             fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
             fn->outer_fn = p->state.fn_current;
+            fn->outer_block = p->state.block_current;
             p->state.fn_current = fn;
 
             assert(p->state.ahead.kind == TOKEN_RPAREN);
@@ -962,6 +970,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } else if (peek_token(p).kind == TOKEN_DOLLAR) {
             fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
             fn->outer_fn = p->state.fn_current;
+            fn->outer_block = p->state.block_current;
 
             pb.polymorphs = &fn->polymorphs;
             if (pb_save) {
@@ -990,6 +999,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (peek_token(p).kind == TOKEN_COLON) {
                 fn = (Node_Fn *) node_alloc(p->module_current, NODE_FN, token);
                 fn->outer_fn = p->state.fn_current;
+                fn->outer_block = p->state.block_current;
 
                 pb.polymorphs = &fn->polymorphs;
                 if (!pb_save) {
@@ -1207,7 +1217,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_ENUM, token);
         Node_Enum *enumm = (Node_Enum *) node;
-        enumm->defined_in = p->state.fn_current;
+        enumm->defined_in_fn = p->state.fn_current;
+        enumm->defined_in_block = p->state.block_current;
 
         token = peek_token(p);
         if (token.kind != TOKEN_LBRACE) {
@@ -1239,7 +1250,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_TRAIT, token);
         Node_Trait *trait = (Node_Trait *) node;
-        trait->defined_in = p->state.fn_current;
+        trait->defined_in_fn = p->state.fn_current;
+        trait->defined_in_block = p->state.block_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -1300,7 +1312,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         node = node_alloc(p->module_current, NODE_UNION, token);
         Node_Union *unionn = (Node_Union *) node;
-        unionn->defined_in = p->state.fn_current;
+        unionn->defined_in_fn = p->state.fn_current;
+        unionn->defined_in_block = p->state.block_current;
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
@@ -1318,7 +1331,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_STRUCT: {
         node = node_alloc(p->module_current, NODE_STRUCT, token);
         Node_Struct *structt = (Node_Struct *) node;
-        structt->defined_in = p->state.fn_current;
+        structt->defined_in_fn = p->state.fn_current;
+        structt->defined_in_block = p->state.block_current;
 
         token = expect_token(p, TOKEN_LBRACE, TOKEN_LPAREN);
         if (token.kind == TOKEN_LPAREN) {

@@ -1,0 +1,11 @@
+main :: () {
+    println(Vec2 {34, 200} + {35, 220})
+
+    Vec2 :: struct {
+        x, y: s32
+    }
+
+    operator + :: (this: Vec2, that: Vec2) -> Vec2 {
+        return {this.x + that.x, this.y + that.y}
+    }
+}

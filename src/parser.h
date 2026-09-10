@@ -32,6 +32,7 @@ typedef struct {
     Node_For *range_for;
 
     Node_Fn            *fn_current;
+    Node_Block         *block_current;
     Polymorphs_Builder *pb;
 } Parser_State;
 

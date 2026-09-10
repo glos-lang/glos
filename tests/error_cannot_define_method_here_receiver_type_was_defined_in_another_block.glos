@@ -1,0 +1,6 @@
+main :: () {
+    Foo :: struct {}
+    {
+        foo :: (this: Foo) {}
+    }
+}

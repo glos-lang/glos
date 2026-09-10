@@ -153,28 +153,26 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                 }
 
                 if (it->definition_spec->is_local) {
-                    if (!is_method) {
-                        it->definition_spec->fn_context = c->context.fn;
-                        if (it->definition_spec->is_const) {
-                            const Context_Fn *fn = c->context.fn;
+                    it->definition_spec->fn_context = c->context.fn;
+                    if (!is_method && it->definition_spec->is_const) {
+                        const Context_Fn *fn = c->context.fn;
 
-                            assert(fn->defines_end <= c->context.defines.count);
-                            assert(block_start <= c->context.defines.count);
-                            assert(block_start <= fn->defines_end);
-                            for (size_t i = fn->defines_end; i > block_start; i--) {
-                                Node_Atom *previous = c->context.defines.data[i - 1];
-                                if (!previous->definition_spec->is_const) {
-                                    continue;
-                                }
-
-                                if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
-                                    error_redefinition(c, (Node *) it, &previous->node.token.pos);
-                                    break;
-                                }
+                        assert(fn->defines_end <= c->context.defines.count);
+                        assert(block_start <= c->context.defines.count);
+                        assert(block_start <= fn->defines_end);
+                        for (size_t i = fn->defines_end; i > block_start; i--) {
+                            Node_Atom *previous = c->context.defines.data[i - 1];
+                            if (!previous->definition_spec->is_const) {
+                                continue;
                             }
 
-                            context_push_define(&c->context, it);
+                            if (sv_eq(it->node.token.sv, previous->node.token.sv)) {
+                                error_redefinition(c, (Node *) it, &previous->node.token.pos);
+                                break;
+                            }
                         }
+
+                        context_push_define(&c->context, it);
                     }
                 } else {
                     if (get_builtin_type_kind(it->node.token.sv, NULL)) {
