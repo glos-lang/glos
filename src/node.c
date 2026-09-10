@@ -1254,9 +1254,6 @@ void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module) {
 
     sb_push_fn_name(sb, fn->outer_fn, module);
     if (fn->is_method) {
-        assert(fn->defined_as);
-        assert(!fn->outer_fn);
-
         assert(fn->node.type.kind == TYPE_FN);
         const Type_Fn *fn_spec = fn->node.type.spec.fn;
 

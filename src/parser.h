@@ -26,7 +26,7 @@ typedef struct {
     bool in_defer;
     bool in_extern;
     bool in_compile_time_condition;
-    bool allow_methods_without_body;
+    bool allow_methods_without_body; // TODO: Should this be removed?
     bool after_private;
 
     Node_For *range_for;

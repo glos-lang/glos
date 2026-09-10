@@ -1,0 +1,12 @@
+main :: () {
+    println(Vec2 {3.0, 4.0}.length())
+
+    Vec2 :: struct {
+        x, y: f32
+    }
+
+    length :: (this: Vec2) -> f32 {
+        return sqrtf(this.x * this.x + this.y * this.y)
+        extern { sqrtf :: (n: f32) -> f32 }
+    }
+}

@@ -643,9 +643,6 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 }
 
 void define_orderless_methods(Compiler *c) {
-    const Context context_save = c->context;
-    memset(&c->context, 0, sizeof(c->context));
-
     for (size_t i = 0; i < c->methods_list.count; i++) {
         Node_Fn *fn = c->methods_list.data[i];
         assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
@@ -749,5 +746,4 @@ void define_orderless_methods(Compiler *c) {
     }
 
     c->methods_list.count = 0;
-    c->context = context_save;
 }

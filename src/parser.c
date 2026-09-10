@@ -1165,14 +1165,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 fn->is_type = true;
             }
 
-            if (fn->is_method && fn->outer_fn) {
-                assert(fn->args.head);
-                Node_Define *define = (Node_Define *) fn->args.head;
-                error_node(EK_ERROR, (Node *) fn, "Local function cannot be a method");
-                error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
-                exit(1);
-            }
-
             p->state.fn_current = fn->outer_fn;
         }
     } break;
@@ -1684,8 +1676,6 @@ static Node *parse_stmt(Parser *p) {
     switch (token.kind) {
     case TOKEN_RANGE:
     case TOKEN_OPERATOR: {
-        local_assert(p, false, token, NULL);
-
         const bool is_operator = token.kind == TOKEN_OPERATOR;
         if (is_operator) {
             p->state.lexer.after_operator_keyword = true;
