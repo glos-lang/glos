@@ -481,14 +481,14 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
     }
 }
 
-static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root, Arena *a) {
+static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root) {
     SV          root_path = {0};
     const char *absolute_path = NULL;
 
     // Inside the current module
     {
         root_path = sv_from_cstr(p->module_current->absolute_path);
-        absolute_path = get_absolute_path(root_path, path, a);
+        absolute_path = get_absolute_path(root_path, path, &default_arena);
         if (onlydirs ? directory_exists(absolute_path) : file_exists(absolute_path)) {
             if (root) {
                 *root = root_path;
@@ -497,13 +497,13 @@ static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root
         }
 
         root_path = (SV) {0};
-        arena_reset(a, absolute_path);
+        arena_reset(&default_arena, absolute_path);
     }
 
     // Inside root
     {
         root_path = p->root;
-        absolute_path = get_absolute_path(root_path, path, a);
+        absolute_path = get_absolute_path(root_path, path, &default_arena);
 
         if (onlydirs ? directory_exists(absolute_path) : file_exists(absolute_path)) {
             if (root) {
@@ -513,13 +513,13 @@ static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root
         }
 
         root_path = (SV) {0};
-        arena_reset(a, absolute_path);
+        arena_reset(&default_arena, absolute_path);
     }
 
     // Inside std
     {
         root_path = p->std;
-        absolute_path = get_absolute_path(root_path, path, a);
+        absolute_path = get_absolute_path(root_path, path, &default_arena);
 
         if (onlydirs ? directory_exists(absolute_path) : file_exists(absolute_path)) {
             if (root) {
@@ -529,7 +529,7 @@ static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root
         }
 
         root_path = (SV) {0};
-        arena_reset(a, absolute_path);
+        arena_reset(&default_arena, absolute_path);
     }
 
     return NULL;
@@ -537,25 +537,23 @@ static const char *search_paths_find(Parser *p, SV path, bool onlydirs, SV *root
 
 bool parser_embed(Parser *p, Node_Embed *embed) {
     if (!p->embed_interns->hasheq) {
-        p->embed_interns->hasheq = ht_hasheq_sv;
+        p->embed_interns->hasheq = ht_hasheq_cstr;
     }
 
-    SV *previous = ht_get(p->embed_interns, embed->path.as.string);
+    const char *path = search_paths_find(p, embed->path.as.string, false, NULL);
+    if (!path) {
+        return false;
+    }
+
+    SV *previous = ht_get(p->embed_interns, path);
     if (previous) {
         embed->contents = *previous;
+        arena_reset(&default_arena, path);
     } else {
-        const char *path = search_paths_find(p, embed->path.as.string, false, NULL, &temp_arena);
-        if (!path) {
-            return false;
-        }
-
         if (!read_file(path, &embed->contents, &default_arena, false)) {
-            arena_reset(&temp_arena, path);
             return false;
         }
-
-        arena_reset(&temp_arena, path);
-        ht_set(p->embed_interns, embed->path.as.string, embed->contents);
+        ht_set(p->embed_interns, path, embed->contents);
     }
     embed->read = true;
     return true;
@@ -567,8 +565,7 @@ bool parser_import(Parser *p, Node_Import *import) {
     }
 
     SV          root = {0};
-    const char *absolute_path = search_paths_find(p, import->path.as.string, true, &root, &default_arena);
-
+    const char *absolute_path = search_paths_find(p, import->path.as.string, true, &root);
     if (!absolute_path) {
         error_node(EK_ERROR, (Node *) import, "Could not find module '" SV_Fmt "'", SV_Arg(import->path.as.string));
         exit(1);

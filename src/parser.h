@@ -15,7 +15,7 @@ typedef struct {
     bool        is_fn;
 } Polymorphs_Builder;
 
-typedef HT(SV, SV) Embed_Interns;
+typedef HT(const char *, SV) Embed_Interns;
 
 typedef struct {
     Lexer lexer;
