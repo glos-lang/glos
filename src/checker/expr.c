@@ -1117,6 +1117,11 @@ void check_expr_struct(Compiler *c, Node_Struct *structt) {
 
         c->struct_fields.count = fields_start;
     }
+
+    // @log
+    // if (structt->monomorphs.count) {
+    //     error_node(EK_NOTE, n, "Checked this monomorphized structure");
+    // }
 }
 
 void check_expr_compound(Compiler *c, Node_Compound *compound) {

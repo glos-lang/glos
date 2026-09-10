@@ -271,6 +271,16 @@ bool ht_iter_impl(
 #define MSVC_SUPPRESS_4116
 #endif // _MSC_VER
 
+// Hasher
+typedef struct {
+    u64 n;
+} Hasher;
+
+void hasher_init(Hasher *h);
+void hasher_add_bytes(Hasher *h, const void *data, size_t count);
+void hasher_add_float(Hasher *h, double f);
+u64  hasher_finish(Hasher h);
+
 // String View
 typedef struct {
     const char *data;

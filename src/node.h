@@ -346,7 +346,8 @@ bool type_is_signed(Type type);
 bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
 
-u64 ht_hasheq_type(const void *va, const void *vb, size_t n);
+void hasher_add_type(Hasher *h, const Type *type);
+u64  ht_hasheq_type(const void *va, const void *vb, size_t n);
 
 typedef enum {
     CONST_VALUE_INT,
@@ -455,6 +456,8 @@ bool const_value_eq(Const_Value a, Const_Value b);
 void sb_push_const_value(SB *sb, Type type, Const_Value v);
 void sb_push_const_value_raw(SB *sb, Type type, Const_Value v);
 void const_value_debug(FILE *f, Type type, Const_Value v);
+
+void hasher_add_const_value(Hasher *h, const Const_Value *v);
 
 typedef enum {
     NODE_ATOM,

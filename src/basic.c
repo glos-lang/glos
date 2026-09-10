@@ -335,6 +335,37 @@ bool ht_iter_impl(
     return false;
 }
 
+// Hasher
+void hasher_init(Hasher *h) {
+    h->n = 0xCBF29CE484222325;
+}
+
+void hasher_add_bytes(Hasher *h, const void *data, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        h->n ^= ((uint8_t *) data)[i];
+        h->n *= 0x100000001B3;
+    }
+}
+
+void hasher_add_float(Hasher *h, double f) {
+    if (f == 0.0) f = 0.0; // +0.0 and -0.0 have different bit representations
+    if (f != f) {
+        uint64_t nan = 0x7FF8000000000000;
+        hasher_add_bytes(h, &nan, sizeof(nan));
+    } else {
+        hasher_add_bytes(h, &f, sizeof(f));
+    }
+}
+
+u64 hasher_finish(Hasher h) {
+    h.n ^= h.n >> 30;
+    h.n *= 0xBF58476D1CE4E5B9;
+    h.n ^= h.n >> 27;
+    h.n *= 0x94D049BB133111EB;
+    h.n ^= h.n >> 31;
+    return h.n;
+}
+
 // String View
 SV sv_from_cstr(const char *cstr) {
     return (SV) {.data = cstr, .count = strlen(cstr)};

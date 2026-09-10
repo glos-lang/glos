@@ -361,7 +361,6 @@ void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *exp
     }
 }
 
-// TODO: Use a custom hasher instead of just operating on the raw bytes
 static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
     unused(n);
 
@@ -376,24 +375,65 @@ static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
             return false;
         }
 
+        // @log
+        // error_node(EK_NOTE, a.from, "ht_hasheq_monomorph_spec.a.from = %p", (void *) a.from);
+        // error_node(EK_NOTE, b.from, "ht_hasheq_monomorph_spec.b.from = %p", (void *) b.from);
+
         for (size_t i = 0; i < a.params_count; i++) {
-            if (!type_eq(a.param_types[i], b.param_types[i])) {
+            const Const_Value *va = &a.param_values[i];
+            const Const_Value *vb = &b.param_values[i];
+            if (va->kind != vb->kind) {
                 return false;
             }
 
-            if (!const_value_eq(a.param_values[i], b.param_values[i])) {
-                return false;
+            if (va->kind == CONST_VALUE_TYPE) {
+                if (!type_eq(va->as.type, vb->as.type)) {
+                    return false;
+                }
+            } else {
+                if (!type_eq(a.param_types[i], b.param_types[i])) {
+                    return false;
+                }
+
+                if (!const_value_eq(*va, *vb)) {
+                    return false;
+                }
             }
         }
 
         return true;
     }
 
-    u64 hash = ht_hasheq_bytes(&a.from, NULL, sizeof(Node *));
-    hash = ht_hash_combine(hash, ht_hasheq_bytes(&a.params_count, NULL, sizeof(a.params_count)));
-    hash = ht_hash_combine(hash, ht_hasheq_bytes(a.param_types, NULL, a.params_count * sizeof(*a.param_types)));
-    hash = ht_hash_combine(hash, ht_hasheq_bytes(a.param_values, NULL, a.params_count * sizeof(*a.param_values)));
-    return hash;
+    Hasher h = {0};
+    hasher_init(&h);
+    hasher_add_bytes(&h, &a.from, sizeof((void *) a.from));
+    hasher_add_bytes(&h, &a.params_count, sizeof(a.params_count));
+
+    // @log
+    // error_node_begin(EK_NOTE, a.from);
+    // fprintf(stderr, "ht_hasheq_monomorph_spec: from = %p; params_count = %zu (", (void *) a.from, a.params_count);
+
+    for (size_t i = 0; i < a.params_count; i++) {
+        const Const_Value *value = &a.param_values[i];
+        if (value->kind == CONST_VALUE_TYPE) {
+            hasher_add_type(&h, &value->as.type);
+        } else {
+            hasher_add_type(&h, &a.param_types[i]);
+            hasher_add_const_value(&h, value);
+        }
+
+        // @log
+        // if (i) {
+        //     fprintf(stderr, ", ");
+        // }
+        // const_value_debug(stderr, a.param_types[i], a.param_values[i]);
+    }
+
+    // @log
+    // fprintf(stderr, ") => %zu", hasher_finish(h));
+    // error_finalize();
+
+    return hasher_finish(h);
 }
 
 static void monomorphize_node(Compiler *c, Node **np, bool first);
@@ -847,13 +887,23 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
     Monomorph_Spec spec = {0};
     if (is_complete) {
         spec.from = n;
+        if (is_struct) {
+            spec.from = (Node *) spec.from->type.spec.structt->original_definition;
+        }
+
         spec.params_count = c->monomorph_parameters.count - c->monomorph_parameters.begin;
         spec.param_types = arena_alloc(&default_arena, spec.params_count * sizeof(*spec.param_types));
         spec.param_values = arena_alloc(&default_arena, spec.params_count * sizeof(*spec.param_values));
         for (size_t i = 0; i < spec.params_count; i++) {
-            Monomorph_Parameter it = c->monomorph_parameters.data[c->monomorph_parameters.begin + i];
-            spec.param_types[i] = it.type;
-            spec.param_values[i] = it.value;
+            const Monomorph_Parameter *it = &c->monomorph_parameters.data[c->monomorph_parameters.begin + i];
+            spec.param_types[i] = it->type;
+
+            Const_Value *value = &spec.param_values[i];
+            *value = it->value;
+
+            if (value->kind == CONST_VALUE_TYPE) {
+                value->as.type.is_meta = false;
+            }
         }
 
         if (!c->monomorph_intern.hasheq) {

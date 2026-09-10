@@ -709,20 +709,148 @@ bool type_is_unknown(Type type) {
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
 }
 
-u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
-    unused(n);
-    if (vb) {
-        return type_eq(*(const Type *) va, *(const Type *) vb);
+static void hasher_add_type_fn(Hasher *h, const Type_Fn *fn, bool skip_first) {
+    hasher_add_bytes(h, &fn->args_count, sizeof(fn->args_count));
+    for (size_t i = skip_first; i < fn->args_count; i++) {
+        hasher_add_type(h, &fn->args[i].type);
+    }
+    assert(!fn->polymorphs_count); // This function is never called on polymorphic values
+
+    hasher_add_bytes(h, &fn->variadics_kind, sizeof(fn->variadics_kind));
+    hasher_add_bytes(h, &fn->variadics_index, sizeof(fn->variadics_index));
+    hasher_add_type(h, fn->return_type);
+    hasher_add_bytes(h, &fn->is_noreturn, sizeof(fn->is_noreturn));
+}
+
+static void hasher_add_type_union(Hasher *h, const Type_Union *unionn) {
+    if (unionn->definition->defined_as) {
+        hasher_add_bytes(h, &unionn->definition->defined_as, sizeof((void *) unionn->definition->defined_as));
+        return;
     }
 
-    // Technically this is correct, however this will decay to O(n) very often.
-    // TODO: Implement a more specific hashing algorithm for types
-    u64 hash = 14695981039346656037UL;
-    for (size_t i = 0; i < sizeof(Type); i++) {
-        hash ^= *(const uint8_t *) va;
-        hash *= 1099511628211UL;
+    hasher_add_bytes(h, &unionn->variants_count, sizeof(unionn->variants_count));
+    for (size_t i = 0; i < unionn->variants_count; i++) {
+        hasher_add_type(h, &unionn->variants[i].type);
     }
-    return hash;
+}
+
+static void hasher_add_type_struct(Hasher *h, const Type_Struct *structt) {
+    if (structt->definition->defined_as) {
+        hasher_add_bytes(h, &structt->definition->defined_as, sizeof((void *) structt->definition->defined_as));
+        return;
+    }
+    assert(!structt->polymorphs_count); // This function is never called on polymorphic values
+
+    hasher_add_bytes(h, &structt->fields_count, sizeof(structt->fields_count));
+    for (size_t i = 0; i < structt->fields_count; i++) {
+        hasher_add_type(h, &structt->fields[i].type);
+    }
+}
+
+static_assert(COUNT_TYPES == 31, "");
+void hasher_add_type(Hasher *h, const Type *t) {
+    if (!t) {
+        return;
+    }
+
+    hasher_add_bytes(h, &t->kind, sizeof(t->kind));
+    hasher_add_bytes(h, &t->ref, sizeof(t->ref));
+    hasher_add_bytes(h, &t->is_meta, sizeof(t->is_meta));
+
+    if (t->distinct) {
+        hasher_add_bytes(h, &t->distinct, sizeof((void *) t->distinct));
+        return;
+    }
+
+    switch (t->kind) {
+    case TYPE_FN:
+        hasher_add_type_fn(h, t->spec.fn, false);
+        break;
+
+    case TYPE_ENUM: {
+        const Node_Enum *enumm = t->spec.enumm.definition;
+        if (enumm->defined_as) {
+            hasher_add_bytes(h, &enumm->defined_as, sizeof((void *) enumm->defined_as));
+            return;
+        }
+
+        hasher_add_bytes(h, &enumm, sizeof((void *) enumm));
+        // TODO: In case of outer scope monomorphization, this might not be valid
+    } break;
+
+    case TYPE_TRAIT: {
+        const Type_Trait *trait = t->spec.trait;
+        if (trait->definition->defined_as) {
+            hasher_add_bytes(h, &trait->definition->defined_as, sizeof((void *) trait->definition->defined_as));
+            return;
+        }
+
+        hasher_add_bytes(h, &trait->methods_count, sizeof(trait->methods_count));
+        for (size_t i = 0; i < trait->methods_count; i++) {
+            const Type_Trait_Method *it = &trait->methods[i];
+            hasher_add_bytes(h, it->name.data, it->name.count);
+            assert(type_kind_eq(it->type, TYPE_FN));
+            hasher_add_type_fn(h, it->type.spec.fn, true);
+        }
+
+        // TODO: In case of outer scope monomorphization, this might not be valid
+    } break;
+
+    case TYPE_UNION:
+        hasher_add_type_union(h, t->spec.unionn);
+        break;
+
+    case TYPE_STRUCT:
+        hasher_add_type_struct(h, t->spec.structt);
+        break;
+
+    case TYPE_ARRAY: {
+        const Type_Array *array = &t->spec.array;
+        assert(!array->count_polymorph); // This function is never called on polymorphic values
+        hasher_add_bytes(h, &array->count, sizeof(array->count));
+        hasher_add_type(h, array->element);
+    } break;
+
+    case TYPE_DYNAMIC_ARRAY:
+        hasher_add_type(h, t->spec.dynamic_array.element);
+        break;
+
+    case TYPE_MAP: {
+        const Type_Map *map = &t->spec.map;
+        hasher_add_type(h, map->key);
+        hasher_add_type(h, map->value);
+    } break;
+
+    case TYPE_SLICE:
+        hasher_add_type(h, t->spec.slice.element);
+        break;
+
+    case TYPE_GROUP: {
+        const Type_Group *group = &t->spec.group;
+        hasher_add_bytes(h, &group->count, sizeof(group->count));
+        for (size_t i = 0; i < group->count; i++) {
+            hasher_add_type(h, &group->data[i]);
+        }
+    } break;
+
+    default:
+        // Pass
+        break;
+    }
+}
+
+u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
+    unused(n);
+
+    const Type *a = va;
+    if (vb) {
+        return type_eq(*a, *(const Type *) vb);
+    }
+
+    Hasher h = {0};
+    hasher_init(&h);
+    hasher_add_type(&h, a);
+    return hasher_finish(h);
 }
 
 static_assert(COUNT_CONST_VALUES == 14, "");
@@ -962,6 +1090,80 @@ void const_value_debug(FILE *f, Type type, Const_Value v) {
     sb_push_const_value(&default_sb, type, v);
     fwrite(default_sb.data + start, default_sb.count - start, 1, f);
     default_sb.count = start;
+}
+
+static_assert(COUNT_CONST_VALUES == 14, "");
+void hasher_add_const_value(Hasher *h, const Const_Value *v) {
+    hasher_add_bytes(h, &v->kind, sizeof(v->kind));
+    switch (v->kind) {
+    case CONST_VALUE_INT:
+        hasher_add_bytes(h, &v->as.integer, sizeof(v->as.integer));
+        break;
+
+    case CONST_VALUE_FLOAT:
+        hasher_add_float(h, v->as.real);
+        break;
+
+    case CONST_VALUE_TYPE:
+        hasher_add_type(h, &v->as.type);
+        break;
+
+    case CONST_VALUE_FN:
+        hasher_add_bytes(h, &v->as.fn, sizeof((void *) v->as.fn));
+        break;
+
+    case CONST_VALUE_VAR:
+        hasher_add_bytes(h, &v->as.var, sizeof((void *) v->as.var));
+        break;
+
+    case CONST_VALUE_TRAIT: {
+        const Const_Value_Trait *trait = &v->as.trait;
+        hasher_add_bytes(h, &trait->impl, sizeof((void *) trait->impl));
+        hasher_add_type(h, trait->type);
+        hasher_add_const_value(h, trait->data);
+    } break;
+
+    case CONST_VALUE_UNION: {
+        const Const_Value_Union *unionn = &v->as.unionn;
+        hasher_add_type_union(h, unionn->spec);
+        hasher_add_bytes(h, &unionn->index, sizeof(unionn->index));
+        hasher_add_const_value(h, unionn->real);
+    } break;
+
+    case CONST_VALUE_STRUCT: {
+        const Const_Value_Struct *structt = &v->as.structt;
+        hasher_add_type_struct(h, structt->spec);
+        for (size_t i = 0; i < structt->spec->fields_count; i++) {
+            hasher_add_const_value(h, &structt->fields[i]);
+        }
+    } break;
+
+    case CONST_VALUE_ARRAY: {
+        const Const_Value_Array *array = &v->as.array;
+        hasher_add_bytes(h, &array->is_slice, sizeof(array->is_slice));
+        hasher_add_bytes(h, &array->count, sizeof(array->count));
+        hasher_add_type(h, array->element_type);
+        for (size_t i = 0; i < array->count; i++) {
+            hasher_add_const_value(h, &array->data[i]);
+        }
+    } break;
+
+    case CONST_VALUE_DYNAMIC_ARRAY:
+        hasher_add_type(h, v->as.dynamic_array);
+        break;
+
+    case CONST_VALUE_MAP:
+        hasher_add_type(h, v->as.map.key);
+        hasher_add_type(h, v->as.map.value);
+        break;
+
+    case CONST_VALUE_STRING:
+        hasher_add_bytes(h, v->as.string.data, v->as.string.count);
+        break;
+
+    default:
+        unreachable();
+    }
 }
 
 static_assert(COUNT_NODES == 32, "");
