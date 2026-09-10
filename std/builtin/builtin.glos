@@ -1,55 +1,37 @@
-panic :: noreturn (message: ...Any, location := #caller_location) {
-    if message.count == 0 {
-        eprintln("\{location}")
-    } else {
-        eprint("\{location} ")
-        eprintln(...message)
-    }
+panic :: noreturn (message: ...Any, location := #caller_location, label := "") {
+    eprint(location, label)
+    wprint(&Prefix_With_Colon {label != ""}, ...message)
+    eprintln()
 
     C.fflush(os.stdout)
     C.fflush(os.stderr)
     C.abort()
+
+    Prefix_With_Colon :: struct {
+        needed: bool
+    }
+
+    write :: (this: &Prefix_With_Colon, bytes: []char) {
+        if this.needed && bytes.count != 0 {
+            this.needed = false
+            os.stderr.write([]char(": "))
+        }
+        os.stderr.write(bytes)
+    }
 }
 
 assert :: (cond: bool, message: ...Any, location := #caller_location) {
     if !cond {
-        if message.count == 0 {
-            eprintln("\{location} Assertion Failed")
-        } else {
-            eprint("\{location} Assertion Failed: ")
-            eprintln(...message)
-        }
-
-        C.fflush(os.stdout)
-        C.fflush(os.stderr)
-        C.abort()
+        panic(message = message, location = location, label = "Assertion Failed")
     }
 }
 
 todo :: noreturn (message: ...Any, location := #caller_location) {
-    if message.count == 0 {
-        eprintln("\{location} TODO")
-    } else {
-        eprint("\{location} TODO: ")
-        eprintln(...message)
-    }
-
-    C.fflush(os.stdout)
-    C.fflush(os.stderr)
-    C.abort()
+    panic(message = message, location = location, label = "TODO")
 }
 
 unreachable :: noreturn (message: ...Any, location := #caller_location) {
-    if message.count == 0 {
-        eprintln("\{location} Unreachable")
-    } else {
-        eprint("\{location} Unreachable: ")
-        eprintln(...message)
-    }
-
-    C.fflush(os.stdout)
-    C.fflush(os.stderr)
-    C.abort()
+    panic(message = message, location = location, label = "Unreachable")
 }
 
 operator <=> :: (this: string, that: string) -> Ordering {

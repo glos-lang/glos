@@ -2060,10 +2060,8 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         }
 
         check_expr_compound(c, compound);
-        if (!compound->is_not_compound) {
-            is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
-            n->is_memory = true;
-        }
+        is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
+        n->is_memory = true;
     } break;
 
     case NODE_CALL:

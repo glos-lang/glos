@@ -1240,7 +1240,7 @@ void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module) {
     }
 
     if (fn->wrapper) {
-        assert(fn->defined_as && !fn->outer_fn && fn->wrapper_for_trait);
+        assert(fn->defined_as && fn->wrapper_for_trait);
 
         Node_Trait *definition = fn->wrapper_for_trait->definition;
         sb_push_fn_name(sb, definition->defined_in_fn, definition->node.module);
