@@ -766,9 +766,6 @@ void check_expr_map(Compiler *c, Node_Map *map, Ref_Kind ref, bool *is_ref_valid
 
 void check_expr_enum(Compiler *c, Node_Enum *enumm) {
     Node *n = (Node *) enumm;
-    if (!enumm->original) {
-        enumm->original = enumm;
-    }
 
     Type_Enum spec = {.underlying = TYPE_INT, .definition = enumm};
     Type      underlying = {.kind = spec.underlying};

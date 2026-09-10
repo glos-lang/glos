@@ -522,24 +522,8 @@ bool type_eq(Type a, Type b) {
         return type_eq(*as->return_type, *bs->return_type);
     }
 
-    case TYPE_ENUM: {
-        Node_Enum *ae = a.spec.enumm.definition;
-        Node_Enum *be = b.spec.enumm.definition;
-        if (ae == be) {
-            return true;
-        }
-
-        if (ae->original == be->original) {
-            ll_foreach2(a, b, &ae->values, &be->values) {
-                if (a->token.as.integer != b->token.as.integer) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        return false;
-    }
+    case TYPE_ENUM:
+        return (a.spec.enumm.definition == b.spec.enumm.definition);
 
     case TYPE_TRAIT:
         return type_trait_eq(a.spec.trait, b.spec.trait);
