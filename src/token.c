@@ -1,6 +1,6 @@
 #include "token.h"
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 const char *token_kind_to_cstr(Token_Kind kind) {
     switch (kind) {
     case TOKEN_EOF:
@@ -244,6 +244,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_DIRECTIVE_CALLER_LOCATION:
         return "'#caller_location'";
 
+    case TOKEN_DIRECTIVE_NOT_FORMATTER:
+        return "'#not_formatter'";
+
     case TOKEN_DIRECTIVE_MAIN:
         return "'#main'";
 
@@ -285,7 +288,7 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     }
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 Power token_kind_to_power(Token_Kind kind) {
     switch (kind) {
     case TOKEN_DOT:

@@ -823,7 +823,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1145,12 +1145,57 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->body = parse_block(p, next_token(p), true);
+                token = peek_token(p);
+                if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                    p->state.peeked = false;
+                    fn->is_not_formatter = true;
+                }
             } else {
-                if (fn->is_method && !p->state.in_extern) {
+                if (p->state.in_extern) {
+                    token = peek_token(p);
+                    if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                        p->state.peeked = false;
+                        fn->is_not_formatter = true;
+                    }
+                } else if (fn->is_method) {
+                    error_node(EK_ERROR, (Node *) fn, "A method must have a body");
+
                     Node_Define *define = (Node_Define *) fn->args.head;
                     assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-                    error_node(EK_ERROR, (Node *) fn, "A method must have a body");
                     error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+
+                    token = peek_token(p);
+                    if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                        p->state.peeked = false;
+                        error_token(
+                            EK_NOTE,
+                            token,
+                            "The %s directive here marks the end of this method",
+                            token_kind_to_cstr(token.kind));
+
+                        const Token ahead = peek_token(p);
+                        if (ahead.kind == TOKEN_LBRACE && !ahead.newline) {
+                            afprintf(
+                                stderr,
+                                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                                "    There exists a %s after this, which might be the body of the method.\n"
+                                "    If that was your intention, then put the %s at the end of the body.\n"
+                                "\n"
+                                "    Here is an example:\n\n",
+                                token_kind_to_cstr(ahead.kind),
+                                token_kind_to_cstr(token.kind));
+
+                            // TODO: When 'Writer' is moved to a differnt module, update this
+                            afprintf(
+                                stderr,
+                                ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                                "        format :: (this: &Your_Type, w: Writer, nested: bool) {\n"
+                                "            // Body\n"
+                                "        } #not_formatter\n"
+                                "\n");
+                        }
+                    }
+
                     exit(1);
                 }
 

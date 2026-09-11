@@ -2,7 +2,6 @@
 #include "basic.h"
 #include "compiler.h"
 #include "contract.h"
-#include "error.h"
 #include "node.h"
 
 Const_Value get_platform(Compiler *c, Type *type) {

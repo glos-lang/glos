@@ -207,6 +207,10 @@ static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c,
         return NULL;
     }
 
+    if (method->is_not_formatter) {
+        return NULL;
+    }
+
     assert(type_kind_eq(method->node.type, TYPE_FN));
     const Type_Fn *method_spec = method->node.type.spec.fn;
     assert(method_spec->args_count);

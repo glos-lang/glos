@@ -1,0 +1,11 @@
+Foo :: struct {
+    x: s64
+}
+
+format :: (this: &Foo, w: Writer, nested: bool) {
+    wprint(w, this.x)
+} #not_formatter
+
+main :: () {
+    println(Foo {69})
+}

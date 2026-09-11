@@ -1,7 +1,7 @@
 #include "../error.h"
 #include "checker.h"
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 SV token_kind_to_operator_method_name(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -684,7 +684,7 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     }
 }
 
-static void show_explanation_about_custom_formatter(Node_Fn *fn, Type receiver) {
+static void show_explanation_about_custom_formatter(const Node_Fn *fn, Type receiver) {
     error_token(
         EK_ERROR,
         fn->defined_as->node.token,
@@ -699,6 +699,23 @@ static void show_explanation_about_custom_formatter(Node_Fn *fn, Type receiver) 
         ANSI_COLOR_MAGENTA | ANSI_BOLD,
         "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
         type_to_cstr_raw(receiver));
+}
+
+static void show_explanation_about_the_not_formatter_directive(const Node_Fn *fn) {
+    if (fn->body) {
+        assert(fn->body->kind == NODE_BLOCK);
+        error_token_begin(EK_NOTE, ((Node_Block *) fn->body)->end);
+    } else if (fn->returns.tail) {
+        error_node_begin(EK_NOTE, fn->returns.tail);
+    } else {
+        error_token_begin(EK_NOTE, fn->args_end_token);
+    }
+
+    fprintf(
+        stderr,
+        "If this method is not meant to be a formatter, then add the %s directive after this",
+        token_kind_to_cstr(TOKEN_DIRECTIVE_NOT_FORMATTER));
+    error_finalize();
 }
 
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
@@ -740,9 +757,8 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
 
 error:
     show_explanation_about_custom_formatter(fn, receiver);
+    show_explanation_about_the_not_formatter_directive(fn);
     exit(c, 1);
-
-    // TODO: A way to turn this off
 }
 
 void define_orderless_methods(Compiler *c) {
@@ -864,11 +880,12 @@ void define_orderless_methods(Compiler *c) {
             error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
         }
 
-        if (sv_eq(name, SV_Lit("format"))) {
+        if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
             ll_foreach(it, &fn->polymorphs) {
                 if (it->arg_index) {
                     show_explanation_about_custom_formatter(fn, receiver_type);
                     error_node(EK_NOTE, (Node *) it, "Cannot have polymorphic parameters after the first argument");
+                    show_explanation_about_the_not_formatter_directive(fn);
                     exit(c, 1);
                 }
             }
