@@ -211,6 +211,7 @@ void check_signature_of_binary_comparison_operator(Compiler *c, Node_Fn *fn, con
 void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
+void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 
 void define_orderless_methods(Compiler *c);
 

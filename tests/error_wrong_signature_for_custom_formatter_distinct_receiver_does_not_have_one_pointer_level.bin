@@ -1,0 +1,13 @@
+EXIT 1
+STDOUT 0
+
+STDERR 315
+tests/error_wrong_signature_for_custom_formatter_distinct_receiver_does_not_have_one_pointer_level.glos:2:1: Error: The method 'format' is special because it implements a custom formatter
+
+    format :: (this: Foo) {}
+
+    It should have this signature:
+
+        format :: (this: &Foo, w: Writer, nested: bool) {}
+
+

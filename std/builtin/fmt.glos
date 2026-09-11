@@ -164,6 +164,11 @@ write_quoted_char :: (w: Writer, ch: char, quote: char) {
 }
 
 write_value :: (w: Writer, a: Any, nested: bool) {
+    if a.type != null && a.type.format != null {
+        a.type.format(a.data, w, nested)
+        return
+    }
+
     if a.type == Type {
         write_type(w, *&Type(a.data))
         return

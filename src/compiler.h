@@ -70,6 +70,11 @@ typedef struct {
     bool  is_method;
 } Monomorphizing_Site;
 
+typedef struct {
+    LLVMValueRef value;
+    Node_Fn     *format;
+} Type_Info;
+
 typedef enum {
     O0,
     O1,
@@ -169,7 +174,7 @@ typedef struct {
 
     HT(const char *, LLVMMetadataRef) llvm_debug_files;
 
-    HT(Type, LLVMValueRef) type_info_cache;
+    HT(Type, Type_Info) type_info_cache;
 
     // Dynamic_Array_Or_Map :: struct {
     //     data:     rawptr

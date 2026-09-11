@@ -16,11 +16,15 @@ static void compile_type_info_init(Compiler *c, Type_Info_Compiler *tic, Type *t
     {
         tic->type_info = ht_get(&c->type_info_cache, *type);
         if (tic->type_info) {
-            tic->done = *tic->type_info;
-            return;
+            if (tic->type_info->value) {
+                tic->done = tic->type_info->value;
+                return;
+            }
+        } else {
+            tic->type_info = ht_set(&c->type_info_cache, *type, (Type_Info) {0});
         }
-
-        tic->type_info = ht_set(&c->type_info_cache, *type, LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, ""));
+        assert(tic->type_info);
+        tic->type_info->value = LLVMAddGlobal(c->llvm_module, c->type_info_type.llvm, "");
     }
 
     tic->ti_fields[tic->ti_fields_iota++] = LLVMConstInt(
@@ -318,15 +322,17 @@ static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *
     tic->ti_fields[tic->ti_fields_iota++] =
         LLVMConstStructInContext(c->llvm_context, tic->tiv_fields, tic->tiv_fields_iota, false);
 
-    LLVMValueRef *format = &tic->ti_fields[tic->ti_fields_iota++];
-    *format = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+    tic->ti_fields[tic->ti_fields_iota++] = //
+        tic->type_info->format              //
+            ? compile_fn(c, tic->type_info->format)
+            : LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
 
     LLVMValueRef real = compile_const_value_into_memory(
         c, LLVMConstStructInContext(c->llvm_context, tic->ti_fields, tic->ti_fields_iota, false));
 
-    LLVMReplaceAllUsesWith(*tic->type_info, real);
-    LLVMDeleteGlobal(*tic->type_info);
-    *tic->type_info = real;
+    LLVMReplaceAllUsesWith(tic->type_info->value, real);
+    LLVMDeleteGlobal(tic->type_info->value);
+    tic->type_info->value = real;
     tic->done = real;
     return real;
 }

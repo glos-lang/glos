@@ -42,7 +42,7 @@ Type_Info :: struct {
         Type_Info_String
     }
 
-    format: rawptr
+    format: (ptr: rawptr, w: Writer, nested: bool)
 }
 
 Type_Info_Boolean :: struct {}

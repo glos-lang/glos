@@ -418,8 +418,7 @@ static void error_operator_method_wrong_signature(Token name, OMS oms, const Typ
         SV_Arg(name.sv),
         oms == OMS_RANGE ? "iterator" : "operator");
 
-    ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
-    fprintf(stderr, "    It should have this signature:\n\n");
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
     pretty_print_oms(name.sv, oms, receiver, true);
 }
 
@@ -683,6 +682,63 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
             type_to_cstr(fn_spec->returns[fn_spec->returns_count - 1]));
         exit(c, 1);
     }
+}
+
+void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
+    Type receiver = fn_spec->args[0].type;
+    if (receiver.distinct) {
+        receiver.ref -= receiver.distinct->node.type.ref;
+    }
+
+    if (receiver.ref != 1) {
+        goto error;
+    }
+
+    if (fn_spec->args_count != 3) {
+        goto error;
+    }
+
+    assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
+    assert(type_kind_eq(c->type_info_type.spec.structt->fields[4].type, TYPE_FN));
+    const Type_Fn *expected_spec = c->type_info_type.spec.structt->fields[4].type.spec.fn;
+
+    assert(fn_spec->args_count == expected_spec->args_count);
+    for (size_t i = 1; i < fn_spec->args_count; i++) {
+        if (!type_eq(fn_spec->args[i].type, expected_spec->args[i].type)) {
+            goto error;
+        }
+    }
+
+    if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
+        goto error;
+    }
+
+    if (!c->type_info_cache.hasheq) {
+        c->type_info_cache.hasheq = ht_hasheq_type;
+    }
+
+    receiver.ref--;
+    ht_set(&c->type_info_cache, receiver, (Type_Info) {.format = fn});
+    return;
+
+error:
+    error_token(
+        EK_ERROR,
+        fn->defined_as->node.token,
+        "The method '" SV_Fmt "' is special because it implements a custom formatter",
+        SV_Arg(fn->defined_as->node.token.sv));
+
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
+
+    receiver.ref = (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1;
+    afprintf(
+        stderr,
+        ANSI_COLOR_MAGENTA | ANSI_BOLD,
+        "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
+        type_to_cstr_raw(receiver));
+    exit(c, 1);
+
+    // TODO: A way to turn this off
 }
 
 void define_orderless_methods(Compiler *c) {

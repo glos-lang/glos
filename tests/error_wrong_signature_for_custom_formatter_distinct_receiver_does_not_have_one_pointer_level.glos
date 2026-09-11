@@ -1,0 +1,2 @@
+Foo    :: distinct &s64
+format :: (this: Foo) {}

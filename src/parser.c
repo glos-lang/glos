@@ -155,11 +155,13 @@ static void expect_stmt_terminator(Parser *p) {
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
-static Node *parse_block(Parser *p, Token token) {
+static Node *parse_block(Parser *p, Token token, bool start_new_block) {
     Node_Block *block_current_save = p->state.block_current;
 
     Node_Block *block = (Node_Block *) node_alloc(p->module_current, NODE_BLOCK, token);
-    p->state.block_current = block;
+    if (start_new_block) {
+        p->state.block_current = block;
+    }
 
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
@@ -256,7 +258,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
         const bool after_private_save = p->state.after_private;
         if (token.kind == TOKEN_LBRACE) {
             its = ITS_NO;
-            iff->consequence = parse_block(p, token);
+            iff->consequence = parse_block(p, token, !is_compile_time);
         } else {
             its = ITS_YES;
             token = peek_token(p);
@@ -288,7 +290,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
                 }
 
                 if (token.kind == TOKEN_LBRACE) {
-                    iff->antecedence = parse_block(p, token);
+                    iff->antecedence = parse_block(p, token, !is_compile_time);
                 } else {
                     iff->antecedence = parse_if(p, token, is_compile_time, its);
                 }
@@ -347,7 +349,7 @@ static Node *parse_for(Parser *p, Token token) {
     p->state.in_loop = true;
     {
         token = expect_token(p, TOKEN_LBRACE);
-        forr->body = parse_block(p, token);
+        forr->body = parse_block(p, token, true);
     }
     p->state.in_loop = inside_loop_save;
     return (Node *) forr;
@@ -1142,7 +1144,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     exit(1);
                 }
 
-                fn->body = parse_block(p, next_token(p));
+                fn->body = parse_block(p, next_token(p), true);
             } else {
                 if (fn->is_method && !p->state.in_extern) {
                     Node_Define *define = (Node_Define *) fn->args.head;
@@ -1881,7 +1883,7 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_LBRACE:
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        node = parse_block(p, token);
+        node = parse_block(p, token, true);
         break;
 
     case TOKEN_IF:

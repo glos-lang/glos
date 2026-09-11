@@ -66,8 +66,8 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type);
 typedef struct {
     Type *type;
 
-    size_t        variant_index;
-    LLVMValueRef *type_info;
+    size_t     variant_index;
+    Type_Info *type_info;
 
     LLVMValueRef ti_fields[5];
     size_t       ti_fields_iota;
