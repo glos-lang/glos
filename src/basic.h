@@ -273,10 +273,10 @@ bool ht_iter_impl(
 
 // Hasher
 typedef struct {
-    u64 n;
+    u64 hash;
+    u64 count;
 } Hasher;
 
-void hasher_init(Hasher *h);
 void hasher_add_bytes(Hasher *h, const void *data, size_t count);
 void hasher_add_float(Hasher *h, double f);
 u64  hasher_finish(Hasher h);

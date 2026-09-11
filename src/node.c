@@ -833,7 +833,6 @@ u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
     }
 
     Hasher h = {0};
-    hasher_init(&h);
     hasher_add_type(&h, a);
     return hasher_finish(h);
 }

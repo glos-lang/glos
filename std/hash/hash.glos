@@ -1,16 +1,30 @@
 Hasher :: struct {
-    n: u64
-}
-
-init :: (this: &Hasher) {
-    this.n = 0xCBF2_9CE4_8422_2325
+    hash:  u64
+    count: u64
 }
 
 bytes :: (this: &Hasher, bytes: []char) {
-    for _, c := range bytes {
-        this.n ^= u64(c)
-        this.n *= 0x100_0000_01B3
+    HASHER_FNV_PRIME :: 0x100_0000_01B3
+
+    hash := this.hash
+    data := bytes.data
+    left := bytes.count
+    for left >= 8 {
+        hash ^= *(&u64)(data)
+        hash *= HASHER_FNV_PRIME
+        data += &char(8)
+        left -= 8
     }
+
+    for left > 0 {
+        hash ^= u64(*data)
+        hash *= HASHER_FNV_PRIME
+        data += &char(1)
+        left -= 1
+    }
+
+    this.hash = hash
+    this.count += u64(bytes.count)
 }
 
 float :: (this: &Hasher, f: f64) {
@@ -20,10 +34,11 @@ float :: (this: &Hasher, f: f64) {
 }
 
 finish :: (this: Hasher) -> u64 {
-    this.n ^= this.n >> 30
-    this.n *= 0xBF58_476D_1CE4_E5B9
-    this.n ^= this.n >> 27
-    this.n *= 0x94D0_49BB_1331_11EB
-    this.n ^= this.n >> 31
-    return this.n
+    x := this.hash ^ this.count
+    x ^= x >> 30
+    x *= 0xBF58_476D_1CE4_E5B9
+    x ^= x >> 27
+    x *= 0x94D0_49BB_1331_11EB
+    x ^= x >> 31
+    return x
 }

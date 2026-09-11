@@ -107,7 +107,6 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, k
     {
         data := rawptr(&key)
         hasher: Hasher
-        hasher.init()
         for i := 0; i < info.count; i += 1 {
             it := info[i]
             if it.kind == {

@@ -336,15 +336,34 @@ bool ht_iter_impl(
 }
 
 // Hasher
-void hasher_init(Hasher *h) {
-    h->n = 0xCBF29CE484222325;
-}
+#define HASHER_FNV_PRIME 0x100000001B3
 
 void hasher_add_bytes(Hasher *h, const void *data, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        h->n ^= ((uint8_t *) data)[i];
-        h->n *= 0x100000001B3;
+    const uint8_t *p = (const uint8_t *) data;
+
+    u64    hash = h->hash;
+    size_t left = count;
+    while (left >= 8) {
+        // This is needed to not invoke UB regarding unaligned alias.
+        // I swear, the C standardization committee is a bunch of masturbating retards.
+        u64 x;
+        memcpy(&x, p, sizeof(x));
+
+        hash ^= x;
+        hash *= HASHER_FNV_PRIME;
+        p += 8;
+        left -= 8;
     }
+
+    while (left > 0) {
+        hash ^= *p;
+        hash *= HASHER_FNV_PRIME;
+        p += 1;
+        left -= 1;
+    }
+
+    h->hash = hash;
+    h->count += count;
 }
 
 void hasher_add_float(Hasher *h, double f) {
@@ -358,12 +377,13 @@ void hasher_add_float(Hasher *h, double f) {
 }
 
 u64 hasher_finish(Hasher h) {
-    h.n ^= h.n >> 30;
-    h.n *= 0xBF58476D1CE4E5B9;
-    h.n ^= h.n >> 27;
-    h.n *= 0x94D049BB133111EB;
-    h.n ^= h.n >> 31;
-    return h.n;
+    uint64_t x = h.hash ^ h.count;
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+    return x;
 }
 
 // String View

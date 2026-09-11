@@ -401,7 +401,6 @@ static u64 ht_hasheq_monomorph_spec(const void *va, const void *vb, size_t n) {
     }
 
     Hasher h = {0};
-    hasher_init(&h);
     hasher_add_bytes(&h, &a.from, sizeof((void *) a.from));
     hasher_add_bytes(&h, &a.params_count, sizeof(a.params_count));
     for (size_t i = 0; i < a.params_count; i++) {
