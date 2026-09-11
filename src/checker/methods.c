@@ -201,6 +201,7 @@ typedef enum {
 } OMS;
 
 static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable) {
+    ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
     fprintf(stderr, "        %s" SV_Fmt " :: ", oms == OMS_RANGE ? "" : "operator ", SV_Arg(name));
 
     const char *T = NULL;
@@ -236,6 +237,7 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
     }
     fprintf(stderr, " {}\n\n");
 
+    ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
     if (oms == OMS_CMP && partial_comparison_acceptable) {
         fprintf(
             stderr,
@@ -249,10 +251,12 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
             "    Iteration can be by reference or by value. By default, when you implement an iterator, it only works by value.\n"
             "    However you can implement both semantics using the '#reference' directive.\n"
 
-            "\n"
+            "\n");
+
+        ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
+        fprintf(
+            stderr,
             "        range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}\n"
-            "\n"
-            "    Notice that now, the receiver is a pointer.\n"
             "\n"
             "        usage :: () {\n"
             "            iterable: Iterable\n"
@@ -265,9 +269,15 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
             "                // Here 'a' is by value and 'b' is by reference.\n"
             "            }\n"
             "        }\n"
-            "\n"
+            "\n");
 
-        );
+        ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
+        fprintf(
+            stderr,
+            "\n"
+            "    Notice that in the above example, the receiver of the iterator method is a pointer.\n\n");
+
+        ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
     }
 
     fprintf(
@@ -715,6 +725,8 @@ void define_orderless_methods(Compiler *c) {
                 fn->args.head,
                 "This argument is taken to be the receiver. Its type is %s",
                 type_to_cstr(receiver_type));
+
+            afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    This must be a pointer.\n\n");
             exit(c, 1);
         }
 

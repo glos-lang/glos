@@ -671,24 +671,14 @@ static Node *parse_define(
                 afprintf(
                     stderr,
                     ANSI_COLOR_YELLOW | ANSI_BOLD,
-                    "    This is the first argument in what looks to be a function. Normally this is perfectly valid and would define\n"
-                    "    the function as a method. However, this argument seems to be directly polymorphic, which is not allowed.\n"
-                    "\n"
-                    "    The receiver can have a polymorphic type, but the argument itself cannot be polymorphic.\n"
-                    "\n"
-                    "        foo :: (this: Foo(");
-                afprintf(stderr, ANSI_COLOR_BLUE | ANSI_BOLD, "$");
-                afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "T)) {}    ");
-                afprintf(stderr, ANSI_COLOR_GREEN | ANSI_BOLD, "// This is allowed\n");
+                    "    The receiver can have a polymorphic type, but cannot be polymorphic itself.\n"
+                    "\n");
 
-                afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "        bar :: (");
-                afprintf(stderr, ANSI_COLOR_BLUE | ANSI_BOLD, "$");
-                afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "this: Bar)    {}    ");
                 afprintf(
                     stderr,
-                    ANSI_COLOR_RED | ANSI_BOLD,
-                    "// This is not (Notice the difference in the position of the '$')\n");
-                afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "\n");
+                    ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                    "        foo :: (this: Foo($T)) {}    // This is allowed\n"
+                    "        bar :: ($this: Bar)    {}    // This is not (Notice the difference in the position of the '$')\n\n");
             }
         }
         exit(1);
@@ -1715,12 +1705,20 @@ static Node *parse_stmt(Parser *p) {
                 stderr,
                 ANSI_COLOR_YELLOW | ANSI_BOLD,
                 "    Try something like this:\n"
-                "\n"
-                "        %s" SV_Fmt " :: (this: T) {}\n"
-                "\n"
-                "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n",
+                "\n");
+
+            afprintf(
+                stderr,
+                ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                "        %s" SV_Fmt " :: (this: T) {}\n",
                 is_operator ? "operator " : "",
                 SV_Arg(name->token.sv));
+
+            afprintf(
+                stderr,
+                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                "\n"
+                "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n");
             exit(1);
         }
 
@@ -1735,12 +1733,20 @@ static Node *parse_stmt(Parser *p) {
                 stderr,
                 ANSI_COLOR_YELLOW | ANSI_BOLD,
                 "    The first argument of a method must be named 'this'. Try something like this:\n"
-                "\n"
-                "        %s" SV_Fmt " :: (this: T) {}\n"
-                "\n"
-                "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n",
+                "\n");
+
+            afprintf(
+                stderr,
+                ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                "        %s" SV_Fmt " :: (this: T) {}\n",
                 is_operator ? "operator " : "",
                 SV_Arg(name->token.sv));
+
+            afprintf(
+                stderr,
+                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                "\n"
+                "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n");
             exit(1);
         }
     } break;

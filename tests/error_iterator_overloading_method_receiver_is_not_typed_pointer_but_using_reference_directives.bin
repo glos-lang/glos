@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 520
+STDERR 549
 tests/error_iterator_overloading_method_receiver_is_not_typed_pointer_but_using_reference_directives.glos:2:38: Error: This iterator overload has reference semantics, yet the receiver is not a typed pointer
 
     range :: (this: Foo, state: &s64) -> #reference s64, bool {}
@@ -9,5 +9,7 @@ tests/error_iterator_overloading_method_receiver_is_not_typed_pointer_but_using_
 tests/error_iterator_overloading_method_receiver_is_not_typed_pointer_but_using_reference_directives.glos:2:11: Note: This argument is taken to be the receiver. Its type is 'Foo'
 
     range :: (this: Foo, state: &s64) -> #reference s64, bool {}
+
+    This must be a pointer.
 
 

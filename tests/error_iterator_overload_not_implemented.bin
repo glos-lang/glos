@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 1021
+STDERR 1062
 tests/error_iterator_overload_not_implemented.glos:2:15: Error: Iteration is not defined for 'f64'
 
     for range 0.0 {}
@@ -15,8 +15,6 @@ tests/error_iterator_overload_not_implemented.glos:2:15: Error: Iteration is not
 
         range :: (this: &Iterable, state: &Iterator) -> A, #reference B, bool {}
 
-    Notice that now, the receiver is a pointer.
-
         usage :: () {
             iterable: Iterable
             for a, b := range iterable {
@@ -28,6 +26,9 @@ tests/error_iterator_overload_not_implemented.glos:2:15: Error: Iteration is not
                 // Here 'a' is by value and 'b' is by reference.
             }
         }
+
+
+    Notice that in the above example, the receiver of the iterator method is a pointer.
 
     It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
 

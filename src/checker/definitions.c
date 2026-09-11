@@ -40,7 +40,7 @@ Node_Fn *get_main(Compiler *c) {
         error_standalone(EK_ERROR, "Function 'main' is not defined");
         afprintf(
             stderr,
-            ANSI_COLOR_YELLOW | ANSI_BOLD,
+            ANSI_COLOR_MAGENTA | ANSI_BOLD,
             "\n"
             "    main :: () {\n"
             "    }\n"
@@ -54,9 +54,17 @@ Node_Fn *get_main(Compiler *c) {
             stderr,
             ANSI_COLOR_YELLOW | ANSI_BOLD,
             "    Expected this:\n"
-            "\n"
+            "\n");
+
+        afprintf(
+            stderr,
+            ANSI_COLOR_MAGENTA | ANSI_BOLD,
             "        main :: () {\n"
-            "        }\n"
+            "        }\n");
+
+        afprintf(
+            stderr,
+            ANSI_COLOR_YELLOW | ANSI_BOLD,
             "\n"
             "    This enforcement improves the debugger experience, since the entry function is guaranteed\n"
             "    to have the link name of 'main.main'\n"
