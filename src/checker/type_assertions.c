@@ -195,7 +195,7 @@ void type_assert_type_or_Type(Compiler *c, const Node *n) {
     exit(c, 1);
 }
 
-static void register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Node_Struct *structt, Type_Info *rtti) {
+static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Node_Struct *structt) {
     Node *n = (Node *) structt;
     assert(structt->monomorphs.count);
 
@@ -204,7 +204,7 @@ static void register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Nod
 
     Node_Fn *method = get_method(c, spec, n->module);
     if (!method) {
-        return;
+        return NULL;
     }
 
     assert(type_kind_eq(method->node.type, TYPE_FN));
@@ -221,24 +221,29 @@ static void register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Nod
     const Type *expected = &method_spec->args[0].type;
     const Type  actual = type_with_ref(type_without_meta(n->type), expected->ref);
     infer_monomorph_parameters(c, &actual, expected, n, -1);
-
-    rtti->format = (Node_Fn *) monomorphize(c, (Node *) method, n);
-    assert(rtti->format->node.kind == NODE_FN);
+    Node *result = monomorphize(c, (Node *) method, n);
 
     c->monomorph_parameters.count = c->monomorph_parameters.begin;
     c->monomorph_parameters.begin = monomorph_parameters_begin_save;
     c->monomorphizing_site = monomorphizing_site_save;
+
+    assert(result->kind == NODE_FN);
+    return (Node_Fn *) result;
 }
 
 static_assert(COUNT_TYPES == 31, "");
 static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node *n, const Type *type) {
     assert(!type->is_meta);
+    if (!c->type_info_cache.hasheq) {
+        c->type_info_cache.hasheq = ht_hasheq_type;
+    }
+
     if (ht_get(&c->type_info_cache, *type)) {
         return;
     }
 
     // This will be called by the RTTI generator eventually anyway, so it is not wasteful.
-    Type_Info *rtti = ht_set(&c->type_info_cache, *type, (Type_Info) {0});
+    ht_set(&c->type_info_cache, *type, (Type_Info) {0});
     switch (type->kind) {
     case TYPE_BOOL:
     case TYPE_CHAR:
@@ -277,7 +282,11 @@ static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node 
     case TYPE_STRUCT: {
         const Type_Struct *spec = type->spec.structt;
         if (spec->definition->monomorphs.count) {
-            register_formatter_for_monomorphized_struct_in_rtti(c, spec->definition, rtti);
+            Node_Fn *format = register_formatter_for_monomorphized_struct_in_rtti(c, spec->definition);
+            if (format) {
+                // We are querying this from the hash map again, because the above function call might have modified it.
+                ht_get(&c->type_info_cache, *type)->format = format;
+            }
         }
 
         for (size_t i = 0; i < spec->fields_count; i++) {
