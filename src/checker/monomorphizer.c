@@ -886,8 +886,13 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
         Node **into = ht_get(&c->monomorph_intern, spec);
         if (into) {
             arena_reset(&default_arena, spec.param_types);
+
             n = *into;
-            monomorphization.into = n;
+            if (ref != n->type.ref) {
+                // TODO: I am not sure yet how valid this fix is.
+                assert(is_struct);
+                n = arena_clone(&default_arena, n, sizeof(Node_Struct));
+            }
             goto end;
         }
     }
@@ -1004,10 +1009,10 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
 
     monomorphization.into = n;
     if (is_complete) {
-        ht_set(&c->monomorph_intern, spec, monomorphization.into);
+        ht_set(&c->monomorph_intern, spec, n);
     }
-    da_push(&c->monomorphization_stack, monomorphization);
 
+    da_push(&c->monomorphization_stack, monomorphization);
     check_expr(c, n, REF_NONE);
     c->monomorphization_stack.count--;
 
@@ -1015,11 +1020,10 @@ end:
     n->type.ref = ref;
 
     if (is_struct) {
-        const Node *from = monomorphization.from;
-        const Node *into = monomorphization.into;
-        assert(type_meta_kind_eq(from->type, TYPE_STRUCT));
-        assert(type_meta_kind_eq(into->type, TYPE_STRUCT));
-        into->type.spec.structt->original_definition = from->type.spec.structt->original_definition;
+        // TODO: Does this need to be done for interned ones?
+        assert(type_meta_kind_eq(monomorphization.from->type, TYPE_STRUCT));
+        assert(type_meta_kind_eq(n->type, TYPE_STRUCT));
+        n->type.spec.structt->original_definition = monomorphization.from->type.spec.structt->original_definition;
     }
 
 #ifdef MONOMORPHIZATION_LOG

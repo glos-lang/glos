@@ -724,6 +724,8 @@ static void hasher_add_type_union(Hasher *h, const Type_Union *unionn) {
 }
 
 static void hasher_add_type_struct(Hasher *h, const Type_Struct *structt) {
+    // TODO: This will generate the same hash for different monomorphizations.
+    //       This will not break anything, but the performance will get degraded, so not an urgent fix.
     if (structt->definition->defined_as) {
         hasher_add_bytes(h, &structt->definition->defined_as, sizeof((void *) structt->definition->defined_as));
         return;

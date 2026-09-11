@@ -684,6 +684,23 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     }
 }
 
+static void show_explanation_about_custom_formatter(Node_Fn *fn, Type receiver) {
+    error_token(
+        EK_ERROR,
+        fn->defined_as->node.token,
+        "The method '" SV_Fmt "' is special because it implements a custom formatter",
+        SV_Arg(fn->defined_as->node.token.sv));
+
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
+
+    receiver.ref = (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1;
+    afprintf(
+        stderr,
+        ANSI_COLOR_MAGENTA | ANSI_BOLD,
+        "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
+        type_to_cstr_raw(receiver));
+}
+
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
     Type receiver = fn_spec->args[0].type;
     if (receiver.distinct) {
@@ -722,20 +739,7 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
     return;
 
 error:
-    error_token(
-        EK_ERROR,
-        fn->defined_as->node.token,
-        "The method '" SV_Fmt "' is special because it implements a custom formatter",
-        SV_Arg(fn->defined_as->node.token.sv));
-
-    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
-
-    receiver.ref = (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1;
-    afprintf(
-        stderr,
-        ANSI_COLOR_MAGENTA | ANSI_BOLD,
-        "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
-        type_to_cstr_raw(receiver));
+    show_explanation_about_custom_formatter(fn, receiver);
     exit(c, 1);
 
     // TODO: A way to turn this off
@@ -859,6 +863,17 @@ void define_orderless_methods(Compiler *c) {
         if (previous) {
             error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
         }
+
+        if (sv_eq(name, SV_Lit("format"))) {
+            ll_foreach(it, &fn->polymorphs) {
+                if (it->arg_index) {
+                    show_explanation_about_custom_formatter(fn, receiver_type);
+                    error_node(EK_NOTE, (Node *) it, "Cannot have polymorphic parameters after the first argument");
+                    exit(c, 1);
+                }
+            }
+        }
+
         ht_set(&c->methods_table, spec, fn);
     }
 
