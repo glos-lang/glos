@@ -1,0 +1,12 @@
+Foo :: struct($T: Type) {
+    x: T
+}
+
+foo :: (this: Foo($T)) -> Foo(s64) {
+    return {sizeof(T)}
+}
+
+main :: () {
+    println(Foo(bool)   {true}.foo())
+    println(Foo(string) {"Hello, world!"}.foo())
+}

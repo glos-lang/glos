@@ -1300,15 +1300,15 @@ void check_expr_call(Compiler *c, Node_Call *call) {
         }
 
         if (call->is_monomorphization_of_polymorphic_type) {
-            const size_t monomorph_parameters_begin_save = c->monomorph_parameters.begin;
-            c->monomorph_parameters.begin = c->monomorph_parameters.count;
+            assert(type_meta_kind_eq(*fn_type, TYPE_STRUCT));
+            Type_Struct *spec = fn_type->spec.structt;
+            if (spec->polymorphs_count) {
+                const size_t monomorph_parameters_begin_save = c->monomorph_parameters.begin;
+                c->monomorph_parameters.begin = c->monomorph_parameters.count;
 
-            const Monomorphizing_Site monomorphizing_site_save = c->monomorphizing_site;
-            c->monomorphizing_site.expr = (Node *) call;
-            c->monomorphizing_site.node = call->fn;
-
-            if (type_meta_kind_eq(*fn_type, TYPE_STRUCT)) {
-                Type_Struct *spec = fn_type->spec.structt;
+                const Monomorphizing_Site monomorphizing_site_save = c->monomorphizing_site;
+                c->monomorphizing_site.expr = (Node *) call;
+                c->monomorphizing_site.node = call->fn;
 
                 Node **parameters = arena_alloc(&temp_arena, spec->polymorphs_count * sizeof(*parameters));
                 Node  *excess_argument = NULL;
@@ -1490,16 +1490,13 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 }
 
                 arena_reset(&temp_arena, parameters);
-
                 call->fn = monomorphize(c, call->fn, (Node *) call);
-                n->type = call->fn->type;
 
                 c->monomorph_parameters.count = c->monomorph_parameters.begin;
                 c->monomorph_parameters.begin = monomorph_parameters_begin_save;
                 c->monomorphizing_site = monomorphizing_site_save;
-            } else {
-                unreachable();
             }
+            n->type = call->fn->type;
         } else {
             call->is_type_cast = true;
             n->type = type_without_meta(*fn_type);
