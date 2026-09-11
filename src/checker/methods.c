@@ -777,7 +777,16 @@ void define_orderless_methods(Compiler *c) {
             error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
             exit(c, 1);
         }
+
         const SV name = fn->defined_as->node.token.sv;
+        if (fn->is_not_formatter && !sv_eq(name, SV_Lit("format"))) {
+            error_token(
+                EK_ERROR,
+                fn->not_formatter_token,
+                "The %s directive can only be applied to a method named 'format'",
+                token_kind_to_cstr(fn->not_formatter_token.kind));
+            exit(c, 1);
+        }
 
         check_expr(c, define->type, REF_NONE);
         type_assert_type(c, define->type);

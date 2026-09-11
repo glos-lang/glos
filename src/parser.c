@@ -1145,58 +1145,47 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->body = parse_block(p, next_token(p), true);
-                token = peek_token(p);
-                if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
-                    p->state.peeked = false;
-                    fn->is_not_formatter = true;
-                }
             } else {
-                if (p->state.in_extern) {
+                if (!p->state.in_extern) {
                     token = peek_token(p);
-                    if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
-                        p->state.peeked = false;
-                        fn->is_not_formatter = true;
-                    }
-                } else if (fn->is_method) {
-                    error_node(EK_ERROR, (Node *) fn, "A method must have a body");
+                    if (fn->is_method) {
+                        Node_Define *define = (Node_Define *) fn->args.head;
+                        assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+                        error_node(EK_ERROR, (Node *) fn, "A method must have a body");
+                        error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
 
-                    Node_Define *define = (Node_Define *) fn->args.head;
-                    assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-                    error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
-
-                    token = peek_token(p);
-                    if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
-                        p->state.peeked = false;
-                        error_token(
-                            EK_NOTE,
-                            token,
-                            "The %s directive here marks the end of this method",
-                            token_kind_to_cstr(token.kind));
-
-                        const Token ahead = peek_token(p);
-                        if (ahead.kind == TOKEN_LBRACE && !ahead.newline) {
-                            afprintf(
-                                stderr,
-                                ANSI_COLOR_YELLOW | ANSI_BOLD,
-                                "    There exists a %s after this, which might be the body of the method.\n"
-                                "    If that was your intention, then put the %s at the end of the body.\n"
-                                "\n"
-                                "    Here is an example:\n\n",
-                                token_kind_to_cstr(ahead.kind),
+                        if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                            p->state.peeked = false;
+                            error_token(
+                                EK_NOTE,
+                                token,
+                                "The %s directive here marks the end of this method",
                                 token_kind_to_cstr(token.kind));
 
-                            // TODO: When 'Writer' is moved to a differnt module, update this
-                            afprintf(
-                                stderr,
-                                ANSI_COLOR_MAGENTA | ANSI_BOLD,
-                                "        format :: (this: &Your_Type, w: Writer, nested: bool) {\n"
-                                "            // Body\n"
-                                "        } #not_formatter\n"
-                                "\n");
-                        }
-                    }
+                            const Token ahead = peek_token(p);
+                            if (ahead.kind == TOKEN_LBRACE && !ahead.newline) {
+                                afprintf(
+                                    stderr,
+                                    ANSI_COLOR_YELLOW | ANSI_BOLD,
+                                    "    There exists a %s after this, which might be the body of the method.\n"
+                                    "    If that was your intention, then put the %s at the end of the body.\n"
+                                    "\n"
+                                    "    Here is an example:\n\n",
+                                    token_kind_to_cstr(ahead.kind),
+                                    token_kind_to_cstr(token.kind));
 
-                    exit(1);
+                                afprintf(
+                                    stderr,
+                                    ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                                    "        format :: (this: Receiver, a1: Arg1, a2: Arg2, ...) -> Return1, Return2, ... {\n"
+                                    "            // Body\n"
+                                    "        } #not_formatter\n"
+                                    "\n");
+                            }
+                        }
+
+                        exit(1);
+                    }
                 }
 
                 if (fn->polymorphs.count) {
@@ -1205,6 +1194,27 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->is_type = true;
+            }
+
+            token = peek_token(p);
+            if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                if (!fn->is_method) {
+                    error_token(
+                        EK_ERROR,
+                        token,
+                        "The %s directive can only be applied to a method",
+                        token_kind_to_cstr(token.kind));
+
+                    afprintf(
+                        stderr,
+                        ANSI_COLOR_YELLOW | ANSI_BOLD,
+                        "    A function literal whose first argument is named 'this' is considered a method.\n\n");
+                    exit(1);
+                }
+
+                p->state.peeked = false;
+                fn->is_not_formatter = true;
+                fn->not_formatter_token = token;
             }
 
             p->state.fn_current = fn->outer_fn;

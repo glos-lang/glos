@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 838
+STDERR 861
 tests/error_not_formatter_directive_has_to_be_used_at_end_of_method_body.glos:1:11: Error: A method must have a body
 
     format :: (this: Foo) #not_formatter {}
@@ -19,7 +19,7 @@ tests/error_not_formatter_directive_has_to_be_used_at_end_of_method_body.glos:1:
 
     Here is an example:
 
-        format :: (this: &Your_Type, w: Writer, nested: bool) {
+        format :: (this: Receiver, a1: Arg1, a2: Arg2, ...) -> Return1, Return2, ... {
             // Body
         } #not_formatter
 

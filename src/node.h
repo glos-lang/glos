@@ -797,6 +797,7 @@ struct Node_Fn {
 
     Token inline_token;
     Token noreturn_token;
+    Token not_formatter_token;
 
     // Foo :: trait {
     //     foo: () // <- This function is a trait method type

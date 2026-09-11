@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 482
+tests/error_the_not_formatter_directive_ends_the_method.glos:1:11: Error: A method must have a body
+
+    format :: (this: Foo) #not_formatter
+
+tests/error_the_not_formatter_directive_ends_the_method.glos:1:12: Note: This argument is taken to be the receiver
+
+    format :: (this: Foo) #not_formatter
+
+tests/error_the_not_formatter_directive_ends_the_method.glos:1:23: Note: The '#not_formatter' directive here marks the end of this method
+
+    format :: (this: Foo) #not_formatter
+
+

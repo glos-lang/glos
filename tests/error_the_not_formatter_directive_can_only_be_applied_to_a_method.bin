@@ -1,0 +1,11 @@
+EXIT 1
+STDOUT 0
+
+STDERR 272
+tests/error_the_not_formatter_directive_can_only_be_applied_to_a_method.glos:1:14: Error: The '#not_formatter' directive can only be applied to a method
+
+    foo :: () {} #not_formatter
+
+    A function literal whose first argument is named 'this' is considered a method.
+
+
