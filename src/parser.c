@@ -155,11 +155,13 @@ static void expect_stmt_terminator(Parser *p) {
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch);
 static Node *parse_stmt(Parser *p);
 
-static Node *parse_block(Parser *p, Token token) {
+static Node *parse_block(Parser *p, Token token, bool start_new_block) {
     Node_Block *block_current_save = p->state.block_current;
 
     Node_Block *block = (Node_Block *) node_alloc(p->module_current, NODE_BLOCK, token);
-    p->state.block_current = block;
+    if (start_new_block) {
+        p->state.block_current = block;
+    }
 
     while (!read_token(p, TOKEN_RBRACE)) {
         nodes_push(&block->body, parse_stmt(p));
@@ -256,7 +258,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
         const bool after_private_save = p->state.after_private;
         if (token.kind == TOKEN_LBRACE) {
             its = ITS_NO;
-            iff->consequence = parse_block(p, token);
+            iff->consequence = parse_block(p, token, !is_compile_time);
         } else {
             its = ITS_YES;
             token = peek_token(p);
@@ -288,7 +290,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
                 }
 
                 if (token.kind == TOKEN_LBRACE) {
-                    iff->antecedence = parse_block(p, token);
+                    iff->antecedence = parse_block(p, token, !is_compile_time);
                 } else {
                     iff->antecedence = parse_if(p, token, is_compile_time, its);
                 }
@@ -347,7 +349,7 @@ static Node *parse_for(Parser *p, Token token) {
     p->state.in_loop = true;
     {
         token = expect_token(p, TOKEN_LBRACE);
-        forr->body = parse_block(p, token);
+        forr->body = parse_block(p, token, true);
     }
     p->state.in_loop = inside_loop_save;
     return (Node *) forr;
@@ -821,7 +823,7 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1142,14 +1144,48 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     exit(1);
                 }
 
-                fn->body = parse_block(p, next_token(p));
+                fn->body = parse_block(p, next_token(p), true);
             } else {
-                if (fn->is_method && !p->state.in_extern) {
-                    Node_Define *define = (Node_Define *) fn->args.head;
-                    assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-                    error_node(EK_ERROR, (Node *) fn, "A method must have a body");
-                    error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
-                    exit(1);
+                if (!p->state.in_extern) {
+                    token = peek_token(p);
+                    if (fn->is_method) {
+                        Node_Define *define = (Node_Define *) fn->args.head;
+                        assert(define && define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+                        error_node(EK_ERROR, (Node *) fn, "A method must have a body");
+                        error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
+
+                        if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                            p->state.peeked = false;
+                            error_token(
+                                EK_NOTE,
+                                token,
+                                "The %s directive here marks the end of this method",
+                                token_kind_to_cstr(token.kind));
+
+                            const Token ahead = peek_token(p);
+                            if (ahead.kind == TOKEN_LBRACE && !ahead.newline) {
+                                afprintf(
+                                    stderr,
+                                    ANSI_COLOR_YELLOW | ANSI_BOLD,
+                                    "    There exists a %s after this, which might be the body of the method.\n"
+                                    "    If that was your intention, then put the %s at the end of the body.\n"
+                                    "\n"
+                                    "    Here is an example:\n\n",
+                                    token_kind_to_cstr(ahead.kind),
+                                    token_kind_to_cstr(token.kind));
+
+                                afprintf(
+                                    stderr,
+                                    ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                                    "        format :: (this: Receiver, a1: Arg1, a2: Arg2, ...) -> Return1, Return2, ... {\n"
+                                    "            // Body\n"
+                                    "        } #not_formatter\n"
+                                    "\n");
+                            }
+                        }
+
+                        exit(1);
+                    }
                 }
 
                 if (fn->polymorphs.count) {
@@ -1158,6 +1194,27 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 }
 
                 fn->is_type = true;
+            }
+
+            token = peek_token(p);
+            if (token.kind == TOKEN_DIRECTIVE_NOT_FORMATTER && !token.newline) {
+                if (!fn->is_method) {
+                    error_token(
+                        EK_ERROR,
+                        token,
+                        "The %s directive can only be applied to a method",
+                        token_kind_to_cstr(token.kind));
+
+                    afprintf(
+                        stderr,
+                        ANSI_COLOR_YELLOW | ANSI_BOLD,
+                        "    A function literal whose first argument is named 'this' is considered a method.\n\n");
+                    exit(1);
+                }
+
+                p->state.peeked = false;
+                fn->is_not_formatter = true;
+                fn->not_formatter_token = token;
             }
 
             p->state.fn_current = fn->outer_fn;
@@ -1881,7 +1938,7 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_LBRACE:
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
-        node = parse_block(p, token);
+        node = parse_block(p, token, true);
         break;
 
     case TOKEN_IF:

@@ -1,0 +1,26 @@
+EXIT 1
+STDOUT 0
+
+STDERR 861
+tests/error_not_formatter_directive_has_to_be_used_at_end_of_method_body.glos:1:11: Error: A method must have a body
+
+    format :: (this: Foo) #not_formatter {}
+
+tests/error_not_formatter_directive_has_to_be_used_at_end_of_method_body.glos:1:12: Note: This argument is taken to be the receiver
+
+    format :: (this: Foo) #not_formatter {}
+
+tests/error_not_formatter_directive_has_to_be_used_at_end_of_method_body.glos:1:23: Note: The '#not_formatter' directive here marks the end of this method
+
+    format :: (this: Foo) #not_formatter {}
+
+    There exists a '{' after this, which might be the body of the method.
+    If that was your intention, then put the '#not_formatter' at the end of the body.
+
+    Here is an example:
+
+        format :: (this: Receiver, a1: Arg1, a2: Arg2, ...) -> Return1, Return2, ... {
+            // Body
+        } #not_formatter
+
+

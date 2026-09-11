@@ -1,0 +1,3 @@
+Foo    :: struct {}
+format :: (this: Foo) {} #not_formatter
+main   :: () {}

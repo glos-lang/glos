@@ -1,0 +1,12 @@
+Vec2 :: struct($T: Type) {
+    x, y: T
+}
+
+format :: (this: &Vec2($T), w: Writer, nested: bool) {
+    wprint(w, "Vec2(\{this.x}, \{this.y})")
+}
+
+main :: () {
+    println(Vec2(s32) {69, 420})
+    println(Vec2(f32) {13.37, 800.85})
+}

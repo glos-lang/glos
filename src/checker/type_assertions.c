@@ -1,5 +1,6 @@
 #include "../error.h"
 #include "checker.h"
+#include <assert.h>
 
 bool check_that_type_is_known_noexit(const Node *n) {
     if (type_is_unknown(n->type)) {
@@ -194,7 +195,134 @@ void type_assert_type_or_Type(Compiler *c, const Node *n) {
     exit(c, 1);
 }
 
+static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Node_Struct *structt) {
+    Node *n = (Node *) structt;
+    assert(structt->monomorphs.count);
+
+    Method_Spec spec = {0};
+    assert(get_method_spec(c, n, type_without_meta(n->type), SV_Lit("format"), &spec, NULL));
+
+    Node_Fn *method = get_method(c, spec, n->module);
+    if (!method) {
+        return NULL;
+    }
+
+    if (method->is_not_formatter) {
+        return NULL;
+    }
+
+    assert(type_kind_eq(method->node.type, TYPE_FN));
+    const Type_Fn *method_spec = method->node.type.spec.fn;
+    assert(method_spec->args_count);
+
+    const size_t monomorph_parameters_begin_save = c->monomorph_parameters.begin;
+    c->monomorph_parameters.begin = c->monomorph_parameters.count;
+
+    const Monomorphizing_Site monomorphizing_site_save = c->monomorphizing_site;
+    c->monomorphizing_site.expr = n;
+    c->monomorphizing_site.node = (Node *) method;
+
+    const Type *expected = &method_spec->args[0].type;
+    const Type  actual = type_with_ref(type_without_meta(n->type), expected->ref);
+    infer_monomorph_parameters(c, &actual, expected, n, -1);
+    Node *result = monomorphize(c, (Node *) method, n);
+
+    c->monomorph_parameters.count = c->monomorph_parameters.begin;
+    c->monomorph_parameters.begin = monomorph_parameters_begin_save;
+    c->monomorphizing_site = monomorphizing_site_save;
+
+    assert(result->kind == NODE_FN);
+    return (Node_Fn *) result;
+}
+
+static_assert(COUNT_TYPES == 31, "");
+static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node *n, const Type *type) {
+    assert(!type->is_meta);
+    if (!c->type_info_cache.hasheq) {
+        c->type_info_cache.hasheq = ht_hasheq_type;
+    }
+
+    if (ht_get(&c->type_info_cache, *type)) {
+        return;
+    }
+
+    // This will be called by the RTTI generator eventually anyway, so it is not wasteful.
+    ht_set(&c->type_info_cache, *type, (Type_Info) {0});
+    switch (type->kind) {
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_F32:
+    case TYPE_F64:
+
+    case TYPE_INT:
+    case TYPE_FLOAT:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+
+    case TYPE_ENUM:
+    case TYPE_TRAIT:
+    case TYPE_STRING:
+        // For these types, we have to do the mbappe special.
+        return;
+
+    case TYPE_UNION: {
+        const Type_Union *spec = type->spec.unionn;
+        for (size_t i = 0; i < spec->variants_count; i++) {
+            register_formatter_for_monomorphized_type_in_rtti(c, n, &spec->variants[i].type);
+        }
+    } break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = type->spec.structt;
+        if (spec->definition->monomorphs.count) {
+            Node_Fn *format = register_formatter_for_monomorphized_struct_in_rtti(c, spec->definition);
+            if (format) {
+                // We are querying this from the hash map again, because the above function call might have modified it.
+                ht_get(&c->type_info_cache, *type)->format = format;
+            }
+        }
+
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            register_formatter_for_monomorphized_type_in_rtti(c, n, &spec->fields[i].type);
+        }
+    } break;
+
+    case TYPE_ARRAY:
+        register_formatter_for_monomorphized_type_in_rtti(c, n, type->spec.array.element);
+        break;
+
+    case TYPE_DYNAMIC_ARRAY:
+        register_formatter_for_monomorphized_type_in_rtti(c, n, type->spec.dynamic_array.element);
+        break;
+
+    case TYPE_MAP:
+        register_formatter_for_monomorphized_type_in_rtti(c, n, type->spec.map.key);
+        register_formatter_for_monomorphized_type_in_rtti(c, n, type->spec.map.value);
+        break;
+
+    case TYPE_SLICE:
+        register_formatter_for_monomorphized_type_in_rtti(c, n, type->spec.slice.element);
+        break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Trait *trait, Node *n, i64 group_index) {
+    Type_Trait_Impl *result = NULL;
     if (receiver.is_meta) {
         error_node(EK_ERROR, n, "A type cannot implement traits");
         exit(c, 1);
@@ -207,11 +335,11 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
     const Type receiver_without_ref = type_without_ref(receiver);
     ll_foreach(it, &trait->impls) {
         if (!trait->methods_count) {
-            return it;
+            return_defer(it);
         }
 
         if (type_eq(it->type, receiver_without_ref)) {
-            return it;
+            return_defer(it);
         }
     }
 
@@ -441,5 +569,9 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
     impl.trait = trait;
     impl.next = trait->impls.head;
     trait->impls.head = arena_clone(&default_arena, &impl, sizeof(impl));
-    return trait->impls.head;
+    return_defer(trait->impls.head);
+
+defer:
+    register_formatter_for_monomorphized_type_in_rtti(c, n, &receiver);
+    return result;
 }

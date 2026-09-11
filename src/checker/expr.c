@@ -31,7 +31,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -135,7 +135,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -227,7 +227,7 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -299,7 +299,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 93, "");
+    static_assert(COUNT_TOKENS == 94, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -2477,66 +2477,72 @@ void check_fn(
             exit(c, 1);
         }
 
-        assert(fn->defined_as);
-        const SV name = fn->defined_as->node.token.sv;
-        if (type_kind_eq(fn_spec->args[0].type, TYPE_TRAIT)) {
-            Type_Fn *expected_spec = fn->default_trait_method->type.spec.fn;
+        if (!fn->polymorphs.count) {
+            const SV name = fn->defined_as->node.token.sv;
+            if (type_kind_eq(fn_spec->args[0].type, TYPE_TRAIT)) {
+                Type_Fn *expected_spec = fn->default_trait_method->type.spec.fn;
 
-            bool ok = true;
-            if (fn_spec->is_noreturn != expected_spec->is_noreturn) {
-                ok = false;
-                goto finally;
-            }
-
-            if (expected_spec->args_count != fn_spec->args_count) {
-                ok = false;
-                goto finally;
-            }
-
-            for (size_t j = 0; j < fn_spec->args_count; j++) {
-                if (j == 0) {
-                    continue;
-                }
-
-                if (!type_eq(fn_spec->args[j].type, expected_spec->args[j].type)) {
+                bool ok = true;
+                if (fn_spec->is_noreturn != expected_spec->is_noreturn) {
                     ok = false;
                     goto finally;
                 }
-            }
 
-            if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
-                ok = false;
-                goto finally;
-            }
+                if (expected_spec->args_count != fn_spec->args_count) {
+                    ok = false;
+                    goto finally;
+                }
 
-        finally:
-            if (!ok) {
-                fn->body = NULL;
-                error_node(
-                    EK_NOTE, (Node *) fn, "The default trait method '" SV_Fmt "' has wrong signature", SV_Arg(name));
-                afprintf(
-                    stderr,
-                    ANSI_COLOR_YELLOW | ANSI_BOLD,
-                    "    Expected: %s\n"
-                    "    Actual:   %s\n\n",
-                    type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}),
-                    type_to_cstr_raw(fn->node.type));
-                exit(c, 1);
+                for (size_t j = 0; j < fn_spec->args_count; j++) {
+                    if (j == 0) {
+                        continue;
+                    }
+
+                    if (!type_eq(fn_spec->args[j].type, expected_spec->args[j].type)) {
+                        ok = false;
+                        goto finally;
+                    }
+                }
+
+                if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
+                    ok = false;
+                    goto finally;
+                }
+
+            finally:
+                if (!ok) {
+                    fn->body = NULL;
+                    error_node(
+                        EK_NOTE,
+                        (Node *) fn,
+                        "The default trait method '" SV_Fmt "' has wrong signature",
+                        SV_Arg(name));
+                    afprintf(
+                        stderr,
+                        ANSI_COLOR_YELLOW | ANSI_BOLD,
+                        "    Expected: %s\n"
+                        "    Actual:   %s\n\n",
+                        type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}),
+                        type_to_cstr_raw(fn->node.type));
+                    exit(c, 1);
+                }
+            } else if (
+                sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
+                sv_eq(name, OPERATOR_MUL) || sv_eq(name, OPERATOR_DIV) || sv_eq(name, OPERATOR_MOD)) //
+            {
+                check_signature_of_arithmetic_operator(c, fn, fn_spec);
+            } else if (sv_eq(name, OPERATOR_CMP)) {
+                check_signature_of_binary_comparison_operator(c, fn, fn_spec);
+                fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->ordering_type);
+            } else if (sv_eq(name, OPERATOR_INDEX)) {
+                check_signature_of_index_operator(c, fn, fn_spec);
+            } else if (sv_eq(name, OPERATOR_SLICE)) {
+                check_signature_of_slice_operator(c, fn, fn_spec);
+            } else if (sv_eq(name, OPERATOR_RANGE)) {
+                check_signature_of_range_operator(c, fn, fn_spec);
+            } else if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
+                check_signature_of_custom_formatter(c, fn, fn_spec);
             }
-        } else if (
-            sv_eq(name, OPERATOR_ADD) || sv_eq(name, OPERATOR_SUB) ||                            //
-            sv_eq(name, OPERATOR_MUL) || sv_eq(name, OPERATOR_DIV) || sv_eq(name, OPERATOR_MOD)) //
-        {
-            check_signature_of_arithmetic_operator(c, fn, fn_spec);
-        } else if (sv_eq(name, OPERATOR_CMP)) {
-            check_signature_of_binary_comparison_operator(c, fn, fn_spec);
-            fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->ordering_type);
-        } else if (sv_eq(name, OPERATOR_INDEX)) {
-            check_signature_of_index_operator(c, fn, fn_spec);
-        } else if (sv_eq(name, OPERATOR_SLICE)) {
-            check_signature_of_slice_operator(c, fn, fn_spec);
-        } else if (sv_eq(name, OPERATOR_RANGE)) {
-            check_signature_of_range_operator(c, fn, fn_spec);
         }
     }
     fn->checked_signature = true;
@@ -2547,18 +2553,19 @@ void check_fn(
             *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
         }
     } else if (fn->body && !fn->polymorphs.count && !only_check_signature) {
-        check_stmt(c, fn->body);
-
-        if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
-            assert(fn->body->kind == NODE_BLOCK);
-            Node_Block *block = (Node_Block *) fn->body;
-            if (fn_spec->is_noreturn) {
-                error_token(
-                    EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
-            } else {
-                error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
+        if (fn->body) {
+            check_stmt(c, fn->body);
+            if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
+                assert(fn->body->kind == NODE_BLOCK);
+                Node_Block *block = (Node_Block *) fn->body;
+                if (fn_spec->is_noreturn) {
+                    error_token(
+                        EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
+                } else {
+                    error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
+                }
+                exit(c, 1);
             }
-            exit(c, 1);
         }
     }
 

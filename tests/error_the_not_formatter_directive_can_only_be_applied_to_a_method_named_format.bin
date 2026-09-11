@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 224
+tests/error_the_not_formatter_directive_can_only_be_applied_to_a_method_named_format.glos:1:23: Error: The '#not_formatter' directive can only be applied to a method named 'format'
+
+    foo :: (this: Foo) {} #not_formatter
+
+

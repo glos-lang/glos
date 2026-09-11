@@ -1,7 +1,7 @@
 #include "../error.h"
 #include "checker.h"
 
-static_assert(COUNT_TOKENS == 93, "");
+static_assert(COUNT_TOKENS == 94, "");
 SV token_kind_to_operator_method_name(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -418,8 +418,7 @@ static void error_operator_method_wrong_signature(Token name, OMS oms, const Typ
         SV_Arg(name.sv),
         oms == OMS_RANGE ? "iterator" : "operator");
 
-    ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
-    fprintf(stderr, "    It should have this signature:\n\n");
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
     pretty_print_oms(name.sv, oms, receiver, true);
 }
 
@@ -685,6 +684,83 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     }
 }
 
+static void show_explanation_about_custom_formatter(const Node_Fn *fn, Type receiver) {
+    error_token(
+        EK_ERROR,
+        fn->defined_as->node.token,
+        "The method '" SV_Fmt "' is special because it implements a custom formatter",
+        SV_Arg(fn->defined_as->node.token.sv));
+
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
+
+    receiver.ref = (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1;
+    afprintf(
+        stderr,
+        ANSI_COLOR_MAGENTA | ANSI_BOLD,
+        "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
+        type_to_cstr_raw(receiver));
+}
+
+static void show_explanation_about_the_not_formatter_directive(const Node_Fn *fn) {
+    if (fn->body) {
+        assert(fn->body->kind == NODE_BLOCK);
+        error_token_begin(EK_NOTE, ((Node_Block *) fn->body)->end);
+    } else if (fn->returns.tail) {
+        error_node_begin(EK_NOTE, fn->returns.tail);
+    } else {
+        error_token_begin(EK_NOTE, fn->args_end_token);
+    }
+
+    fprintf(
+        stderr,
+        "If this method is not meant to be a formatter, then add the %s directive after this",
+        token_kind_to_cstr(TOKEN_DIRECTIVE_NOT_FORMATTER));
+    error_finalize();
+}
+
+void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
+    Type receiver = fn_spec->args[0].type;
+    if (receiver.distinct) {
+        receiver.ref -= receiver.distinct->node.type.ref;
+    }
+
+    if (receiver.ref != 1) {
+        goto error;
+    }
+
+    if (fn_spec->args_count != 3) {
+        goto error;
+    }
+
+    assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
+    assert(type_kind_eq(c->type_info_type.spec.structt->fields[4].type, TYPE_FN));
+    const Type_Fn *expected_spec = c->type_info_type.spec.structt->fields[4].type.spec.fn;
+
+    assert(fn_spec->args_count == expected_spec->args_count);
+    for (size_t i = 1; i < fn_spec->args_count; i++) {
+        if (!type_eq(fn_spec->args[i].type, expected_spec->args[i].type)) {
+            goto error;
+        }
+    }
+
+    if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
+        goto error;
+    }
+
+    if (!c->type_info_cache.hasheq) {
+        c->type_info_cache.hasheq = ht_hasheq_type;
+    }
+
+    receiver.ref--;
+    ht_set(&c->type_info_cache, receiver, (Type_Info) {.format = fn});
+    return;
+
+error:
+    show_explanation_about_custom_formatter(fn, receiver);
+    show_explanation_about_the_not_formatter_directive(fn);
+    exit(c, 1);
+}
+
 void define_orderless_methods(Compiler *c) {
     for (size_t i = 0; i < c->methods_to_check.count; i++) {
         Node_Fn *fn = c->methods_to_check.data[i];
@@ -701,7 +777,16 @@ void define_orderless_methods(Compiler *c) {
             error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
             exit(c, 1);
         }
+
         const SV name = fn->defined_as->node.token.sv;
+        if (fn->is_not_formatter && !sv_eq(name, SV_Lit("format"))) {
+            error_token(
+                EK_ERROR,
+                fn->not_formatter_token,
+                "The %s directive can only be applied to a method named 'format'",
+                token_kind_to_cstr(fn->not_formatter_token.kind));
+            exit(c, 1);
+        }
 
         check_expr(c, define->type, REF_NONE);
         type_assert_type(c, define->type);
@@ -803,6 +888,18 @@ void define_orderless_methods(Compiler *c) {
         if (previous) {
             error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
         }
+
+        if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
+            ll_foreach(it, &fn->polymorphs) {
+                if (it->arg_index) {
+                    show_explanation_about_custom_formatter(fn, receiver_type);
+                    error_node(EK_NOTE, (Node *) it, "Cannot have polymorphic parameters after the first argument");
+                    show_explanation_about_the_not_formatter_directive(fn);
+                    exit(c, 1);
+                }
+            }
+        }
+
         ht_set(&c->methods_table, spec, fn);
     }
 
