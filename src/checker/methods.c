@@ -272,12 +272,7 @@ static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partia
             "\n");
 
         ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
-        fprintf(
-            stderr,
-            "\n"
-            "    Notice that in the above example, the receiver of the iterator method is a pointer.\n\n");
-
-        ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
+        fprintf(stderr, "    Notice that in the above example, the receiver of the iterator method is a pointer.\n\n");
     }
 
     fprintf(

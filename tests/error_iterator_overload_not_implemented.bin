@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 1062
+STDERR 1061
 tests/error_iterator_overload_not_implemented.glos:2:15: Error: Iteration is not defined for 'f64'
 
     for range 0.0 {}
@@ -26,7 +26,6 @@ tests/error_iterator_overload_not_implemented.glos:2:15: Error: Iteration is not
                 // Here 'a' is by value and 'b' is by reference.
             }
         }
-
 
     Notice that in the above example, the receiver of the iterator method is a pointer.
 
