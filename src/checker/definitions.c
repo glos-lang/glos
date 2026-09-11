@@ -148,7 +148,7 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                     is_method = fn->is_method;
 
                     if (is_method) {
-                        da_push(&c->methods_list, fn);
+                        da_push(&c->methods_to_check, fn);
                     }
                 }
 

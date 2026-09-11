@@ -1,2 +1,2 @@
-Foo :: struct {}
+Foo :: distinct s64
 operator + :: (this: Foo) {}

@@ -96,7 +96,7 @@ typedef struct {
     DA(Node *) partial_stack;
 
     HT(Method_Spec, Node_Fn *) methods_table;
-    DA(Node_Fn *) methods_list;
+    DA(Node_Fn *) methods_to_check;
 
     Type ordering_type;
     Type equivalence_type;

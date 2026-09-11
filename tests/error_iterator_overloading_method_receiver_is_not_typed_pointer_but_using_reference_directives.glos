@@ -1,2 +1,2 @@
-Foo :: distinct s64
+Foo :: struct {}
 range :: (this: Foo, state: &s64) -> #reference s64, bool {}

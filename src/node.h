@@ -328,6 +328,7 @@ struct Type_Struct_Field {
 
 Type type_with_ref(Type t, size_t ref);
 Type type_without_ref(Type t);
+Type type_without_distinct(Type t);
 
 Type type_with_meta(Type t);
 Type type_without_meta(Type t);

@@ -1,4 +1,4 @@
-Foo :: distinct s64
+Foo :: struct {}
 
 operator [..] :: (this: Foo, a := 0, b: s64) -> bool {
     return true

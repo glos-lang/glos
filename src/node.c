@@ -42,6 +42,11 @@ Type type_without_ref(Type t) {
     return t;
 }
 
+Type type_without_distinct(Type t) {
+    t.distinct = NULL;
+    return t;
+}
+
 Type type_with_meta(Type t) {
     t.is_meta = true;
     return t;

@@ -1,2 +1,2 @@
-Foo :: distinct s64
+Foo :: struct {}
 operator [] :: (this: Foo, index: s64, assign: bool, other: string) {}

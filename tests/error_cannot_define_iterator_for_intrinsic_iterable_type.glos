@@ -1,2 +1,2 @@
-Foo :: struct {}
+Foo :: distinct string
 range :: (this: Foo) {}

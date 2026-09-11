@@ -1,0 +1,11 @@
+EXIT 1
+STDOUT 0
+
+STDERR 216
+tests/error_cannot_define_operator_overload_for_scalar_type.glos:2:15: Error: Cannot define operator overload for scalar type 'Foo'
+
+    operator + :: (this: Foo) {}
+
+    The type 'Foo' is a distinct alias to 's64'
+
+

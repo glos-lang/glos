@@ -47,7 +47,7 @@ SV token_kind_to_operator_method_name(Token_Kind kind) {
 }
 
 void check_that_methods_can_be_accessed(Compiler *c, Node *receiver) {
-    if (c->methods_list.count && !type_kind_eq(receiver->type, TYPE_MODULE)) {
+    if (c->methods_to_check.count && !type_kind_eq(receiver->type, TYPE_MODULE)) {
         error_node(EK_ERROR, receiver, "Cannot access methods at this stage of compilation yet");
         if (c->current_comptime_conditional_stmt) {
             error_node(EK_NOTE, c->current_comptime_conditional_stmt, "Evaluating this conditional statement");
@@ -418,9 +418,54 @@ static void error_operator_method_wrong_signature(Token name, OMS oms, const Typ
     pretty_print_oms(name.sv, oms, receiver, true);
 }
 
-static void check_operator_method_signature_args_count(
-    Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec, const size_t args_count, OMS oms) {
+static void check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(
+    Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec, const size_t args_count, OMS oms) //
+{
     const Type *receiver = &fn_spec->args[0].type;
+    if (oms == OMS_RANGE) {
+        assert(!receiver->is_meta);
+        switch (receiver->kind) {
+        case TYPE_ARRAY:
+        case TYPE_DYNAMIC_ARRAY:
+        case TYPE_SLICE:
+        case TYPE_STRING:
+            fn->body = NULL;
+            error_node(EK_ERROR, (Node *) fn, "Cannot define iterator for type %s", type_to_cstr(*receiver));
+            if (receiver->distinct) {
+                afprintf(
+                    stderr,
+                    ANSI_COLOR_YELLOW | ANSI_BOLD,
+                    "    The type %s is a distinct alias to %s\n\n",
+                    type_to_cstr(*receiver),
+                    type_to_cstr(type_without_distinct(*receiver)));
+            }
+            exit(c, 1);
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (type_is_scalar(type_without_ref(*receiver))) {
+        fn->body = NULL;
+        error_node(
+            EK_ERROR,
+            (Node *) fn,
+            "Cannot define %s for scalar type %s",
+            oms == OMS_RANGE ? "iterator" : "operator overload",
+            type_to_cstr(*receiver));
+        if (receiver->distinct) {
+            afprintf(
+                stderr,
+                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                "    The type %s is a distinct alias to %s\n\n",
+                type_to_cstr(*receiver),
+                type_to_cstr(type_without_distinct(*receiver)));
+        }
+        exit(c, 1);
+    }
+
     if (fn_spec->args_count < args_count) {
         error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
         error_token(
@@ -448,7 +493,7 @@ void check_signature_of_arithmetic_operator(Compiler *c, Node_Fn *fn, const Type
     const Type *receiver = &fn_spec->args[0].type;
 
     const OMS oms = OMS_ARITH;
-    check_operator_method_signature_args_count(c, fn, fn_spec, 2, oms);
+    check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(c, fn, fn_spec, 2, oms);
 
     const Type lhs_type = fn_spec->args[0].type;
     if (lhs_type.ref) {
@@ -491,7 +536,7 @@ void check_signature_of_binary_comparison_operator(Compiler *c, Node_Fn *fn, con
     const Type *receiver = &fn_spec->args[0].type;
 
     const OMS oms = OMS_CMP;
-    check_operator_method_signature_args_count(c, fn, fn_spec, 2, oms);
+    check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(c, fn, fn_spec, 2, oms);
 
     const Type lhs_type = fn_spec->args[0].type;
     if (lhs_type.ref) {
@@ -536,7 +581,7 @@ void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     const Type *receiver = &fn_spec->args[0].type;
 
     const OMS oms = OMS_INDEX;
-    check_operator_method_signature_args_count(c, fn, fn_spec, 3, oms);
+    check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(c, fn, fn_spec, 3, oms);
 
     const Type assign_type = fn_spec->args[2].type;
     if (!type_eq(assign_type, (Type) {.kind = TYPE_BOOL})) {
@@ -566,7 +611,7 @@ void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     const Type *receiver = &fn_spec->args[0].type;
 
     const OMS oms = OMS_SLICE;
-    check_operator_method_signature_args_count(c, fn, fn_spec, 3, oms);
+    check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(c, fn, fn_spec, 3, oms);
 
     const Type begin_type = fn_spec->args[1].type;
     const Type end_type = fn_spec->args[2].type;
@@ -603,7 +648,7 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     const Type *receiver = &fn_spec->args[0].type;
 
     const OMS oms = OMS_RANGE;
-    check_operator_method_signature_args_count(c, fn, fn_spec, 2, oms);
+    check_operator_method_signature_args_count_and_that_receiver_is_not_scalar(c, fn, fn_spec, 2, oms);
 
     const Type state_type = fn_spec->args[1].type;
     if (state_type.is_meta || !state_type.ref) {
@@ -636,8 +681,8 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 }
 
 void define_orderless_methods(Compiler *c) {
-    for (size_t i = 0; i < c->methods_list.count; i++) {
-        Node_Fn *fn = c->methods_list.data[i];
+    for (size_t i = 0; i < c->methods_to_check.count; i++) {
+        Node_Fn *fn = c->methods_to_check.data[i];
         assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
 
         // Define the polymorphic parameters
@@ -754,5 +799,5 @@ void define_orderless_methods(Compiler *c) {
         ht_set(&c->methods_table, spec, fn);
     }
 
-    c->methods_list.count = 0;
+    c->methods_to_check.count = 0;
 }

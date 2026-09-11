@@ -1,0 +1,11 @@
+EXIT 1
+STDOUT 0
+
+STDERR 201
+tests/error_cannot_define_iterator_for_intrinsic_iterable_type.glos:2:10: Error: Cannot define iterator for type 'Foo'
+
+    range :: (this: Foo) {}
+
+    The type 'Foo' is a distinct alias to 'string'
+
+
