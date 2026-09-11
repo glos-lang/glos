@@ -318,6 +318,9 @@ static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *
     tic->ti_fields[tic->ti_fields_iota++] =
         LLVMConstStructInContext(c->llvm_context, tic->tiv_fields, tic->tiv_fields_iota, false);
 
+    LLVMValueRef *format = &tic->ti_fields[tic->ti_fields_iota++];
+    *format = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+
     LLVMValueRef real = compile_const_value_into_memory(
         c, LLVMConstStructInContext(c->llvm_context, tic->ti_fields, tic->ti_fields_iota, false));
 

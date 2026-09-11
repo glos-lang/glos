@@ -41,6 +41,8 @@ Type_Info :: struct {
         Type_Info_Slice
         Type_Info_String
     }
+
+    format: rawptr
 }
 
 Type_Info_Boolean :: struct {}
