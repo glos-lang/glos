@@ -684,7 +684,14 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
     }
 }
 
-static void show_explanation_about_custom_formatter(const Node_Fn *fn, Type receiver) {
+static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *fn, Type receiver) {
+    assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
+    assert(type_kind_eq(c->type_info_type.spec.structt->fields[4].type, TYPE_FN));
+    Type_Fn *expected_spec = c->type_info_type.spec.structt->fields[4].type.spec.fn;
+    expected_spec->args[0].type =
+        type_with_ref(receiver, (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1);
+    expected_spec->args[0].name = SV_Lit("this");
+
     error_token(
         EK_ERROR,
         fn->defined_as->node.token,
@@ -692,13 +699,11 @@ static void show_explanation_about_custom_formatter(const Node_Fn *fn, Type rece
         SV_Arg(fn->defined_as->node.token.sv));
 
     afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
-
-    receiver.ref = (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1;
     afprintf(
         stderr,
         ANSI_COLOR_MAGENTA | ANSI_BOLD,
-        "        format :: (this: %s, w: Writer, nested: bool) {}\n\n",
-        type_to_cstr_raw(receiver));
+        "        format :: %s {}\n\n",
+        type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}));
 }
 
 static void show_explanation_about_the_not_formatter_directive(const Node_Fn *fn) {
@@ -756,7 +761,7 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
     return;
 
 error:
-    show_explanation_about_custom_formatter(fn, receiver);
+    show_explanation_about_custom_formatter(c, fn, receiver);
     show_explanation_about_the_not_formatter_directive(fn);
     exit(c, 1);
 }
@@ -892,7 +897,7 @@ void define_orderless_methods(Compiler *c) {
         if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
             ll_foreach(it, &fn->polymorphs) {
                 if (it->arg_index) {
-                    show_explanation_about_custom_formatter(fn, receiver_type);
+                    show_explanation_about_custom_formatter(c, fn, receiver_type);
                     error_node(EK_NOTE, (Node *) it, "Cannot have polymorphic parameters after the first argument");
                     show_explanation_about_the_not_formatter_directive(fn);
                     exit(c, 1);
