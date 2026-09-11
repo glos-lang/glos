@@ -1,0 +1,35 @@
+main :: () {
+    // Define the method 'format' to register your custom formatter.
+    //
+    //     format :: (this: &Your_Type, w: Writer, nested: bool) {}
+    //
+    {
+        Vec2 :: struct {
+            x, y: s32
+        }
+
+        format :: (this: &Vec2, w: Writer, nested: bool) {
+            wprint(w, "Vec2(\{this.x}, \{this.y})")
+        }
+
+        println(Vec2 {69, 420})
+
+        // As you can see, this custom formatter was used by the printing function.
+    }
+
+    // If you want to create a method named 'format' without making it a formatter, then use
+    // the '#not_formatter' directive.
+    {
+        Vec3 :: struct {
+            x, y, z: s32
+        }
+
+        format :: (this: &Vec3, w: Writer, nested: bool) {
+            wprint(w, "Vec3(\{this.x}, \{this.y}, \{this.z})")
+        } #not_formatter
+
+        println(Vec3 {69, 420, 1337})
+
+        // As you can see, the default formatter was used by the printing function.
+    }
+}
