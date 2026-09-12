@@ -565,12 +565,8 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             return false;
         }
 
-        if (type_kind_eq(expected, TYPE_STRUCT) || type_kind_eq(expected, TYPE_ARRAY) ||
-            type_kind_eq(expected, TYPE_SLICE)) //
-        {
-            cast_untyped(c, n, expected);
-            return true;
-        }
+        cast_untyped(c, n, expected);
+        return true;
     }
 
     return false;
