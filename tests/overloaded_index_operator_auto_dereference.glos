@@ -1,0 +1,10 @@
+foo :: (p: &&map[string]s64) {
+    p["foo"] = 69
+}
+
+main :: () {
+    xs: map[string]s64
+    ys := &xs
+    foo(&ys)
+    println(xs)
+}

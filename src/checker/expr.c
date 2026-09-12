@@ -1,21 +1,6 @@
 #include "../error.h"
 #include "checker.h"
 
-static bool is_indexable(Compiler *c, Node *n, Type type, Module *module) {
-    if (type_kind_eq(type, TYPE_ARRAY) || type_kind_eq(type, TYPE_DYNAMIC_ARRAY) || //
-        type_kind_eq(type, TYPE_SLICE) || type_kind_eq(type, TYPE_STRING))          //
-    {
-        return true;
-    }
-
-    Method_Spec spec = {0};
-    if (get_method_spec(c, n, type, OPERATOR_INDEX, &spec, NULL)) {
-        return get_method(c, spec, module) != NULL;
-    }
-
-    return false;
-}
-
 static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     if (m->rhs) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
@@ -475,6 +460,39 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     }
 }
 
+static void
+check_whether_receiver_can_be_passed(Compiler *c, Node *n, Node *receiver, const Type_Fn *fn_spec, const char *label) //
+{
+    assert(fn_spec->args_count);
+    const Type receiver_type = fn_spec->args[0].type;
+    if (receiver_type.ref > receiver->type.ref + 1) {
+        error_node(EK_ERROR, n, "Too many levels of pointer indirection in %s call", label);
+        error_node(
+            EK_NOTE,
+            receiver,
+            "This is of type %s, but the receiver is expected to be %s",
+            type_to_cstr(receiver->type),
+            type_to_cstr(receiver_type));
+        exit(c, 1);
+    }
+
+    if (receiver_type.ref > receiver->type.ref && !receiver->is_memory) {
+        error_node(EK_ERROR, n, "Too many levels of pointer indirection in %s call", label);
+        error_node(
+            EK_NOTE,
+            receiver,
+            "This is of type %s, but the receiver is expected to be %s",
+            type_to_cstr(receiver->type),
+            type_to_cstr(receiver_type));
+
+        afprintf(
+            stderr,
+            ANSI_COLOR_YELLOW | ANSI_BOLD,
+            "    This value does not exist in memory, therefore cannot take reference to it\n\n");
+        exit(c, 1);
+    }
+}
+
 void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) member;
     if (member->lhs) {
@@ -514,36 +532,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 if (member->method) {
                     n->type = member->method->node.type;
                     assert(n->type.kind == TYPE_FN);
-
-                    const Type_Fn *method_spec = n->type.spec.fn;
-                    assert(method_spec->args_count);
-
-                    const Type receiver_type = method_spec->args[0].type;
-                    if (receiver_type.ref > member->lhs->type.ref + 1) {
-                        error_node(EK_ERROR, n, "Too many levels of pointer indirection in method call");
-                        error_node(
-                            EK_NOTE,
-                            member->lhs,
-                            "This is of type %s, but the receiver is expected to be %s",
-                            type_to_cstr(member->lhs->type),
-                            type_to_cstr(receiver_type));
-                        exit(c, 1);
-                    }
-
-                    if (receiver_type.ref > member->lhs->type.ref && !member->lhs->is_memory) {
-                        error_node(EK_ERROR, n, "Too many levels of pointer indirection in method call");
-                        error_node(
-                            EK_NOTE,
-                            member->lhs,
-                            "This is of type %s, but the receiver is expected to be %s",
-                            type_to_cstr(member->lhs->type),
-                            type_to_cstr(receiver_type));
-                        error_node(
-                            EK_NOTE,
-                            member->lhs,
-                            "This value does not exist in memory, therefore cannot take reference to it");
-                        exit(c, 1);
-                    }
+                    check_whether_receiver_can_be_passed(c, n, member->lhs, n->type.spec.fn, "method");
                     *is_ref_valid = ref == REF_NONE;
                 }
             }
@@ -1811,49 +1800,28 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
         *is_ref_valid = ref == REF_NONE;
     } else {
         n->is_memory = index->lhs->is_memory;
-        if (type_kind_eq(index->lhs->type, TYPE_ARRAY) && !index->lhs->type.ref) {
+        if (type_kind_eq(index->lhs->type, TYPE_ARRAY)) {
             check_expr(c, index->a, REF_NONE);
             type_assert_numeric(c, index->a, false, false);
             n->type = *index->lhs->type.spec.array.element;
-        } else if (type_kind_eq(index->lhs->type, TYPE_DYNAMIC_ARRAY) && !index->lhs->type.ref) {
+        } else if (type_kind_eq(index->lhs->type, TYPE_DYNAMIC_ARRAY)) {
             check_expr(c, index->a, REF_NONE);
             type_assert_numeric(c, index->a, false, false);
             n->type = *index->lhs->type.spec.dynamic_array.element;
-        } else if (type_kind_eq(index->lhs->type, TYPE_SLICE) && !index->lhs->type.ref) {
+        } else if (type_kind_eq(index->lhs->type, TYPE_SLICE)) {
             check_expr(c, index->a, REF_NONE);
             type_assert_numeric(c, index->a, false, false);
             n->type = *index->lhs->type.spec.slice.element;
-        } else if (type_kind_eq(index->lhs->type, TYPE_STRING) && !index->lhs->type.ref) {
+        } else if (type_kind_eq(index->lhs->type, TYPE_STRING)) {
             check_expr(c, index->a, REF_NONE);
             type_assert_numeric(c, index->a, false, false);
             n->type = (Type) {.kind = TYPE_CHAR};
         } else {
-            if (index->lhs->type.ref) {
-                error_node(EK_ERROR, index->lhs, "Pointers must be converted into slices before they can be indexed");
-                if (is_indexable(c, index->lhs, index->lhs->type, n->module)) {
-                    afprintf(
-                        stderr,
-                        ANSI_COLOR_YELLOW | ANSI_BOLD,
-                        "    Here the value is %s. Perhaps it was meant to be dereferenced before indexing?\n",
-                        type_to_cstr(index->lhs->type));
-                } else {
-                    afprintf(
-                        stderr,
-                        ANSI_COLOR_YELLOW | ANSI_BOLD,
-                        "    A slice can be constructed from a pointer like this:\n"
-                        "\n"
-                        "        slice := pointer[begin..end]\n"
-                        "        slice[index]\n"
-                        "\n"
-                        "    If you omit the beginning of the slice, it will default to 0. But the end must be provided.\n\n");
-                }
-                exit(c, 1);
-            }
-
             index->overload = get_operator_overload(c, OPERATOR_INDEX, index->lhs, n, n->module);
 
             assert(index->overload->node.type.kind == TYPE_FN);
             const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
+            check_whether_receiver_can_be_passed(c, n, index->lhs, fn_spec, "operator method");
 
             check_expr(c, index->a, REF_NONE);
             type_assert(c, index->a, fn_spec->args[1].type);

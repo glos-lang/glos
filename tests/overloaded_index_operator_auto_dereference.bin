@@ -1,0 +1,6 @@
+EXIT 0
+STDOUT 13
+{"foo" = 69}
+
+STDERR 0
+
