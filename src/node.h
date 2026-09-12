@@ -531,8 +531,7 @@ struct Node {
     Node     *next;
 
     Token token;
-    Token lparen;
-    Token rparen;
+    Token parenthesis;
 
     bool is_memory;
     bool is_called;

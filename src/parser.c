@@ -997,8 +997,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
                 node = parse_define(p, node, next_token(p), false, true, true, true, false);
             } else {
-                node->lparen = token;
-                node->rparen = expect_token(p, TOKEN_RPAREN);
+                node->parenthesis = token;
+                token = expect_token(p, TOKEN_RPAREN);
+                node->parenthesis.sv.count = token.sv.data + token.sv.count - node->parenthesis.sv.data;
             }
         }
 
