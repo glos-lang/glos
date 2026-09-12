@@ -389,12 +389,17 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
                 assert(!it->definition_spec->llvm);
 
                 const ABI_Info it_abi = abi.args[abi_iota++];
+                const bool     it_is_underscore = sv_eq(it->node.token.sv, SV_Lit("_"));
 
                 static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
                 switch (it_abi.direct_types_count) {
                 case 0: {
-                    it->definition_spec->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
-                    compile_local_var_debug(c, it, get_debug_for_type(c, &it->node.type));
+                    if (it_is_underscore) {
+                        arg_iota++;
+                    } else {
+                        it->definition_spec->llvm = LLVMGetParam(c->llvm_fn, arg_iota++);
+                        compile_local_var_debug(c, it, get_debug_for_type(c, &it->node.type));
+                    }
 
                     if (!it->node.type.llvm) {
                         compile_type(c, &it->node.type);
@@ -407,53 +412,65 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 #endif // PLATFORM_X86_64_LINUX
                 } break;
 
-                case 1: {
-                    bool stored = false;
+                case 1:
+                    if (it_is_underscore) {
+                        arg_iota++;
+                    } else {
+                        bool stored = false;
+                        compile_var_def(c, it);
 
-                    compile_var_def(c, it);
-                    LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
-                    if (type_is_compound(it->node.type)) {
-                        LLVMTypeRef  var_type = it->node.type.llvm;
-                        const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, var_type);
-                        LLVMTypeRef  abi_type = LLVMTypeOf(value);
-                        const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
-                        if (abi_size > var_size) {
-                            if (abi_size > 8) {
-                                LLVMValueRef memory = compile_alloca(c, abi_type);
-                                LLVMBuildStore(c->llvm_builder, value, memory);
-                                LLVMBuildMemCpy(
-                                    c->llvm_builder,
-                                    it->definition_spec->llvm,
-                                    LLVMABIAlignmentOfType(c->llvm_target_data, var_type),
-                                    memory,
-                                    LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
-                                    LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), var_size, true));
-                                stored = true;
-                            } else {
-                                value = LLVMBuildTrunc(
-                                    c->llvm_builder, value, LLVMIntTypeInContext(c->llvm_context, var_size * 8), "");
+                        LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
+                        if (type_is_compound(it->node.type)) {
+                            LLVMTypeRef  var_type = it->node.type.llvm;
+                            const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, var_type);
+                            LLVMTypeRef  abi_type = LLVMTypeOf(value);
+                            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+                            if (abi_size > var_size) {
+                                if (abi_size > 8) {
+                                    LLVMValueRef memory = compile_alloca(c, abi_type);
+                                    LLVMBuildStore(c->llvm_builder, value, memory);
+                                    LLVMBuildMemCpy(
+                                        c->llvm_builder,
+                                        it->definition_spec->llvm,
+                                        LLVMABIAlignmentOfType(c->llvm_target_data, var_type),
+                                        memory,
+                                        LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                                        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), var_size, true));
+                                    stored = true;
+                                } else {
+                                    value = LLVMBuildTrunc(
+                                        c->llvm_builder,
+                                        value,
+                                        LLVMIntTypeInContext(c->llvm_context, var_size * 8),
+                                        "");
+                                }
                             }
                         }
+
+                        if (!stored) {
+                            LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+                        }
                     }
+                    break;
 
-                    if (!stored) {
-                        LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+                case 2:
+                    if (it_is_underscore) {
+                        arg_iota += 2;
+                    } else {
+                        compile_var_def(c, it);
+
+                        // First half
+                        LLVMBuildStore(
+                            c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->definition_spec->llvm);
+
+                        // Second half
+                        LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
+                        LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
+                        LLVMValueRef second = LLVMBuildGEP2(
+                            c->llvm_builder, llvm_i8_type, it->definition_spec->llvm, indices, len(indices), "");
+                        LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), second);
                     }
-                } break;
-
-                case 2: {
-                    compile_var_def(c, it);
-
-                    // First half
-                    LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), it->definition_spec->llvm);
-
-                    // Second half
-                    LLVMTypeRef  llvm_i8_type = LLVMInt8TypeInContext(c->llvm_context);
-                    LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 8, false)};
-                    LLVMValueRef second = LLVMBuildGEP2(
-                        c->llvm_builder, llvm_i8_type, it->definition_spec->llvm, indices, len(indices), "");
-                    LLVMBuildStore(c->llvm_builder, LLVMGetParam(c->llvm_fn, arg_iota++), second);
-                } break;
+                    break;
 
                 default:
                     unreachable();
