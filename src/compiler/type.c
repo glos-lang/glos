@@ -70,8 +70,7 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
         Node_Enum *definition = type->spec.enumm.definition;
         if (!definition->llvm) {
             Type stub = {.kind = type->spec.enumm.underlying};
-            compile_type(c, &stub);
-            definition->llvm = stub.llvm;
+            definition->llvm = compile_type(c, &stub);
         }
         type->llvm = definition->llvm;
     } break;
@@ -343,13 +342,31 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
             const size_t size = compile_sizeof(c, type);
             const SV     name = sv_from_cstr(type_to_cstr(*type));
-            definition->debug = LLVMDIBuilderCreateBasicType(
+
+            LLVMMetadataRef *values = arena_alloc(&temp_arena, definition->values_count * sizeof(*values));
+
+            const bool is_signed = type_is_signed(*type);
+            size_t     iota = 0;
+            ll_foreach(it, &definition->values) {
+                values[iota++] = LLVMDIBuilderCreateEnumerator(
+                    c->llvm_debug_builder, it->token.sv.data, it->token.sv.count, it->token.as.integer, !is_signed);
+            }
+
+            LLVMMetadataRef file_metadata = get_debug_file(c, definition->node.token.pos.path);
+
+            Type underlying_type = {.kind = type->spec.enumm.underlying};
+            definition->debug = LLVMDIBuilderCreateEnumerationType(
                 c->llvm_debug_builder,
+                c->llvm_debug_compile_unit,
                 name.data,
                 name.count,
+                file_metadata,
+                definition->node.token.pos.row + 1,
                 size * 8,
-                type_is_signed(*type) ? DW_ATE_signed : DW_ATE_unsigned,
-                0);
+                LLVMABIAlignmentOfType(c->llvm_target_data, type->llvm) * 8,
+                values,
+                definition->values_count,
+                get_debug_for_type(c, &underlying_type));
 
             arena_reset(&temp_arena, checkpoint);
         }
