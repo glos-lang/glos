@@ -1745,35 +1745,13 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
     *is_ref_valid = true; // check_node() has already determined that the reference is valid
     index->is_assign = ref == REF_ASSIGN || ref == REF_ASSIGN_MEMBER;
     if (index->is_ranged) {
-        if (index->lhs->type.is_meta) {
+        // TODO: Disallowing pointers for now, to make it easy to switch to the new syntax.
+        if (index->lhs->type.is_meta || index->lhs->type.ref) {
             error_node(EK_ERROR, index->lhs, "Cannot take slice into %s", type_to_cstr(index->lhs->type));
             exit(c, 1);
         }
 
-        if (index->lhs->type.ref) {
-            // The beginning can be inferred to be 0
-            if (index->a) {
-                check_expr(c, index->a, REF_NONE);
-                type_assert_numeric(c, index->a, false, false);
-            }
-
-            // The ending CANNOT be inferred
-            if (!index->b) {
-                error_node(EK_ERROR, n, "Cannot infer end of range from %s", type_to_cstr(index->lhs->type));
-                exit(c, 1);
-            }
-
-            check_expr(c, index->b, REF_NONE);
-            type_assert_numeric(c, index->b, false, false);
-
-            Type element_type = index->lhs->type;
-            element_type.ref--;
-            n->type = (Type) {
-                .kind = TYPE_SLICE,
-                .spec.slice.element = arena_clone(&default_arena, &element_type, sizeof(element_type)),
-            };
-        } else if (
-            type_kind_eq(index->lhs->type, TYPE_ARRAY) ||         //
+        if (type_kind_eq(index->lhs->type, TYPE_ARRAY) ||         //
             type_kind_eq(index->lhs->type, TYPE_DYNAMIC_ARRAY) || //
             type_kind_eq(index->lhs->type, TYPE_SLICE) ||         //
             type_kind_eq(index->lhs->type, TYPE_STRING))          //

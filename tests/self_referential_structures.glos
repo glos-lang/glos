@@ -37,7 +37,7 @@ test_self_slice :: () {
 
     alloc_foos :: (n: s64) -> []Foo {
         extern { calloc :: (count: s64, size: s64) -> rawptr }
-        return (&Foo(calloc(n, sizeof(Foo))))[..n]
+        return []Foo(&Foo(calloc(n, sizeof(Foo))), n)
     }
 
     a := Foo {v = 1337, children = alloc_foos(2)}

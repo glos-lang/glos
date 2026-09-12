@@ -108,20 +108,21 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, k
         data := rawptr(&key)
         hasher: Hasher
         for i := 0; i < info.count; i += 1 {
-            it := info[i]
+            it   := info[i]
+            data := data + rawptr(it.offset)
             if it.kind == {
             case .RAW
-                hasher.bytes(&char(data)[it.offset..it.offset + it.size])
+                hasher.bytes([]char(&char(data), it.size))
 
             case .FLOAT
                 if it.size == {
-                case sizeof(f32); hasher.float(f64(*(&f32)(data + rawptr(it.offset))))
-                case sizeof(f64); hasher.float(*(&f64)(data + rawptr(it.offset)))
+                case sizeof(f32); hasher.float(f64(*(&f32)(data)))
+                case sizeof(f64); hasher.float(*(&f64)(data))
                 case;             unreachable()
                 }
 
             case .STRING
-                hasher.bytes(*(&[]char)(data + rawptr(it.offset)))
+                hasher.bytes(*(&[]char)(data))
             }
         }
         start = hasher.finish()

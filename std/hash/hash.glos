@@ -30,7 +30,7 @@ bytes :: (this: &Hasher, bytes: []char) {
 float :: (this: &Hasher, f: f64) {
     if f == 0.0 then f = 0.0                   // +0.0 and -0.0 have different bit representations
     if f != f   then f = 0h7FF8_0000_0000_0000 // NaN
-    this.bytes(&char(&f)[..sizeof(f)])
+    this.bytes([]char(&char(&f), sizeof(f)))
 }
 
 finish :: (this: Hasher) -> u64 {

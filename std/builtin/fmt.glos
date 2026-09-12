@@ -149,17 +149,17 @@ write_quoted_char :: (w: Writer, ch: char, quote: char) {
         if quote == '\'' {
             w.write([]char("\\'"))
         } else {
-            w.write((&ch)[..1])
+            w.write([]char(&ch, 1))
         }
 
     case '\"'
         if quote == '\"' {
             w.write([]char("\\\""))
         } else {
-            w.write((&ch)[..1])
+            w.write([]char(&ch, 1))
         }
 
-    case; w.write((&ch)[..1])
+    case; w.write([]char(&ch, 1))
     }
 }
 
@@ -213,7 +213,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
             write_quoted_char(w, ch, '\'')
             w.write([]char("'"))
         } else {
-            w.write((&ch)[..1])
+            w.write([]char(&ch, 1))
         }
 
     case Type_Info_Integer

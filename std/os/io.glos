@@ -85,5 +85,5 @@ read_entire_file :: (path: string, a := &arena.default) -> []char, bool {
     }
     a.reset(data + rawptr(count + 1))
 
-    return (&char(data))[..count], true
+    return []char(&char(data), count), true
 }

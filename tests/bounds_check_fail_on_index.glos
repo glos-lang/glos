@@ -4,7 +4,7 @@ alloc_s64s :: (n: s64) -> []s64 {
     }
 
     ptr := &s64(malloc(n * sizeof(s64)))
-    return ptr[0..n]
+    return []s64(ptr, n)
 }
 
 main :: () {
