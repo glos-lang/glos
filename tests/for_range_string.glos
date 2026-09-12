@@ -1,5 +1,5 @@
 main :: () {
-    s := "Hi! ☀️Let's go! ☕️Hehe 😊"
+    s := "Hi! ☀️Let's go! ☕️Hehe 😊你好"
     for i, c := range s {
         println(i, c)
     }
