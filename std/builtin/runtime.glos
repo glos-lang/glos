@@ -67,21 +67,18 @@ runtime_init :: inline (argc: s32, argv: &&char) {
         os.stderr = __acrt_iob_func(2)
     }
 
-    args := []&char(argv, argc)
-    os.args = New_Array(string, args.count)
-    for i := 0; i < args.count; i += 1 {
-        os.args[i] = strings.from_cstring(args[i])
+    os.args = []string(new(string, s64(argc)), argc)
+    for i, arg := range []&char(argv, argc) {
+        os.args[i] = strings.from_cstring(arg)
     }
 
     C.atexit(runtime_deinit)
 }
 
 runtime_deinit :: () {
-    arena.default.free()
-    arena.temporary.free()
+    free(os.args.data)
 }
 
 C       :: #import "C"
 os      :: #import "os"
-arena   :: #import "arena"
 strings :: #import "strings"

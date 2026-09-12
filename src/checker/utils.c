@@ -592,6 +592,10 @@ bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
 bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
     if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
+        if (expected.kind == TYPE_POLYMORPH && expected.spec.polymorph.is_definition) {
+            return false;
+        }
+
         // NOTE: We are also checking for rawptr because distinct types exist
         n->type = expected;
         return true;

@@ -1,5 +1,7 @@
-to_cstring :: (s: string, a := &arena.default) -> &char {
-    return &char(C.memcpy(a.alloc(s.count + 1), rawptr(s.data), u64(s.count)))
+to_cstring :: (s: string, allocator := default_allocator) -> &char {
+    p := &char(C.memcpy(allocator.alloc(s.count + 1, zeroed = false), rawptr(s.data), u64(s.count)))
+    *(p + &char(s.count)) = 0
+    return p
 }
 
 from_cstring :: (s: &char) -> string {
@@ -8,14 +10,12 @@ from_cstring :: (s: &char) -> string {
 
 // TODO: Range check
 to_integer :: (s: string, base := 10) -> s64, bool {
-    cstr := to_cstring(s, &arena.temporary)
-    defer arena.temporary.reset(rawptr(cstr))
+    cstr := to_cstring(s, temporary_allocator)
+    defer temporary_allocator.rewind(rawptr(cstr))
 
     end: &char
     result := C.strtoll(cstr, &end, s32(base))
     return result, *end == '\0'
 }
 
-
-C     :: #import "C"
-arena :: #import "arena"
+C :: #import "C"
