@@ -1,0 +1,98 @@
+Rune :: distinct s32
+
+operator <=> :: (this: string, that: string) -> Ordering {
+    n := this.count
+    if n > that.count {
+        n = that.count
+    }
+
+    diff := C.memcmp(rawptr(this.data), rawptr(that.data), u64(n))
+    if diff < 0 {
+        return .LT
+    }
+
+    if diff > 0 {
+        return .GT
+    }
+
+    if this.count < that.count {
+        return .LT
+    }
+
+    if this.count > that.count {
+        return .GT
+    }
+
+    return .EQ
+}
+
+range :: (this: string, state: &s64) -> s64, Rune, bool {
+    utf8_sequence_count :: (b: u8) -> s64 {
+        if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
+        if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
+        if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
+        if b & 0xF8 == 0xF0 then return 4 // 11110xxx
+        return 0
+    }
+
+    index := *state
+    if *state >= this.count {
+        return index, 0, false
+    }
+
+    byte  := u8(this[*state])
+    count := utf8_sequence_count(byte)
+    if count == 0 {
+        // Invalid leading byte (e.g. a stray continuation byte 10xxxxxx,
+        // or 0xF8-0xFF which are never valid in UTF-8).
+        *state += 1
+        return index, -1, true
+    }
+
+    if *state + count > this.count {
+        // Sequence would run past the end of the buffer.
+        *state += 1
+        return index, -1, true
+    }
+
+    rune:     Rune
+    min_rune: s64 // Smallest code point that legitimately needs 'count' bytes
+
+    if count == {
+    case 1
+        rune = Rune(byte)
+        *state += 1
+        return index, rune, true
+
+    case 2
+        rune = Rune(byte) & 0x1F
+        min_rune = 0x80
+
+    case 3
+        rune = Rune(byte) & 0x0F
+        min_rune = 0x800
+
+    case 4
+        rune = Rune(byte) & 0x07
+        min_rune = 0x10000
+    }
+
+    for i := range 1..count {
+        b := u8(this[*state + i])
+        if b & 0xC0 != 0x80 {
+            // Expected a continuation byte (10xxxxxx) and didn't get one.
+            *state += 1
+            return index, -1, true
+        }
+        rune = (rune << 6) | Rune(b & 0x3F)
+    }
+
+    // Reject overlong encodings, surrogate halves, and out-of-range code points.
+    if s64(rune) < min_rune || (rune >= 0xD800 && rune <= 0xDFFF) || rune > 0x10FFFF {
+        *state += 1
+        return index, -1, true
+    }
+
+    *state += count
+    return index, rune, true
+}

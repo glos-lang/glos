@@ -1,5 +1,38 @@
 #private ...
 
+write_rune :: (w: Writer, r: Rune) {
+    cp := u32(r)
+
+    // Treat anything invalid/out-of-range/surrogate as U+FFFD.
+    if r < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+        cp = 0xFFFD
+    }
+
+    buffer: [4]char
+    count:  s64
+    if (cp <= 0x7F) {
+        buffer[0] = char(cp)
+        count = 1
+    } else if (cp <= 0x7FF) {
+        buffer[0] = char(0xC0 | (cp >> 6))
+        buffer[1] = char(0x80 | (cp & 0x3F))
+        count = 2
+    } else if (cp <= 0xFFFF) {
+        buffer[0] = char(0xE0 | (cp >> 12))
+        buffer[1] = char(0x80 | ((cp >> 6) & 0x3F))
+        buffer[2] = char(0x80 | (cp & 0x3F))
+        count = 3
+    } else {
+        buffer[0] = char(0xF0 | (cp >> 18))
+        buffer[1] = char(0x80 | ((cp >> 12) & 0x3F))
+        buffer[2] = char(0x80 | ((cp >> 6) & 0x3F))
+        buffer[3] = char(0x80 | (cp & 0x3F))
+        count = 4
+    }
+
+    w.write(buffer)
+}
+
 write_type :: (w: Writer, t: Type) {
     if t == null {
         w.write([]char("null"))
@@ -166,6 +199,11 @@ write_quoted_char :: (w: Writer, ch: char, quote: char) {
 write_value :: (w: Writer, a: Any, nested: bool) {
     if a.type != null && a.type.format != null {
         a.type.format(a.data, w, nested)
+        return
+    }
+
+    if a.type == Rune {
+        write_rune(w, *(&Rune)(a.data))
         return
     }
 

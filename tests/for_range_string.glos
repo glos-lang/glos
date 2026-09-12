@@ -1,11 +1,6 @@
 main :: () {
-    s := "Nice!"
+    s := "Hi! ☀️Let's go! ☕️Hehe 😊"
     for i, c := range s {
         println(i, c)
     }
-
-    for i, x := range &s {
-        *x = 'A' + char(i)
-    }
-    println(s)
 }

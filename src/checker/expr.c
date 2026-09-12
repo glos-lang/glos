@@ -2072,8 +2072,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         const bool is_array = type_kind_eq(*a_type, TYPE_ARRAY);
         const bool is_dynamic_array = type_kind_eq(*a_type, TYPE_DYNAMIC_ARRAY);
         const bool is_slice = type_kind_eq(*a_type, TYPE_SLICE);
-        const bool is_string = type_kind_eq(*a_type, TYPE_STRING);
-        if (is_array || is_dynamic_array || is_slice || is_string) {
+        if (is_array || is_dynamic_array || is_slice) {
             if (a_type->ref > 1) {
                 error_node(
                     EK_ERROR,
@@ -2093,8 +2092,6 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                 group.data[1] = *a_type->spec.dynamic_array.element;
             } else if (is_slice) {
                 group.data[1] = *a_type->spec.slice.element;
-            } else if (is_string) {
-                group.data[1] = (Type) {.kind = TYPE_CHAR};
             } else {
                 unreachable();
             }

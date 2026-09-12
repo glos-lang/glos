@@ -432,7 +432,6 @@ static void check_operator_method_signature_args_count_and_that_receiver_is_not_
         case TYPE_ARRAY:
         case TYPE_DYNAMIC_ARRAY:
         case TYPE_SLICE:
-        case TYPE_STRING:
             fn->body = NULL;
             error_node(EK_ERROR, (Node *) fn, "Cannot define iterator for type %s", type_to_cstr(*receiver));
             if (receiver->distinct) {

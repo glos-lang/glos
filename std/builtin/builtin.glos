@@ -34,32 +34,6 @@ unreachable :: noreturn (message: ...Any, location := #caller_location) {
     panic(message = message, location = location, label = "Unreachable")
 }
 
-operator <=> :: (this: string, that: string) -> Ordering {
-    n := this.count
-    if n > that.count {
-        n = that.count
-    }
-
-    diff := C.memcmp(rawptr(this.data), rawptr(that.data), u64(n))
-    if diff < 0 {
-        return .LT
-    }
-
-    if diff > 0 {
-        return .GT
-    }
-
-    if this.count < that.count {
-        return .LT
-    }
-
-    if this.count > that.count {
-        return .GT
-    }
-
-    return .EQ
-}
-
 New :: ($T: Type, n := 1, a := &arena.default) -> &T {
     return &T(a.alloc(n * sizeof(T)))
 }
