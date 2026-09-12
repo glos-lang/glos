@@ -30,7 +30,7 @@ write_rune :: (w: Writer, r: rune) {
         count = 4
     }
 
-    w.write(buffer)
+    w.write(buffer[..count])
 }
 
 write_type :: (w: Writer, t: Type) {
@@ -172,8 +172,8 @@ write_type :: (w: Writer, t: Type) {
     }
 }
 
-write_quoted_char :: (w: Writer, ch: char, quote: char) {
-    if ch == {
+write_quoted_rune :: (w: Writer, r: rune, quote: char) {
+    if r == {
     case '\e'; w.write([]char("\\e"))
     case '\n'; w.write([]char("\\n"))
     case '\r'; w.write([]char("\\r"))
@@ -185,17 +185,17 @@ write_quoted_char :: (w: Writer, ch: char, quote: char) {
         if quote == '\'' {
             w.write([]char("\\'"))
         } else {
-            w.write([]char(&ch, 1))
+            w.write([]char("'"))
         }
 
     case '\"'
         if quote == '\"' {
             w.write([]char("\\\""))
         } else {
-            w.write([]char(&ch, 1))
+            w.write([]char("\""))
         }
 
-    case; w.write([]char(&ch, 1))
+    case; write_rune(w, r)
     }
 }
 
@@ -246,7 +246,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         ch := *&char(a.data)
         if nested {
             w.write([]char("'"))
-            write_quoted_char(w, ch, '\'')
+            write_quoted_rune(w, rune(ch), '\'')
             w.write([]char("'"))
         } else {
             w.write([]char(&ch, 1))
@@ -436,8 +436,8 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         s := *&string(a.data)
         if nested {
             w.write([]char("\""))
-            for i := 0; i < s.count; i += 1 {
-                write_quoted_char(w, s[i], '"')
+            for _, c := range s {
+                write_quoted_rune(w, c, '"')
             }
             w.write([]char("\""))
         } else {

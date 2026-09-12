@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 166
+tests/error_character_literal_invalid_for_type_char.glos:1:11: Error: Character U+1F600 is invalid for 'char', which must be in range [0, 255]
+
+    s: char = '😀'
+
+

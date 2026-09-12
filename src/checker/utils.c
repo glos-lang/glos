@@ -589,7 +589,7 @@ bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
-bool try_auto_cast_literal(Node *n, Type expected) {
+bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
     if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
         // NOTE: We are also checking for rawptr because distinct types exist
@@ -605,6 +605,24 @@ bool try_auto_cast_literal(Node *n, Type expected) {
         return true;
     }
 
+    if (n->kind == NODE_ATOM && n->token.kind == TOKEN_CHAR &&
+        type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR})) //
+    {
+        if (n->token.as.integer > UINT8_MAX) {
+            error_node(
+                EK_ERROR,
+                n,
+                "Character U+%X is invalid for %s, which must be in range [0, %zu]",
+                (uint32_t) n->token.as.integer,
+                type_to_cstr(expected),
+                (size_t) UINT8_MAX);
+            exit(c, 1);
+        }
+
+        n->type = expected;
+        return true;
+    }
+
     return false;
 }
 
@@ -616,7 +634,7 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
             return true;
         }
 
-        if (try_auto_cast_literal(n, expected)) {
+        if (try_auto_cast_literal(c, n, expected)) {
             return true;
         }
 

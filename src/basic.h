@@ -332,6 +332,13 @@ bool is_space(char ch);
 void print_char_safe(FILE *f, char ch);
 void sb_push_quoted_char(SB *sb, char ch, char quote);
 
+// UTF-8
+typedef int32_t Rune;
+
+Rune read_rune_from_sv(SV *sv);
+void print_rune(FILE *f, Rune rune);
+void print_sv_safe(FILE *f, SV sv);
+
 // Arena Allocator
 typedef struct {
     char  *data;

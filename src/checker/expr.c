@@ -131,7 +131,7 @@ void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_va
         break;
 
     case TOKEN_CHAR:
-        n->type = (Type) {.kind = TYPE_CHAR};
+        n->type = (Type) {.kind = TYPE_RUNE};
         break;
 
     case TOKEN_NULL:
