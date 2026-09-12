@@ -108,6 +108,7 @@ void check_call_arity(
 void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_provided) {
     assert(type_kind_eq(cc->fn->type, TYPE_FN));
     const Type_Fn *fn_spec = cc->fn->type.spec.fn;
+    const Type_Fn *fn_spec_save = fn_spec;
 
     typedef struct {
         Node *node;
@@ -502,8 +503,22 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
 
             const bool is_named = it->kind == NODE_BINARY && it->token.kind == TOKEN_SET;
             if (is_named) {
+                Node_Binary *it_binary = (Node_Binary *) it;
+                if (fn_spec->args_count != fn_spec_save->args_count) {
+                    bool ok = false;
+                    for (size_t i = 0; i < fn_spec->args_count; i++) {
+                        const Type_Fn_Arg *arg = &fn_spec->args[i];
+                        if (sv_eq(arg->name, it_binary->lhs->token.sv)) {
+                            it->token.as.integer = i;
+                            ok = true;
+                            break;
+                        }
+                    }
+                    assert(ok);
+                }
+
                 it_index = it->token.as.integer;
-                it = ((Node_Binary *) it)->rhs;
+                it = it_binary->rhs;
 
                 if (!type_assert_noexit(c, it, fn_spec->args[it_index].type)) {
                     if (!cc->is_polymorph) {

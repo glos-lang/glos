@@ -336,6 +336,7 @@ void sb_push_quoted_char(SB *sb, char ch, char quote);
 typedef int32_t Rune;
 
 Rune read_rune_from_sv(SV *sv);
+void sb_push_rune(SB *sb, Rune rune);
 void print_rune(FILE *f, Rune rune);
 void print_sv_safe(FILE *f, SV sv);
 

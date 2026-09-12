@@ -641,6 +641,9 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else if (sv_match(n->token.sv, "capacity")) {
                     n->type = (Type) {.kind = TYPE_S64};
                     member->field_index = 2;
+                } else if (sv_match(n->token.sv, "allocator")) {
+                    n->type = c->allocator_type;
+                    member->field_index = 3;
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
@@ -655,6 +658,9 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else if (sv_match(n->token.sv, "capacity")) {
                     n->type = (Type) {.kind = TYPE_S64};
                     member->field_index = 2;
+                } else if (sv_match(n->token.sv, "allocator")) {
+                    n->type = c->allocator_type;
+                    member->field_index = 3;
                 } else if (sv_match(n->token.sv, "info")) {
                     n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = &c->hash_info_type};
                     member->is_map_info = true;

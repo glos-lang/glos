@@ -92,8 +92,9 @@ void check_nodes(Compiler *c) {
         define_orderless_nodes_of_module(c, m, NULL);
     }
 
-    // Any
     Const_Value value;
+
+    // Any
     {
         value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Any"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
@@ -196,25 +197,32 @@ void check_nodes(Compiler *c) {
     {
         value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Source_Code_Location"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
-
         c->source_code_location_type = type_without_meta(value.as.type);
+    }
+
+    // Allocator
+    {
+        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Allocator"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+        c->allocator_type = type_without_meta(value.as.type);
     }
 
     // Define the methods
     define_orderless_methods(c);
 
+    // Check the nodes
     for (Module *m = c->modules->head; m; m = m->next) {
         for (Node *it = m->nodes.head; it; it = it->next) {
             check_stmt(c, it);
         }
     }
 
-    // Interpolation Marker
+    get_main(c);
+
+    // Interpolation Marker. Needed for optimization.
     {
         value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Interpolation_Marker"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->interpolation_marker_type = type_without_meta(value.as.type);
     }
-
-    get_main(c);
 }

@@ -620,19 +620,13 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
 
     case CONST_VALUE_DYNAMIC_ARRAY:
     case CONST_VALUE_MAP:
-        if (member->is_map_info) {
+        if (member->is_map_info || member->field_index == 0 || member->field_index == 3) {
             error_node(EK_ERROR, n, "This expression is not constant at compile time");
             exit(c, 1);
         }
 
-        if (member->field_index == 0) {
-            error_node(EK_ERROR, n, "Cannot access pointers in constant expressions");
-            exit(c, 1);
-        } else if (member->field_index == 1 || member->field_index == 2) {
-            return const_value_u64(0); // Dynamic arrays in constant expressions can only be empty ones
-        } else {
-            unreachable();
-        }
+        assert(member->field_index == 1 || member->field_index == 2);
+        return const_value_u64(0); // Dynamic arrays in constant expressions can only be empty ones
 
     case CONST_VALUE_STRING:
         if (member->field_index == 0) {

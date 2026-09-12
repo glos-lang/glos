@@ -67,7 +67,7 @@ runtime_init :: inline (argc: s32, argv: &&char) {
         os.stderr = __acrt_iob_func(2)
     }
 
-    os.args = []string(new(string, s64(argc)), argc)
+    os.args = []string(mem.new(string, s64(argc)), argc)
     for i, arg := range []&char(argv, argc) {
         os.args[i] = strings.from_cstring(arg)
     }
@@ -76,9 +76,10 @@ runtime_init :: inline (argc: s32, argv: &&char) {
 }
 
 runtime_deinit :: () {
-    free(os.args.data)
+    mem.free(os.args.data)
 }
 
 C       :: #import "C"
 os      :: #import "os"
+mem     :: #import "memory"
 strings :: #import "strings"

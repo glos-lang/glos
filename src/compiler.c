@@ -68,14 +68,6 @@ static void compiler_init_llvm_target_data(Compiler *c) {
 
     // Initialize the common types
     {
-        LLVMTypeRef dynamic_array_fields[] = {
-            LLVMPointerTypeInContext(c->llvm_context, 0),
-            LLVMInt64TypeInContext(c->llvm_context),
-            LLVMInt64TypeInContext(c->llvm_context),
-        };
-        c->llvm_dynamic_array_or_map_type =
-            LLVMStructTypeInContext(c->llvm_context, dynamic_array_fields, len(dynamic_array_fields), false);
-
         LLVMTypeRef slice_fields[] = {
             LLVMPointerTypeInContext(c->llvm_context, 0),
             LLVMInt64TypeInContext(c->llvm_context),
@@ -88,6 +80,15 @@ static void compiler_init_llvm_target_data(Compiler *c) {
             LLVMPointerTypeInContext(c->llvm_context, 0),
         };
         c->llvm_trait_type = LLVMStructTypeInContext(c->llvm_context, trait_fields, len(trait_fields), false);
+
+        LLVMTypeRef dynamic_array_fields[] = {
+            LLVMPointerTypeInContext(c->llvm_context, 0),
+            LLVMInt64TypeInContext(c->llvm_context),
+            LLVMInt64TypeInContext(c->llvm_context),
+            c->llvm_trait_type,
+        };
+        c->llvm_dynamic_array_or_map_type =
+            LLVMStructTypeInContext(c->llvm_context, dynamic_array_fields, len(dynamic_array_fields), false);
     }
 
     free(triple);

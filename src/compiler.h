@@ -141,6 +141,9 @@ typedef struct {
     Type source_code_location_type;
     Type any_type;
 
+    Type        allocator_type;
+    Const_Value default_allocator;
+
     // Rest all are only used by compiler
     Cmd        *cmd;
     Link_Flags *link_flags;
@@ -176,13 +179,6 @@ typedef struct {
 
     HT(Type, Type_Info) type_info_cache;
 
-    // Dynamic_Array_Or_Map :: struct {
-    //     data:     rawptr
-    //     count:    s64
-    //     capacity: s64
-    // }
-    LLVMTypeRef llvm_dynamic_array_or_map_type;
-
     // Slice :: struct {
     //     data:  rawptr
     //     count: s64
@@ -195,6 +191,14 @@ typedef struct {
     //     impl: &[N]Trait_Method
     // }
     LLVMTypeRef llvm_trait_type;
+
+    // Dynamic_Array_Or_Map :: struct {
+    //     data:      rawptr
+    //     count:     s64
+    //     capacity:  s64
+    //     allocator: Allocator
+    // }
+    LLVMTypeRef llvm_dynamic_array_or_map_type;
 } Compiler;
 
 size_t compile_sizeof(Compiler *c, Type *type);

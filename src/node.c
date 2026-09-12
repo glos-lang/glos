@@ -973,12 +973,26 @@ static_assert(COUNT_CONST_VALUES == 14, "");
 static void sb_push_const_value_impl(SB *sb, Type type, Const_Value v, bool raw) {
     switch (v.kind) {
     case CONST_VALUE_INT:
-        if (type_kind_eq(type, TYPE_CHAR)) {
+        if (type_kind_eq(type, TYPE_BOOL)) {
+            sb_push_cstr(sb, int128_is_zero(v.as.integer) ? "false" : "true");
+        } else if (type_kind_eq(type, TYPE_CHAR)) {
             if (raw) {
                 sb_push(sb, (char) v.as.integer.low);
             } else {
                 sb_push(sb, '\'');
                 sb_push_quoted_char(sb, (char) v.as.integer.low, '\'');
+                sb_push(sb, '\'');
+            }
+        } else if (type_kind_eq(type, TYPE_RUNE)) {
+            if (raw) {
+                sb_push_rune(sb, v.as.integer.low);
+            } else {
+                sb_push(sb, '\'');
+                if (v.as.integer.low <= UINT8_MAX) {
+                    sb_push_quoted_char(sb, (char) v.as.integer.low, '\'');
+                } else {
+                    sb_push_rune(sb, v.as.integer.low);
+                }
                 sb_push(sb, '\'');
             }
         } else {

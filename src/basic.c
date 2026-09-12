@@ -692,7 +692,7 @@ Rune read_rune_from_sv(SV *sv) {
     return cp;
 }
 
-void print_rune(FILE *f, Rune rune) {
+void sb_push_rune(SB *sb, Rune rune) {
     uint32_t cp = (uint32_t) rune;
 
     // Treat anything invalid/out-of-range/surrogate as U+FFFD.
@@ -721,7 +721,15 @@ void print_rune(FILE *f, Rune rune) {
         buffer[3] = (uint8_t) (0x80 | (cp & 0x3F));
         count = 4;
     }
-    fwrite(buffer, 1, count, f);
+
+    sb_push_many(sb, buffer, count);
+}
+
+void print_rune(FILE *f, Rune rune) {
+    const size_t start = default_sb.count;
+    sb_push_rune(&default_sb, rune);
+    fwrite(default_sb.data + start, default_sb.count - start, 1, f);
+    default_sb.count = start;
 }
 
 void print_sv_safe(FILE *f, SV s) {
