@@ -87,8 +87,8 @@ main :: () {
 
 // You can apply '#private' to an entire 'extern' block. It would do exactly what you expect.
 #private extern {
-    foo :: ()
-    bar :: ()
+    foo2 :: ()
+    bar2 :: ()
 }
 
 // If the '#private ...' directive is used inside a '#if' branch, then it will only apply to that
