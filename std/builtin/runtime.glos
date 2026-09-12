@@ -67,7 +67,7 @@ runtime_init :: inline (argc: s32, argv: &&char) {
         os.stderr = __acrt_iob_func(2)
     }
 
-    args := argv[..argc]
+    args := []&char(argv, argc)
     os.args = New_Array(string, args.count)
     for i := 0; i < args.count; i += 1 {
         os.args[i] = strings.from_cstring(args[i])

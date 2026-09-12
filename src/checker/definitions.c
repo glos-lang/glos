@@ -544,7 +544,7 @@ void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type, boo
                 if (type) {
                     i64   group_index = -1;
                     Node *n = get_node_from_group(it_expr, it->definition_spec->group_index, &group_index);
-                    type_assert_grouped(c, n, type->type, group_index, (Node *) it);
+                    type_assert_grouped(c, n, group_index, type->type, (Node *) it);
                 } else {
                     it->node.type = it_expr->type.spec.group.data[it->definition_spec->group_index];
                     if (type_is_untyped(it->node.type)) {

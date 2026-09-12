@@ -42,7 +42,7 @@ Type type_assert(Compiler *c, Node *n, Type expected) {
     exit(c, 1);
 }
 
-bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement) {
+bool type_assert_grouped_noexit(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement) {
     Type actual = n->type;
 
     const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
@@ -93,8 +93,8 @@ bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_i
     return false;
 }
 
-Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement) {
-    if (type_assert_grouped_noexit(c, n, expected, group_index, requirement)) {
+Type type_assert_grouped(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement) {
+    if (type_assert_grouped_noexit(c, n, group_index, expected, requirement)) {
         return expected;
     }
     exit(c, 1);
@@ -121,37 +121,63 @@ Type type_assert_node(Compiler *c, Node *a, Node *b) {
 }
 
 Type type_assert_numeric(Compiler *c, const Node *n, bool pointers_allowed, bool floats_allowed) {
-    if (type_is_pointer(n->type)) {
+    return type_assert_numeric_grouped(c, n, -1, pointers_allowed, floats_allowed);
+}
+
+Type type_assert_numeric_grouped(
+    Compiler *c, const Node *n, i64 group_index, bool pointers_allowed, bool floats_allowed) //
+{
+    Type actual = n->type;
+
+    const bool is_group = group_index != -1 && type_kind_eq(actual, TYPE_GROUP);
+    if (is_group) {
+        actual = n->type.spec.group.data[group_index];
+    }
+
+    if (type_is_pointer(actual)) {
         if (pointers_allowed) {
-            return n->type;
+            return actual;
         }
 
         goto fail;
     }
 
-    if (type_is_float(n->type)) {
+    if (type_is_float(actual)) {
         if (floats_allowed) {
-            return n->type;
+            return actual;
         }
 
         goto fail;
     }
 
-    if (type_is_numeric(n->type)) {
-        return n->type;
+    if (type_is_numeric(actual)) {
+        return actual;
     }
 
-fail:
-    check_that_type_is_known(c, n);
-
+fail:;
     const char *label = NULL;
     if (floats_allowed) {
-        label = pointers_allowed ? "numeric or pointer" : "numeric";
+        label = pointers_allowed ? "a number or pointer" : "a number";
     } else {
-        label = pointers_allowed ? "integer or pointer" : "integer";
+        label = pointers_allowed ? "an integer or pointer" : "an integer";
     }
 
-    error_node(EK_ERROR, n, "Expected %s value, got %s", label, type_to_cstr(n->type));
+    if (is_group) {
+        const char *postfix = order_postfix(group_index + 1);
+        error_node(
+            EK_ERROR,
+            n,
+            "Expected %zd%s value of this to be %s, got %s. The type of this entire expression is %s",
+            group_index + 1,
+            postfix,
+            label,
+            type_to_cstr(actual),
+            type_to_cstr(n->type));
+    } else {
+        check_that_type_is_known(c, n);
+        error_node(EK_ERROR, n, "Expected %s value, got %s", label, type_to_cstr(actual));
+    }
+
     exit(c, 1);
 }
 

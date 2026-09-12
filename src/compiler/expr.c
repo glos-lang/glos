@@ -1510,27 +1510,36 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
             return compile_expr(c, from, ref);
         }
 
-        LLVMValueRef from_value = compile_expr(c, from, false);
-        LLVMTypeRef  from_type = from->type.llvm;
-
-        set_debug_pos(c, call->fn_source->token.pos);
-        static_assert(COUNT_TYPE_CASTS == 6, "");
+        static_assert(COUNT_TYPE_CASTS == 7, "");
         switch (call->type_cast) {
-        case TYPE_CAST_NORMAL:
+        case TYPE_CAST_NORMAL: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
             set_debug_pos(c, n->token.pos);
             return compile_cast(c, from_value, n->type.llvm, type_is_signed(from->type), type_is_signed(n->type));
+        }
 
-        case TYPE_CAST_TO_BOOL:
+        case TYPE_CAST_TO_BOOL: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
             set_debug_pos(c, n->token.pos);
-            return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from_type), "");
+            return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from->type.llvm), "");
+        }
 
-        case TYPE_CAST_TO_TRAIT:
+        case TYPE_CAST_TO_TRAIT: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
             return compile_cast_to_trait(c, &call->args.head->type, call->type_cast_trait_impl, from_value, ref);
+        }
 
-        case TYPE_CAST_TO_UNION:
+        case TYPE_CAST_TO_UNION: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
             return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
+        }
 
         case TYPE_CAST_ARRAY_TO_SLICE: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
+
             LLVMValueRef memory = undo_load(from_value);
             assert(from->type.kind == TYPE_ARRAY);
 
@@ -1543,6 +1552,37 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
 
             return ref ? slice : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
         }
+
+        case TYPE_CAST_POINTER_TO_SLICE: {
+            LLVMValueRef data = NULL;
+            LLVMValueRef count = NULL;
+            Type        *count_type = NULL;
+            if (from->type.kind == TYPE_GROUP) {
+                const size_t group_values_count_save = c->group_values.count;
+                compile_expr(c, from, false);
+
+                assert(c->group_values.count == group_values_count_save + 2);
+                count = c->group_values.data[--c->group_values.count];
+                data = c->group_values.data[--c->group_values.count];
+                count_type = &from->type.spec.group.data[1];
+            } else {
+                data = compile_expr(c, from, false);
+                count = compile_expr(c, from->next, false);
+                count_type = &from->next->type;
+            }
+            set_debug_pos(c, call->fn_source->token.pos);
+
+            if (compile_sizeof(c, count_type) != 8) {
+                const bool is_signed = type_is_signed(*count_type);
+                count = compile_cast(c, count, LLVMInt64TypeInContext(c->llvm_context), is_signed, true);
+            }
+
+            LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
+            LLVMBuildStore(c->llvm_builder, data, slice);
+            LLVMBuildStore(
+                c->llvm_builder, count, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
+            return ref ? slice : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
+        } break;
 
         default:
             unreachable();
@@ -1719,8 +1759,15 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
 
         const Type_Fn    *fn_spec = fn.type->spec.fn;
         Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
-        if (fn_spec->args[0].type.ref > index->lhs->type.ref) {
+
+        const Type *expected_type = &fn_spec->args[0].type;
+        if (expected_type->ref > index->lhs->type.ref) {
             lhs = undo_load(lhs);
+        } else if (expected_type->ref < index->lhs->type.ref) {
+            for (size_t i = expected_type->ref; i + 1 < index->lhs->type.ref; i++) {
+                lhs = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+            }
+            lhs = LLVMBuildLoad2(c->llvm_builder, expected_type->llvm, lhs, "");
         }
 
         args[0].value = lhs;
@@ -1759,34 +1806,38 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     Type  element_type_buffer = {0};
     Type *element_type = &element_type_buffer;
 
-    if (index->lhs->type.ref) {
-        element_type = n->type.spec.slice.element;
-    } else {
-        static_assert(COUNT_TYPES == 31, "");
-        switch (index->lhs->type.kind) {
-        case TYPE_ARRAY:
-            element_type = index->lhs->type.spec.array.element;
-            break;
+    static_assert(COUNT_TYPES == 31, "");
+    switch (index->lhs->type.kind) {
+    case TYPE_ARRAY:
+        element_type = index->lhs->type.spec.array.element;
+        break;
 
-        case TYPE_DYNAMIC_ARRAY:
-            element_type = index->lhs->type.spec.dynamic_array.element;
-            break;
+    case TYPE_DYNAMIC_ARRAY:
+        element_type = index->lhs->type.spec.dynamic_array.element;
+        break;
 
-        case TYPE_SLICE:
-            element_type = index->lhs->type.spec.slice.element;
-            break;
+    case TYPE_SLICE:
+        element_type = index->lhs->type.spec.slice.element;
+        break;
 
-        case TYPE_STRING:
-            element_type_buffer.kind = TYPE_CHAR;
-            break;
+    case TYPE_STRING:
+        element_type_buffer.kind = TYPE_CHAR;
+        break;
 
-        default:
-            unreachable();
-            break;
-        }
+    default:
+        unreachable();
+        break;
     }
 
-    LLVMValueRef lhs = compile_expr(c, index->lhs, index->lhs->type.kind == TYPE_ARRAY || !index->lhs->type.ref);
+    LLVMValueRef lhs = NULL;
+    if (index->lhs->type.ref) {
+        lhs = compile_expr(c, index->lhs, false);
+        for (size_t i = 1; i < index->lhs->type.ref; i++) {
+            lhs = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), lhs, "");
+        }
+    } else {
+        lhs = compile_expr(c, index->lhs, true);
+    }
     LLVMValueRef a = compile_expr(c, index->a, false);
 
     compile_type(c, element_type);
@@ -1806,9 +1857,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
 
         LLVMValueRef ptr = NULL;
         LLVMValueRef count = NULL;
-        if (index->lhs->type.ref) {
-            ptr = lhs;
-        } else if (index->lhs->type.kind == TYPE_ARRAY) {
+        if (index->lhs->type.kind == TYPE_ARRAY) {
             ptr = lhs;
             count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), index->lhs->type.spec.array.count, true);
 
@@ -1904,7 +1953,8 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
             index->lhs->type.kind == TYPE_DYNAMIC_ARRAY ||                               //
             index->lhs->type.kind == TYPE_SLICE || index->lhs->type.kind == TYPE_STRING) //
         {
-            count = LLVMBuildStructGEP2(c->llvm_builder, index->lhs->type.llvm, lhs, 1, "");
+            // The first two bytes of these bytes involved all resemble a slice
+            count = LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, lhs, 1, "");
             count = LLVMBuildLoad2(c->llvm_builder, LLVMInt64TypeInContext(c->llvm_context), count, "");
         } else {
             unreachable();

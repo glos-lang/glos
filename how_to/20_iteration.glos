@@ -15,7 +15,7 @@ main :: () {
         println(i, x)
     }
 
-    // Iterating by reference. Notice that 'xs' is taken by reference.
+    // Iterating by reference. Notice that we are taking pointer to 'xs'.
     for i, x := range &xs {
         *x = "deeznuts"[i * 4..(i + 1) * 4]
     }

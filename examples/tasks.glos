@@ -8,11 +8,11 @@ init :: (this: &App) {
     contents, _ := os.read_entire_file(TASKS_PATH)
     contents := string(contents)
     for contents.count != 0 {
-        lhs, rhs, _ := strings.split(contents, '\n')
+        lhs: string
+        lhs, contents, _ = strings.split(contents, '\n')
         if lhs != "" {
             this.tasks.push(lhs)
         }
-        contents = rhs
     }
 }
 
@@ -28,14 +28,13 @@ save :: (this: &App) {
     }
     defer f.close()
 
-    for i := 0; i < this.tasks.count; i += 1 {
-        wprintln(f, this.tasks[i])
+    for _, it := range this.tasks {
+        wprintln(f, it)
     }
 }
 
 list :: (this: App, query := "") {
-    for i := 0; i < this.tasks.count; i += 1 {
-        it := this.tasks[i]
+    for i, it := range this.tasks {
         if query != "" {
             _, found := strings.find(it, query)
             if !found {

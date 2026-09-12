@@ -1,0 +1,19 @@
+foo :: (p: &&Array($T, $N)) {
+    println(p[..3])
+}
+
+main :: () {
+    xs: Array(s64, 5)
+    xs.items = {69, 420, 1337, 80085, 8008135}
+
+    ys := &xs
+    foo(&ys)
+}
+
+Array :: struct($T: Type, $N: s64) {
+    items: [N]T
+}
+
+operator [..] :: (this: &&Array($T, $N), begin := 0, end: s64) -> []T {
+    return this.items[begin..end]
+}
