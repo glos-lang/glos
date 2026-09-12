@@ -1734,8 +1734,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
     *is_ref_valid = true; // check_node() has already determined that the reference is valid
     index->is_assign = ref == REF_ASSIGN || ref == REF_ASSIGN_MEMBER;
     if (index->is_ranged) {
-        // TODO: Disallowing pointers for now, to make it easy to switch to the new syntax.
-        if (index->lhs->type.is_meta || index->lhs->type.ref) {
+        if (index->lhs->type.is_meta) {
             error_node(EK_ERROR, index->lhs, "Cannot take slice into %s", type_to_cstr(index->lhs->type));
             exit(c, 1);
         }
@@ -1757,7 +1756,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
                 type_assert_numeric(c, index->b, false, false);
             }
 
-            n->type = index->lhs->type;
+            n->type = type_without_ref(index->lhs->type);
             if (type_kind_eq(n->type, TYPE_ARRAY) || type_kind_eq(n->type, TYPE_DYNAMIC_ARRAY)) {
                 n->type.kind = TYPE_SLICE;
             }
@@ -1765,6 +1764,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
             index->overload = get_operator_overload(c, OPERATOR_SLICE, index->lhs, n, n->module);
             assert(index->overload->node.type.kind == TYPE_FN);
             const Type_Fn *fn_spec = index->overload->node.type.spec.fn;
+            check_whether_receiver_can_be_passed(c, n, index->lhs, fn_spec, "operator method");
 
             if (index->a) {
                 check_expr(c, index->a, REF_NONE);

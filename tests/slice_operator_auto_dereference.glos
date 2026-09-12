@@ -1,0 +1,9 @@
+foo :: (p: &&string) {
+    println(p[..5])
+}
+
+main :: () {
+    a := "Hello, world!"
+    b := &a
+    foo(&b)
+}

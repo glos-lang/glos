@@ -1857,9 +1857,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
 
         LLVMValueRef ptr = NULL;
         LLVMValueRef count = NULL;
-        if (index->lhs->type.ref) {
-            ptr = lhs;
-        } else if (index->lhs->type.kind == TYPE_ARRAY) {
+        if (index->lhs->type.kind == TYPE_ARRAY) {
             ptr = lhs;
             count = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), index->lhs->type.spec.array.count, true);
 
