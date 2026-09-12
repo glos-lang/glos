@@ -70,10 +70,12 @@ bool check_that_type_is_known_noexit(const Node *n);
 void check_that_type_is_known(Compiler *c, const Node *n);
 bool type_assert_noexit(Compiler *c, Node *n, Type expected);
 Type type_assert(Compiler *c, Node *n, Type expected);
-bool type_assert_grouped_noexit(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement);
-Type type_assert_grouped(Compiler *c, Node *n, Type expected, i64 group_index, Node *requirement);
+bool type_assert_grouped_noexit(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement);
+Type type_assert_grouped(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement);
 Type type_assert_node(Compiler *c, Node *a, Node *b);
 Type type_assert_numeric(Compiler *c, const Node *n, bool pointers_allowed, bool floats_allowed);
+Type type_assert_numeric_grouped(
+    Compiler *c, const Node *n, i64 group_index, bool pointers_allowed, bool floats_allowed);
 Type type_assert_scalar(Compiler *c, const Node *n);
 bool type_assert_type_noexit(const Node *n);
 Type type_assert_type(Compiler *c, const Node *n);

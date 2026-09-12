@@ -110,7 +110,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
                     exit(c, 1);
                 }
             } else {
-                type_assert_grouped(c, rhs, lhs->type, rhs_group_index, lhs);
+                type_assert_grouped(c, rhs, rhs_group_index, lhs->type, lhs);
                 if (binary->overloads) {
                     binary->overloads[i] = check_assignment_lhs_for_arithmetics(c, binary, lhs);
                 }
@@ -1501,6 +1501,10 @@ void check_expr_call(Compiler *c, Node_Call *call) {
             call->is_type_cast = true;
             n->type = type_without_meta(*fn_type);
 
+            Node *from = call->args.head;
+            Type *from_type = &from->type;
+            Type *to_type = &n->type;
+
             // Check the arguments and the arity
             {
                 Node *excess_argument = NULL;
@@ -1521,13 +1525,23 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                         excess_argument = it;
                     }
                 }
-                check_call_arity(
-                    c, call->fn, call->args_count, call->end, false, 1, 1, excess_argument, "in a cast expression");
-            }
 
-            Node *from = call->args.head;
-            Type *from_type = &from->type;
-            Type *to_type = &n->type;
+                size_t args_count_max = 1;
+                if (!to_type->ref && type_kind_eq(*to_type, TYPE_SLICE)) {
+                    args_count_max = 2;
+                }
+
+                check_call_arity(
+                    c,
+                    call->fn,
+                    call->args_count,
+                    call->end,
+                    false,
+                    1,
+                    args_count_max,
+                    excess_argument,
+                    "in a cast expression");
+            }
 
             bool same = false;
             bool to_any = false;
@@ -1541,6 +1555,22 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 to_union = true;
             } else if (type_is_scalar(*to_type)) {
                 // Pass
+            } else if (call->args_count == 2) {
+                Node  *data = from;
+                Node  *count = from;
+                size_t data_index = 0;
+                size_t count_index = 1;
+                if (!type_kind_eq(from->type, TYPE_GROUP)) {
+                    count = from->next;
+                    data_index = -1;
+                    count_index = -1;
+                }
+
+                Type element_type = *to_type->spec.slice.element;
+                element_type.ref++;
+                type_assert_grouped(c, data, data_index, element_type, NULL);
+                type_assert_numeric_grouped(c, count, count_index, false, false);
+                call->type_cast = TYPE_CAST_POINTER_TO_SLICE;
             } else {
                 Type char_type = {.kind = TYPE_CHAR};
                 Type char_slice_type = {

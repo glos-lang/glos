@@ -36,7 +36,7 @@ static void show_error_for_uninferred_polymorphic_parameter_in_call(
                     if (parts == 1) {
                         type_assert_noexit(c, it, *expected);
                     } else {
-                        type_assert_grouped_noexit(c, it, *expected, i, NULL);
+                        type_assert_grouped_noexit(c, it, i, *expected, NULL);
                     }
                 }
                 return;
@@ -553,7 +553,7 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
                                 ok = type_assert_noexit(c, it, *expected);
                             }
                         } else {
-                            ok = type_assert_grouped_noexit(c, it, *expected, i, NULL);
+                            ok = type_assert_grouped_noexit(c, it, i, *expected, NULL);
                         }
 
                         if (!ok) {

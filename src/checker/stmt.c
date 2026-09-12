@@ -252,7 +252,7 @@ void check_stmt_return(Compiler *c, Node_Return *returnn) {
         for (size_t i = 0; i < fn_type->returns_count; i++) {
             i64   group_index = -1;
             Node *n = get_node_from_group(returnn->value, i, &group_index);
-            type_assert_grouped(c, n, fn_type->returns[i], group_index, NULL);
+            type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
         }
 
         // The inference of the individual group items might not have reflected here

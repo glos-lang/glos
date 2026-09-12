@@ -741,7 +741,7 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
         exit(c, 1);
     }
 
-    static_assert(COUNT_TYPE_CASTS == 6, "");
+    static_assert(COUNT_TYPE_CASTS == 7, "");
     switch (call->type_cast) {
     case TYPE_CAST_NOP:
         return value;
@@ -827,6 +827,11 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
         assert(value.kind == CONST_VALUE_ARRAY);
         value.as.array.is_slice = true;
         return value;
+
+    case TYPE_CAST_POINTER_TO_SLICE:
+        error_node(EK_ERROR, n, "This expression is not constant at compile time");
+        exit(c, 1);
+        break;
 
     default:
         unreachable();

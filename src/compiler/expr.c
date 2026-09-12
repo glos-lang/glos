@@ -1510,27 +1510,36 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
             return compile_expr(c, from, ref);
         }
 
-        LLVMValueRef from_value = compile_expr(c, from, false);
-        LLVMTypeRef  from_type = from->type.llvm;
-
-        set_debug_pos(c, call->fn_source->token.pos);
-        static_assert(COUNT_TYPE_CASTS == 6, "");
+        static_assert(COUNT_TYPE_CASTS == 7, "");
         switch (call->type_cast) {
-        case TYPE_CAST_NORMAL:
+        case TYPE_CAST_NORMAL: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
             set_debug_pos(c, n->token.pos);
             return compile_cast(c, from_value, n->type.llvm, type_is_signed(from->type), type_is_signed(n->type));
+        }
 
-        case TYPE_CAST_TO_BOOL:
+        case TYPE_CAST_TO_BOOL: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
             set_debug_pos(c, n->token.pos);
-            return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from_type), "");
+            return LLVMBuildICmp(c->llvm_builder, LLVMIntNE, from_value, LLVMConstNull(from->type.llvm), "");
+        }
 
-        case TYPE_CAST_TO_TRAIT:
+        case TYPE_CAST_TO_TRAIT: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
             return compile_cast_to_trait(c, &call->args.head->type, call->type_cast_trait_impl, from_value, ref);
+        }
 
-        case TYPE_CAST_TO_UNION:
+        case TYPE_CAST_TO_UNION: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
             return compile_cast_to_union(c, n->type.llvm, call->type_cast_union_index, from_value, ref);
+        }
 
         case TYPE_CAST_ARRAY_TO_SLICE: {
+            LLVMValueRef from_value = compile_expr(c, from, false);
+            set_debug_pos(c, call->fn_source->token.pos);
+
             LLVMValueRef memory = undo_load(from_value);
             assert(from->type.kind == TYPE_ARRAY);
 
@@ -1543,6 +1552,37 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
 
             return ref ? slice : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
         }
+
+        case TYPE_CAST_POINTER_TO_SLICE: {
+            LLVMValueRef data = NULL;
+            LLVMValueRef count = NULL;
+            Type        *count_type = NULL;
+            if (from->type.kind == TYPE_GROUP) {
+                const size_t group_values_count_save = c->group_values.count;
+                compile_expr(c, from, false);
+
+                assert(c->group_values.count == group_values_count_save + 2);
+                count = c->group_values.data[--c->group_values.count];
+                data = c->group_values.data[--c->group_values.count];
+                count_type = &from->type.spec.group.data[1];
+            } else {
+                data = compile_expr(c, from, false);
+                count = compile_expr(c, from->next, false);
+                count_type = &from->next->type;
+            }
+            set_debug_pos(c, call->fn_source->token.pos);
+
+            if (compile_sizeof(c, count_type) != 8) {
+                const bool is_signed = type_is_signed(*count_type);
+                count = compile_cast(c, count, LLVMInt64TypeInContext(c->llvm_context), is_signed, true);
+            }
+
+            LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
+            LLVMBuildStore(c->llvm_builder, data, slice);
+            LLVMBuildStore(
+                c->llvm_builder, count, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, slice, 1, ""));
+            return ref ? slice : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, slice, "");
+        } break;
 
         default:
             unreachable();
