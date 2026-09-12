@@ -64,7 +64,7 @@ compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, L
     return LLVMBuildLoad2(c->llvm_builder, union_type, memory, "");
 }
 
-void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
+LLVMValueRef compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
     if (!impl->llvm) {
         if (impl->methods_count) {
             for (size_t i = 0; i < impl->methods_count; i++) {
@@ -97,6 +97,8 @@ void compile_trait_impl(Compiler *c, Type_Trait_Impl *impl) {
             impl->llvm = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
         }
     }
+
+    return impl->llvm;
 }
 
 typedef struct {
@@ -1236,6 +1238,10 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
 
     if (member->method && member->lhs->type.is_meta) {
         return compile_fn(c, member->method);
+    }
+
+    if (type_meta_kind_eq(member->lhs->type, TYPE_TRAIT) && member->trait_impl) {
+        return compile_trait_impl(c, member->trait_impl);
     }
 
     if (member->is_map_info) {

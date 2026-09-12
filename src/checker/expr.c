@@ -690,29 +690,47 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
             } else {
                 bool ok = false;
                 if (member->lhs->type.is_meta) {
+                    bool skip = false;
+
                     const Type receiver = type_without_meta(member->lhs->type);
                     if (member->lhs->type.kind == TYPE_TRAIT) {
-                        error_node(EK_ERROR, n, "Cannot access trait methods from the type itself");
-                        afprintf(
-                            stderr,
-                            ANSI_COLOR_YELLOW | ANSI_BOLD,
-                            "    First create a value of type %s. Then access methods from that value.\n\n",
-                            type_to_cstr(receiver));
-                        exit(c, 1);
+                        if (member->rhs) {
+                            check_expr(c, member->rhs, REF_NONE);
+                            member->trait_impl = check_type_satisfies_trait(
+                                c,
+                                type_without_meta(type_assert_type(c, member->rhs)),
+                                member->lhs->type.spec.trait,
+                                member->rhs,
+                                -1);
+
+                            n->type = (Type) {.kind = TYPE_RAWPTR};
+                            ok = true;
+                            skip = true;
+                        } else {
+                            error_node(EK_ERROR, n, "Cannot access trait methods from the type itself");
+                            afprintf(
+                                stderr,
+                                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                                "    First create a value of type %s. Then access methods from that value.\n\n",
+                                type_to_cstr(receiver));
+                            exit(c, 1);
+                        }
                     }
 
-                    Method_Spec spec = {0};
-                    if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL)) {
-                        member->method = get_method(c, spec, member->node.module);
-                        if (member->method) {
-                            ok = true;
-                            n->type = member->method->node.type;
+                    if (!skip) {
+                        Method_Spec spec = {0};
+                        if (get_method_spec(c, member->lhs, receiver, n->token.sv, &spec, NULL)) {
+                            member->method = get_method(c, spec, member->node.module);
+                            if (member->method) {
+                                ok = true;
+                                n->type = member->method->node.type;
+                            } else {
+                                error_undefined_in(c, &n->token, &member->lhs->type, "method");
+                            }
                         } else {
-                            error_undefined_in(c, &n->token, &member->lhs->type, "method");
+                            error_node(EK_ERROR, n, "There are no methods defined on %s", type_to_cstr(receiver));
+                            exit(c, 1);
                         }
-                    } else {
-                        error_node(EK_ERROR, n, "There are no methods defined on %s", type_to_cstr(receiver));
-                        exit(c, 1);
                     }
                 }
 

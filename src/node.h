@@ -694,6 +694,8 @@ typedef struct {
         Int128 enum_value;
         size_t trait_method;
         size_t union_index;
+
+        Type_Trait_Impl *trait_impl;
     };
 
     // Foo :: #import "Foo"

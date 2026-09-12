@@ -135,7 +135,9 @@ main :: () {
     //
     // When you assign a value to a trait, it creates a stack allocated memory buffer where
     // it stores that value, and then assigns the pointer to that memory into this field.
+    //
     println(my_trait.data)
+    //
     // So the lesson here is that by default, the lifetime of a trait is tied to its lexical scope.
 
     {
@@ -144,19 +146,26 @@ main :: () {
 
         // Let's create a new variable to demonstrate this in.
         my_trait_in_heap: My_Trait
-        my_trait_in_heap = Int32 {} // You MUST assign a dummy value to setup the 'impl' field of that type
+
+        // Assign the type
+        my_trait_in_heap.type = Int32
+
+        // Assign the implementation
+        my_trait_in_heap.impl = My_Trait.(Int32)
 
         // New() is a function defined in the builtin standard module of Glos. It uses
         // compile time polymorphism, which will be described in the next document.
         //
         // For now, just know that you should call this function providing a type as its argument.
-        // And it will allocate an object of that type on the heap (using the default arena) and
+        // And it will allocate an object of that type on the heap (using the default allocator) and
         // return a pointer to that memory
         int32_in_heap := New(Int32)
         int32_in_heap.x = 69
 
         // Now assign the memory.
+        //
         my_trait_in_heap.data = rawptr(int32_in_heap)
+        //
         // Congratulations. Now you have ownership of the memory and can extend its lifetime beyond
         // that of this function.
 

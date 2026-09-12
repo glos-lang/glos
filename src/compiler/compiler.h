@@ -117,7 +117,7 @@ LLVMValueRef create_const_struct_from_single_value_if_not_already(Compiler *c, L
 LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type);
 
 // Expressions /////////////////////////////////////////////////////////////////////////////////////
-void         compile_trait_impl(Compiler *c, Type_Trait_Impl *impl);
+LLVMValueRef compile_trait_impl(Compiler *c, Type_Trait_Impl *impl);
 LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref);
 LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn);
 void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *fn_spec, Pos caller_location);

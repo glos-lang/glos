@@ -532,6 +532,11 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         return const_value_fn(member->method);
     }
 
+    if (type_meta_kind_eq(member->lhs->type, TYPE_TRAIT) && member->rhs) {
+        error_node(EK_ERROR, n, "This expression is not constant at compile time");
+        exit(c, 1);
+    }
+
     Const_Value lhs = eval_const_expr(c, member->lhs, false);
     while (lhs.kind == CONST_VALUE_VAR) {
         lhs = const_value_of_var(c, lhs.as.var);

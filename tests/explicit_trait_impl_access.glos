@@ -1,0 +1,13 @@
+main :: () {
+    wprintln(stdout(), "Hi!")
+
+    stdout :: () -> Writer {
+        w: Writer
+        w.type = os.File
+        w.data = rawptr(&os.stdout)
+        w.impl = Writer.(os.File)
+        return w
+    }
+}
+
+os :: #import "os"
