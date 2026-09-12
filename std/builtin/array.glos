@@ -1,11 +1,10 @@
 push :: (this: &[..]$T, v: T) {
     if this.count >= this.capacity {
+        if this.allocator == null then this.allocator = default_allocator
         this.capacity *= 2
-        if this.capacity == 0 {
-            this.capacity = 128
-        }
+        if this.capacity == 0 then this.capacity = 128
 
-        this.data = &T(C.realloc(rawptr(this.data), u64(this.capacity) * sizeof(T)))
+        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator))
         assert(this.data != null)
     }
 
@@ -14,8 +13,9 @@ push :: (this: &[..]$T, v: T) {
 }
 
 free :: (this: &[..]$T) {
-    C.free(rawptr(this.data))
-    C.memset(rawptr(this), 0, sizeof(*this))
+    if this.allocator == null then this.allocator = default_allocator
+    mem.free(this.data, allocator = this.allocator)
+    mem.zero(this)
 }
 
 remove :: (this: &[..]$T, index: s64, location := #caller_location) -> T {
@@ -25,7 +25,7 @@ remove :: (this: &[..]$T, index: s64, location := #caller_location) -> T {
 
     value := (*this)[index]
     if index + 1 < this.count {
-        C.memmove(rawptr(&(*this)[index]), rawptr(&(*this)[index + 1]), u64(this.count - index - 1) * sizeof(T))
+        mem.copy(&this[index], &this[index + 1], this.count - index - 1)
     }
 
     this.count -= 1

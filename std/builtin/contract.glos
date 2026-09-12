@@ -27,6 +27,7 @@ Type_Info :: struct {
     variant: union {
         Type_Info_Boolean
         Type_Info_Character
+        Type_Info_Rune
         Type_Info_Integer
         Type_Info_Float
         Type_Info_Pointer
@@ -47,6 +48,7 @@ Type_Info :: struct {
 
 Type_Info_Boolean :: struct {}
 Type_Info_Character :: struct {}
+Type_Info_Rune :: struct {}
 
 Type_Info_Integer :: struct {
     signed: bool

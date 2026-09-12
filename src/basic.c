@@ -620,6 +620,130 @@ void sb_push_quoted_char(SB *sb, char ch, char quote) {
     }
 }
 
+// UTF-8
+static size_t utf8_sequence_count(uint8_t b) {
+    if ((b & 0x80) == 0x00) return 1; // 0xxxxxxx
+    if ((b & 0xE0) == 0xC0) return 2; // 110xxxxx
+    if ((b & 0xF0) == 0xE0) return 3; // 1110xxxx
+    if ((b & 0xF8) == 0xF0) return 4; // 11110xxx
+    return 0;
+}
+
+Rune read_rune_from_sv(SV *sv) {
+    uint8_t byte = (uint8_t) *sv->data;
+    size_t  count = utf8_sequence_count(byte);
+
+    if (count == 0) {
+        // Invalid leading byte (e.g. a stray continuation byte 10xxxxxx,
+        // or 0xF8-0xFF which are never valid in UTF-8).
+        sv_drop_mut(sv, 1);
+        return -1;
+    }
+
+    if (count > sv->count) {
+        // Sequence would run past the end of the buffer.
+        sv_drop_mut(sv, 1);
+        return -1;
+    }
+
+    Rune    cp;
+    int64_t min_cp; // Smallest code point that legitimately needs `len` bytes
+
+    switch (count) {
+    case 1:
+        cp = byte;
+        sv_drop_mut(sv, 1);
+        return cp;
+
+    case 2:
+        cp = byte & 0x1F;
+        min_cp = 0x80;
+        break;
+
+    case 3:
+        cp = byte & 0x0F;
+        min_cp = 0x800;
+        break;
+
+    default: // 4
+        cp = byte & 0x07;
+        min_cp = 0x10000;
+        break;
+    }
+
+    for (size_t i = 1; i < count; i++) {
+        uint8_t b = (uint8_t) sv->data[i];
+        if ((b & 0xC0) != 0x80) {
+            // Expected a continuation byte (10xxxxxx) and didn't get one.
+            sv_drop_mut(sv, 1);
+            return -1;
+        }
+        cp = (cp << 6) | (b & 0x3F);
+    }
+
+    // Reject overlong encodings, surrogate halves, and out-of-range
+    // code points.
+    if (cp < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
+        sv_drop_mut(sv, 1);
+        return -1;
+    }
+
+    sv_drop_mut(sv, count);
+    return cp;
+}
+
+void sb_push_rune(SB *sb, Rune rune) {
+    uint32_t cp = (uint32_t) rune;
+
+    // Treat anything invalid/out-of-range/surrogate as U+FFFD.
+    if (rune < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+        cp = 0xFFFD;
+    }
+
+    uint8_t buffer[4] = {0};
+    size_t  count = 0;
+    if (cp <= 0x7F) {
+        buffer[0] = (uint8_t) cp;
+        count = 1;
+    } else if (cp <= 0x7FF) {
+        buffer[0] = (uint8_t) (0xC0 | (cp >> 6));
+        buffer[1] = (uint8_t) (0x80 | (cp & 0x3F));
+        count = 2;
+    } else if (cp <= 0xFFFF) {
+        buffer[0] = (uint8_t) (0xE0 | (cp >> 12));
+        buffer[1] = (uint8_t) (0x80 | ((cp >> 6) & 0x3F));
+        buffer[2] = (uint8_t) (0x80 | (cp & 0x3F));
+        count = 3;
+    } else {
+        buffer[0] = (uint8_t) (0xF0 | (cp >> 18));
+        buffer[1] = (uint8_t) (0x80 | ((cp >> 12) & 0x3F));
+        buffer[2] = (uint8_t) (0x80 | ((cp >> 6) & 0x3F));
+        buffer[3] = (uint8_t) (0x80 | (cp & 0x3F));
+        count = 4;
+    }
+
+    sb_push_many(sb, buffer, count);
+}
+
+void print_rune(FILE *f, Rune rune) {
+    const size_t start = default_sb.count;
+    sb_push_rune(&default_sb, rune);
+    fwrite(default_sb.data + start, default_sb.count - start, 1, f);
+    default_sb.count = start;
+}
+
+void print_sv_safe(FILE *f, SV s) {
+    while (s.count) {
+        const size_t sv_count_save = s.count;
+        const Rune   rune = read_rune_from_sv(&s);
+        if (sv_count_save == s.count + 1) {
+            print_char_safe(f, rune);
+        } else {
+            print_rune(f, rune);
+        }
+    }
+}
+
 // Arena Allocator
 void arena_free(Arena *a) {
     if (!a->data) {

@@ -1,5 +1,7 @@
-to_cstring :: (s: string, a := &arena.default) -> &char {
-    return &char(C.memcpy(a.alloc(s.count + 1), rawptr(s.data), u64(s.count)))
+to_cstring :: (s: string, allocator := default_allocator) -> &char {
+    p := &char(C.memcpy(allocator.alloc(s.count + 1, zeroed = false), rawptr(s.data), u64(s.count)))
+    *(p + &char(s.count)) = 0
+    return p
 }
 
 from_cstring :: (s: &char) -> string {
@@ -8,48 +10,12 @@ from_cstring :: (s: &char) -> string {
 
 // TODO: Range check
 to_integer :: (s: string, base := 10) -> s64, bool {
-    cstr := to_cstring(s, &arena.temporary)
-    defer arena.temporary.reset(rawptr(cstr))
+    cstr := to_cstring(s, temporary_allocator)
+    defer temporary_allocator.rewind(rawptr(cstr))
 
     end: &char
     result := C.strtoll(cstr, &end, s32(base))
     return result, *end == '\0'
 }
 
-has_prefix :: (a: string, b: string) -> bool {
-    return a.count >= b.count && C.memcmp(rawptr(a.data), rawptr(b.data), u64(b.count)) == 0
-}
-
-find :: (s: string, predicate: string) -> s64, bool {
-    if predicate == "" {
-        return 0, true
-    }
-
-    for i := 0; i < s.count; i += 1 {
-        if has_prefix(s[i..], predicate) {
-            return i, true
-        }
-    }
-
-    return 0, false
-}
-
-split :: (s: string, by: char) -> string, string, bool {
-    lhs := s
-    rhs := s
-
-    p := C.memchr(rawptr(s.data), s32(by), u64(s.count))
-    if p == null {
-        rhs.data += &char(s.count)
-        rhs.count = 0
-        return lhs, rhs, false
-    }
-
-    lhs = s[..(s64(p) - s64(s.data))]
-    rhs.data = &char(p) + &char(1)
-    rhs.count -= lhs.count + 1
-    return lhs, rhs, true
-}
-
-C     :: #import "C"
-arena :: #import "arena"
+C :: #import "C"

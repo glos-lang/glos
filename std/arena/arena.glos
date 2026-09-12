@@ -4,7 +4,7 @@ Arena :: struct {
     capacity: s64
 }
 
-alloc :: (this: &Arena, size: s64, align := true, zeroed := true, location := #caller_location) -> rawptr {
+alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr {
     if this.data == null {
         if this.capacity == 0 {
             this.capacity = 256 * 1024 * 1024
@@ -56,7 +56,7 @@ free :: (this: &Arena) {
     C.memset(rawptr(this), 0, sizeof(*this))
 }
 
-reset :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location) {
+rewind :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location) {
     if ptr < this.data || ptr > this.data + rawptr(this.head) {
         panic("Arena does not contain the memory address \{ptr}", location = location)
     }
@@ -66,8 +66,5 @@ reset :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location
         this.head = (this.head + 7) & -8
     }
 }
-
-default: Arena
-temporary := Arena { capacity = 16 * 1024 * 1024 }
 
 C :: #import "C"

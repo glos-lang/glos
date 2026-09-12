@@ -1,12 +1,13 @@
 free :: (this: &map[$K]$V) {
-    C.free(this.data)
-    C.memset(rawptr(this), 0, sizeof(*this))
+    if this.allocator == null then this.allocator = default_allocator
+    mem.free(&rawptr(this.data))
+    mem.zero(this)
 }
 
 clear :: (this: &map[$K]$V) {
     KV :: Map_Entry(K, V)
     if this.data != null {
-        C.memset(this.data, 0, u64(this.capacity) * sizeof(KV))
+        mem.zero(&KV(this.data), this.capacity)
         this.count = 0
     }
 }
@@ -16,7 +17,7 @@ delete :: (this: &map[$K]$V, key: K, location := #caller_location) -> V {
     src := map_entry_find(&KV(this.data), this.capacity, this.info, key)
     if src != null && src.state == .OCCUPIED {
         value := src.value
-        C.memset(rawptr(src), 0, sizeof(*src))
+        mem.zero(src)
         this.count -= 1
         return value
     }
@@ -36,10 +37,11 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
         INIT_CAPACITY :: 128
 
         if this.count >= s64(f64(this.capacity) * LOAD_FACTOR) {
+            if this.allocator == null then this.allocator = default_allocator
             capacity := this.capacity * 2
             if capacity == 0 then capacity = INIT_CAPACITY
 
-            data := &KV(C.calloc(u64(capacity), sizeof(KV)))
+            data := &KV(mem.new(KV, capacity, allocator = this.allocator))
             for i := 0; i < this.capacity; i += 1 {
                 src := &KV(this.data) + &KV(i * sizeof(KV))
                 if src.state == .OCCUPIED {
@@ -48,7 +50,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
                 }
             }
 
-            C.free(this.data)
+            mem.free(&rawptr(this.data))
             this.data = rawptr(data)
             this.capacity = capacity
         }

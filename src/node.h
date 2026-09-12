@@ -71,6 +71,7 @@ typedef enum {
     TYPE_VOID,
     TYPE_BOOL,
     TYPE_CHAR,
+    TYPE_RUNE,
 
     TYPE_S8,
     TYPE_S16,
