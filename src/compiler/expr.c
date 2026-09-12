@@ -1104,7 +1104,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
     if (!size) {
         return;
@@ -1113,6 +1113,7 @@ static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, s
     switch (type->kind) {
     case TYPE_BOOL:
     case TYPE_CHAR:
+    case TYPE_RUNE:
 
     case TYPE_S8:
     case TYPE_S16:
@@ -1812,7 +1813,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     Type  element_type_buffer = {0};
     Type *element_type = &element_type_buffer;
 
-    static_assert(COUNT_TYPES == 31, "");
+    static_assert(COUNT_TYPES == 32, "");
     switch (index->lhs->type.kind) {
     case TYPE_ARRAY:
         element_type = index->lhs->type.spec.array.element;

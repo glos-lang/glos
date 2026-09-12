@@ -1,7 +1,8 @@
 EXIT 0
-STDOUT 728
+STDOUT 733
 bool
 char
+rune
 s8
 s16
 s32

@@ -176,7 +176,7 @@ void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 Int_Limit get_int_limit(Type type) {
     const Type_Kind type_kind = type_kind_eq(type, TYPE_ENUM) ? type.spec.enumm.underlying : type.kind;
     if (type_is_signed(type)) {
@@ -186,6 +186,7 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_S32] = {.min = INT128_FROM_I64(INT32_MIN), .max = INT128_FROM_I64(INT32_MAX)},
             [TYPE_S64] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
             [TYPE_INT] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
+            [TYPE_RUNE] = {.min = INT128_FROM_I64(INT32_MIN), .max = INT128_FROM_I64(INT32_MAX)},
         };
         return limits[type_kind];
     } else {
@@ -194,6 +195,7 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_U16] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT16_MAX)},
             [TYPE_U32] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
             [TYPE_U64] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
+            [TYPE_CHAR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT8_MAX)},
         };
         return limits[type_kind];
     }
@@ -223,10 +225,11 @@ void check_int_limit(Compiler *c, Node *n, Int128 value) {
 }
 
 bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 31, "");
+    static_assert(COUNT_TYPES == 32, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
+        [TYPE_RUNE] = "rune",
 
         [TYPE_S8] = "s8",
         [TYPE_S16] = "s16",
@@ -507,8 +510,11 @@ void finalize_untyped_type(Compiler *c, Node *n) {
 }
 
 bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    if (type_kind_eq(n->type, TYPE_INT) &&
-        (type_is_integer(expected) || (type_kind_eq(expected, TYPE_ENUM) && !expected.ref))) //
+    if (type_kind_eq(n->type, TYPE_INT) &&                                 //
+        (type_is_integer(expected) ||                                      //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) || //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) || //
+         (type_kind_eq(expected, TYPE_ENUM) && !expected.ref)))            //
     {
         if (!type_kind_eq(expected, TYPE_INT)) {
             if (n->kind == NODE_RANGE) {

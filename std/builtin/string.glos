@@ -1,5 +1,3 @@
-Rune :: distinct s32
-
 find :: (this: string, predicate: string) -> s64, bool {
     if predicate == "" {
         return 0, true
@@ -62,7 +60,7 @@ operator <=> :: (this: string, that: string) -> Ordering {
     return .EQ
 }
 
-range :: (this: string, state: &s64) -> s64, Rune, bool {
+range :: (this: string, state: &s64) -> s64, rune, bool {
     utf8_sequence_count :: (b: u8) -> s64 {
         if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
         if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
@@ -91,26 +89,26 @@ range :: (this: string, state: &s64) -> s64, Rune, bool {
         return index, -1, true
     }
 
-    rune:     Rune
-    min_rune: s64 // Smallest code point that legitimately needs 'count' bytes
+    cp:     rune
+    min_cp: s64 // Smallest code point that legitimately needs 'count' bytes
 
     if count == {
     case 1
-        rune = Rune(byte)
+        cp = rune(byte)
         *state += 1
-        return index, rune, true
+        return index, cp, true
 
     case 2
-        rune = Rune(byte) & 0x1F
-        min_rune = 0x80
+        cp = rune(byte) & 0x1F
+        min_cp = 0x80
 
     case 3
-        rune = Rune(byte) & 0x0F
-        min_rune = 0x800
+        cp = rune(byte) & 0x0F
+        min_cp = 0x800
 
     case 4
-        rune = Rune(byte) & 0x07
-        min_rune = 0x10000
+        cp = rune(byte) & 0x07
+        min_cp = 0x10000
     }
 
     for i := range 1..count {
@@ -120,15 +118,15 @@ range :: (this: string, state: &s64) -> s64, Rune, bool {
             *state += 1
             return index, -1, true
         }
-        rune = (rune << 6) | Rune(b & 0x3F)
+        cp = (cp << 6) | rune(b & 0x3F)
     }
 
     // Reject overlong encodings, surrogate halves, and out-of-range code points.
-    if s64(rune) < min_rune || (rune >= 0xD800 && rune <= 0xDFFF) || rune > 0x10FFFF {
+    if s64(cp) < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF {
         *state += 1
         return index, -1, true
     }
 
     *state += count
-    return index, rune, true
+    return index, cp, true
 }

@@ -183,7 +183,7 @@ void add_monomorph_parameter_default_value(
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *expected, Node *n, i64 group_index) {
     if (actual->ref < expected->ref) {
         return;
@@ -748,7 +748,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 static bool type_is_polymorphic(Type type) {
     switch (type.kind) {
     case TYPE_FN: {

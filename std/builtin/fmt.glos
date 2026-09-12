@@ -1,10 +1,10 @@
 #private ...
 
-write_rune :: (w: Writer, r: Rune) {
+write_rune :: (w: Writer, r: rune) {
     cp := u32(r)
 
     // Treat anything invalid/out-of-range/surrogate as U+FFFD.
-    if r < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+    if r < rune(0) || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
         cp = 0xFFFD
     }
 
@@ -51,6 +51,9 @@ write_type :: (w: Writer, t: Type) {
 
     case Type_Info_Character
         w.write([]char("char"))
+
+    case Type_Info_Rune
+        w.write([]char("rune"))
 
     case Type_Info_Integer
         if v.signed {
@@ -202,11 +205,6 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         return
     }
 
-    if a.type == Rune {
-        write_rune(w, *(&Rune)(a.data))
-        return
-    }
-
     if a.type == Type {
         write_type(w, *&Type(a.data))
         return
@@ -253,6 +251,9 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         } else {
             w.write([]char(&ch, 1))
         }
+
+    case Type_Info_Rune
+        write_rune(w, *(&rune)(a.data))
 
     case Type_Info_Integer
         buffer: [32]char
