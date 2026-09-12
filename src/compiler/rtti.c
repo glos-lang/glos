@@ -119,7 +119,6 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         switch (tic->type->kind) {
         case TYPE_BOOL:
         case TYPE_CHAR:
-        case TYPE_RAWPTR:
         case TYPE_STRING:
             // Pass
             break;
@@ -142,6 +141,10 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         case TYPE_F64:
         case TYPE_FLOAT:
             // Pass
+            break;
+
+        case TYPE_RAWPTR:
+            tic->tiv_fields[tic->tiv_fields_iota++] = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
             break;
 
         case TYPE_FN:
