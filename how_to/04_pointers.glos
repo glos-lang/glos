@@ -31,19 +31,11 @@ main :: () {
     // They must be first converted into a slice. Slices will be described in detail later.
     // For now, just the immediately applicable concepts are introduced.
     //
-    // The syntax for construcing a slice is:
+    // The syntax for construcing a slice from a pointer is:
     //
-    //     from [ begin .. end ]
+    //     []Element_Type(pointer, count)
     //
-    // The beginning is inclusive, but the end is exclusive. So if you slice from A to B,
-    // then you can index from A to (B - 1).
-    //
-    // The beginning and end of the slice can be inferred depending on the context, and can be
-    // omitted accordingly.
-    //
-    // For pointers, the beginning defaults to 0 if omitted. But the end is not inferred.
-    slice := p[0..1]
-    slice  = p[ ..1] // This expression and the one above are equivalent
+    slice := []s64(p, 1)
 
     // Now can you index into the memory
     slice[0] = 420
