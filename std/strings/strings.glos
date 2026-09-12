@@ -16,40 +16,6 @@ to_integer :: (s: string, base := 10) -> s64, bool {
     return result, *end == '\0'
 }
 
-has_prefix :: (a: string, b: string) -> bool {
-    return a.count >= b.count && C.memcmp(rawptr(a.data), rawptr(b.data), u64(b.count)) == 0
-}
-
-find :: (s: string, predicate: string) -> s64, bool {
-    if predicate == "" {
-        return 0, true
-    }
-
-    for i := 0; i < s.count; i += 1 {
-        if has_prefix(s[i..], predicate) {
-            return i, true
-        }
-    }
-
-    return 0, false
-}
-
-split :: (s: string, by: char) -> string, string, bool {
-    lhs := s
-    rhs := s
-
-    p := C.memchr(rawptr(s.data), s32(by), u64(s.count))
-    if p == null {
-        rhs.data += &char(s.count)
-        rhs.count = 0
-        return lhs, rhs, false
-    }
-
-    lhs = s[..(s64(p) - s64(s.data))]
-    rhs.data = &char(p) + &char(1)
-    rhs.count -= lhs.count + 1
-    return lhs, rhs, true
-}
 
 C     :: #import "C"
 arena :: #import "arena"

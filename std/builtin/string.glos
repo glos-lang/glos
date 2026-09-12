@@ -1,5 +1,41 @@
 Rune :: distinct s32
 
+find :: (this: string, predicate: string) -> s64, bool {
+    if predicate == "" {
+        return 0, true
+    }
+
+    for i := 0; i < this.count; i += 1 {
+        if this[i..].has_prefix(predicate) {
+            return i, true
+        }
+    }
+
+    return 0, false
+}
+
+split :: (this: string, by: char) -> string, string, bool {
+    lhs := this
+    rhs := this
+
+    p := C.memchr(rawptr(this.data), s32(by), u64(this.count))
+    if p == null {
+        rhs.data += &char(this.count)
+        rhs.count = 0
+        return lhs, rhs, false
+    }
+
+    lhs = this[..(s64(p) - s64(this.data))]
+    rhs.data = &char(p) + &char(1)
+    rhs.count -= lhs.count + 1
+    return lhs, rhs, true
+}
+
+has_prefix :: (this: string, prefix: string) -> bool {
+    return this.count >= prefix.count && C.memcmp(rawptr(this.data), rawptr(prefix.data), u64(prefix.count)) == 0
+}
+
+// Runtime support
 operator <=> :: (this: string, that: string) -> Ordering {
     n := this.count
     if n > that.count {
