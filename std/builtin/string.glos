@@ -50,10 +50,10 @@ split :: (this: string, p: Predicate) -> string, string, bool {
 }
 
 trim :: (this: string, p: Predicate) -> string {
-    return this.ltrim(p).rtrim(p)
+    return this.trim_left(p).trim_right(p)
 }
 
-ltrim :: (this: string, p: Predicate) -> string {
+trim_left :: (this: string, p: Predicate) -> string {
     if p == {
     case rune
         for i, c := range this {
@@ -91,7 +91,7 @@ ltrim :: (this: string, p: Predicate) -> string {
     return ""
 }
 
-rtrim :: (this: string, p: Predicate) -> string {
+trim_right :: (this: string, p: Predicate) -> string {
     if p == {
     case rune
         for i, c := range Reverse(this) {
