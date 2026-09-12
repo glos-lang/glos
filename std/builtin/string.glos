@@ -1,36 +1,111 @@
-find :: (this: string, predicate: string) -> s64, bool {
-    if predicate == "" {
-        return 0, true
-    }
-
-    for i := 0; i < this.count; i += 1 {
-        if this[i..].has_prefix(predicate) {
-            return i, true
+find :: (this: string, p: Predicate) -> s64, bool {
+    if p == {
+    case rune
+        for i, c := range this {
+            if c == p {
+                return i, true
+            }
         }
+
+    case string
+        if p == "" {
+            return 0, true
+        }
+
+        for i := range this.count {
+            if this[i..].begins_with(p) {
+                return i, true
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return 0, false
+        }
+
+        for i, c := range this {
+            if p(c) {
+                return i, true
+            }
+        }
+
+    case null; unreachable()
     }
 
     return 0, false
 }
 
-split :: (this: string, by: char) -> string, string, bool {
-    lhs := this
-    rhs := this
-
-    p := C.memchr(rawptr(this.data), s32(by), u64(this.count))
-    if p == null {
-        rhs.data += &char(this.count)
-        rhs.count = 0
-        return lhs, rhs, false
+split :: (this: string, p: Predicate) -> string, string, bool {
+    n, found := this.find(p)
+    if !found {
+        return "", this, false
     }
 
-    lhs = this[..(s64(p) - s64(this.data))]
-    rhs.data = &char(p) + &char(1)
-    rhs.count -= lhs.count + 1
-    return lhs, rhs, true
+    lhs := this[..n]
+    if p == string {
+        return lhs, this[n + p.count..], true
+    } else {
+        return lhs, this[n + 1..], true
+    }
 }
 
-has_prefix :: (this: string, prefix: string) -> bool {
-    return this.count >= prefix.count && C.memcmp(rawptr(this.data), rawptr(prefix.data), u64(prefix.count)) == 0
+ltrim :: (this: string, p: Predicate) -> string {
+    if p == {
+    case rune
+        for i, c := range this {
+            if c != p {
+                return this[i..]
+            }
+        }
+
+    case string
+        if p == "" {
+            return this
+        }
+
+        for i := 0; i < this.count; i += p.count {
+            s := this[i..]
+            if !s.begins_with(p) {
+                return s
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return this
+        }
+
+        for i, c := range this {
+            if !p(c) {
+                return this[i..]
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return ""
+}
+
+begins_with :: (this: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return this.count >= p.count && C.memcmp(rawptr(this.data), rawptr(p.data), u64(p.count)) == 0
+}
+
+ends_with :: (this: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return this.count >= p.count && C.memcmp(rawptr(&this[this.count - p.count]), rawptr(p.data), u64(p.count)) == 0
+}
+
+#private
+Predicate :: union {
+    rune
+    string
+    (c: rune) -> bool
 }
 
 // Runtime support
