@@ -607,7 +607,7 @@ static Type resolve_indirect_type_from_partial_stack(Compiler *c, size_t begin, 
 
         case NODE_UNARY:
             if (it->token.kind == TOKEN_BAND) {
-                type.ref++;
+                type_change_ref(&type, +1);
             } else {
                 unreachable();
             }

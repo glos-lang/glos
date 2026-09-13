@@ -238,11 +238,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         }
 
         n->type = unary->value->type;
-        n->type.ref--;
-        if (n->type.distinct && n->type.distinct->node.type.ref > n->type.ref) {
-            n->type.distinct = NULL;
-        }
-
+        type_change_ref(&n->type, -1);
         *is_ref_valid = true;
         n->is_memory = true;
     } break;
@@ -251,7 +247,7 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         check_expr(c, unary->value, REF_ADDR);
         check_that_type_is_known(c, unary->value);
         n->type = unary->value->type;
-        n->type.ref++;
+        type_change_ref(&n->type, +1);
     } break;
 
     case TOKEN_BNOT:
@@ -618,7 +614,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.array.element;
-                    n->type.ref++;
+                    type_change_ref(&n->type, +1);
                     member->field_index = 0;
                 } else if (sv_match(n->token.sv, "count")) {
                     n->type = (Type) {.kind = TYPE_S64};
@@ -633,7 +629,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
-                    n->type.ref++;
+                    type_change_ref(&n->type, +1);
                     member->field_index = 0;
                 } else if (sv_match(n->token.sv, "count")) {
                     n->type = (Type) {.kind = TYPE_S64};
@@ -671,7 +667,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
-                    n->type.ref++;
+                    type_change_ref(&n->type, +1);
                     member->field_index = 0;
                 } else if (sv_match(n->token.sv, "count")) {
                     n->type = (Type) {.kind = TYPE_S64};
@@ -1580,7 +1576,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 }
 
                 Type element_type = *to_type->spec.slice.element;
-                element_type.ref++;
+                type_change_ref(&element_type, +1);
                 type_assert_grouped(c, data, data_index, element_type, NULL);
                 type_assert_numeric_grouped(c, count, count_index, false, false);
                 call->type_cast = TYPE_CAST_POINTER_TO_SLICE;
@@ -1851,8 +1847,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
             type_assert(c, index->a, fn_spec->args[1].type);
 
             n->type = *fn_spec->return_type;
-            assert(n->type.ref);
-            n->type.ref--;
+            type_change_ref(&n->type, -1);
         }
     }
 }
@@ -2103,7 +2098,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             }
 
             if (a_type->ref) {
-                group.data[1].ref++;
+                type_change_ref(&group.data[1], +1);
             }
 
             n->type = (Type) {.kind = TYPE_GROUP, .spec.group = group};
@@ -2124,7 +2119,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             Type receiver = fn_spec->args[0].type;
             if (range->overload->reference_directives.head) {
                 if (range->a->type.ref + 1 == receiver.ref) {
-                    receiver.ref--;
+                    type_change_ref(&receiver, -1);
                     range->overload_deref = true;
                 }
             }
@@ -2156,7 +2151,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             if (range->overload_deref) {
                 group->data = arena_clone(&default_arena, group->data, group->count * sizeof(*group->data));
                 ll_foreach(it, &range->overload->reference_directives) {
-                    group->data[it->token.as.integer].ref--;
+                    type_change_ref(&group->data[it->token.as.integer], -1);
                 }
             }
         }
@@ -2429,7 +2424,7 @@ void check_fn(
                 type_assert_type(c, it);
 
                 if (reference_directive && reference_directive->token.as.integer == iota) {
-                    it->type.ref++;
+                    type_change_ref(&it->type, +1);
                     reference_directive = reference_directive->next;
                 }
                 fn_spec->returns[iota++] = type_without_meta(it->type);

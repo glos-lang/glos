@@ -1280,10 +1280,7 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
             lhs = LLVMBuildLoad2(c->llvm_builder, llvm_type_ptr, lhs, "");
         }
 
-        Type type = member->lhs->type;
-        type.ref = 0;
-        type.llvm = NULL;
-
+        Type type = type_without_ref(member->lhs->type);
         compile_type(c, &type);
         lhs_type = type.llvm;
     } else {
@@ -2031,7 +2028,6 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     }
 
     if (n->type.kind != TYPE_GROUP) {
-        n->type.llvm = NULL; // TODO: Investigate why this is sometimes not NULL
         compile_type(c, &n->type);
     }
 

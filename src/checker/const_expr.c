@@ -302,7 +302,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
     case TOKEN_BAND:
         value = eval_const_expr(c, unary->value, true);
         if (value.kind == CONST_VALUE_TYPE) {
-            value.as.type.ref++;
+            type_change_ref(&value.as.type, +1);
         }
         return value;
 

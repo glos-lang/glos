@@ -111,8 +111,7 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
 
     if (tic->type->ref) {
         Type underlying = *tic->type;
-        underlying.ref--;
-        underlying.llvm = NULL;
+        type_change_ref(&underlying, -1);
         tic->tiv_fields[tic->tiv_fields_iota++] =
             create_const_struct_from_single_value_if_not_already(c, compile_type_info(c, &underlying));
     } else {

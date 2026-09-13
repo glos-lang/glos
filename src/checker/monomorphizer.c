@@ -1017,8 +1017,7 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
     c->monomorphization_stack.count--;
 
 end:
-    n->type.ref = ref;
-
+    n->type = type_with_ref(n->type, ref);
     if (is_struct) {
         // TODO: Does this need to be done for interned ones?
         assert(type_meta_kind_eq(monomorphization.from->type, TYPE_STRUCT));

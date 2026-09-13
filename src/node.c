@@ -42,6 +42,14 @@ Type type_without_ref(Type t) {
     return t;
 }
 
+void type_change_ref(Type *t, i64 change) {
+    t->ref += change;
+    t->llvm = NULL;
+    if (t->distinct && t->ref < t->distinct->node.type.ref) {
+        t->distinct = NULL;
+    }
+}
+
 Type type_without_distinct(Type t) {
     t.distinct = NULL;
     return t;
@@ -1299,10 +1307,7 @@ void sb_push_fn_name(SB *sb, Node_Fn *fn, Module *module) {
 
         assert(fn_spec->args_count);
         sb_sprintf(sb, ".");
-
-        Type receiver = fn_spec->args[0].type;
-        receiver.ref = 0;
-        sb_push_type(sb, receiver);
+        sb_push_type(sb, type_without_ref(fn_spec->args[0].type));
     }
 
     if (fn->defined_as) {

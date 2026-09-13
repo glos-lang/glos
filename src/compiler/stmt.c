@@ -7,8 +7,6 @@ void compile_var_def(Compiler *c, Node_Atom *it) {
     }
 
     const void *checkpoint = arena_alloc(&temp_arena, 0);
-
-    it->node.type.llvm = NULL; // TODO: Something is seriously wrong with the monomorphizer
     compile_type(c, &it->node.type);
 
     SV link_as = {0};
@@ -362,10 +360,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
 
                 assert(fn_spec->args_count > 1);
                 Type type = fn_spec->args[1].type;
-
-                assert(type.ref);
-                type.ref--;
-                type.llvm = NULL;
+                type_change_ref(&type, -1);
                 iterator_type = compile_type(c, &type);
 
                 iterator_memory = compile_alloca(c, iterator_type);
@@ -505,8 +500,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 if (assignees_count > 1 && assignees[1].value) {
                     Type element_type = *assignees[1].type;
                     if (iterable_node_a->type.ref) {
-                        element_type.ref--;
-                        element_type.llvm = NULL;
+                        type_change_ref(&element_type, -1);
                         compile_type(c, &element_type);
                     }
 
