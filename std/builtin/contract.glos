@@ -40,15 +40,16 @@ Type_Info :: struct {
         Type_Info_Dynamic_Array
         Type_Info_Map
         Type_Info_Slice
+        Type_Info_Error
         Type_Info_String
     }
 
     format: (ptr: rawptr, w: Writer, nested: bool)
 }
 
-Type_Info_Boolean :: struct {}
+Type_Info_Boolean   :: struct {}
 Type_Info_Character :: struct {}
-Type_Info_Rune :: struct {}
+Type_Info_Rune      :: struct {}
 
 Type_Info_Integer :: struct {
     signed: bool
@@ -110,6 +111,7 @@ Type_Info_Slice :: struct {
     underlying: Type
 }
 
+Type_Info_Error  :: struct {}
 Type_Info_String :: struct {}
 
 // Builtin compound types

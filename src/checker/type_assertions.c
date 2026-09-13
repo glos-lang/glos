@@ -261,7 +261,7 @@ static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c,
     return (Node_Fn *) result;
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node *n, const Type *type) {
     assert(!type->is_meta);
     if (!c->type_info_cache.hasheq) {
@@ -299,6 +299,8 @@ static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node 
 
     case TYPE_ENUM:
     case TYPE_TRAIT:
+
+    case TYPE_ERROR:
     case TYPE_STRING:
         // For these types, we have to do the mbappe special.
         return;

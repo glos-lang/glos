@@ -19,6 +19,7 @@ main :: () {
         write_type(f64)
 
         write_type(rawptr)
+        write_type(error)
         write_type(string)
     }
 
@@ -287,6 +288,9 @@ write_type :: (ti: Type) {
         case Type_Info_Slice
             write_string("[]")
             write_type(variant.underlying)
+
+        case Type_Info_Error
+            write_string("error")
 
         case Type_Info_String
             write_string("string")

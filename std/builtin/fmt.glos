@@ -164,6 +164,9 @@ write_type :: (w: Writer, t: Type) {
     case Type_Info_Slice
         wprint(w, "[]\{v.underlying}")
 
+    case Type_Info_Error
+        w.write([]char("error"))
+
     case Type_Info_String
         w.write([]char("string"))
 
@@ -431,6 +434,10 @@ write_value :: (w: Writer, a: Any, nested: bool) {
             write_value(w, item, true)
         }
         w.write([]char("}"))
+
+    case Type_Info_Error
+        // TODO: Printing of error values
+        wprint(w, *(&u64)(a.data))
 
     case Type_Info_String
         s := *&string(a.data)

@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -73,6 +73,9 @@ Const_Value default_const_value(Compiler *c, Type type) {
         array.element_type = type.spec.slice.element;
         return const_value_array(array);
     }
+
+    case TYPE_ERROR:
+        return const_value_u64(0);
 
     case TYPE_STRING:
         return const_value_string((SV) {0});

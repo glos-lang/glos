@@ -1,5 +1,5 @@
 EXIT 0
-STDOUT 733
+STDOUT 739
 bool
 char
 rune
@@ -14,6 +14,7 @@ u64
 f32
 f64
 rawptr
+error
 string
 ()
 (string)

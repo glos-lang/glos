@@ -143,9 +143,9 @@ void check_nodes(Compiler *c) {
 
         assert(type_info_variant->kind == TYPE_UNION);
         c->type_info_variants_union = type_info_variant->spec.unionn;
-        assert(c->type_info_variants_union->variants_count == 16);
+        assert(c->type_info_variants_union->variants_count == 17);
 
-        static_assert(COUNT_TYPES == 32, "");
+        static_assert(COUNT_TYPES == 33, "");
         c->type_info_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
         c->type_info_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
         c->type_info_variants[TYPE_RUNE] = CONTRACT_TYPE_INFO_RUNE;
@@ -179,6 +179,7 @@ void check_nodes(Compiler *c) {
         c->type_info_variants[TYPE_MAP] = CONTRACT_TYPE_INFO_MAP;
 
         c->type_info_variants[TYPE_SLICE] = CONTRACT_TYPE_INFO_SLICE;
+        c->type_info_variants[TYPE_ERROR] = CONTRACT_TYPE_INFO_ERROR;
         c->type_info_variants[TYPE_STRING] = CONTRACT_TYPE_INFO_STRING;
     }
 

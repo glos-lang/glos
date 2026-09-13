@@ -102,6 +102,7 @@ typedef enum {
     TYPE_MAP,
 
     TYPE_SLICE,
+    TYPE_ERROR,
     TYPE_STRING,
 
     TYPE_POLYMORPH,

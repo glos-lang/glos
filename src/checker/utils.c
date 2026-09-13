@@ -176,7 +176,7 @@ void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 Int_Limit get_int_limit(Type type) {
     const Type_Kind type_kind = type_kind_eq(type, TYPE_ENUM) ? type.spec.enumm.underlying : type.kind;
     if (type_is_signed(type)) {
@@ -225,7 +225,7 @@ void check_int_limit(Compiler *c, Node *n, Int128 value) {
 }
 
 bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 32, "");
+    static_assert(COUNT_TYPES == 33, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -245,6 +245,8 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
         [TYPE_F64] = "f64",
 
         [TYPE_RAWPTR] = "rawptr",
+
+        [TYPE_ERROR] = "error",
         [TYPE_STRING] = "string",
     };
 
@@ -441,8 +443,18 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
         Node_Member *member = (Node_Member *) n;
         if (member->is_enum) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
-            assert(type_kind_eq(expected, TYPE_ENUM));
-            member->enum_value = get_enum_value(c, expected.spec.enumm.definition, n->token.sv, &n->token);
+            if (type_kind_eq(expected, TYPE_ENUM)) {
+                member->enum_value = get_enum_value(c, expected.spec.enumm.definition, n->token.sv, &n->token);
+            } else if (type_kind_eq(expected, TYPE_ERROR)) {
+                if (sv_eq(n->token.sv, SV_Lit("OK"))) {
+                    member->enum_value = INT128_FROM_U64(0);
+                } else {
+                    error_undefined(c, &n->token, "error value", true);
+                    exit(c, 1);
+                }
+            } else {
+                unreachable();
+            }
             n->type = expected;
         } else {
             assert(member->module_access_definition); // Must be a module access
@@ -561,6 +573,11 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
     if (type_kind_eq(n->type, TYPE_UNKNOWN_ENUM)) {
         if (type_kind_eq(expected, TYPE_ENUM) && !expected.ref) {
+            cast_untyped(c, n, expected);
+            return true;
+        }
+
+        if (type_eq(expected, (Type) {.kind = TYPE_ERROR})) {
             cast_untyped(c, n, expected);
             return true;
         }
