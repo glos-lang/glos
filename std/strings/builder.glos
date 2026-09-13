@@ -3,12 +3,12 @@ Builder :: struct {
     count:     s64
     allocator: Allocator
 
-    head:      &Page
-    tail:      &Page
+    page_first: &Page
+    page_last:  &Page
 }
 
 free :: (this: &Builder) {
-    p := this.head
+    p := this.page_first
     for p != null {
         n := p.next
         mem.free(p, allocator = this.allocator)
@@ -17,16 +17,16 @@ free :: (this: &Builder) {
 }
 
 write :: (this: &Builder, bytes: []char) {
-    if this.tail == null {
+    if this.page_last == null {
         if this.allocator == null then this.allocator = default_allocator
-        this.head = mem.new(Page, allocator = this.allocator, zeroed = false)
-        this.tail = this.head
-        this.tail.count = 0
-        this.tail.next  = null
+        this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.page_last = this.page_first
+        this.page_last.count = 0
+        this.page_last.next  = null
     }
 
     for bytes.count != 0 {
-        page      := this.tail
+        page      := this.page_last
         available := page.bytes.count - page.count
 
         if bytes.count <= available {
@@ -44,17 +44,17 @@ write :: (this: &Builder, bytes: []char) {
         bytes = bytes[available..]
 
         page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
-        this.tail = page.next
-        this.tail.count = 0
-        this.tail.next  = null
+        this.page_last = page.next
+        this.page_last.count = 0
+        this.page_last.next  = null
     }
 }
 
 rewind :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) {
-    if this.head == null then return
-    if from == null      then from = this.head.bytes.data
+    if this.page_first == null then return
+    if from == null            then from = this.page_first.bytes.data
 
-    for p := this.head; p != null; p = p.next {
+    for p := this.page_first; p != null; p = p.next {
         begin := p.bytes.data
         end   := begin + &char(p.count)
         if from >= begin && from <= end {
@@ -70,11 +70,11 @@ rewind :: (this: &Builder, from: &char = null, allocator := default_allocator, l
 }
 
 to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
-    if this.head == null then return ""
-    if from == null      then from = this.head.bytes.data
+    if this.page_first == null then return ""
+    if from == null            then from = this.page_first.bytes.data
 
     head := 0
-    for p := this.head; p != null; p = p.next {
+    for p := this.page_first; p != null; p = p.next {
         begin := p.bytes.data
         end   := begin + &char(p.count)
         if from >= begin && from <= end {
@@ -104,6 +104,14 @@ to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := d
     }
 
     panic("Builder does not contain the address \{from}", location = location)
+}
+
+format :: (this: &Builder, w: Writer, nested := false) {
+    for p := this.page_first; p != null; p = p.next {
+        if p.count != 0 {
+            w.write(p.bytes[..p.count])
+        }
+    }
 }
 
 #private ...
