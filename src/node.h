@@ -71,6 +71,7 @@ typedef enum {
     TYPE_VOID,
     TYPE_BOOL,
     TYPE_CHAR,
+    TYPE_RUNE,
 
     TYPE_S8,
     TYPE_S16,
@@ -328,6 +329,8 @@ struct Type_Struct_Field {
 
 Type type_with_ref(Type t, size_t ref);
 Type type_without_ref(Type t);
+void type_change_ref(Type *t, i64 change);
+
 Type type_without_distinct(Type t);
 
 Type type_with_meta(Type t);

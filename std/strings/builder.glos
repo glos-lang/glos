@@ -1,0 +1,132 @@
+Builder :: struct {
+    cursor:    &char
+    count:     s64
+    allocator: Allocator
+
+    page_first: &Page
+    page_last:  &Page
+}
+
+free :: (this: &Builder) {
+    p := this.page_first
+    for p != null {
+        n := p.next
+        mem.free(p, allocator = this.allocator)
+        p = n
+    }
+}
+
+write :: (this: &Builder, bytes: []char) {
+    if this.page_last == null {
+        if this.allocator == null then this.allocator = default_allocator
+        this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.page_last = this.page_first
+        this.page_last.count = 0
+        this.page_last.next  = null
+    }
+
+    for bytes.count != 0 {
+        page      := this.page_last
+        available := page.bytes.count - page.count
+
+        if bytes.count <= available {
+            if bytes.count != 0 {
+                mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
+            }
+
+            page.count += bytes.count
+            this.count += bytes.count
+            this.cursor = page.bytes.data + &char(page.count)
+            return
+        }
+
+        if available != 0 {
+            mem.copy(&page.bytes[page.count], bytes.data, available)
+        }
+
+        page.count += available
+        this.count += available
+        this.cursor = page.bytes.data + &char(page.count)
+        bytes = bytes[available..]
+
+        page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.page_last = page.next
+        this.page_last.count = 0
+        this.page_last.next  = null
+    }
+}
+
+rewind :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) {
+    if this.page_first == null then return
+    if from == null            then from = this.page_first.bytes.data
+
+    for p := this.page_first; p != null; p = p.next {
+        begin := p.bytes.data
+        end   := begin + &char(p.count)
+        if from >= begin && from <= end {
+            for a := s64(from - begin); p != null; p = p.next {
+                p.count = a
+                a = 0
+            }
+            return
+        }
+    }
+
+    panic("Builder does not contain the address \{from}", location = location)
+}
+
+to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
+    if this.page_first == null then return ""
+    if from == null            then from = this.page_first.bytes.data
+
+    head := 0
+    for p := this.page_first; p != null; p = p.next {
+        begin := p.bytes.data
+        end   := begin + &char(p.count)
+        if from >= begin && from <= end {
+            a     := s64(from - begin)
+            count := this.count - (head + a)
+            bytes := mem.new(char, count, allocator = allocator, zeroed = false)
+
+            head := 0
+            left := count
+            for p != null {
+                available := p.count - a
+                if available >= left {
+                    available = left
+                }
+
+                if available != 0 {
+                    mem.copy(bytes + &char(head), p.bytes.data + &char(a), available, overlaps = false)
+                }
+
+                head += available
+                left -= available
+
+                if rewind then p.count = a
+                a = 0
+                p = p.next
+            }
+            return string([]char(bytes, count))
+        }
+        head += p.count
+    }
+
+    panic("Builder does not contain the address \{from}", location = location)
+}
+
+format :: (this: &Builder, w: Writer, nested := false) {
+    for p := this.page_first; p != null; p = p.next {
+        if p.count != 0 {
+            w.write(p.bytes[..p.count])
+        }
+    }
+}
+
+#private ...
+
+Page :: struct {
+    bytes: [4096]char
+    count: s64
+    next:  &Page
+}

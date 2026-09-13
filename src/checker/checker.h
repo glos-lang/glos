@@ -60,7 +60,7 @@ void finalize_untyped_type(Compiler *c, Node *n);
 
 bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected);
 bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected);
-bool try_auto_cast_literal(Node *n, Type expected);
+bool try_auto_cast_literal(Compiler *c, Node *n, Type expected);
 bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index);
 
 void make_sure_import_is_ready(Compiler *c, Node_Import *import);

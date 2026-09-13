@@ -1,5 +1,145 @@
-Rune :: distinct s32
+find :: (this: string, p: Predicate) -> s64, bool {
+    if p == {
+    case rune
+        for i, c := range this {
+            if c == p {
+                return i, true
+            }
+        }
 
+    case string
+        if p == "" {
+            return 0, true
+        }
+
+        for i := range this.count {
+            if this[i..].begins_with(p) {
+                return i, true
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return 0, false
+        }
+
+        for i, c := range this {
+            if p(c) {
+                return i, true
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return 0, false
+}
+
+split :: (this: string, p: Predicate) -> string, string, bool {
+    n, found := this.find(p)
+    if !found {
+        return "", this, false
+    }
+
+    lhs := this[..n]
+    if p == string {
+        return lhs, this[n + p.count..], true
+    } else {
+        return lhs, this[n + 1..], true
+    }
+}
+
+trim :: (this: string, p: Predicate) -> string {
+    return this.trim_left(p).trim_right(p)
+}
+
+trim_left :: (this: string, p: Predicate) -> string {
+    if p == {
+    case rune
+        for i, c := range this {
+            if c != p {
+                return this[i..]
+            }
+        }
+
+    case string
+        if p == "" {
+            return this
+        }
+
+        for i := 0; i < this.count; i += p.count {
+            s := this[i..]
+            if !s.begins_with(p) {
+                return s
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return this
+        }
+
+        for i, c := range this {
+            if !p(c) {
+                return this[i..]
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return ""
+}
+
+trim_right :: (this: string, p: Predicate) -> string {
+    if p == {
+    case rune
+        for i, c := range Reverse(this) {
+            if c != p {
+                return this[..i + 1]
+            }
+        }
+
+    case string
+        if p != "" {
+            for this.ends_with(p) {
+                this.count -= p.count
+            }
+        }
+        return this
+
+    case (c: rune) -> bool
+        if p == null {
+            return this
+        }
+
+        for i, c := range Reverse(this) {
+            if !p(c) {
+                return this[..i + 1]
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return ""
+}
+
+begins_with :: (this: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return this.count >= p.count && C.memcmp(rawptr(this.data), rawptr(p.data), u64(p.count)) == 0
+}
+
+ends_with :: (this: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return this.count >= p.count && C.memcmp(rawptr(&this[this.count - p.count]), rawptr(p.data), u64(p.count)) == 0
+}
+
+// Runtime support
 operator <=> :: (this: string, that: string) -> Ordering {
     n := this.count
     if n > that.count {
@@ -26,73 +166,98 @@ operator <=> :: (this: string, that: string) -> Ordering {
     return .EQ
 }
 
-range :: (this: string, state: &s64) -> s64, Rune, bool {
-    utf8_sequence_count :: (b: u8) -> s64 {
-        if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
-        if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
-        if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
-        if b & 0xF8 == 0xF0 then return 4 // 11110xxx
-        return 0
-    }
-
+range :: (this: string, state: &s64) -> s64, rune, bool {
     index := *state
-    if *state >= this.count {
+    if index >= this.count {
         return index, 0, false
     }
 
-    byte  := u8(this[*state])
+    r, count := utf8_decode_at(this, index)
+    *state += count
+    return index, r, true
+}
+
+#private...
+Predicate :: union {
+    rune
+    string
+    (c: rune) -> bool
+}
+
+utf8_sequence_count :: (b: u8) -> s64 {
+    if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
+    if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
+    if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
+    if b & 0xF8 == 0xF0 then return 4 // 11110xxx
+    return 0
+}
+
+utf8_decode_at :: (s: string, start: s64) -> rune, s64 {
+    byte  := u8(s[start])
     count := utf8_sequence_count(byte)
-    if count == 0 {
-        // Invalid leading byte (e.g. a stray continuation byte 10xxxxxx,
-        // or 0xF8-0xFF which are never valid in UTF-8).
-        *state += 1
-        return index, -1, true
+
+    if count == 0 || start + count > s.count {
+        return -1, 0
     }
 
-    if *state + count > this.count {
-        // Sequence would run past the end of the buffer.
-        *state += 1
-        return index, -1, true
+    if count == 1 {
+        return rune(byte), 1
     }
 
-    rune:     Rune
-    min_rune: s64 // Smallest code point that legitimately needs 'count' bytes
-
+    cp:     rune
+    min_cp: s64
     if count == {
-    case 1
-        rune = Rune(byte)
-        *state += 1
-        return index, rune, true
-
     case 2
-        rune = Rune(byte) & 0x1F
-        min_rune = 0x80
+        cp = rune(byte) & 0x1F
+        min_cp = 0x80
 
     case 3
-        rune = Rune(byte) & 0x0F
-        min_rune = 0x800
+        cp = rune(byte) & 0x0F
+        min_cp = 0x800
 
-    case 4
-        rune = Rune(byte) & 0x07
-        min_rune = 0x10000
+    case
+        cp = rune(byte) & 0x07
+        min_cp = 0x10000
     }
 
     for i := range 1..count {
-        b := u8(this[*state + i])
-        if b & 0xC0 != 0x80 {
-            // Expected a continuation byte (10xxxxxx) and didn't get one.
-            *state += 1
-            return index, -1, true
+        b := u8(s[start + i])
+        if (b & 0xC0) != 0x80 {
+            return -1, 0
         }
-        rune = (rune << 6) | Rune(b & 0x3F)
+        cp = (cp << 6) | rune(b & 0x3F)
     }
 
-    // Reject overlong encodings, surrogate halves, and out-of-range code points.
-    if s64(rune) < min_rune || (rune >= 0xD800 && rune <= 0xDFFF) || rune > 0x10FFFF {
-        *state += 1
-        return index, -1, true
+    if s64(cp) < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF {
+        return -1, 0
     }
 
-    *state += count
-    return index, rune, true
+    return cp, count
+}
+
+// TODO: Think of a better concept regarding reverse iteration.
+Reverse :: distinct string
+
+range :: (this: Reverse, state: &s64) -> s64, rune, bool {
+    end := this.count - *state
+    if end <= 0 {
+        return 0, 0, false
+    }
+
+    for count := 1; count <= 4 && count <= end; count += 1 {
+        start := end - count
+        lead  := u8(this[start])
+        if utf8_sequence_count(lead) == count {
+            r, n := utf8_decode_at(string(this), start)
+            if n == count {
+                *state = this.count - start
+                return start, r, true
+            }
+            break
+        }
+    }
+
+    start := end - 1
+    *state = this.count - start
+    return start, -1, true
 }

@@ -33,15 +33,3 @@ todo :: noreturn (message: ...Any, location := #caller_location) {
 unreachable :: noreturn (message: ...Any, location := #caller_location) {
     panic(message = message, location = location, label = "Unreachable")
 }
-
-New :: ($T: Type, n := 1, a := &arena.default) -> &T {
-    return &T(a.alloc(n * sizeof(T)))
-}
-
-New_Array :: ($T: Type, n: s64, a := &arena.default) -> []T {
-    return []T(&T(a.alloc(n * sizeof(T))), n)
-}
-
-Clone :: (v: $T, a := &arena.default) -> &T {
-    return &T(C.memcpy(a.alloc(sizeof(T)), rawptr(&v), sizeof(v)))
-}

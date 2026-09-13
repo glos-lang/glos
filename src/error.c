@@ -436,9 +436,7 @@ void error_finalize(void) {
         if (view_error_begin >= line.data && view_error_begin <= line.data + line.count) {
             const SV before = sv_drop_mut(&line, view_error_begin - line.data);
             ansi_set(stderr, ANSI_COLOR_CYAN);
-            for (size_t i = 0; i < before.count; i++) {
-                print_char_safe(stderr, before.data[i]);
-            }
+            print_sv_safe(stderr, before);
             ansi_reset(stderr);
             error = true;
         }
@@ -446,18 +444,14 @@ void error_finalize(void) {
         if (view_error_end >= line.data && view_error_end <= line.data + line.count) {
             const SV before = sv_drop_mut(&line, view_error_end - line.data);
             ansi_set(stderr, ANSI_COLOR_RED | ANSI_BOLD);
-            for (size_t i = 0; i < before.count; i++) {
-                print_char_safe(stderr, before.data[i]);
-            }
+            print_sv_safe(stderr, before);
             ansi_reset(stderr);
             error = false;
         }
 
         ansi_set(stderr, error ? (ANSI_COLOR_RED | ANSI_BOLD) : ANSI_COLOR_CYAN);
-        for (size_t i = 0; i < line.count; i++) {
-            print_char_safe(stderr, line.data[i]);
-        }
-        print_char_safe(stderr, '\n');
+        print_sv_safe(stderr, line);
+        fprintf(stderr, "\n");
         ansi_reset(stderr);
     }
 

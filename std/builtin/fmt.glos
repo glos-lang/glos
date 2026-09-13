@@ -1,10 +1,10 @@
 #private ...
 
-write_rune :: (w: Writer, r: Rune) {
+write_rune :: (w: Writer, r: rune) {
     cp := u32(r)
 
     // Treat anything invalid/out-of-range/surrogate as U+FFFD.
-    if r < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+    if r < rune(0) || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
         cp = 0xFFFD
     }
 
@@ -30,7 +30,7 @@ write_rune :: (w: Writer, r: Rune) {
         count = 4
     }
 
-    w.write(buffer)
+    w.write(buffer[..count])
 }
 
 write_type :: (w: Writer, t: Type) {
@@ -51,6 +51,9 @@ write_type :: (w: Writer, t: Type) {
 
     case Type_Info_Character
         w.write([]char("char"))
+
+    case Type_Info_Rune
+        w.write([]char("rune"))
 
     case Type_Info_Integer
         if v.signed {
@@ -169,8 +172,8 @@ write_type :: (w: Writer, t: Type) {
     }
 }
 
-write_quoted_char :: (w: Writer, ch: char, quote: char) {
-    if ch == {
+write_quoted_rune :: (w: Writer, r: rune, quote: char) {
+    if r == {
     case '\e'; w.write([]char("\\e"))
     case '\n'; w.write([]char("\\n"))
     case '\r'; w.write([]char("\\r"))
@@ -182,28 +185,23 @@ write_quoted_char :: (w: Writer, ch: char, quote: char) {
         if quote == '\'' {
             w.write([]char("\\'"))
         } else {
-            w.write([]char(&ch, 1))
+            w.write([]char("'"))
         }
 
     case '\"'
         if quote == '\"' {
             w.write([]char("\\\""))
         } else {
-            w.write([]char(&ch, 1))
+            w.write([]char("\""))
         }
 
-    case; w.write([]char(&ch, 1))
+    case; write_rune(w, r)
     }
 }
 
 write_value :: (w: Writer, a: Any, nested: bool) {
     if a.type != null && a.type.format != null {
         a.type.format(a.data, w, nested)
-        return
-    }
-
-    if a.type == Rune {
-        write_rune(w, *(&Rune)(a.data))
         return
     }
 
@@ -248,11 +246,14 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         ch := *&char(a.data)
         if nested {
             w.write([]char("'"))
-            write_quoted_char(w, ch, '\'')
+            write_quoted_rune(w, rune(ch), '\'')
             w.write([]char("'"))
         } else {
             w.write([]char(&ch, 1))
         }
+
+    case Type_Info_Rune
+        write_rune(w, *(&rune)(a.data))
 
     case Type_Info_Integer
         buffer: [32]char
@@ -435,8 +436,8 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         s := *&string(a.data)
         if nested {
             w.write([]char("\""))
-            for i := 0; i < s.count; i += 1 {
-                write_quoted_char(w, s[i], '"')
+            for _, c := range s {
+                write_quoted_rune(w, c, '"')
             }
             w.write([]char("\""))
         } else {

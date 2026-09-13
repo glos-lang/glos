@@ -1,0 +1,103 @@
+Rand :: distinct [4]u64
+
+seed :: (this: &Rand, seed: u64) {
+    sm := seed
+    for i := 0; i < 4; i += 1 {
+        this[i] = splitmix64(&sm)
+    }
+
+    if (this[0] | this[1] | this[2] | this[3]) == 0 {
+        this[0] = 1
+    }
+
+    splitmix64 :: inline (s: &u64) -> u64 {
+        z := *s
+        *s += 0x9E3779B97F4A7C15
+
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+}
+
+get_u64 :: (this: &Rand, min := u64(U64_MIN), max := u64(U64_MAX)) -> u64 {
+    span := max - min
+    if span == U64_MAX {
+        return this.next()
+    }
+    return min + this.bounded(span + 1)
+}
+
+get_s64 :: (this: &Rand, min := S64_MIN, max := S64_MAX) -> s64 {
+    min := u64(min)
+    max := u64(max)
+    span := max - min
+    if span == U64_MAX {
+        return s64(min + this.next())
+    } else {
+        return s64(min + this.bounded(span + 1))
+    }
+}
+
+get_f64 :: (this: &Rand, min := 0.0, max := 1.0) -> f64 {
+    v := this.next()
+    return min + (max - min) * f64(v >> 11) * (1.0 / 9007199254740992.0)
+}
+
+read :: (this: &Rand, bytes: []char) -> s64, bool {
+    data  := bytes.data
+    count := bytes.count
+    for count >= 8 {
+        v := this.get_u64()
+        mem.copy(data, &char(&v), sizeof(v))
+        data  += &char(sizeof(v))
+        count -= sizeof(v)
+    }
+
+    if count > 0 {
+        v := this.get_u64()
+        mem.copy(data, &char(&v), count)
+    }
+    return bytes.count, true
+
+}
+
+#private...
+
+next :: inline (this: &Rand) -> u64 {
+    r := rotl(this[1] * 5, 7) * 9
+    t := this[1] << 17
+
+    this[2] ^= this[0]
+    this[3] ^= this[1]
+    this[1] ^= this[2]
+    this[0] ^= this[3]
+    this[2] ^= t
+    this[3] = rotl(this[3], 45)
+    return r
+
+    rotl :: inline (x: u64, k: u64) -> u64 {
+        return (x << k) | (x >> (64 - k))
+    }
+}
+
+bounded :: inline (this: &Rand, span: u64) -> u64 {
+    mask := span - 1
+    mask |= mask >> 1
+    mask |= mask >> 2
+    mask |= mask >> 4
+    mask |= mask >> 8
+    mask |= mask >> 16
+    mask |= mask >> 32
+
+    x: u64
+    for {
+        x = this.next() & mask
+        if x < span {
+            break
+        }
+    }
+    return x
+}
+
+mem :: #import "memory"

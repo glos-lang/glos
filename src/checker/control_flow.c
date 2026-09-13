@@ -100,6 +100,10 @@ bool always_returns(Node *n) {
 
     case NODE_FOR: {
         Node_For *forr = (Node_For *) n;
+        if (forr->range) {
+            return false;
+        }
+
         if (forr->init && always_returns(forr->init)) {
             return true;
         }

@@ -5,5 +5,4 @@ extern {
 }
 
 C       :: #import "C"
-arena   :: #import "arena"
 strings :: #import "strings"

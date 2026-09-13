@@ -10,7 +10,7 @@ tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_modul
 
     foo :: (this: Interpolation) {}
 
-std/builtin/contract.glos:135:1: Note: Here is the definition of the receiver type
+std/builtin/contract.glos:137:1: Note: Here is the definition of the receiver type
 
     Interpolation :: union {
 

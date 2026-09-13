@@ -725,7 +725,7 @@ static void show_explanation_about_the_not_formatter_directive(const Node_Fn *fn
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
     Type receiver = fn_spec->args[0].type;
     if (receiver.distinct) {
-        receiver.ref -= receiver.distinct->node.type.ref;
+        type_change_ref(&receiver, -receiver.distinct->node.type.ref);
     }
 
     if (receiver.ref != 1) {
@@ -755,12 +755,12 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
         c->type_info_cache.hasheq = ht_hasheq_type;
     }
 
-    receiver.ref--;
+    type_change_ref(&receiver, -1);
     ht_set(&c->type_info_cache, receiver, (Type_Info) {.format = fn});
     return;
 
 error:
-    show_explanation_about_custom_formatter(c, fn, receiver);
+    show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
     show_explanation_about_the_not_formatter_directive(fn);
     exit(c, 1);
 }

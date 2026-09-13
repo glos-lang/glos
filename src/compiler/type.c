@@ -1,7 +1,7 @@
 #include "../dwarf.h"
 #include "compiler.h"
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 LLVMTypeRef compile_type(Compiler *c, Type *type) {
     if (!type) {
         return NULL;
@@ -34,6 +34,10 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
     case TYPE_U8:
     case TYPE_CHAR:
         type->llvm = LLVMInt8TypeInContext(c->llvm_context);
+        break;
+
+    case TYPE_RUNE:
+        type->llvm = LLVMInt32TypeInContext(c->llvm_context);
         break;
 
     case TYPE_S16:
@@ -261,13 +265,12 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
         Type inner = *type;
-        inner.ref--;
-        inner.llvm = NULL;
+        type_change_ref(&inner, -1);
         return LLVMDIBuilderCreatePointerType(
             c->llvm_debug_builder, get_debug_for_type(c, &inner), sizeof(void *), sizeof(void *), 0, "", 0);
     }
@@ -281,6 +284,9 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
     case TYPE_CHAR:
         return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "char", strlen("char"), 8, DW_ATE_unsigned_char, 0);
+
+    case TYPE_RUNE:
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "rune", strlen("rune"), 32, DW_ATE_signed_char, 0);
 
     case TYPE_S8:
         return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "s8", strlen("s8"), 8, DW_ATE_signed, 0);
@@ -703,8 +709,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         Builtin_Compound_Type_Field fields[3] = {0};
         fields[0].name = sv_from_cstr("data");
         fields[0].type = *type->spec.dynamic_array.element;
-        fields[0].type.ref++;
-        fields[0].type.llvm = NULL;
+        type_change_ref(&fields[0].type, +1);
 
         fields[1].name = sv_from_cstr("count");
         fields[1].type = (Type) {.kind = TYPE_S64};
@@ -725,8 +730,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         Builtin_Compound_Type_Field fields[2] = {0};
         fields[0].name = sv_from_cstr("data");
         fields[0].type = *type->spec.slice.element;
-        fields[0].type.ref++;
-        fields[0].type.llvm = NULL;
+        type_change_ref(&fields[0].type, +1);
 
         fields[1].name = sv_from_cstr("count");
         fields[1].type = (Type) {.kind = TYPE_S64};

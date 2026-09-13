@@ -183,7 +183,7 @@ void add_monomorph_parameter_default_value(
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *expected, Node *n, i64 group_index) {
     if (actual->ref < expected->ref) {
         return;
@@ -748,7 +748,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     }
 }
 
-static_assert(COUNT_TYPES == 31, "");
+static_assert(COUNT_TYPES == 32, "");
 static bool type_is_polymorphic(Type type) {
     switch (type.kind) {
     case TYPE_FN: {
@@ -1017,8 +1017,7 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
     c->monomorphization_stack.count--;
 
 end:
-    n->type.ref = ref;
-
+    n->type = type_with_ref(n->type, ref);
     if (is_struct) {
         // TODO: Does this need to be done for interned ones?
         assert(type_meta_kind_eq(monomorphization.from->type, TYPE_STRUCT));

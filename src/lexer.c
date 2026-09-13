@@ -138,13 +138,25 @@ static void skip_whitespace(Lexer *l) {
 }
 
 static void error_invalid(Pos pos, SV sv, const char *label) {
-    error_parts_begin(EK_ERROR, sv_drop(sv, 1), pos);
+    const SV     sv_save = sv;
+    const Rune   rune = read_rune_from_sv(&sv);
+    const size_t count = sv_save.count - sv.count;
+
+    error_parts_begin(EK_ERROR, sv_drop(sv_save, count), pos);
     fprintf(stderr, "Invalid %s '", label);
-    print_char_safe(stderr, *sv.data);
+    if (count == 1) {
+        print_char_safe(stderr, rune);
+    } else {
+        print_rune(stderr, rune);
+    }
     fprintf(stderr, "'");
 
     if (!isprint(*sv.data)) {
-        fprintf(stderr, " (The byte is 0x%X)", (uint8_t) *sv.data);
+        if (count == 1) {
+            fprintf(stderr, " (The byte is 0x%X)", (uint8_t) rune);
+        } else {
+            fprintf(stderr, " (The sequence is U+%X)", rune);
+        }
     }
     error_finalize();
     exit(1);
@@ -212,6 +224,39 @@ static char next_char_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
 
     next_char(l);
     return ch;
+}
+
+static Rune next_rune_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
+    if (!l->sv.count) {
+        error_unterminated(l, pos, label);
+    }
+
+    const SV     sv_save = l->sv;
+    const Rune   rune = read_rune_from_sv(&l->sv);
+    const size_t count = sv_save.count - l->sv.count;
+    if (count == 1) {
+        l->sv = sv_save;
+        next_char(l); // For tracking newlines
+    } else {
+        l->pos.col += count;
+    }
+
+    if (rune == '\\') {
+        assert(count == 1);
+        if (!l->sv.count) {
+            error_unterminated(l, pos, label);
+        }
+
+        char ch = *l->sv.data;
+        if (!escape_char(&ch)) {
+            error_invalid(l->pos, l->sv, "escape character");
+        }
+
+        next_char(l);
+        return ch;
+    }
+
+    return rune;
 }
 
 Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
@@ -484,7 +529,7 @@ Token lexer_iter(Lexer *l) {
 
     case '\'':
         token.kind = TOKEN_CHAR;
-        token.as.integer = next_char_with_parsed_escape(l, token.pos, "character");
+        token.as.integer = next_rune_with_parsed_escape(l, token.pos, "character");
         if (!match_char(l, '\'')) {
             error_unterminated(l, token.pos, "character");
         }

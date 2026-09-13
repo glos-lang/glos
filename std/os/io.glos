@@ -40,8 +40,8 @@ case .WINDOWS
 
 // TODO: Only binary is supported
 open :: (path: string, read: bool) -> File, bool {
-    path := strings.to_cstring(path, &arena.temporary)
-    defer arena.temporary.reset(rawptr(path))
+    path := strings.to_cstring(path, temporary_allocator)
+    defer temporary_allocator.rewind(rawptr(path))
 
     f: File
     if read {
@@ -53,7 +53,7 @@ open :: (path: string, read: bool) -> File, bool {
 }
 
 // TODO: Only binary is supported
-read_entire_file :: (path: string, a := &arena.default) -> []char, bool {
+read_entire_file :: (path: string, allocator := default_allocator) -> []char, bool {
     f, ok := open(path, true)
     if !ok {
         return {}, false
@@ -73,17 +73,19 @@ read_entire_file :: (path: string, a := &arena.default) -> []char, bool {
         return {}, false
     }
 
-    data := a.alloc(offset + 1)
+    data := allocator.alloc(offset + 1, zeroed = false)
     if data == null {
         return {}, false
     }
 
     count := C.fread(data, 1, u64(offset), f)
     if C.ferror(f) != 0 {
-        a.reset(data)
+        allocator.rewind(data)
         return {}, false
     }
-    a.reset(data + rawptr(count + 1))
+
+    *(&char(data) + &char(count)) = 0
+    allocator.rewind(data + rawptr(count + 1))
 
     return []char(&char(data), count), true
 }

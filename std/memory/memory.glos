@@ -1,0 +1,35 @@
+new :: ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> &T {
+    return &T(allocator.alloc(n * sizeof(T), zeroed = zeroed))
+}
+
+free :: (p: &$T, allocator := default_allocator) {
+    allocator.alloc(0, old = rawptr(p))
+}
+
+resize :: (p: &$T, size: s64, allocator := default_allocator) -> &T {
+    return &T(allocator.alloc(size * sizeof(T), old = rawptr(p)))
+}
+
+zero :: (v: &$T, count := 1) -> &T {
+    return &T(memset(rawptr(v), 0, u64(count) * sizeof(T)))
+}
+
+copy :: (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
+    #if overlaps {
+        return &T(memmove(rawptr(dst), rawptr(src), u64(count) * sizeof(T)))
+    } else {
+        return &T(memcpy(rawptr(dst), rawptr(src), u64(count) * sizeof(T)))
+    }
+}
+
+clone :: (v: $T, allocator := default_allocator) -> &T {
+    return &T(memcpy(allocator.alloc(sizeof(T), zeroed = false), rawptr(&v), sizeof(v)))
+}
+
+#private...
+
+extern {
+    memset  :: (dst: rawptr, c: s32, n: u64) -> rawptr
+    memcpy  :: (dst: rawptr, src: rawptr, n: u64) -> rawptr
+    memmove :: (dst: rawptr, src: rawptr, n: u64) -> rawptr
+}
