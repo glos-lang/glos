@@ -30,14 +30,20 @@ write :: (this: &Builder, bytes: []char) {
         available := page.bytes.count - page.count
 
         if bytes.count <= available {
-            mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
+            if bytes.count != 0 {
+                mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
+            }
+
             page.count += bytes.count
             this.count += bytes.count
             this.cursor = page.bytes.data + &char(page.count)
             return
         }
 
-        mem.copy(&page.bytes[page.count], bytes.data, available)
+        if available != 0 {
+            mem.copy(&page.bytes[page.count], bytes.data, available)
+        }
+
         page.count += available
         this.count += available
         this.cursor = page.bytes.data + &char(page.count)
@@ -89,7 +95,10 @@ to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := d
                 if available >= left {
                     available = left
                 }
-                mem.copy(bytes + &char(head), p.bytes.data + &char(a), available, overlaps = false)
+
+                if available != 0 {
+                    mem.copy(bytes + &char(head), p.bytes.data + &char(a), available, overlaps = false)
+                }
 
                 head += available
                 left -= available

@@ -1,5 +1,9 @@
 to_cstring :: (s: string, allocator := default_allocator) -> &char {
-    p := mem.copy(&char(allocator.alloc(s.count + 1, zeroed = false)), s.data, s.count, overlaps = false)
+    p := &char(allocator.alloc(s.count + 1, zeroed = false))
+    if s.count != 0 {
+        mem.copy(p, s.data, s.count, overlaps = false)
+    }
+
     *(p + &char(s.count)) = 0
     return p
 }
