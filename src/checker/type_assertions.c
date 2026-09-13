@@ -519,15 +519,19 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
 
                 if (impl_for_other_type) {
                     const Type impl = it.fn->node.type.spec.fn->args[0].type;
-                    error_node_begin(EK_NOTE, n);
+                    ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
                     fprintf(
-                        stderr, "The trait is implemented for %s, not %s", type_to_cstr(impl), type_to_cstr(receiver));
+                        stderr,
+                        "    The trait is implemented for %s, not %s.",
+                        type_to_cstr(impl),
+                        type_to_cstr(receiver));
 
                     if (type_eq(type_without_ref(impl), type_without_ref(receiver))) {
-                        fprintf(stderr, ". Perhaps try %s?", impl.ref > receiver.ref ? "referencing" : "dereferencing");
+                        fprintf(stderr, " Perhaps try %s?", impl.ref > receiver.ref ? "referencing" : "dereferencing");
                     }
 
-                    error_finalize();
+                    fprintf(stderr, "\n\n");
+                    ansi_reset(stderr);
                     exit(c, 1);
                 }
 

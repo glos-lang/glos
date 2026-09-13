@@ -2031,6 +2031,7 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     }
 
     if (n->type.kind != TYPE_GROUP) {
+        n->type.llvm = NULL; // TODO: Investigate why this is sometimes not NULL
         compile_type(c, &n->type);
     }
 

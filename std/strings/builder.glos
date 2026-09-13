@@ -1,0 +1,95 @@
+Builder :: struct {
+    p:         &char
+    head:      &Page
+    tail:      &Page
+    total:     s64
+    allocator: Allocator
+}
+
+free :: (this: &Builder) {
+    p := this.head
+    for p != null {
+        n := p.next
+        mem.free(p, allocator = this.allocator)
+        p = n
+    }
+}
+
+write :: (this: &Builder, bytes: []char) {
+    if this.tail == null {
+        if this.allocator == null then this.allocator = default_allocator
+        this.head = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.tail = this.head
+        this.tail.count = 0
+        this.tail.next  = null
+    }
+
+    for bytes.count != 0 {
+        page      := this.tail
+        available := page.bytes.count - page.count
+
+        if bytes.count <= available {
+            mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
+            page.count += bytes.count
+            this.total += bytes.count
+            this.p = page.bytes.data + &char(page.count)
+            return
+        }
+
+        mem.copy(&page.bytes[page.count], bytes.data, available)
+        page.count += available
+        this.total += available
+        this.p = page.bytes.data + &char(page.count)
+        bytes = bytes[available..]
+
+        page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.tail = page.next
+        this.tail.count = 0
+        this.tail.next  = null
+    }
+}
+
+to_string :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) -> string {
+    if this.head == null then return ""
+    if from == null      then from = this.head.bytes.data
+
+    head := 0
+    for p := this.head; p != null; p = p.next {
+        begin := p.bytes.data
+        end   := begin + &char(p.count)
+        if from >= begin && from <= end {
+            a     := s64(from - begin)
+            count := this.total - (head + a)
+            bytes := mem.new(char, count, allocator = allocator, zeroed = false)
+
+            head := 0
+            left := count
+            for p != null {
+                available := p.count - a
+                if available >= left {
+                    available = left
+                }
+                mem.copy(bytes + &char(head), p.bytes.data + &char(a), available, overlaps = false)
+
+                head += available
+                left -= available
+
+                p.count = a
+                a = 0
+                p = p.next
+            }
+            return string([]char(bytes, count))
+        }
+        head += p.count
+    }
+
+    panic("Builder does not contain the address \{from}", location = location)
+}
+
+#private ...
+
+Page :: struct {
+    bytes: [4096]char
+    count: s64
+    next:  &Page
+}

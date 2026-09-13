@@ -8,6 +8,7 @@ void compile_var_def(Compiler *c, Node_Atom *it) {
 
     const void *checkpoint = arena_alloc(&temp_arena, 0);
 
+    it->node.type.llvm = NULL; // TODO: Something is seriously wrong with the monomorphizer
     compile_type(c, &it->node.type);
 
     SV link_as = {0};

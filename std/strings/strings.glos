@@ -1,5 +1,5 @@
 to_cstring :: (s: string, allocator := default_allocator) -> &char {
-    p := &char(C.memcpy(allocator.alloc(s.count + 1, zeroed = false), rawptr(s.data), u64(s.count)))
+    p := mem.copy(&char(allocator.alloc(s.count + 1, zeroed = false)), s.data, s.count, overlaps = false)
     *(p + &char(s.count)) = 0
     return p
 }
@@ -18,4 +18,5 @@ to_integer :: (s: string, base := 10) -> s64, bool {
     return result, *end == '\0'
 }
 
-C :: #import "C"
+C   :: #import "C"
+mem :: #import "memory"
