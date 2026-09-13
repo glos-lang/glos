@@ -1,9 +1,10 @@
 Builder :: struct {
-    p:         &char
+    cursor:    &char
+    count:     s64
+    allocator: Allocator
+
     head:      &Page
     tail:      &Page
-    total:     s64
-    allocator: Allocator
 }
 
 free :: (this: &Builder) {
@@ -31,15 +32,15 @@ write :: (this: &Builder, bytes: []char) {
         if bytes.count <= available {
             mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
             page.count += bytes.count
-            this.total += bytes.count
-            this.p = page.bytes.data + &char(page.count)
+            this.count += bytes.count
+            this.cursor = page.bytes.data + &char(page.count)
             return
         }
 
         mem.copy(&page.bytes[page.count], bytes.data, available)
         page.count += available
-        this.total += available
-        this.p = page.bytes.data + &char(page.count)
+        this.count += available
+        this.cursor = page.bytes.data + &char(page.count)
         bytes = bytes[available..]
 
         page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
@@ -49,7 +50,26 @@ write :: (this: &Builder, bytes: []char) {
     }
 }
 
-to_string :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) -> string {
+rewind :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) {
+    if this.head == null then return
+    if from == null      then from = this.head.bytes.data
+
+    for p := this.head; p != null; p = p.next {
+        begin := p.bytes.data
+        end   := begin + &char(p.count)
+        if from >= begin && from <= end {
+            for a := s64(from - begin); p != null; p = p.next {
+                p.count = a
+                a = 0
+            }
+            return
+        }
+    }
+
+    panic("Builder does not contain the address \{from}", location = location)
+}
+
+to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
     if this.head == null then return ""
     if from == null      then from = this.head.bytes.data
 
@@ -59,7 +79,7 @@ to_string :: (this: &Builder, from: &char = null, allocator := default_allocator
         end   := begin + &char(p.count)
         if from >= begin && from <= end {
             a     := s64(from - begin)
-            count := this.total - (head + a)
+            count := this.count - (head + a)
             bytes := mem.new(char, count, allocator = allocator, zeroed = false)
 
             head := 0
@@ -74,7 +94,7 @@ to_string :: (this: &Builder, from: &char = null, allocator := default_allocator
                 head += available
                 left -= available
 
-                p.count = a
+                if rewind then p.count = a
                 a = 0
                 p = p.next
             }
