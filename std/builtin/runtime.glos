@@ -18,7 +18,7 @@ runtime_panic :: noreturn (p: Panic, a: s64, b: s64, c: s64, location: &Source_C
         expected := error_enums[b - 1]
         if a == 0 {
             panic("Type Mismatch: Accessing '\{expected}', but real type is null", location = *location)
-        } else if a < 0 || a > error_enums.count {
+        } else if a > error_enums.count {
             panic("Type Mismatch: Accessing '\{expected}', but real type is invalid", location = *location)
         } else {
             panic("Type Mismatch: Accessing '\{expected}', but real type is '\{error_enums[a - 1]}'", location = *location)

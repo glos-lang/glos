@@ -301,6 +301,31 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         }
 
     case Type_Info_Enumeration
+        if v.underlying == error {
+            err   := *(&u64)(a.data)
+            index := u32(err >> 32)
+            value := u32(err)
+
+            if index != 0 {
+                index -= 1
+                if s64(index) < error_enums.count && error_enums[index] == a.type {
+                    if value == 0 {
+                        w.write([]char("OK"))
+                        return
+                    }
+                    value -= 1
+
+                    if s64(value) < v.names.count {
+                        w.write([]char(v.names[value]))
+                        return
+                    }
+                }
+            }
+
+            wprint(w, "(Invalid error value: \{err})")
+            return
+        }
+
         value: s64
         if v.underlying.size == {
         case 1; value = s64(*&s8(a.data))
@@ -314,22 +339,6 @@ write_value :: (w: Writer, a: Any, nested: bool) {
                 w.write([]char(v.names[i]))
                 return
             }
-        }
-
-        if v.underlying == error {
-            e := *(&Error)(&value)
-            e.index -= 1
-            if e.index >= 0 && s64(e.index) < error_enums.count {
-                if error_enums[e.index] == a.type && e.value == 0 {
-                    w.write([]char("OK"))
-                    return
-                }
-
-            }
-
-            e.index += 1
-            wprint(w, "(Invalid error value: \{*(&u64)(&e)})")
-            return
         }
 
         wprint(w, "(Invalid enum value: \{value})")
@@ -452,31 +461,33 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("}"))
 
     case Type_Info_Error
-        e := *(&Error)(a.data)
-        if e.index == 0 && e.value == 0 {
-            w.write([]char("OK"))
-            return
-        }
-        e.index -= 1
+        err   := *(&u64)(a.data)
+        index := u32(err >> 32)
+        value := u32(err)
 
-        if e.index >= 0 && s64(e.index) < error_enums.count {
-            if e.value == 0 {
+        if index == 0 {
+            if value == 0 {
                 w.write([]char("OK"))
                 return
             }
-            e.value -= 1
+        } else {
+            index -= 1
+            if s64(index) < error_enums.count {
+                if value == 0 {
+                    w.write([]char("OK"))
+                    return
+                }
+                value -= 1
 
-            v := error_enums[e.index].variant.(Type_Info_Enumeration)
-            if e.value >= 0 && s64(e.value) < v.names.count {
-                w.write([]char(v.names[e.value]))
-                return
+                v := error_enums[index].variant.(Type_Info_Enumeration)
+                if s64(value) < v.names.count {
+                    w.write([]char(v.names[value]))
+                    return
+                }
             }
-
-            e.value += 1
         }
-        e.index += 1
 
-        wprint(w, "(Invalid error value: \{*(&u64)(&e)})")
+        wprint(w, "(Invalid error value: \{err})")
 
     case Type_Info_String
         s := *&string(a.data)
@@ -493,11 +504,6 @@ write_value :: (w: Writer, a: Any, nested: bool) {
     case null
         w.write([]char("null"))
     }
-}
-
-Error :: struct {
-    index: s32
-    value: s32
 }
 
 error_enums: []Type

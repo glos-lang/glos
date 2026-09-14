@@ -265,8 +265,7 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
 
 Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t) {
     if (enumm->underlying == TYPE_ERROR && sv_eq(name, SV_Lit("OK"))) {
-        const Error_Enum_Layout e = {enumm->definition->error_enums_list_index, 0};
-        return int128_from_i64(*(i64 *) &e);
+        return int128_from_u64(enumm->definition->error_enums_list_index << 32);
     }
 
     ll_foreach(it, &enumm->definition->values) {

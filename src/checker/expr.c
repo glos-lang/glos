@@ -844,9 +844,9 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         }
 
         if (is_error) {
-            const Error_Enum_Layout e = {enumm->error_enums_list_index, ++error_enums_iota};
-            assert(e.value <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
-            iota = int128_from_i64(*(i64 *) &e);
+            const size_t value = ++error_enums_iota;
+            assert(value <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
+            iota = int128_from_u64(enumm->error_enums_list_index << 32 | value);
         }
 
         it->type.kind = underlying.kind;
