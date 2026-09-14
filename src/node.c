@@ -737,7 +737,7 @@ bool type_is_unknown(Type type) {
 }
 
 bool type_is_error_enum(Type type) {
-    return type_kind_eq(type, TYPE_ENUM) && type.spec.enumm.underlying == TYPE_ERROR;
+    return !type.ref && type_kind_eq(type, TYPE_ENUM) && type.spec.enumm.underlying == TYPE_ERROR;
 }
 
 static void hasher_add_type_fn(Hasher *h, const Type_Fn *fn, bool skip_first) {
@@ -872,7 +872,7 @@ u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
 
     const Type *a = va;
     if (vb) {
-        return type_eq(*a, *(const Type *) vb);
+        return type_eq(type_without_meta(*a), type_without_meta(*(const Type *) vb));
     }
 
     Hasher h = {0};

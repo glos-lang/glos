@@ -799,14 +799,14 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         spec.underlying = underlying.kind;
     }
 
-    enumm->error_enums_list_index = c->error_enums_list.count;
-    size_t error_enums_iota = 0;
-
     Int128 iota = {0};
     if (is_error) {
         iota.low = c->error_iota;
         da_push(&c->error_enums_list, enumm);
     }
+
+    enumm->error_enums_list_index = c->error_enums_list.count;
+    size_t error_enums_iota = 0;
 
     ll_foreach(it, &enumm->values) {
         ll_foreach(prev, &enumm->values) {
@@ -1593,7 +1593,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 to_trait = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
-            } else if (type_is_scalar(*to_type)) {
+            } else if (type_is_scalar(*to_type) && !type_is_error_enum(*to_type)) {
                 // Pass
             } else if (call->args_count == 2) {
                 Node  *data = from;

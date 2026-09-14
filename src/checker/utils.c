@@ -527,11 +527,11 @@ void finalize_untyped_type(Compiler *c, Node *n) {
 }
 
 bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    if (type_kind_eq(n->type, TYPE_INT) &&                                 //
-        (type_is_integer(expected) ||                                      //
-         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) || //
-         type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) || //
-         (type_kind_eq(expected, TYPE_ENUM) && !expected.ref)))            //
+    if (type_kind_eq(n->type, TYPE_INT) &&                                                       //
+        (type_is_integer(expected) ||                                                            //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) ||                       //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) ||                       //
+         (type_kind_eq(expected, TYPE_ENUM) && !expected.ref && !type_is_error_enum(expected)))) //
     {
         if (!type_kind_eq(expected, TYPE_INT)) {
             if (n->kind == NODE_RANGE) {
