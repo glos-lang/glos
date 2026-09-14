@@ -4,7 +4,9 @@
 static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     if (m->rhs) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
-        if (!type_is_trait(m->lhs->type) && !type_is_union(m->lhs->type)) {
+        if (!m->lhs->type.ref && m->lhs->type.kind == TYPE_TRAIT) {
+            // OK
+        } else if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ERROR})) {
             error_node(EK_ERROR, (Node *) m, "Cannot access variant of %s", type_to_cstr(m->lhs->type));
             exit(c, 1);
         }
@@ -515,6 +517,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         }
 
         check_that_type_is_known(c, member->lhs);
+        check_whether_member_access_is_valid(c, member);
 
         *is_ref_valid = true; // check_node() has already determined that the reference is valid
 
@@ -537,13 +540,11 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         if (!member->method) {
             n->is_memory = member->lhs->is_memory;
             if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
-                check_whether_member_access_is_valid(c, member);
                 const Type_Enum *enumm = &member->lhs->type.spec.enumm;
                 member->enum_value = get_enum_value(c, enumm, n->token.sv, &n->token);
                 member->is_enum = true;
                 n->type = type_without_meta(member->lhs->type);
             } else if (type_kind_eq(member->lhs->type, TYPE_TRAIT)) {
-                check_whether_member_access_is_valid(c, member);
 
                 Type_Trait *spec = member->lhs->type.spec.trait;
                 if (member->rhs) {
@@ -577,7 +578,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_UNION)) {
-                check_whether_member_access_is_valid(c, member);
                 if (member->rhs) {
                     check_expr(c, member->rhs, REF_NONE);
                     type_assert_type(c, member->rhs);
@@ -592,7 +592,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
-                check_whether_member_access_is_valid(c, member);
                 Type_Struct_Field *definition = NULL;
 
                 Type_Struct *spec = member->lhs->type.spec.structt;
@@ -611,7 +610,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
 
                 n->type = definition->type;
             } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.array.element;
                     type_change_ref(&n->type, +1);
@@ -626,7 +624,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_DYNAMIC_ARRAY)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
                     type_change_ref(&n->type, +1);
@@ -644,7 +641,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_MAP)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = (Type) {.kind = TYPE_RAWPTR};
                     member->field_index = 0;
@@ -664,7 +660,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
                     type_change_ref(&n->type, +1);
@@ -675,8 +670,18 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
+            } else if (type_kind_eq(member->lhs->type, TYPE_ERROR)) {
+                if (!member->rhs) {
+                    error_undefined_in(c, &n->token, &member->lhs->type, "field");
+                }
+
+                check_expr(c, member->rhs, REF_NONE);
+                n->type = type_without_meta(type_assert_type(c, member->rhs));
+                if (!type_is_error_enum(n->type)) {
+                    error_node(EK_ERROR, member->rhs, "Type %s is not an error enumeration", type_to_cstr(n->type));
+                    exit(c, 1);
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
                     member->field_index = 0;
@@ -687,7 +692,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
-                check_whether_member_access_is_valid(c, member);
                 check_ident(c, n, ref);
             } else {
                 bool ok = false;

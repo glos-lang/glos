@@ -1365,6 +1365,23 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
                     LLVMBuildPtrToInt(c->llvm_builder, actual, i64, ""),
                     LLVMBuildPtrToInt(c->llvm_builder, expected, i64, ""),
                     NULL);
+            } else if (member->lhs->type.kind == TYPE_ERROR) {
+                LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
+                LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i32, lhs, "");
+                LLVMValueRef expected = LLVMConstInt(i32, n->type.spec.enumm.definition->error_enums_list_index, true);
+
+                LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, actual, expected, "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                compile_panic(
+                    c,
+                    member->dot.pos,
+                    CONTRACT_PANIC_ERROR_TYPE_MISMATCH,
+                    LLVMBuildSExt(c->llvm_builder, actual, i64, ""),
+                    LLVMBuildSExt(c->llvm_builder, expected, i64, ""),
+                    NULL);
             } else if (member->union_index) {
                 LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i64, lhs, "");
                 LLVMValueRef expected = LLVMConstInt(i64, member->union_index, true);
@@ -1389,7 +1406,11 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, success);
         }
 
-        LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        LLVMValueRef payload = lhs;
+        if (member->lhs->type.kind != TYPE_ERROR) {
+            payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        }
+
         if (member->lhs->type.kind == TYPE_TRAIT) {
             payload = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), payload, "");
         }

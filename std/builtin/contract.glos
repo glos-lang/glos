@@ -159,6 +159,7 @@ Panic :: enum {
     RANGE_OUT_OF_BOUNDS            // (begin: s64, end: s64, count: s64)
     RANGE_BEGIN_MORE_THAN_END      // (begin: s64, end: s64)
     NULL_TRAIT_METHOD_ACCESS       // ()
+    ERROR_TYPE_MISMATCH            // (actual: s64, expected: s64)
     TRAIT_TYPE_MISMATCH            // (actual: Type, expected: Type)
     UNION_TYPE_MISMATCH            // (actual: s64, expected: s64, type: Type)
     UNREACHABLE

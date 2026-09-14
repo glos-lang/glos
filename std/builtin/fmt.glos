@@ -317,7 +317,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         }
 
         if v.underlying == error {
-            e := *(&Error_Enum)(&value)
+            e := *(&Error)(&value)
             e.index -= 1
             if e.index >= 0 && s64(e.index) < error_enums.count {
                 if error_enums[e.index] == a.type && e.value == 0 {
@@ -452,7 +452,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("}"))
 
     case Type_Info_Error
-        e := *(&Error_Enum)(a.data)
+        e := *(&Error)(a.data)
         if e.index == 0 && e.value == 0 {
             w.write([]char("OK"))
             return
@@ -495,7 +495,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
     }
 }
 
-Error_Enum :: struct {
+Error :: struct {
     index: s32
     value: s32
 }
