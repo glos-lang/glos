@@ -264,10 +264,6 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
 }
 
 Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t) {
-    if (enumm->underlying == TYPE_ERROR && sv_eq(name, SV_Lit("OK"))) {
-        return int128_from_u64(enumm->definition->error_enums_list_index << 32);
-    }
-
     ll_foreach(it, &enumm->definition->values) {
         if (sv_eq(it->token.sv, name)) {
             if (type_is_signed(enumm->definition->node.type)) {
@@ -449,13 +445,6 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
             if (type_kind_eq(expected, TYPE_ENUM)) {
                 member->enum_value = get_enum_value(c, &expected.spec.enumm, n->token.sv, &n->token);
-            } else if (type_kind_eq(expected, TYPE_ERROR)) {
-                if (sv_eq(n->token.sv, SV_Lit("OK"))) {
-                    member->enum_value = INT128_FROM_U64(0);
-                } else {
-                    error_undefined(c, &n->token, "error value", true);
-                    exit(c, 1);
-                }
             } else {
                 unreachable();
             }
@@ -580,11 +569,6 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             cast_untyped(c, n, expected);
             return true;
         }
-
-        if (type_eq(expected, (Type) {.kind = TYPE_ERROR})) {
-            cast_untyped(c, n, expected);
-            return true;
-        }
     }
 
     if (type_kind_eq(n->type, TYPE_UNKNOWN_COMPOUND)) {
@@ -612,14 +596,21 @@ bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
 
 bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
-    if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
-        if (expected.kind == TYPE_POLYMORPH && expected.spec.polymorph.is_definition) {
-            return false;
+    if (node_is_null(n)) {
+        if ((expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
+            if (expected.kind == TYPE_POLYMORPH && expected.spec.polymorph.is_definition) {
+                return false;
+            }
+
+            // NOTE: We are also checking for rawptr because distinct types exist
+            n->type = expected;
+            return true;
         }
 
-        // NOTE: We are also checking for rawptr because distinct types exist
-        n->type = expected;
-        return true;
+        if (type_eq(expected, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(expected)) {
+            n->type = expected;
+            return true;
+        }
     }
 
     // untyped string -> &char

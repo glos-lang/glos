@@ -1,15 +1,16 @@
 EXIT 0
-STDOUT 23
-OK
+STDOUT 31
+null
 A
 B
 C
-OK
+null
 D
 E
 F
-OK
-E
+null
+A
+D
 
 STDERR 0
 

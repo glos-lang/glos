@@ -844,9 +844,9 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         }
 
         if (is_error) {
-            const size_t value = ++error_enums_iota;
-            assert(value <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
-            iota = int128_from_u64(enumm->error_enums_list_index << 32 | value);
+            assert(error_enums_iota <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
+            iota = int128_from_u64(enumm->error_enums_list_index << 32 | error_enums_iota);
+            error_enums_iota++;
         }
 
         it->type.kind = underlying.kind;
@@ -1597,8 +1597,13 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 to_trait = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
-            } else if (type_is_scalar(*to_type) && !type_is_error_enum(*to_type)) {
-                // Pass
+            } else if (
+                (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(*to_type)) &&
+                node_is_null(from)) //
+            {
+                same = true;
+            } else if (type_is_scalar(*to_type)) {
+                // Will be dealt later
             } else if (call->args_count == 2) {
                 Node  *data = from;
                 Node  *count = from;
