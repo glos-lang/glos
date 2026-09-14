@@ -1,6 +1,8 @@
 #include "../error.h"
 #include "checker.h"
 
+// TODO: `.OK` for `error enum`
+
 void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_expr(c, sw->expr, REF_NONE);
     finalize_untyped_type(c, sw->expr);

@@ -1366,8 +1366,14 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
                     LLVMBuildPtrToInt(c->llvm_builder, expected, i64, ""),
                     NULL);
             } else if (member->lhs->type.kind == TYPE_ERROR) {
+                LLVMValueRef lhs_value = lhs;
+                if (LLVMGetTypeKind(LLVMTypeOf(lhs_value)) == LLVMPointerTypeKind) {
+                    lhs_value = LLVMBuildLoad2(c->llvm_builder, i64, lhs_value, "");
+                }
+
                 LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
-                LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i32, lhs, "");
+                LLVMValueRef actual = compile_cast(
+                    c, LLVMBuildLShr(c->llvm_builder, lhs_value, LLVMConstInt(i64, 32, false), ""), i32, false, false);
                 LLVMValueRef expected = LLVMConstInt(i32, n->type.spec.enumm.definition->error_enums_list_index, true);
 
                 LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, actual, expected, "");
@@ -1379,8 +1385,8 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
                     c,
                     member->dot.pos,
                     CONTRACT_PANIC_ERROR_TYPE_MISMATCH,
-                    LLVMBuildSExt(c->llvm_builder, actual, i64, ""),
-                    LLVMBuildSExt(c->llvm_builder, expected, i64, ""),
+                    compile_cast(c, actual, i64, false, true),
+                    compile_cast(c, expected, i64, false, true),
                     NULL);
             } else if (member->union_index) {
                 LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i64, lhs, "");
