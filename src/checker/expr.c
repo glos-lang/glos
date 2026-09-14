@@ -538,7 +538,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
             n->is_memory = member->lhs->is_memory;
             if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
                 check_whether_member_access_is_valid(c, member);
-                Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
+                const Type_Enum *enumm = &member->lhs->type.spec.enumm;
                 member->enum_value = get_enum_value(c, enumm, n->token.sv, &n->token);
                 member->is_enum = true;
                 n->type = type_without_meta(member->lhs->type);
@@ -780,14 +780,15 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
     Type      underlying = {.kind = spec.underlying};
     if (enumm->underlying) {
         check_expr(c, enumm->underlying, REF_NONE);
-        type_assert_type(c, enumm->underlying);
+        underlying = type_without_meta(type_assert_type(c, enumm->underlying));
 
-        underlying = type_without_meta(enumm->underlying->type);
-        if (!type_is_integer(underlying)) {
+        const Type error = {.kind = TYPE_ERROR};
+        if (!type_is_integer(underlying) && !type_eq(underlying, error)) {
             error_node(
                 EK_ERROR,
                 enumm->underlying,
-                "Expected underlying type of the enumeration to be an integer, got %s",
+                "Expected underlying type of the enumeration to be an integer or %s, got %s",
+                type_to_cstr(error),
                 type_to_cstr(underlying));
             exit(c, 1);
         }
@@ -796,7 +797,10 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
     }
 
     Int128 iota = {0};
-    Int128 iota_max = {0};
+    if (spec.underlying == TYPE_ERROR) {
+        iota = c->error_iota;
+    }
+
     ll_foreach(it, &enumm->values) {
         ll_foreach(prev, &enumm->values) {
             if (prev == it) {
@@ -811,6 +815,15 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         assert(it->kind == NODE_UNARY);
         Node_Unary *unary = (Node_Unary *) it;
         if (unary->value) {
+            if (spec.underlying == TYPE_ERROR) {
+                error_node(
+                    EK_ERROR,
+                    unary->value,
+                    "Enumeration value with underlying type %s cannot be custom",
+                    type_to_cstr(underlying));
+                exit(c, 1);
+            }
+
             check_expr(c, unary->value, REF_NONE);
             type_assert(c, unary->value, underlying);
 
@@ -819,15 +832,22 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
             iota = value.as.integer;
         }
 
-        if (int128_lt(iota_max, iota, true)) {
-            iota_max = iota;
+        if (spec.underlying == TYPE_ERROR) {
+            iota = int128_add(iota, INT128_FROM_U64(1), true);
         }
 
         it->type.kind = underlying.kind;
         check_int_limit(c, it, iota);
         it->type.kind = TYPE_VOID;
         it->token.as.integer = iota.low;
-        iota = int128_add(iota, INT128_FROM_U64(1), true);
+
+        if (spec.underlying != TYPE_ERROR) {
+            iota = int128_add(iota, INT128_FROM_U64(1), true);
+        }
+    }
+
+    if (spec.underlying == TYPE_ERROR) {
+        c->error_iota = iota;
     }
 
     n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};

@@ -187,6 +187,7 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_S64] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
             [TYPE_INT] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
             [TYPE_RUNE] = {.min = INT128_FROM_I64(INT32_MIN), .max = INT128_FROM_I64(INT32_MAX)},
+            [TYPE_ERROR] = {.min = INT128_FROM_I64(0), .max = INT128_FROM_I64(INT64_MAX)},
         };
         return limits[type_kind];
     } else {
@@ -263,10 +264,14 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-Int128 get_enum_value(Compiler *c, Node_Enum *enumm, SV name, const Token *t) {
-    ll_foreach(it, &enumm->values) {
+Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t) {
+    if (enumm->underlying == TYPE_ERROR && sv_eq(name, SV_Lit("OK"))) {
+        return INT128_FROM_U64(0);
+    }
+
+    ll_foreach(it, &enumm->definition->values) {
         if (sv_eq(it->token.sv, name)) {
-            if (type_is_signed(enumm->node.type)) {
+            if (type_is_signed(enumm->definition->node.type)) {
                 return int128_from_i64(it->token.as.integer);
             } else {
                 return int128_from_u64(it->token.as.integer);
@@ -444,7 +449,7 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
         if (member->is_enum) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
             if (type_kind_eq(expected, TYPE_ENUM)) {
-                member->enum_value = get_enum_value(c, expected.spec.enumm.definition, n->token.sv, &n->token);
+                member->enum_value = get_enum_value(c, &expected.spec.enumm, n->token.sv, &n->token);
             } else if (type_kind_eq(expected, TYPE_ERROR)) {
                 if (sv_eq(n->token.sv, SV_Lit("OK"))) {
                     member->enum_value = INT128_FROM_U64(0);

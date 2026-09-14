@@ -122,6 +122,8 @@ typedef struct {
 
     bool dont_allow_polymorphs;
 
+    Int128 error_iota;
+
     // These are used both by the analyzer and the compiler
     Context context;
 

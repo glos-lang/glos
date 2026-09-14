@@ -309,6 +309,11 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         case 8; value = s64(*&s64(a.data))
         }
 
+        if v.underlying == error && value == 0 {
+            w.write([]char("OK"))
+            return
+        }
+
         for i := 0; i < v.values.count; i += 1 {
             if v.values[i] == value {
                 w.write([]char(v.names[i]))
