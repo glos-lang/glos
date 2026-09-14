@@ -742,7 +742,7 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     }
 
     case TYPE_ERROR:
-        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "error", strlen("error"), 64, DW_ATE_unsigned, 0);
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "error", strlen("error"), 64, DW_ATE_signed, 0);
 
     case TYPE_STRING: {
         Builtin_Compound_Type_Field fields[2] = {0};

@@ -710,6 +710,8 @@ bool type_is_signed(Type type) {
     case TYPE_INT:
     case TYPE_FLOAT:
 
+    case TYPE_ERROR:
+
     case TYPE_UNKNOWN_ENUM:
     case TYPE_UNKNOWN_COMPOUND:
         return true;
