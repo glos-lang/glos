@@ -1,3 +1,6 @@
+// TODO: This should not be exposed like this. Still, this is enough rn to get the ball rolling.
+error_enums: []Type
+
 #private ...
 
 write_rune :: (w: Writer, r: rune) {

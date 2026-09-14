@@ -96,28 +96,28 @@ void check_nodes(Compiler *c) {
 
     // Any
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Any"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Any"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->any_type = type_without_meta(value.as.type);
     }
 
     // Interpolation
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Interpolation"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Interpolation"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->interpolation_type = type_without_meta(value.as.type);
     }
 
     // Hash Info
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Hash_Info"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Hash_Info"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->hash_info_type = type_without_meta(value.as.type);
     }
 
     // Panic
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Panic"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Panic"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
 
         const Type panic = type_without_meta(value.as.type);
@@ -127,11 +127,11 @@ void check_nodes(Compiler *c) {
 
     // Type info
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type_Info"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Type_Info"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->type_info_type = type_without_meta(value.as.type);
 
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Type"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Type"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->type_info_pointer_type = type_without_meta(value.as.type);
 
@@ -185,25 +185,25 @@ void check_nodes(Compiler *c) {
 
     // Comparisons
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Ordering"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Ordering"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->ordering_type = type_without_meta(value.as.type);
 
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Equivalence"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Equivalence"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->equivalence_type = type_without_meta(value.as.type);
     }
 
     // Source code location
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Source_Code_Location"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Source_Code_Location"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->source_code_location_type = type_without_meta(value.as.type);
     }
 
     // Allocator
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Allocator"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Allocator"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->allocator_type = type_without_meta(value.as.type);
     }
@@ -222,8 +222,14 @@ void check_nodes(Compiler *c) {
 
     // Interpolation Marker. Needed for optimization.
     {
-        value = get_const_definition_value(c, c->builtin_module, sv_from_cstr("Interpolation_Marker"), NULL);
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Interpolation_Marker"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->interpolation_marker_type = type_without_meta(value.as.type);
+    }
+
+    // The 'error_enums' variable
+    {
+        c->error_enums_var = module_globals_find(c, c->builtin_module, SV_Lit("error_enums"));
+        assert(c->error_enums_var);
     }
 }

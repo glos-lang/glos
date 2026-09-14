@@ -787,7 +787,6 @@ void hasher_add_type(Hasher *h, const Type *t) {
 
     hasher_add_bytes(h, &t->kind, sizeof(t->kind));
     hasher_add_bytes(h, &t->ref, sizeof(t->ref));
-    hasher_add_bytes(h, &t->is_meta, sizeof(t->is_meta));
 
     if (t->distinct) {
         hasher_add_bytes(h, &t->distinct, sizeof((void *) t->distinct));

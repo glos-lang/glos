@@ -848,6 +848,7 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
 
     if (spec.underlying == TYPE_ERROR) {
         c->error_iota = iota;
+        da_push(&c->error_enums_list, enumm);
     }
 
     n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};

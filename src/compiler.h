@@ -122,7 +122,9 @@ typedef struct {
 
     bool dont_allow_polymorphs;
 
-    Int128 error_iota;
+    Int128     error_iota;
+    Node_Atom *error_enums_var;
+    DA(Node_Enum *) error_enums_list;
 
     // These are used both by the analyzer and the compiler
     Context context;
