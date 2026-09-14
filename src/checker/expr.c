@@ -778,12 +778,15 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
 
     Type_Enum spec = {.underlying = TYPE_INT, .definition = enumm};
     Type      underlying = {.kind = spec.underlying};
+    bool      is_error = false;
     if (enumm->underlying) {
         check_expr(c, enumm->underlying, REF_NONE);
         underlying = type_without_meta(type_assert_type(c, enumm->underlying));
 
         const Type error = {.kind = TYPE_ERROR};
-        if (!type_is_integer(underlying) && !type_eq(underlying, error)) {
+        is_error = type_eq(underlying, error);
+
+        if (!type_is_integer(underlying) && !is_error) {
             error_node(
                 EK_ERROR,
                 enumm->underlying,
@@ -796,9 +799,13 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         spec.underlying = underlying.kind;
     }
 
+    enumm->error_enums_list_index = c->error_enums_list.count;
+    size_t error_enums_iota = 0;
+
     Int128 iota = {0};
-    if (spec.underlying == TYPE_ERROR) {
-        iota = c->error_iota;
+    if (is_error) {
+        iota.low = c->error_iota;
+        da_push(&c->error_enums_list, enumm);
     }
 
     ll_foreach(it, &enumm->values) {
@@ -815,7 +822,7 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         assert(it->kind == NODE_UNARY);
         Node_Unary *unary = (Node_Unary *) it;
         if (unary->value) {
-            if (spec.underlying == TYPE_ERROR) {
+            if (is_error) {
                 error_node(
                     EK_ERROR,
                     unary->value,
@@ -832,23 +839,26 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
             iota = value.as.integer;
         }
 
-        if (spec.underlying == TYPE_ERROR) {
-            iota = int128_add(iota, INT128_FROM_U64(1), true);
+        if (is_error) {
+            const Error_Enum_Layout e = {enumm->error_enums_list_index, ++error_enums_iota};
+            assert(e.value <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
+            iota = int128_from_i64(*(i64 *) &e);
         }
 
         it->type.kind = underlying.kind;
-        check_int_limit(c, it, iota);
+        if (!is_error) {
+            check_int_limit(c, it, iota);
+        }
         it->type.kind = TYPE_VOID;
         it->token.as.integer = iota.low;
 
-        if (spec.underlying != TYPE_ERROR) {
+        if (!is_error) {
             iota = int128_add(iota, INT128_FROM_U64(1), true);
         }
     }
 
-    if (spec.underlying == TYPE_ERROR) {
-        c->error_iota = iota;
-        da_push(&c->error_enums_list, enumm);
+    if (is_error) {
+        c->error_iota = iota.low;
     }
 
     n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};

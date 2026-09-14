@@ -48,6 +48,11 @@ Int_Limit get_int_limit(Type type);
 void      check_int_limit_ex(Compiler *c, Node *n, Int128 value, bool min_zero, const char *label);
 void      check_int_limit(Compiler *c, Node *n, Int128 value);
 
+typedef struct {
+    int index;
+    int value;
+} Error_Enum_Layout;
+
 bool     get_builtin_type_kind(SV name, Type_Kind *kind);
 Int128   get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t);
 size_t   get_union_type_index(Compiler *c, Node *n, Type unionn);

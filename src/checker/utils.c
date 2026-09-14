@@ -187,7 +187,6 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_S64] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
             [TYPE_INT] = {.min = INT128_FROM_I64(INT64_MIN), .max = INT128_FROM_I64(INT64_MAX)},
             [TYPE_RUNE] = {.min = INT128_FROM_I64(INT32_MIN), .max = INT128_FROM_I64(INT32_MAX)},
-            [TYPE_ERROR] = {.min = INT128_FROM_I64(0), .max = INT128_FROM_I64(INT64_MAX)},
         };
         return limits[type_kind];
     } else {
@@ -266,7 +265,8 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
 
 Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t) {
     if (enumm->underlying == TYPE_ERROR && sv_eq(name, SV_Lit("OK"))) {
-        return INT128_FROM_U64(0);
+        const Error_Enum_Layout e = {enumm->definition->error_enums_list_index, 0};
+        return int128_from_i64(*(i64 *) &e);
     }
 
     ll_foreach(it, &enumm->definition->values) {
@@ -280,7 +280,7 @@ Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token 
     }
 
     error_undefined(c, t, "enumeration value", true);
-    error_node(EK_NOTE, (Node *) enumm, "Enumeration defined here");
+    error_node(EK_NOTE, (Node *) enumm->definition, "Enumeration defined here");
     exit(c, 1);
 }
 

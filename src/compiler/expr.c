@@ -1860,13 +1860,15 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     } else {
         lhs = compile_expr(c, index->lhs, true);
     }
+
     LLVMValueRef a = compile_expr(c, index->a, false);
+    if (a) {
+        a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
+    }
 
     compile_type(c, element_type);
     if (index->is_ranged) {
-        if (a) {
-            a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
-        } else {
+        if (!a) {
             a = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
         }
 

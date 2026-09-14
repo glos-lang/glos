@@ -866,6 +866,8 @@ struct Node_Enum {
     Node_Fn    *defined_in_fn;
     Node_Block *defined_in_block;
 
+    size_t error_enums_list_index;
+
     Token end;
 
     LLVMTypeRef     llvm;

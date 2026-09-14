@@ -1,6 +1,3 @@
-// TODO: This should not be exposed like this. Still, this is enough rn to get the ball rolling.
-error_enums: []Type
-
 #private ...
 
 write_rune :: (w: Writer, r: rune) {
@@ -312,8 +309,20 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         case 8; value = s64(*&s64(a.data))
         }
 
-        if v.underlying == error && value == 0 {
-            w.write([]char("OK"))
+        if v.underlying == error {
+            e := *(&Error_Enum_Layout)(a.data)
+            if e.value == 0 {
+                w.write([]char("OK"))
+                return
+            }
+
+            i := e.value - 1
+            if i < 0 || s64(i) >= v.names.count {
+                wprint(w, "(Invalid error value: \{e.value})")
+                return
+            }
+
+            w.write([]char(v.names[i]))
             return
         }
 
@@ -444,8 +453,25 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("}"))
 
     case Type_Info_Error
-        // TODO: Printing of error values
-        wprint(w, *(&u64)(a.data))
+        e := *(&Error_Enum_Layout)(a.data)
+        if e.index < 0 || s64(e.index) >= error_enums.count  {
+            wprint(w, "(Invalid error index: \{e.index})")
+            return
+        }
+
+        if e.value == 0 {
+            w.write([]char("OK"))
+            return
+        }
+
+        v := error_enums[e.index].variant.(Type_Info_Enumeration)
+        i := e.value - 1
+        if i < 0 || s64(i) >= v.names.count {
+            wprint(w, "(Invalid error value: \{e.value})")
+            return
+        }
+
+        w.write([]char(v.names[i]))
 
     case Type_Info_String
         s := *&string(a.data)
@@ -463,3 +489,10 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("null"))
     }
 }
+
+Error_Enum_Layout :: struct {
+    index: s32
+    value: s32
+}
+
+error_enums: []Type

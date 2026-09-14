@@ -122,7 +122,7 @@ typedef struct {
 
     bool dont_allow_polymorphs;
 
-    Int128     error_iota;
+    int        error_iota;
     Node_Atom *error_enums_var;
     DA(Node_Enum *) error_enums_list;
 
