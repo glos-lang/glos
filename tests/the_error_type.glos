@@ -1,0 +1,35 @@
+Foo :: enum error {
+    A
+    B
+    C
+}
+
+Bar :: enum error {
+    D
+    E
+    F
+}
+
+main :: () {
+    // Typed errors
+    {
+        println(Foo.OK)
+        println(Foo.A)
+        println(Foo.B)
+        println(Foo.C)
+
+        println(Bar.OK)
+        println(Bar.D)
+        println(Bar.E)
+        println(Bar.F)
+    }
+
+    // Untyped errors
+    {
+        a := error(Foo.OK) // Explicit cast
+        println(a)
+
+        a = Bar.E // Auto cast
+        println(a)
+    }
+}

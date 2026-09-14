@@ -2113,8 +2113,11 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 }
 
 static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result, Auto_Cast *auto_cast, bool ref) {
-    static_assert(COUNT_AUTO_CASTS == 5, "");
+    static_assert(COUNT_AUTO_CASTS == 6, "");
     switch (auto_cast->kind) {
+    case AUTO_CAST_SAME:
+        return result;
+
     case AUTO_CAST_TO_TRAIT: {
         result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result, ref);
         n->type = auto_cast->to;

@@ -677,7 +677,6 @@ bool type_is_scalar(Type type) {
     case TYPE_CHAR:
     case TYPE_RUNE:
     case TYPE_FN:
-    case TYPE_ERROR:
         return true;
 
     default:
@@ -710,8 +709,6 @@ bool type_is_signed(Type type) {
     case TYPE_INT:
     case TYPE_FLOAT:
 
-    case TYPE_ERROR:
-
     case TYPE_UNKNOWN_ENUM:
     case TYPE_UNKNOWN_COMPOUND:
         return true;
@@ -737,6 +734,10 @@ bool type_is_unknown(Type type) {
     }
 
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
+}
+
+bool type_is_error_enum(Type type) {
+    return type_kind_eq(type, TYPE_ENUM) && type.spec.enumm.underlying == TYPE_ERROR;
 }
 
 static void hasher_add_type_fn(Hasher *h, const Type_Fn *fn, bool skip_first) {

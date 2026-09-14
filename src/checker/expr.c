@@ -1611,6 +1611,8 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 type_assert_grouped(c, data, data_index, element_type, NULL);
                 type_assert_numeric_grouped(c, count, count_index, false, false);
                 call->type_cast = TYPE_CAST_POINTER_TO_SLICE;
+            } else if (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) && type_is_error_enum(*from_type)) {
+                same = true;
             } else {
                 Type char_type = {.kind = TYPE_CHAR};
                 Type char_slice_type = {

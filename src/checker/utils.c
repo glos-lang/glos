@@ -677,6 +677,11 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
         actual = actual.spec.group.data[group_index];
     }
 
+    if (type_eq(expected, (Type) {.kind = TYPE_ERROR}) && type_is_error_enum(actual)) {
+        set_auto_cast(c, n, group_index, AUTO_CAST_SAME, actual, expected);
+        return true;
+    }
+
     if (type_is_union(expected) && !type_is_unknown(actual) && !type_kind_eq(actual, TYPE_MODULE)) {
         set_auto_cast(c, n, group_index, AUTO_CAST_TO_UNION, actual, expected);
         return true;

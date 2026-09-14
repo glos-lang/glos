@@ -1121,8 +1121,12 @@ Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     if (n->auto_casts) {
         n->type = n_type_save;
 
-        static_assert(COUNT_AUTO_CASTS == 5, "");
+        static_assert(COUNT_AUTO_CASTS == 6, "");
         switch (n->auto_casts[0].kind) {
+        case AUTO_CAST_SAME:
+            // Pass
+            break;
+
         case AUTO_CAST_TO_TRAIT:
             result = const_value_to_trait(n, &n->auto_casts[0].from, n->auto_casts[0].trait_impl, result);
             break;
