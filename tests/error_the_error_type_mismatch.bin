@@ -1,0 +1,7 @@
+EXIT 134
+STDOUT 2
+A
+
+STDERR 102
+tests/error_the_error_type_mismatch.glos:4:14: Type Mismatch: Accessing 'Bar', but real type is 'Foo'
+

@@ -40,15 +40,16 @@ Type_Info :: struct {
         Type_Info_Dynamic_Array
         Type_Info_Map
         Type_Info_Slice
+        Type_Info_Error
         Type_Info_String
     }
 
     format: (ptr: rawptr, w: Writer, nested: bool)
 }
 
-Type_Info_Boolean :: struct {}
+Type_Info_Boolean   :: struct {}
 Type_Info_Character :: struct {}
-Type_Info_Rune :: struct {}
+Type_Info_Rune      :: struct {}
 
 Type_Info_Integer :: struct {
     signed: bool
@@ -110,6 +111,7 @@ Type_Info_Slice :: struct {
     underlying: Type
 }
 
+Type_Info_Error  :: struct {}
 Type_Info_String :: struct {}
 
 // Builtin compound types
@@ -157,6 +159,7 @@ Panic :: enum {
     RANGE_OUT_OF_BOUNDS            // (begin: s64, end: s64, count: s64)
     RANGE_BEGIN_MORE_THAN_END      // (begin: s64, end: s64)
     NULL_TRAIT_METHOD_ACCESS       // ()
+    ERROR_TYPE_MISMATCH            // (actual: s64, expected: s64)
     TRAIT_TYPE_MISMATCH            // (actual: Type, expected: Type)
     UNION_TYPE_MISMATCH            // (actual: s64, expected: s64, type: Type)
     UNREACHABLE

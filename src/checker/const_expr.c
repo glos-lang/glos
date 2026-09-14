@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -73,6 +73,9 @@ Const_Value default_const_value(Compiler *c, Type type) {
         array.element_type = type.spec.slice.element;
         return const_value_array(array);
     }
+
+    case TYPE_ERROR:
+        return const_value_u64(0);
 
     case TYPE_STRING:
         return const_value_string((SV) {0});
@@ -1118,8 +1121,12 @@ Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     if (n->auto_casts) {
         n->type = n_type_save;
 
-        static_assert(COUNT_AUTO_CASTS == 5, "");
+        static_assert(COUNT_AUTO_CASTS == 6, "");
         switch (n->auto_casts[0].kind) {
+        case AUTO_CAST_SAME:
+            // Pass
+            break;
+
         case AUTO_CAST_TO_TRAIT:
             result = const_value_to_trait(n, &n->auto_casts[0].from, n->auto_casts[0].trait_impl, result);
             break;

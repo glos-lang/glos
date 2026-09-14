@@ -102,6 +102,7 @@ typedef enum {
     TYPE_MAP,
 
     TYPE_SLICE,
+    TYPE_ERROR,
     TYPE_STRING,
 
     TYPE_POLYMORPH,
@@ -351,6 +352,7 @@ bool type_is_scalar(Type type);
 bool type_is_signed(Type type);
 bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
+bool type_is_error_enum(Type type);
 
 void hasher_add_type(Hasher *h, const Type *type);
 u64  ht_hasheq_type(const void *va, const void *vb, size_t n);
@@ -509,6 +511,7 @@ typedef enum {
 
 typedef enum {
     AUTO_CAST_NONE,
+    AUTO_CAST_SAME,
     AUTO_CAST_TO_TRAIT,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
@@ -864,6 +867,8 @@ struct Node_Enum {
 
     Node_Fn    *defined_in_fn;
     Node_Block *defined_in_block;
+
+    size_t error_enums_list_index;
 
     Token end;
 

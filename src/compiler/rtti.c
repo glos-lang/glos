@@ -37,7 +37,7 @@ static void compile_type_info_init(Compiler *c, Type_Info_Compiler *tic, Type *t
 
     SV name = {0};
     {
-        static_assert(COUNT_TYPES == 32, "");
+        static_assert(COUNT_TYPES == 33, "");
         Node_Atom *defined_as = NULL;
         if (type->distinct) {
             defined_as = type->distinct;
@@ -103,7 +103,7 @@ static void compile_type_info_fn(Compiler *c, Type_Info_Compiler *tic, bool skip
 
 static LLVMValueRef compile_type_info_finalize(Compiler *c, Type_Info_Compiler *tic);
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
     if (tic->done) {
         return;
@@ -119,6 +119,7 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         case TYPE_BOOL:
         case TYPE_CHAR:
         case TYPE_RUNE:
+        case TYPE_ERROR:
         case TYPE_STRING:
             // Pass
             break;

@@ -4,7 +4,9 @@
 static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     if (m->rhs) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
-        if (!type_is_trait(m->lhs->type) && !type_is_union(m->lhs->type)) {
+        if (!m->lhs->type.ref && m->lhs->type.kind == TYPE_TRAIT) {
+            // OK
+        } else if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ERROR})) {
             error_node(EK_ERROR, (Node *) m, "Cannot access variant of %s", type_to_cstr(m->lhs->type));
             exit(c, 1);
         }
@@ -515,6 +517,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         }
 
         check_that_type_is_known(c, member->lhs);
+        check_whether_member_access_is_valid(c, member);
 
         *is_ref_valid = true; // check_node() has already determined that the reference is valid
 
@@ -537,13 +540,11 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         if (!member->method) {
             n->is_memory = member->lhs->is_memory;
             if (member->lhs->type.is_meta && member->lhs->type.kind == TYPE_ENUM) {
-                check_whether_member_access_is_valid(c, member);
-                Node_Enum *enumm = member->lhs->type.spec.enumm.definition;
+                const Type_Enum *enumm = &member->lhs->type.spec.enumm;
                 member->enum_value = get_enum_value(c, enumm, n->token.sv, &n->token);
                 member->is_enum = true;
                 n->type = type_without_meta(member->lhs->type);
             } else if (type_kind_eq(member->lhs->type, TYPE_TRAIT)) {
-                check_whether_member_access_is_valid(c, member);
 
                 Type_Trait *spec = member->lhs->type.spec.trait;
                 if (member->rhs) {
@@ -577,7 +578,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_UNION)) {
-                check_whether_member_access_is_valid(c, member);
                 if (member->rhs) {
                     check_expr(c, member->rhs, REF_NONE);
                     type_assert_type(c, member->rhs);
@@ -592,7 +592,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
-                check_whether_member_access_is_valid(c, member);
                 Type_Struct_Field *definition = NULL;
 
                 Type_Struct *spec = member->lhs->type.spec.structt;
@@ -611,7 +610,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
 
                 n->type = definition->type;
             } else if (type_kind_eq(member->lhs->type, TYPE_ARRAY)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.array.element;
                     type_change_ref(&n->type, +1);
@@ -626,7 +624,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_DYNAMIC_ARRAY)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
                     type_change_ref(&n->type, +1);
@@ -644,7 +641,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_MAP)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = (Type) {.kind = TYPE_RAWPTR};
                     member->field_index = 0;
@@ -664,7 +660,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_SLICE)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = *member->lhs->type.spec.slice.element;
                     type_change_ref(&n->type, +1);
@@ -675,8 +670,18 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 } else {
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
+            } else if (type_kind_eq(member->lhs->type, TYPE_ERROR)) {
+                if (!member->rhs) {
+                    error_undefined_in(c, &n->token, &member->lhs->type, "field");
+                }
+
+                check_expr(c, member->rhs, REF_NONE);
+                n->type = type_without_meta(type_assert_type(c, member->rhs));
+                if (!type_is_error_enum(n->type)) {
+                    error_node(EK_ERROR, member->rhs, "Type %s is not an error enumeration", type_to_cstr(n->type));
+                    exit(c, 1);
+                }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
-                check_whether_member_access_is_valid(c, member);
                 if (sv_match(n->token.sv, "data")) {
                     n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
                     member->field_index = 0;
@@ -687,7 +692,6 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     error_undefined_in(c, &n->token, &member->lhs->type, "field");
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_MODULE)) {
-                check_whether_member_access_is_valid(c, member);
                 check_ident(c, n, ref);
             } else {
                 bool ok = false;
@@ -778,16 +782,20 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
 
     Type_Enum spec = {.underlying = TYPE_INT, .definition = enumm};
     Type      underlying = {.kind = spec.underlying};
+    bool      is_error = false;
     if (enumm->underlying) {
         check_expr(c, enumm->underlying, REF_NONE);
-        type_assert_type(c, enumm->underlying);
+        underlying = type_without_meta(type_assert_type(c, enumm->underlying));
 
-        underlying = type_without_meta(enumm->underlying->type);
-        if (!type_is_integer(underlying)) {
+        const Type error = {.kind = TYPE_ERROR};
+        is_error = type_eq(underlying, error);
+
+        if (!type_is_integer(underlying) && !is_error) {
             error_node(
                 EK_ERROR,
                 enumm->underlying,
-                "Expected underlying type of the enumeration to be an integer, got %s",
+                "Expected underlying type of the enumeration to be an integer or %s, got %s",
+                type_to_cstr(error),
                 type_to_cstr(underlying));
             exit(c, 1);
         }
@@ -796,7 +804,14 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
     }
 
     Int128 iota = {0};
-    Int128 iota_max = {0};
+    if (is_error) {
+        iota.low = c->error_iota;
+        da_push(&c->error_enums_list, enumm);
+    }
+
+    enumm->error_enums_list_index = c->error_enums_list.count;
+    size_t error_enums_iota = 0;
+
     ll_foreach(it, &enumm->values) {
         ll_foreach(prev, &enumm->values) {
             if (prev == it) {
@@ -811,6 +826,15 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         assert(it->kind == NODE_UNARY);
         Node_Unary *unary = (Node_Unary *) it;
         if (unary->value) {
+            if (is_error) {
+                error_node(
+                    EK_ERROR,
+                    unary->value,
+                    "Enumeration value with underlying type %s cannot be custom",
+                    type_to_cstr(underlying));
+                exit(c, 1);
+            }
+
             check_expr(c, unary->value, REF_NONE);
             type_assert(c, unary->value, underlying);
 
@@ -819,15 +843,26 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
             iota = value.as.integer;
         }
 
-        if (int128_lt(iota_max, iota, true)) {
-            iota_max = iota;
+        if (is_error) {
+            assert(error_enums_iota <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
+            iota = int128_from_u64(enumm->error_enums_list_index << 32 | error_enums_iota);
+            error_enums_iota++;
         }
 
         it->type.kind = underlying.kind;
-        check_int_limit(c, it, iota);
+        if (!is_error) {
+            check_int_limit(c, it, iota);
+        }
         it->type.kind = TYPE_VOID;
         it->token.as.integer = iota.low;
-        iota = int128_add(iota, INT128_FROM_U64(1), true);
+
+        if (!is_error) {
+            iota = int128_add(iota, INT128_FROM_U64(1), true);
+        }
+    }
+
+    if (is_error) {
+        c->error_iota = iota.low;
     }
 
     n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
@@ -1562,8 +1597,13 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 to_trait = true;
             } else if (type_is_union(*to_type)) {
                 to_union = true;
+            } else if (
+                (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(*to_type)) &&
+                node_is_null(from)) //
+            {
+                same = true;
             } else if (type_is_scalar(*to_type)) {
-                // Pass
+                // Will be dealt later
             } else if (call->args_count == 2) {
                 Node  *data = from;
                 Node  *count = from;
@@ -1580,6 +1620,8 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 type_assert_grouped(c, data, data_index, element_type, NULL);
                 type_assert_numeric_grouped(c, count, count_index, false, false);
                 call->type_cast = TYPE_CAST_POINTER_TO_SLICE;
+            } else if (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) && type_is_error_enum(*from_type)) {
+                same = true;
             } else {
                 Type char_type = {.kind = TYPE_CHAR};
                 Type char_slice_type = {

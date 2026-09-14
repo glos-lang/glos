@@ -1,0 +1,16 @@
+EXIT 0
+STDOUT 31
+null
+A
+B
+C
+null
+D
+E
+F
+null
+A
+D
+
+STDERR 0
+

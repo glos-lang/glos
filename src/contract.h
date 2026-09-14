@@ -23,6 +23,7 @@ enum {
     CONTRACT_TYPE_INFO_DYNAMIC_ARRAY,
     CONTRACT_TYPE_INFO_MAP,
     CONTRACT_TYPE_INFO_SLICE,
+    CONTRACT_TYPE_INFO_ERROR,
     CONTRACT_TYPE_INFO_STRING,
 };
 
@@ -37,6 +38,7 @@ typedef enum {
     CONTRACT_PANIC_RANGE_OUT_OF_BOUNDS,            // (begin: s64, end: s64, count: s64)
     CONTRACT_PANIC_RANGE_BEGIN_MORE_THAN_END,      // (begin: s64, end: s64)
     CONTRACT_PANIC_NULL_TRAIT_METHOD_ACCESS,       // ()
+    CONTRACT_PANIC_ERROR_TYPE_MISMATCH,            // (actual: s64, expected: s64)
     CONTRACT_PANIC_TRAIT_TYPE_MISMATCH,            // (actual: Type, expected: Type)
     CONTRACT_PANIC_UNION_TYPE_MISMATCH,            // (actual: s64, expected: s64, type: Type)
     CONTRACT_PANIC_UNREACHABLE,                    // (value: s64)

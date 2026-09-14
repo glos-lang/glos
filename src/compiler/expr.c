@@ -1121,7 +1121,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
     if (!size) {
         return;
@@ -1144,6 +1144,7 @@ static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, s
 
     case TYPE_INT:
     case TYPE_ENUM:
+    case TYPE_ERROR:
 
     case TYPE_FN:
     case TYPE_RAWPTR:
@@ -1364,6 +1365,29 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
                     LLVMBuildPtrToInt(c->llvm_builder, actual, i64, ""),
                     LLVMBuildPtrToInt(c->llvm_builder, expected, i64, ""),
                     NULL);
+            } else if (member->lhs->type.kind == TYPE_ERROR) {
+                LLVMValueRef lhs_value = lhs;
+                if (LLVMGetTypeKind(LLVMTypeOf(lhs_value)) == LLVMPointerTypeKind) {
+                    lhs_value = LLVMBuildLoad2(c->llvm_builder, i64, lhs_value, "");
+                }
+
+                LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
+                LLVMValueRef actual = compile_cast(
+                    c, LLVMBuildLShr(c->llvm_builder, lhs_value, LLVMConstInt(i64, 32, false), ""), i32, false, false);
+                LLVMValueRef expected = LLVMConstInt(i32, n->type.spec.enumm.definition->error_enums_list_index, true);
+
+                LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, actual, expected, "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                compile_panic(
+                    c,
+                    member->dot.pos,
+                    CONTRACT_PANIC_ERROR_TYPE_MISMATCH,
+                    compile_cast(c, actual, i64, false, true),
+                    compile_cast(c, expected, i64, false, true),
+                    NULL);
             } else if (member->union_index) {
                 LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i64, lhs, "");
                 LLVMValueRef expected = LLVMConstInt(i64, member->union_index, true);
@@ -1388,7 +1412,11 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, success);
         }
 
-        LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        LLVMValueRef payload = lhs;
+        if (member->lhs->type.kind != TYPE_ERROR) {
+            payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        }
+
         if (member->lhs->type.kind == TYPE_TRAIT) {
             payload = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), payload, "");
         }
@@ -1827,7 +1855,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     Type  element_type_buffer = {0};
     Type *element_type = &element_type_buffer;
 
-    static_assert(COUNT_TYPES == 32, "");
+    static_assert(COUNT_TYPES == 33, "");
     switch (index->lhs->type.kind) {
     case TYPE_ARRAY:
         element_type = index->lhs->type.spec.array.element;
@@ -1859,13 +1887,15 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     } else {
         lhs = compile_expr(c, index->lhs, true);
     }
+
     LLVMValueRef a = compile_expr(c, index->a, false);
+    if (a) {
+        a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
+    }
 
     compile_type(c, element_type);
     if (index->is_ranged) {
-        if (a) {
-            a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
-        } else {
+        if (!a) {
             a = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
         }
 
@@ -2110,8 +2140,11 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 }
 
 static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result, Auto_Cast *auto_cast, bool ref) {
-    static_assert(COUNT_AUTO_CASTS == 5, "");
+    static_assert(COUNT_AUTO_CASTS == 6, "");
     switch (auto_cast->kind) {
+    case AUTO_CAST_SAME:
+        return result;
+
     case AUTO_CAST_TO_TRAIT: {
         result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result, ref);
         n->type = auto_cast->to;

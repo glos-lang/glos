@@ -1,4 +1,5 @@
 #include "compiler/compiler.h"
+#include "basic.h"
 #include "checker.h"
 #include "error.h"
 
@@ -148,6 +149,23 @@ void compiler_build(Compiler *c, const char *output_path) {
     compile_type(c, &c->type_info_type);
     compile_type(c, &c->source_code_location_type);
 
+    if (c->error_enums_list.count) {
+        // Let us be real. What sort of code base is going to have 2_147_483_647 enum definitions?
+        assert(c->error_enums_list.count <= INT32_MAX);
+
+        LLVMValueRef *enums = arena_alloc(&default_arena, c->error_enums_list.count * sizeof(*enums));
+        for (size_t i = 0; i < c->error_enums_list.count; i++) {
+            enums[i] = compile_type_info(c, &c->error_enums_list.data[i]->node.type);
+        }
+
+        LLVMValueRef slice = create_const_slice_from_memory(
+            c, LLVMPointerTypeInContext(c->llvm_context, 0), enums, c->error_enums_list.count);
+
+        arena_reset(&default_arena, enums);
+        compile_var_def(c, c->error_enums_var);
+        LLVMSetInitializer(c->error_enums_var->definition_spec->llvm, slice);
+    }
+
     perf_begin();
     {
         const Const_Value entry = get_const_definition_value(c, c->builtin_module, sv_from_cstr("runtime_entry"), NULL);
@@ -237,6 +255,8 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     ht_free(&c->llvm_debug_files);
     ht_free(&c->type_info_cache);
+
+    da_free(&c->error_enums_list);
 
     ht_free(&c->methods_table);
     da_free(&c->methods_to_check);

@@ -164,6 +164,9 @@ write_type :: (w: Writer, t: Type) {
     case Type_Info_Slice
         wprint(w, "[]\{v.underlying}")
 
+    case Type_Info_Error
+        w.write([]char("error"))
+
     case Type_Info_String
         w.write([]char("string"))
 
@@ -298,6 +301,27 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         }
 
     case Type_Info_Enumeration
+        if v.underlying == error {
+            err := *(&u64)(a.data)
+            if err == 0 {
+                w.write([]char("null"))
+                return
+            }
+
+            index := u32(err >> 32)
+            value := u32(err)
+            if index != 0 {
+                index -= 1
+                if s64(index) < error_enums.count && error_enums[index] == a.type && s64(value) < v.names.count {
+                    w.write([]char(v.names[value]))
+                    return
+                }
+            }
+
+            wprint(w, "(Invalid error value: \{err})")
+            return
+        }
+
         value: s64
         if v.underlying.size == {
         case 1; value = s64(*&s8(a.data))
@@ -432,6 +456,28 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         }
         w.write([]char("}"))
 
+    case Type_Info_Error
+        err := *(&u64)(a.data)
+        if err == 0 {
+            w.write([]char("null"))
+            return
+        }
+
+        index := u32(err >> 32)
+        value := u32(err)
+        if index != 0 {
+            index -= 1
+            if s64(index) < error_enums.count {
+                v := error_enums[index].variant.(Type_Info_Enumeration)
+                if s64(value) < v.names.count {
+                    w.write([]char(v.names[value]))
+                    return
+                }
+            }
+        }
+
+        wprint(w, "(Invalid error value: \{err})")
+
     case Type_Info_String
         s := *&string(a.data)
         if nested {
@@ -448,3 +494,5 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         w.write([]char("null"))
     }
 }
+
+error_enums: []Type
