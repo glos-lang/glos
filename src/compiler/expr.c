@@ -782,16 +782,12 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 
     if (binary->error_check) {
-        LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
-        LLVMValueRef error = compile_expr(c, binary->error_check, false);
-        error = LLVMBuildLShr(c->llvm_builder, error, LLVMConstInt(i64_type, 32, true), "");
-        error = LLVMBuildTrunc(c->llvm_builder, error, i32, "");
-
+        LLVMValueRef value = compile_expr(c, binary->error_check, false);
         return LLVMBuildICmp(
             c->llvm_builder,
             n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
-            error,
-            LLVMConstInt(i32, binary->error_check_index, true),
+            LLVMBuildLShr(c->llvm_builder, value, LLVMConstInt(i64_type, 32, true), ""),
+            LLVMConstInt(i64_type, binary->error_check_index, true),
             "");
     }
 
