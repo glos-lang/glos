@@ -280,6 +280,49 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     }
 }
 
+static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *lhs, Node *rhs) {
+    if (type_is_trait(lhs->type)) {
+        binary->trait_check = lhs;
+        if (!node_is_null(rhs)) {
+            type_assert_type(c, rhs);
+            rhs->type.is_meta = false;
+            check_type_satisfies_trait(c, rhs->type, lhs->type.spec.trait, rhs, -1);
+            binary->trait_check_type = arena_clone(&default_arena, &rhs->type, sizeof(rhs->type));
+            rhs->type.is_meta = true;
+        }
+        return true;
+    }
+
+    if (type_is_union(lhs->type)) {
+        binary->union_check = lhs;
+        if (!node_is_null(rhs)) {
+            type_assert_type(c, rhs);
+            binary->union_check_index = get_union_type_index(c, rhs, lhs->type);
+        }
+        return true;
+    }
+
+    if (type_eq(lhs->type, (Type) {.kind = TYPE_ERROR})) {
+        binary->error_check = lhs;
+        if (!node_is_null(rhs)) {
+            const Type type = type_without_meta(type_assert_type(c, rhs));
+            if (!type_is_error_enum(type)) {
+                error_node(EK_ERROR, rhs, "Type %s is not an error enumeration", type_to_cstr(type));
+                exit(c, 1);
+            }
+            binary->error_check_index = type.spec.enumm.definition->error_enums_list_index;
+        }
+        return true;
+    }
+
+    if (type_is_error_enum(lhs->type) && node_is_null(rhs)) {
+        binary->error_check = lhs;
+        return true;
+    }
+
+    return false;
+}
+
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
     static_assert(COUNT_TOKENS == 94, "");
@@ -395,36 +438,10 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     case TOKEN_NE:
         check_expr(c, binary->lhs, REF_NONE);
         check_expr(c, binary->rhs, REF_NONE);
-        if (type_is_trait(binary->lhs->type)) {
-            binary->trait_check = binary->lhs;
-            if (!node_is_null(binary->rhs)) {
-                type_assert_type(c, binary->rhs);
-                binary->rhs->type.is_meta = false;
-                check_type_satisfies_trait(c, binary->rhs->type, binary->lhs->type.spec.trait, binary->rhs, -1);
-                binary->trait_check_type = arena_clone(&default_arena, &binary->rhs->type, sizeof(binary->rhs->type));
-                binary->rhs->type.is_meta = true;
-            }
-        } else if (type_is_trait(binary->rhs->type)) {
-            binary->trait_check = binary->rhs;
-            if (!node_is_null(binary->lhs)) {
-                type_assert_type(c, binary->lhs);
-                binary->lhs->type.is_meta = false;
-                check_type_satisfies_trait(c, binary->lhs->type, binary->rhs->type.spec.trait, binary->lhs, -1);
-                binary->trait_check_type = arena_clone(&default_arena, &binary->lhs->type, sizeof(binary->lhs->type));
-                binary->lhs->type.is_meta = true;
-            }
-        } else if (type_is_union(binary->lhs->type)) {
-            binary->union_check = binary->lhs;
-            if (!node_is_null(binary->rhs)) {
-                type_assert_type(c, binary->rhs);
-                binary->union_check_index = get_union_type_index(c, binary->rhs, binary->lhs->type);
-            }
-        } else if (type_is_union(binary->rhs->type)) {
-            binary->union_check = binary->rhs;
-            if (!node_is_null(binary->lhs)) {
-                type_assert_type(c, binary->lhs);
-                binary->union_check_index = get_union_type_index(c, binary->lhs, binary->rhs->type);
-            }
+        if (check_expr_binary_equality(c, binary, binary->lhs, binary->rhs)) {
+            // OK
+        } else if (check_expr_binary_equality(c, binary, binary->rhs, binary->lhs)) {
+            // OK
         } else {
             type_assert_node(c, binary->rhs, binary->lhs);
             check_that_type_is_known(c, binary->lhs);

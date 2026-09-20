@@ -210,18 +210,20 @@ void compile_stmt_block(Compiler *c, Node_Block *block) {
     c->llvm_debug_scope = llvm_debug_scope_save;
 }
 
-static void introduce_ghost_for_union(Compiler *c, Node_Atom *ghost, bool is_trait) {
-    LLVMValueRef real = compile_ident(c, (Node *) ghost, ghost->definition, true);
-    if (is_trait) {
-        ghost->ghost_llvm = LLVMBuildLoad2(
+static void compile_context_replace(Compiler *c, Context_Replace replace) {
+    LLVMValueRef real = compile_ident(c, (Node *) replace.to, replace.to->definition, true);
+    if (replace.from->node.type.kind == TYPE_TRAIT) {
+        replace.to->ghost_llvm = LLVMBuildLoad2(
             c->llvm_builder,
             LLVMPointerTypeInContext(c->llvm_context, 0),
             LLVMBuildStructGEP2(c->llvm_builder, c->llvm_trait_type, real, 1, ""),
             "");
+    } else if (replace.from->node.type.kind == TYPE_ERROR) {
+        replace.to->ghost_llvm = real;
     } else {
         LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
         LLVMValueRef indices[] = {LLVMConstInt(i64_type, 1, true)};
-        ghost->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
+        replace.to->ghost_llvm = LLVMBuildGEP2(c->llvm_builder, i64_type, real, indices, len(indices), "");
     }
 }
 
@@ -259,7 +261,7 @@ void compile_stmt_if(Compiler *c, Node_If *iff) {
     // Consequence
     LLVMPositionBuilderAtEnd(c->llvm_builder, consequence);
     if (iff->context_replace.to) {
-        introduce_ghost_for_union(c, iff->context_replace.to, iff->context_replace.from->node.type.kind == TYPE_TRAIT);
+        compile_context_replace(c, iff->context_replace);
     }
     compile_stmt(c, iff->consequence);
     LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
@@ -590,6 +592,9 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
     } else if (sw->unionn) {
         expr = undo_load(expr);
         expr = LLVMBuildLoad2(c->llvm_builder, i64_type, expr, "");
+    } else if (sw->is_expr_error_or_error_enum) {
+        expr =
+            LLVMBuildLShr(c->llvm_builder, expr, LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), 32, true), "");
     } else if (type_is_pointer(sw->expr->type) || sw->is_expr_type_info || sw->compare_overload) {
         chain = true;
     } else if (type_is_float(sw->expr->type)) {
@@ -662,8 +667,7 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
 
             LLVMPositionBuilderAtEnd(c->llvm_builder, body);
             if (branch->context_replace.to) {
-                introduce_ghost_for_union(
-                    c, branch->context_replace.to, branch->context_replace.from->node.type.kind == TYPE_TRAIT);
+                compile_context_replace(c, branch->context_replace);
             }
             compile_stmt(c, branch->body);
             LLVMBuildBr(c->llvm_builder, end);
@@ -708,8 +712,7 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
         LLVMPositionBuilderAtEnd(c->llvm_builder, block);
 
         if (branch->context_replace.to) {
-            introduce_ghost_for_union(
-                c, branch->context_replace.to, branch->context_replace.from->node.type.kind == TYPE_TRAIT);
+            compile_context_replace(c, branch->context_replace);
         }
         compile_stmt(c, branch->body);
         LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);

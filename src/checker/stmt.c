@@ -1,8 +1,6 @@
 #include "../error.h"
 #include "checker.h"
 
-// TODO: `.OK` for `error enum`
-
 void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
     check_expr(c, sw->expr, REF_NONE);
     finalize_untyped_type(c, sw->expr);
@@ -14,6 +12,8 @@ void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
         sw->trait = sw->expr->type.spec.trait->definition;
     } else if (type_is_union(sw->expr->type)) {
         sw->unionn = sw->expr->type.spec.unionn->definition;
+    } else if (type_is_error_enum(sw->expr->type) || type_eq(sw->expr->type, (Type) {.kind = TYPE_ERROR})) {
+        sw->is_expr_error_or_error_enum = true;
     } else if (sw->expr->type.is_meta) {
         sw->expr->emit_type_info = arena_clone(&default_arena, &sw->expr->type, sizeof(sw->expr->type));
         sw->expr->emit_type_info->is_meta = false;
@@ -34,6 +34,7 @@ Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *
     Const_Value value = {0};
     check_expr(c, pred, REF_NONE);
 
+    Type value_as_type = {0}; // For unions and errors
     if (sw->trait) {
         if (node_is_null(pred)) {
             value = const_value_u64(0);
@@ -49,6 +50,19 @@ Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *
         } else {
             type_assert_type(c, pred);
             value = const_value_u64(get_union_type_index(c, pred, sw->expr->type));
+            value_as_type = type_without_meta(pred->type);
+        }
+    } else if (sw->is_expr_error_or_error_enum) {
+        if (node_is_null(pred)) {
+            value = const_value_u64(0);
+        } else {
+            const Type type = type_without_meta(type_assert_type(c, pred));
+            if (!type_is_error_enum(type)) {
+                error_node(EK_ERROR, pred, "Type %s is not an error enumeration", type_to_cstr(type));
+                exit(c, 1);
+            }
+            value = const_value_u64(type.spec.enumm.definition->error_enums_list_index);
+            value_as_type = type;
         }
     } else {
         type_assert(c, pred, sw->expr->type);
@@ -59,7 +73,16 @@ Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *
         if (const_value_eq(sw->preds[i].value, value)) {
             error_node_begin(EK_ERROR, pred);
             fprintf(stderr, "Duplicate case ");
-            const_value_debug(stderr, pred->type, value);
+            if (sw->unionn || sw->is_expr_error_or_error_enum) {
+                assert(value.kind == CONST_VALUE_INT);
+                if (int128_is_zero(value.as.integer)) {
+                    fprintf(stderr, "null");
+                } else {
+                    fprintf(stderr, "%s", type_to_cstr(value_as_type));
+                }
+            } else {
+                const_value_debug(stderr, pred->type, value);
+            }
             error_finalize();
             error_node(EK_NOTE, sw->preds[i].pred, "Already here");
             exit(c, 1);
@@ -150,21 +173,8 @@ void check_stmt_if(Compiler *c, Node_If *iff) {
         iff->context_replace.outer = c->context.replace;
         if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
             Node_Binary *condition = (Node_Binary *) iff->condition;
-            if ((type_is_trait(condition->lhs->type) || type_is_union(condition->lhs->type)) &&
-                condition->lhs->kind == NODE_ATOM) //
-            {
-                if (!node_is_null(condition->rhs)) {
-                    push_context_replace(
-                        c, &iff->context_replace, ((Node_Atom *) condition->lhs)->definition, condition->rhs->type);
-                }
-            } else if (
-                (type_is_trait(condition->rhs->type) || type_is_union(condition->rhs->type)) &&
-                condition->rhs->kind == NODE_ATOM) //
-            {
-                if (!node_is_null(condition->lhs)) {
-                    push_context_replace(
-                        c, &iff->context_replace, ((Node_Atom *) condition->rhs)->definition, condition->lhs->type);
-                }
+            if (!push_context_replace_if_needed(c, &iff->context_replace, condition->lhs, condition->rhs)) {
+                push_context_replace_if_needed(c, &iff->context_replace, condition->rhs, condition->lhs);
             }
         }
 
@@ -216,11 +226,8 @@ void check_stmt_switch(Compiler *c, Node_Switch *sw) {
             }
 
             branch->context_replace.outer = c->context.replace;
-            if ((sw->trait || sw->unionn) && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
-                if (!node_is_null(branch->preds.head)) {
-                    push_context_replace(
-                        c, &branch->context_replace, ((Node_Atom *) sw->expr)->definition, branch->preds.head->type);
-                }
+            if (branch->preds_count == 1) {
+                push_context_replace_if_needed(c, &branch->context_replace, sw->expr, branch->preds.head);
             }
 
             check_stmt(c, branch->body);

@@ -111,6 +111,8 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start);
 void define_orderless_nodes_of_module(Compiler *c, Module *module, const Token *unqualified_import_token);
 
 void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from, Type to);
+bool push_context_replace_if_needed(Compiler *c, Context_Replace *replace, Node *from, Node *to);
+
 void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type, bool called_from_if_needed);
 void check_definition_if_needed(Compiler *c, Node_Atom *definition, Node *usage, Ref_Kind ref);
 void check_ident(Compiler *c, Node *n, Ref_Kind ref);

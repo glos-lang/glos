@@ -754,9 +754,11 @@ static bool is_empty_string(Node *n) {
 }
 
 LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
+    LLVMTypeRef i64_type = LLVMInt64TypeInContext(c->llvm_context);
+    LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+
     Node *n = (Node *) binary;
     if (binary->trait_check) {
-        LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
         LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, ptr_type, compile_expr(c, binary->trait_check, true), "");
 
         LLVMValueRef expected = NULL;
@@ -770,14 +772,26 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 
     if (binary->union_check) {
-        LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
         LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, binary->union_check, true), "");
-
         return LLVMBuildICmp(
             c->llvm_builder,
             n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
             value,
             LLVMConstInt(i64_type, binary->union_check_index, true),
+            "");
+    }
+
+    if (binary->error_check) {
+        LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
+        LLVMValueRef error = compile_expr(c, binary->error_check, false);
+        error = LLVMBuildLShr(c->llvm_builder, error, LLVMConstInt(i64_type, 32, true), "");
+        error = LLVMBuildTrunc(c->llvm_builder, error, i32, "");
+
+        return LLVMBuildICmp(
+            c->llvm_builder,
+            n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
+            error,
+            LLVMConstInt(i32, binary->error_check_index, true),
             "");
     }
 
@@ -818,9 +832,8 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
             const bool is_pointer_arithmetic = type_is_pointer(n->type);
             if (is_pointer_arithmetic) {
-                LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-                lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
-                rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
+                lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
+                rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, i64_type, "");
             }
 
             set_debug_pos(c, n->token.pos);
@@ -880,8 +893,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
                     if (check_empty) {
                         LLVMValueRef count = LLVMBuildExtractValue(c->llvm_builder, check_empty, 1, "");
-                        return LLVMBuildICmp(
-                            c->llvm_builder, op.i, count, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), "");
+                        return LLVMBuildICmp(c->llvm_builder, op.i, count, LLVMConstNull(i64_type), "");
                     }
                 }
             }
@@ -929,9 +941,6 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             const size_t group_values_count_save = c->group_values.count;
             const size_t group_count = binary->lhs->type.kind == TYPE_GROUP ? binary->lhs->type.spec.group.count : 0;
 
-            LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-            LLVMTypeRef llvm_type_ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
-
             const size_t group_values_ptr_start = c->group_values.count;
             LLVMValueRef ptr = compile_expr(c, binary->lhs, true);
 
@@ -947,7 +956,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
                     LLVMValueRef lhs = LLVMBuildLoad2(c->llvm_builder, type->llvm, ptr, "");
                     if (type_is_pointer(*type)) {
-                        lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                        lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
                     }
                     da_push(&c->group_values, lhs);
                 }
@@ -955,7 +964,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             } else {
                 lhs = LLVMBuildLoad2(c->llvm_builder, binary->lhs->type.llvm, ptr, "");
                 if (type_is_pointer(binary->lhs->type)) {
-                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
                 }
             }
 
@@ -966,12 +975,12 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                 for (size_t i = 0; i < group_count; i++) {
                     LLVMValueRef *rhs = &c->group_values.data[group_values_rhs_start + i];
                     if (type_is_pointer(binary->lhs->type.spec.group.data[i])) {
-                        *rhs = LLVMBuildPtrToInt(c->llvm_builder, *rhs, llvm_type_i64, "");
+                        *rhs = LLVMBuildPtrToInt(c->llvm_builder, *rhs, i64_type, "");
                     }
                 }
             } else {
                 if (type_is_pointer(binary->lhs->type)) {
-                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
+                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, i64_type, "");
                 }
             }
 
@@ -998,7 +1007,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                     }
 
                     if (type_is_pointer(*it)) {
-                        result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
+                        result = LLVMBuildIntToPtr(c->llvm_builder, result, ptr_type, "");
                     }
                     LLVMBuildStore(c->llvm_builder, result, ptr);
                 }
@@ -1016,7 +1025,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                 }
 
                 if (type_is_pointer(binary->lhs->type)) {
-                    result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
+                    result = LLVMBuildIntToPtr(c->llvm_builder, result, ptr_type, "");
                 }
                 LLVMBuildStore(c->llvm_builder, result, ptr);
             }

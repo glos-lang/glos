@@ -683,6 +683,9 @@ typedef struct {
 
     Node  *union_check;
     size_t union_check_index;
+
+    Node  *error_check;
+    size_t error_check_index;
 } Node_Binary;
 
 typedef struct {
@@ -1096,8 +1099,10 @@ typedef struct {
     Node_Enum  *enumeration;
     Node_Trait *trait;
     Node_Union *unionn;
-    bool        is_expr_type_info;
     Node_Fn    *compare_overload;
+
+    bool is_expr_error_or_error_enum;
+    bool is_expr_type_info;
 
     bool       is_compile_time;
     Node_Case *compile_time_real;
