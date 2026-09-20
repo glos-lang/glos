@@ -367,7 +367,7 @@ void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from
 
     // Technically the code generated in the mismatch condition will access invalid memory.
     // However it will be unreachable, so does it even matter?
-    if (replace->to->definition_spec->is_const) {
+    if (replace->to->definition_spec->is_const && !type_eq(replace->from->node.type, (Type) {.kind = TYPE_ERROR})) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
         static_assert(COUNT_CONST_VALUES == 14, "");

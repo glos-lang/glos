@@ -546,6 +546,25 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
         lhs = const_value_of_var(c, lhs.as.var);
     }
 
+    if (type_eq(member->lhs->type, (Type) {.kind = TYPE_ERROR})) {
+        assert(member->rhs);
+        assert(lhs.kind == CONST_VALUE_INT);
+        assert(member->rhs->type.is_meta && type_is_error_enum(type_without_meta(member->rhs->type)));
+
+        const size_t actual = lhs.as.integer.low >> 32;
+        if (actual != member->rhs->type.spec.enumm.definition->error_enums_list_index) {
+            error_token_range(
+                EK_ERROR,
+                member->dot,
+                member->rhs_end,
+                "Type Mismatch: Accessing %s, but real type is %s",
+                type_to_cstr(type_without_meta(member->rhs->type)),
+                actual ? type_to_cstr(type_without_meta(c->error_enums_list.data[actual - 1]->node.type)) : "null");
+            exit(c, 1);
+        }
+        return lhs;
+    }
+
     static_assert(COUNT_CONST_VALUES == 14, "");
     switch (lhs.kind) {
     case CONST_VALUE_TRAIT: {
