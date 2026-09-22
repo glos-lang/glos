@@ -775,6 +775,7 @@ typedef struct {
     size_t children_count;
     bool   is_constant;
     bool   do_not_allocate;
+    Token  end;
 } Node_Interpolation;
 
 struct Node_Fn {

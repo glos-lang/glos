@@ -77,11 +77,21 @@ write_type :: (w: Writer, t: Type) {
 
     case Type_Info_Function
         w.write([]char("("))
-        for i := 0; i < v.args.count; i += 1 {
+        for i, it := range v.args {
             if i > 0 {
                 w.write([]char(", "))
             }
-            write_type(w, v.args[i])
+
+            if i == v.args.count - 1 && v.variadics == .TYPED {
+                w.write([]char("..."))
+                write_type(w, it.variant.(Type_Info_Slice).underlying)
+            } else {
+                write_type(w, it)
+            }
+        }
+
+        if v.variadics == .UNTYPED {
+            w.write([]char(", ..."))
         }
         w.write([]char(")"))
 
@@ -91,11 +101,11 @@ write_type :: (w: Writer, t: Type) {
                 w.write([]char("("))
             }
 
-            for i := 0; i < v.returns.count; i += 1 {
+            for i, it := range v.returns {
                 if i > 0 {
                     w.write([]char(", "))
                 }
-                write_type(w, v.returns[i])
+                write_type(w, it)
             }
 
             if v.returns.count > 1 {

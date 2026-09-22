@@ -893,20 +893,24 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
         Node_Unary *unary = (Node_Unary *) it;
         if (unary->value) {
             if (is_error) {
-                error_node(
-                    EK_ERROR,
-                    unary->value,
-                    "Enumeration value with underlying type %s cannot be custom",
-                    type_to_cstr(underlying));
-                exit(c, 1);
+                check_expr(c, unary->value, REF_NONE);
+                type_assert(c, unary->value, (Type) {.kind = TYPE_STRING});
+
+                if (unary->value->kind == NODE_ATOM && unary->value->token.kind == TOKEN_STRING) {
+                    // No need to evaluate again
+                } else {
+                    const Const_Value value = eval_const_expr(c, unary->value, false);
+                    assert(value.kind == CONST_VALUE_STRING);
+                    unary->value->token.as.string = value.as.string;
+                }
+            } else {
+                check_expr(c, unary->value, REF_NONE);
+                type_assert(c, unary->value, underlying);
+
+                const Const_Value value = eval_const_expr(c, unary->value, false);
+                assert(value.kind == CONST_VALUE_INT);
+                iota = value.as.integer;
             }
-
-            check_expr(c, unary->value, REF_NONE);
-            type_assert(c, unary->value, underlying);
-
-            const Const_Value value = eval_const_expr(c, unary->value, false);
-            assert(value.kind == CONST_VALUE_INT);
-            iota = value.as.integer;
         }
 
         if (is_error) {

@@ -166,7 +166,13 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
             {
                 size_t iota = 0;
                 ll_foreach(it, &spec->definition->values) {
-                    names[iota] = compile_string_into_const_value(c, it->token.sv);
+                    assert(it->kind == NODE_UNARY);
+                    Node_Unary *unary = (Node_Unary *) it;
+                    if (spec->underlying == TYPE_ERROR && unary->value) {
+                        names[iota] = compile_string_into_const_value(c, unary->value->token.as.string);
+                    } else {
+                        names[iota] = compile_string_into_const_value(c, it->token.sv);
+                    }
                     values[iota] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it->token.as.integer, true);
                     iota++;
                 }

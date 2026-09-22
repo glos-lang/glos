@@ -150,8 +150,7 @@ static void range_apply_node(Range *r, const Node *n) {
 
     case NODE_INTERPOLATION: {
         Node_Interpolation *interpolation = (Node_Interpolation *) n;
-        range_apply_node(r, interpolation->children.head);
-        range_apply_node(r, interpolation->children.tail);
+        range_apply_token(r, interpolation->end);
     } break;
 
     case NODE_FN: {

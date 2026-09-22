@@ -896,17 +896,19 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_ISTRING: {
         node = node_alloc(p->module_current, NODE_INTERPOLATION, token);
         Node_Interpolation *interp = (Node_Interpolation *) node;
-        if (token.as.string.count) {
-            nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, token));
+
+        interp->end = token;
+        if (interp->end.as.string.count) {
+            nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, interp->end));
         }
 
-        while (token.kind == TOKEN_ISTRING) {
+        while (interp->end.kind == TOKEN_ISTRING) {
             nodes_push(&interp->children, parse_expr(p, POWER_SET, false, true, NULL));
             expect_token(p, TOKEN_RBRACE); // This also ensures that there is nothing left in the buffer
 
-            token = lexer_get_string(&p->state.lexer, p->state.lexer.pos, node->token.pos);
-            if (token.as.string.count) {
-                nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, token));
+            interp->end = lexer_get_string(&p->state.lexer, p->state.lexer.pos, node->token.pos);
+            if (interp->end.as.string.count) {
+                nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, interp->end));
             }
         }
     } break;
