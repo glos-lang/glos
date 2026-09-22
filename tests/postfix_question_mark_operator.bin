@@ -1,0 +1,8 @@
+EXIT 0
+STDOUT 21
+210 A
+foo()
+420 null
+
+STDERR 0
+

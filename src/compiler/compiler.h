@@ -107,6 +107,8 @@ void         compile_call_arg(Compiler *c, Call_Compiler *call, size_t arg_index
 LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, bool ref);
 LLVMValueRef compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref);
 
+void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group_values_count_save);
+
 // Constant Values /////////////////////////////////////////////////////////////////////////////////
 LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value);
 LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv);

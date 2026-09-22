@@ -539,6 +539,7 @@ struct Node {
     Token token;
     Token parenthesis;
 
+    bool is_stmt;
     bool is_memory;
     bool is_called;
     bool is_defined_as_constant;
@@ -733,7 +734,6 @@ struct Node_Import {
     Module *module;
     Nodes   libraries;
 
-    bool is_stmt;
     bool is_local;
 };
 
@@ -992,8 +992,6 @@ typedef struct {
     };
 
     bool is_monomorphization_of_polymorphic_type;
-
-    bool is_stmt;
 } Node_Call;
 
 typedef struct {

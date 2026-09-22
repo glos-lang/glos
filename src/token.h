@@ -23,6 +23,7 @@ typedef enum {
     TOKEN_SLICE,
     TOKEN_SPREAD,
     TOKEN_DOLLAR,
+    TOKEN_QUESTION,
 
     TOKEN_INT,
     TOKEN_BOOL,

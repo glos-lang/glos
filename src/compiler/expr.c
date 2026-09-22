@@ -579,7 +579,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -653,8 +653,52 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
+    case TOKEN_QUESTION: {
+        const size_t group_values_count_save = c->group_values.count;
+        value = compile_expr(c, unary->value, ref);
+        const size_t group_values_count_final = c->group_values.count;
+
+        LLVMValueRef error = value;
+        if (c->group_values.count > group_values_count_save) {
+            error = c->group_values.data[c->group_values.count - 1];
+        }
+
+        LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBasicBlockRef error_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBuildCondBr(
+            c->llvm_builder,
+            LLVMBuildICmp(
+                c->llvm_builder, LLVMIntEQ, error, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), ""),
+            null_block,
+            error_block);
+
+        // If error, then return
+        LLVMPositionBuilderAtEnd(c->llvm_builder, error_block);
+
+        const Type n_type_save = n->type;
+        n->type = unary->value->type;
+        compile_return(c, n, value, group_values_count_save);
+        n->type = n_type_save;
+
+        LLVMBuildUnreachable(c->llvm_builder);
+        c->group_values.count = group_values_count_final;
+
+        // If null, then do the mbappe special
+        LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
+
+        // "Pop off" the error if null
+        if (c->group_values.count > group_values_count_save) {
+            c->group_values.count--;
+            if (c->group_values.count == group_values_count_save + 1) {
+                return c->group_values.data[--c->group_values.count];
+            }
+        }
+
+        return NULL;
+    }
+
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
         set_debug_pos(c, n->token.pos);
@@ -799,7 +843,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -856,7 +900,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -917,7 +961,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -1031,7 +1075,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;

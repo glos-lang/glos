@@ -104,7 +104,7 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
-        if (import->is_stmt) {
+        if (n->is_stmt) {
             make_sure_import_is_ready(c, import);
 
             bool imported = false;

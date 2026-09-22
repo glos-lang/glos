@@ -1,0 +1,18 @@
+Foo :: enum error {
+    A
+}
+
+bar :: (f: Foo) -> s64, Foo {
+    return 210, f
+}
+
+foo :: (f: Foo) -> s64, error {
+    x := bar(f)?
+    println("foo()")
+    return x * 2, null
+}
+
+main :: () {
+    println(foo(.A))
+    println(foo(null))
+}

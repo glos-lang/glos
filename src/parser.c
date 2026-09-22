@@ -823,7 +823,18 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
+    if ((p->state.fn_current != NULL) != expected_is_local) {
+        if (!label) {
+            label = token_kind_to_cstr(token.kind);
+        }
+
+        error_token(EK_ERROR, token, "Unexpected %s in %s scope", label, p->state.fn_current ? "local" : "global");
+        exit(1);
+    }
+}
+
+static_assert(COUNT_TOKENS == 95, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1585,6 +1596,14 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = (Node *) group;
         } break;
 
+        case TOKEN_QUESTION: {
+            local_assert(p, true, token, NULL);
+
+            Node_Unary *unary = (Node_Unary *) node_alloc(p->module_current, NODE_UNARY, token);
+            unary->value = node;
+            node = (Node *) unary;
+        } break;
+
         case TOKEN_LPAREN: {
             Node_Call *call = (Node_Call *) node_alloc(p->module_current, NODE_CALL, token);
             call->fn_source = node;
@@ -1712,17 +1731,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     }
 
     return node;
-}
-
-static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
-    if ((p->state.fn_current != NULL) != expected_is_local) {
-        if (!label) {
-            label = token_kind_to_cstr(token.kind);
-        }
-
-        error_token(EK_ERROR, token, "Unexpected %s in %s scope", label, p->state.fn_current ? "local" : "global");
-        exit(1);
-    }
 }
 
 static_assert(COUNT_NODES == 32, "");
@@ -2036,17 +2044,12 @@ static Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true, true, NULL);
+        node->is_stmt = true;
         if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
-            if (node->kind == NODE_IMPORT) {
-                ((Node_Import *) node)->is_stmt = true;
-            } else {
+            if (node->kind != NODE_IMPORT) {
                 local_assert(p, true, node->token, "expression");
             }
-        }
-
-        if (node->kind == NODE_CALL) {
-            ((Node_Call *) node)->is_stmt = true;
         }
         break;
     }

@@ -627,3 +627,90 @@ LLVMValueRef compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *ar
     }
     return compile_call_finalize(c, &call, false, ref);
 }
+
+void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group_values_count_save) {
+    if (type_is_compound(n->type)) {
+        ABI_Info abi = get_abi_info_for_type(c, &n->type, false);
+        if (n->type.kind == TYPE_GROUP) {
+            const size_t count = n->type.spec.group.count;
+            assert(c->group_values.count == group_values_count_save + count);
+
+            LLVMValueRef memory = compile_alloca(c, n->type.llvm);
+            for (size_t i = 0; i < count; i++) {
+                LLVMValueRef value = c->group_values.data[group_values_count_save + i];
+                LLVMValueRef ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, i, "");
+                LLVMBuildStore(c->llvm_builder, value, ptr);
+            }
+            value = LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+        }
+
+        static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+        switch (abi.direct_types_count) {
+        case 0:
+            set_debug_pos(c, n->token.pos);
+            LLVMBuildStore(c->llvm_builder, value, LLVMGetParam(c->llvm_fn, 0));
+            compile_defers(c, c->defers_start, false);
+            set_debug_pos(c, n->token.pos);
+            LLVMBuildRetVoid(c->llvm_builder);
+            break;
+
+        case 1: {
+            LLVMTypeRef  abi_type = abi.direct_types[0];
+            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+
+            LLVMTypeRef  value_type = LLVMTypeOf(value);
+            const size_t value_size = LLVMABISizeOfType(c->llvm_target_data, value_type);
+
+            value = undo_load(value);
+            if (abi_size > value_size) {
+                if (abi_size > 8) {
+                    LLVMValueRef memory = compile_alloca(c, abi_type);
+                    LLVMBuildMemCpy(
+                        c->llvm_builder,
+                        memory,
+                        LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                        value,
+                        LLVMABIAlignmentOfType(c->llvm_target_data, value_type),
+                        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value_size, true));
+                    value = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
+                } else {
+                    value = LLVMBuildLoad2(
+                        c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, value_size * 8), value, "");
+                    value = LLVMBuildZExt(c->llvm_builder, value, abi_type, "");
+                }
+            } else {
+                value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+            }
+            compile_defers(c, c->defers_start, false);
+            set_debug_pos(c, n->token.pos);
+            LLVMBuildRet(c->llvm_builder, value);
+        } break;
+
+        case 2: {
+            LLVMTypeRef type =
+                LLVMStructTypeInContext(c->llvm_context, abi.direct_types, abi.direct_types_count, false);
+            value = undo_load(value);
+            value = LLVMBuildLoad2(c->llvm_builder, type, value, "");
+            compile_defers(c, c->defers_start, false);
+            set_debug_pos(c, n->token.pos);
+            LLVMBuildRet(c->llvm_builder, value);
+        } break;
+
+        default:
+            unreachable();
+        }
+    } else {
+        set_debug_pos(c, n->token.pos);
+
+        compile_defers(c, c->defers_start, false);
+        set_debug_pos(c, n->token.pos);
+        if (n->type.kind == TYPE_VOID) {
+            LLVMBuildRetVoid(c->llvm_builder);
+        } else {
+            LLVMBuildRet(c->llvm_builder, value);
+        }
+    }
+
+    LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
+    c->group_values.count = group_values_count_save;
+}

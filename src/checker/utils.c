@@ -156,6 +156,7 @@ void error_redefinition_global(
     exit(c, 1);
 }
 
+// TODO: Show a hint maybe, about the real type?
 void error_number_of_return_values_mismatch(Compiler *c, Token token, size_t expected, size_t actual) {
     error_token(
         EK_ERROR,
@@ -397,7 +398,7 @@ static_assert(COUNT_NODES == 32, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;

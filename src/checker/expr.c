@@ -18,7 +18,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     switch (op) {
@@ -122,7 +122,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -214,8 +214,57 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
+    case TOKEN_QUESTION: { // TODO: This should be its own AST node. For now, reusing Node_Unary.
+        const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
+
+        bool fn_signature_ok = false;
+        if (fn_type->returns_count) {
+            const Type T = fn_type->returns[fn_type->returns_count - 1];
+            fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
+        }
+
+        if (!fn_signature_ok) {
+            error_token(
+                EK_ERROR,
+                n->token,
+                "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
+                token_kind_to_cstr(n->token.kind));
+            exit(c, 1);
+        }
+
+        check_expr(c, unary->value, REF_NONE);
+
+        const bool   is_group = type_kind_eq(unary->value->type, TYPE_GROUP);
+        const size_t actual_count = is_group ? unary->value->type.spec.group.count : 1;
+
+        if (actual_count != fn_type->returns_count) {
+            error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
+        }
+
+        assert(actual_count == fn_type->returns_count);
+        for (size_t i = 0; i < fn_type->returns_count; i++) {
+            i64   group_index = -1;
+            Node *n = get_node_from_group(unary->value, i, &group_index);
+            type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
+        }
+
+        // The inference of the individual group items might not have reflected here
+        unary->value->type = *fn_type->return_type;
+        n->type = unary->value->type;
+
+        if (type_kind_eq(n->type, TYPE_GROUP)) {
+            n->type.spec.group.count--;
+        } else {
+            memset(&n->type, 0, sizeof(n->type));
+            if (!n->is_stmt) {
+                error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
+                exit(c, 1);
+            }
+        }
+    } break;
+
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
         if (!type_is_numeric(unary->value->type) && !type_is_pointer(unary->value->type)) {
@@ -325,7 +374,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -1798,7 +1847,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
         fn_type = &call->fn->type;
 
         n->type = *fn_type->spec.fn->return_type;
-        if (!call->is_stmt && type_kind_eq(n->type, TYPE_VOID)) {
+        if (!n->is_stmt && type_kind_eq(n->type, TYPE_VOID)) {
             error_node(EK_ERROR, n, "This call cannot be used as a value as it does not return anything");
             exit(c, 1);
         }
