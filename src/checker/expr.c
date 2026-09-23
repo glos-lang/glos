@@ -216,42 +216,44 @@ void check_expr_throw(Compiler *c, Node_Throw *throw) {
     Node *n = (Node *) throw;
 
     const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
+    if (n->token.kind == TOKEN_QUESTION) {
+        bool fn_signature_ok = false;
+        if (fn_type->returns_count) {
+            const Type T = fn_type->returns[fn_type->returns_count - 1];
+            fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
+        }
 
-    bool fn_signature_ok = false;
-    if (fn_type->returns_count) {
-        const Type T = fn_type->returns[fn_type->returns_count - 1];
-        fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
-    }
-
-    if (!fn_signature_ok) {
-        error_token(
-            EK_ERROR,
-            n->token,
-            "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
-            token_kind_to_cstr(n->token.kind));
-        exit(c, 1);
+        if (!fn_signature_ok) {
+            error_token(
+                EK_ERROR,
+                n->token,
+                "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
+                token_kind_to_cstr(n->token.kind));
+            exit(c, 1);
+        }
     }
 
     check_expr(c, throw->value, REF_NONE);
+    if (n->token.kind == TOKEN_QUESTION) {
+        const bool   is_group = type_kind_eq(throw->value->type, TYPE_GROUP);
+        const size_t actual_count = is_group ? throw->value->type.spec.group.count : 1;
 
-    const bool   is_group = type_kind_eq(throw->value->type, TYPE_GROUP);
-    const size_t actual_count = is_group ? throw->value->type.spec.group.count : 1;
+        if (actual_count != fn_type->returns_count) {
+            error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
+        }
 
-    if (actual_count != fn_type->returns_count) {
-        error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
+        assert(actual_count == fn_type->returns_count);
+        for (size_t i = 0; i < fn_type->returns_count; i++) {
+            i64   group_index = -1;
+            Node *n = get_node_from_group(throw->value, i, &group_index);
+            type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
+        }
+
+        // The inference of the individual group items might not have reflected here
+        throw->value->type = *fn_type->return_type;
     }
 
-    assert(actual_count == fn_type->returns_count);
-    for (size_t i = 0; i < fn_type->returns_count; i++) {
-        i64   group_index = -1;
-        Node *n = get_node_from_group(throw->value, i, &group_index);
-        type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
-    }
-
-    // The inference of the individual group items might not have reflected here
-    throw->value->type = *fn_type->return_type;
     n->type = throw->value->type;
-
     if (type_kind_eq(n->type, TYPE_GROUP)) {
         n->type.spec.group.count--;
         if (n->type.spec.group.count == 1) {

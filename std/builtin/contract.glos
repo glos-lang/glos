@@ -44,7 +44,7 @@ Type_Info :: struct {
         Type_Info_String
     }
 
-    format: (ptr: rawptr, w: Writer, nested: bool)
+    format: (ptr: rawptr, w: Writer, nested: bool) -> s64, error
 }
 
 Type_Info_Boolean   :: struct {}

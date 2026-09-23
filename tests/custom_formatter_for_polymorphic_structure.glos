@@ -2,8 +2,8 @@ Vec2 :: struct($T: Type) {
     x, y: T
 }
 
-format :: (this: &Vec2($T), w: Writer, nested: bool) {
-    wprint(w, "Vec2(\{this.x}, \{this.y})")
+format :: (this: &Vec2($T), w: Writer, nested: bool) -> s64, error {
+    return wprint(w, "Vec2(\{this.x}, \{this.y})")
 }
 
 main :: () {
