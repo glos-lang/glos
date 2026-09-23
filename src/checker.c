@@ -122,7 +122,7 @@ void check_nodes(Compiler *c) {
 
         const Type panic = type_without_meta(value.as.type);
         assert(panic.kind == TYPE_ENUM);
-        assert(panic.spec.enumm.definition->values_count == 10);
+        assert(panic.spec.enumm.definition->values_count == 11);
     }
 
     // Type info

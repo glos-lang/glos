@@ -305,6 +305,7 @@ Power token_kind_to_power(Token_Kind kind) {
     case TOKEN_COMMA:
         return POWER_TUP;
 
+    case TOKEN_LNOT:
     case TOKEN_QUESTION:
         return POWER_PRE;
 

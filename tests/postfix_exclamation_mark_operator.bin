@@ -1,0 +1,7 @@
+EXIT 134
+STDOUT 8
+69 null
+
+STDERR 79
+tests/postfix_exclamation_mark_operator.glos:10:16: Unwrapped Error: Deez nuts
+

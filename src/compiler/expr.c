@@ -672,12 +672,18 @@ LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref) {
     // If error, then return
     LLVMPositionBuilderAtEnd(c->llvm_builder, error_block);
 
-    const Type n_type_save = n->type;
-    n->type = throw->value->type;
-    compile_return(c, n, value, group_values_count_save);
-    n->type = n_type_save;
+    if (n->token.kind == TOKEN_LNOT) {
+        compile_panic(c, n->token.pos, CONTRACT_PANIC_UNWRAPPED_ERROR, error, NULL, NULL);
+    } else if (n->token.kind == TOKEN_QUESTION) {
+        const Type n_type_save = n->type;
+        n->type = throw->value->type;
+        compile_return(c, n, value, group_values_count_save);
+        n->type = n_type_save;
+        LLVMBuildUnreachable(c->llvm_builder);
+    } else {
+        unreachable();
+    }
 
-    LLVMBuildUnreachable(c->llvm_builder);
     c->group_values.count = group_values_count_final;
 
     // If null, then do the mbappe special

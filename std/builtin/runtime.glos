@@ -56,6 +56,9 @@ runtime_panic :: noreturn (p: Panic, a: s64, b: s64, c: s64, location: &Source_C
 
     case .UNREACHABLE_INVALID_UNION_TAG
         panic("Unreachable: Invalid union tag: \{a}", location = *location)
+
+    case .UNWRAPPED_ERROR
+        panic("Unwrapped Error: \{*(&error)(&a)}", location = *location)
     }
 }
 

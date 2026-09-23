@@ -162,7 +162,8 @@ Panic :: enum {
     ERROR_TYPE_MISMATCH            // (actual: s64, expected: s64)
     TRAIT_TYPE_MISMATCH            // (actual: Type, expected: Type)
     UNION_TYPE_MISMATCH            // (actual: s64, expected: s64, type: Type)
-    UNREACHABLE
+    UNREACHABLE                    // ()
     UNREACHABLE_INVALID_ENUM_VALUE // (value: s64, signed: s64)
     UNREACHABLE_INVALID_UNION_TAG  // (value: s64)
+    UNWRAPPED_ERROR                // (value: error)
 }

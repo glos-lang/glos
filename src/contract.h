@@ -44,6 +44,7 @@ typedef enum {
     CONTRACT_PANIC_UNREACHABLE,                    // (value: s64)
     CONTRACT_PANIC_UNREACHABLE_INVALID_ENUM_VALUE, // (value: s64, signed: s64)
     CONTRACT_PANIC_UNREACHABLE_INVALID_UNION_TAG,  // (value: s64)
+    CONTRACT_PANIC_UNWRAPPED_ERROR,                // (value: error)
 } Contract_Panic;
 
 #endif // CONTRACT_H

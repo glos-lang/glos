@@ -1598,6 +1598,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = (Node *) group;
         } break;
 
+        case TOKEN_LNOT:
         case TOKEN_QUESTION: {
             local_assert(p, true, token, NULL);
 
