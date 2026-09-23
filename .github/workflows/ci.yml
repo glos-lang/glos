@@ -19,10 +19,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Errno
-        run: |
-          python3 errno.py
-
   build-linux-musl:
     runs-on: ubuntu-latest
 
@@ -53,10 +49,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Errno
-        run: |
-          python3 errno.py
-
   build-windows:
     runs-on: windows-latest
     steps:
@@ -70,7 +62,3 @@ jobs:
         run: |
           cl first.c
           ./first.exe -T
-
-      - name: Errno
-        run: |
-          python3 errno.py
