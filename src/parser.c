@@ -105,6 +105,12 @@ static bool read_token(Parser *p, Token_Kind kind) {
     return !p->state.peeked;
 }
 
+static bool read_token_in_current_line(Parser *p, Token_Kind kind) {
+    peek_token(p);
+    p->state.peeked = p->state.ahead.kind != kind || p->state.ahead.newline;
+    return !p->state.peeked;
+}
+
 static Token expect_token(Parser *p, const Token_Kind *kinds) {
     const Token token = next_token(p);
     for (const Token_Kind *it = kinds; *it != TOKEN_EOF; it++) {
@@ -936,7 +942,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 33, "");
+        static_assert(COUNT_NODES == 34, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1283,13 +1289,21 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            Node *it = node_alloc(p->module_current, NODE_UNARY, expect_token(p, TOKEN_IDENT));
-            if (read_token(p, TOKEN_SET)) {
-                Node_Unary *unary = (Node_Unary *) it;
-                unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+            Node_Enum_Value *it =
+                (Node_Enum_Value *) node_alloc(p->module_current, NODE_ENUM_VALUE, expect_token(p, TOKEN_IDENT));
+
+            if (read_token_in_current_line(p, TOKEN_STRING)) {
+                it->name = p->state.ahead;
+            } else {
+                it->name = it->node.token;
+                it->name.as.string = it->name.sv;
             }
 
-            nodes_push(&enumm->values, it);
+            if (read_token_in_current_line(p, TOKEN_SET)) {
+                it->expr = parse_expr(p, POWER_SET, false, true, NULL);
+            }
+
+            nodes_push(&enumm->values, (Node *) it);
             enumm->values_count++;
             expect_stmt_terminator(p);
         }
@@ -1736,7 +1750,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     return node;
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

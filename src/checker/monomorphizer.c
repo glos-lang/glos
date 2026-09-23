@@ -456,7 +456,7 @@ static void monomorphize_replace(Compiler *c, Node **from) {
     }
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 static void monomorphize_node(Compiler *c, Node **np, bool first) {
     if (!*np) {
         return;
@@ -614,6 +614,11 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
             monomorphize_replace(c, (Node **) &enumm->defined_as);
             monomorphize_replace(c, (Node **) &enumm->defined_in_fn);
         }
+    } break;
+
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        monomorphize_node(c, &ev->expr, first);
     } break;
 
     case NODE_TRAIT: {

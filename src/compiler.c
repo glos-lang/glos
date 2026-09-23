@@ -150,9 +150,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     compile_type(c, &c->source_code_location_type);
 
     if (c->error_enums_list.count) {
-        // Let us be real. What sort of code base is going to have 2_147_483_647 enum definitions?
-        assert(c->error_enums_list.count <= INT32_MAX);
-
         LLVMValueRef *enums = arena_alloc(&default_arena, c->error_enums_list.count * sizeof(*enums));
         for (size_t i = 0; i < c->error_enums_list.count; i++) {
             enums[i] = compile_type_info(c, &c->error_enums_list.data[i]->node.type);

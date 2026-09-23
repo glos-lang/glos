@@ -1,5 +1,5 @@
 Foo :: enum error {
-    A = "Deez nuts"
+    Deez_Nuts
 }
 
 bar :: (f: Foo) -> s64, Foo {
@@ -13,5 +13,5 @@ foo :: (f: Foo) -> s64, error {
 
 main :: () {
     println(foo(null))
-    println(foo(.A))
+    println(foo(.Deez_Nuts))
 }

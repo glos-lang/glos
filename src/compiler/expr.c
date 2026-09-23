@@ -2110,7 +2110,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;

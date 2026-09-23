@@ -876,13 +876,15 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
 
     Int128 iota = {0};
     if (is_error) {
-        iota.low = c->error_iota;
         da_push(&c->error_enums_list, enumm);
+
+        // Let us be real. What sort of code base is going to have 4_294_967_295 error enum definitions?
+        assert(c->error_enums_list.count <= UINT32_MAX);
+        enumm->error_enums_list_index = c->error_enums_list.count;
+        iota = int128_from_u64(enumm->error_enums_list_index << 32);
     }
 
-    enumm->error_enums_list_index = c->error_enums_list.count;
-    size_t error_enums_iota = 0;
-
+    Int128 iota_init = iota;
     ll_foreach(it, &enumm->values) {
         ll_foreach(prev, &enumm->values) {
             if (prev == it) {
@@ -894,46 +896,34 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
             }
         }
 
-        assert(it->kind == NODE_UNARY);
-        Node_Unary *unary = (Node_Unary *) it;
-        if (unary->value) {
+        assert(it->kind == NODE_ENUM_VALUE);
+        Node_Enum_Value *ev = (Node_Enum_Value *) it;
+        if (ev->expr) {
+            check_expr(c, ev->expr, REF_NONE);
+            type_assert(c, ev->expr, is_error ? (Type) {.kind = TYPE_U32} : underlying);
+
+            const Const_Value value = eval_const_expr(c, ev->expr, false);
+            assert(value.kind == CONST_VALUE_INT);
+            iota = value.as.integer;
+
             if (is_error) {
-                check_expr(c, unary->value, REF_NONE);
-                type_assert(c, unary->value, (Type) {.kind = TYPE_STRING});
-
-                const Const_Value value = eval_const_expr(c, unary->value, false);
-                assert(value.kind == CONST_VALUE_STRING);
-                unary->value->token.as.string = value.as.string;
-            } else {
-                check_expr(c, unary->value, REF_NONE);
-                type_assert(c, unary->value, underlying);
-
-                const Const_Value value = eval_const_expr(c, unary->value, false);
-                assert(value.kind == CONST_VALUE_INT);
-                iota = value.as.integer;
+                iota = int128_add(
+                    int128_shl(INT128_FROM_U64(enumm->error_enums_list_index), INT128_FROM_U64(32), false),
+                    iota,
+                    false);
             }
         }
 
-        if (is_error) {
-            assert(error_enums_iota <= INT32_MAX); // In practice, 2_147_483_647 error enum values is unlikely.
-            iota = int128_from_u64(enumm->error_enums_list_index << 32 | error_enums_iota);
-            error_enums_iota++;
-        }
-
         it->type.kind = underlying.kind;
-        if (!is_error) {
+        if (is_error) {
+            check_int_limit(c, it, int128_sub(iota, iota_init, false));
+        } else {
             check_int_limit(c, it, iota);
         }
         it->type.kind = TYPE_VOID;
         it->token.as.integer = iota.low;
 
-        if (!is_error) {
-            iota = int128_add(iota, INT128_FROM_U64(1), true);
-        }
-    }
-
-    if (is_error) {
-        c->error_iota = iota.low;
+        iota = int128_add(iota, INT128_FROM_U64(1), true);
     }
 
     n->type = (Type) {.kind = TYPE_ENUM, .is_meta = true, .spec.enumm = spec};
@@ -2041,7 +2031,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;

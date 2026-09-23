@@ -484,6 +484,7 @@ typedef enum {
     NODE_FN,
     NODE_MAP,
     NODE_ENUM,
+    NODE_ENUM_VALUE,
     NODE_TRAIT,
     NODE_UNION,
     NODE_STRUCT,
@@ -885,6 +886,12 @@ struct Node_Enum {
     LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
 };
+
+typedef struct {
+    Node  node;
+    Node *expr;
+    Token name;
+} Node_Enum_Value;
 
 // This represents a type
 struct Node_Trait {

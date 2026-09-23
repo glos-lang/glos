@@ -64,7 +64,7 @@ static void range_apply_token(Range *r, Token t) {
     }
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 static void range_apply_node(Range *r, const Node *n) {
     if (!n) {
         return;
@@ -181,6 +181,15 @@ static void range_apply_node(Range *r, const Node *n) {
     case NODE_ENUM: {
         Node_Enum *enumm = (Node_Enum *) n;
         range_apply_token(r, enumm->end);
+    } break;
+
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        if (ev->expr) {
+            range_apply_node(r, ev->expr);
+        } else if (ev->name.kind == TOKEN_STRING) {
+            range_apply_token(r, ev->name);
+        }
     } break;
 
     case NODE_TRAIT: {

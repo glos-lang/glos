@@ -1,9 +1,0 @@
-IO_Error :: enum error {
-    ENOENT = "No such file or directory"
-    EACCES
-}
-
-main :: () {
-    println(IO_Error.ENOENT)
-    println(IO_Error.EACCES)
-}

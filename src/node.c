@@ -1207,7 +1207,7 @@ void hasher_add_const_value(Hasher *h, const Const_Value *v) {
     }
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -1227,6 +1227,7 @@ size_t node_size(Node_Kind kind) {
         [NODE_FN] = sizeof(Node_Fn),
         [NODE_MAP] = sizeof(Node_Map),
         [NODE_ENUM] = sizeof(Node_Enum),
+        [NODE_ENUM_VALUE] = sizeof(Node_Enum_Value),
         [NODE_TRAIT] = sizeof(Node_Trait),
         [NODE_UNION] = sizeof(Node_Union),
         [NODE_STRUCT] = sizeof(Node_Struct),
@@ -1398,7 +1399,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 33, "");
+static_assert(COUNT_NODES == 34, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1527,6 +1528,13 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         Node_Enum *enumm = (Node_Enum *) n;
         fprintf(f, "Enumeration {\n");
         nodes_debug_impl(f, enumm->values, depth + 1, "Values");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        fprintf(f, "Enumeration Value {\n");
+        node_debug_impl(f, ev->expr, depth + 1, "Expr");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

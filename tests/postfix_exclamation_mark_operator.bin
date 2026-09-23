@@ -3,5 +3,5 @@ STDOUT 8
 69 null
 
 STDERR 79
-tests/postfix_exclamation_mark_operator.glos:10:16: Unwrapped Error: Deez nuts
+tests/postfix_exclamation_mark_operator.glos:10:16: Unwrapped Error: Deez_Nuts
 
