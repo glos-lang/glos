@@ -936,7 +936,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 32, "");
+        static_assert(COUNT_NODES == 33, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1601,9 +1601,9 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         case TOKEN_QUESTION: {
             local_assert(p, true, token, NULL);
 
-            Node_Unary *unary = (Node_Unary *) node_alloc(p->module_current, NODE_UNARY, token);
-            unary->value = node;
-            node = (Node *) unary;
+            Node_Throw *throw = (Node_Throw *) node_alloc(p->module_current, NODE_THROW, token);
+            throw->value = node;
+            node = (Node *) throw;
         } break;
 
         case TOKEN_LPAREN: {
@@ -1735,7 +1735,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     return node;
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 

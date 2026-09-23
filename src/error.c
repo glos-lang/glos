@@ -64,7 +64,7 @@ static void range_apply_token(Range *r, Token t) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 static void range_apply_node(Range *r, const Node *n) {
     if (!n) {
         return;
@@ -97,6 +97,11 @@ static void range_apply_node(Range *r, const Node *n) {
         Node_Group *group = (Node_Group *) n;
         range_apply_node(r, group->nodes.head);
         range_apply_node(r, group->nodes.tail);
+    } break;
+
+    case NODE_THROW: {
+        Node_Throw *throw = (Node_Throw *) n;
+        range_apply_node(r, throw->value);
     } break;
 
     case NODE_UNARY: {

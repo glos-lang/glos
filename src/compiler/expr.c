@@ -649,56 +649,64 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     }
 }
 
+LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref) {
+    Node *n = (Node *) throw;
+
+    const size_t group_values_count_save = c->group_values.count;
+    LLVMValueRef value = compile_expr(c, throw->value, false);
+    const size_t group_values_count_final = c->group_values.count;
+
+    LLVMValueRef error = value;
+    if (c->group_values.count > group_values_count_save) {
+        error = c->group_values.data[c->group_values.count - 1];
+    }
+
+    LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef error_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildCondBr(
+        c->llvm_builder,
+        LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, error, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), ""),
+        null_block,
+        error_block);
+
+    // If error, then return
+    LLVMPositionBuilderAtEnd(c->llvm_builder, error_block);
+
+    const Type n_type_save = n->type;
+    n->type = throw->value->type;
+    compile_return(c, n, value, group_values_count_save);
+    n->type = n_type_save;
+
+    LLVMBuildUnreachable(c->llvm_builder);
+    c->group_values.count = group_values_count_final;
+
+    // If null, then do the mbappe special
+    LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
+
+    // "Pop off" the error if null
+    if (ref) {
+        // This seems to be the only case where 'ref' might be true.
+        assert(c->group_values.count == group_values_count_save + 2);
+        c->group_values.count = group_values_count_save;
+        return get_load_ptr(c->group_values.data[c->group_values.count]);
+    }
+
+    if (c->group_values.count > group_values_count_save) {
+        c->group_values.count--;
+        if (c->group_values.count == group_values_count_save + 1) {
+            return c->group_values.data[--c->group_values.count];
+        }
+    }
+
+    return NULL;
+}
+
 LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
     static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
-    case TOKEN_QUESTION: {
-        const size_t group_values_count_save = c->group_values.count;
-        value = compile_expr(c, unary->value, ref);
-        const size_t group_values_count_final = c->group_values.count;
-
-        LLVMValueRef error = value;
-        if (c->group_values.count > group_values_count_save) {
-            error = c->group_values.data[c->group_values.count - 1];
-        }
-
-        LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-        LLVMBasicBlockRef error_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
-        LLVMBuildCondBr(
-            c->llvm_builder,
-            LLVMBuildICmp(
-                c->llvm_builder, LLVMIntEQ, error, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), ""),
-            null_block,
-            error_block);
-
-        // If error, then return
-        LLVMPositionBuilderAtEnd(c->llvm_builder, error_block);
-
-        const Type n_type_save = n->type;
-        n->type = unary->value->type;
-        compile_return(c, n, value, group_values_count_save);
-        n->type = n_type_save;
-
-        LLVMBuildUnreachable(c->llvm_builder);
-        c->group_values.count = group_values_count_final;
-
-        // If null, then do the mbappe special
-        LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
-
-        // "Pop off" the error if null
-        if (c->group_values.count > group_values_count_save) {
-            c->group_values.count--;
-            if (c->group_values.count == group_values_count_save + 1) {
-                return c->group_values.data[--c->group_values.count];
-            }
-        }
-
-        return NULL;
-    }
-
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
         set_debug_pos(c, n->token.pos);
@@ -2096,7 +2104,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -2142,6 +2150,9 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         }
         return NULL;
     }
+
+    case NODE_THROW:
+        return compile_expr_throw(c, (Node_Throw *) n, ref);
 
     case NODE_UNARY:
         return compile_expr_unary(c, (Node_Unary *) n, ref);

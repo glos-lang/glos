@@ -1207,12 +1207,13 @@ void hasher_add_const_value(Hasher *h, const Const_Value *v) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
         [NODE_EMBED] = sizeof(Node_Embed),
         [NODE_GROUP] = sizeof(Node_Group),
+        [NODE_THROW] = sizeof(Node_Throw),
         [NODE_UNARY] = sizeof(Node_Unary),
         [NODE_BINARY] = sizeof(Node_Binary),
         [NODE_MEMBER] = sizeof(Node_Member),
@@ -1397,7 +1398,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1428,6 +1429,13 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         Node_Group *group = (Node_Group *) n;
         fprintf(f, "Group {\n");
         nodes_debug_impl(f, group->nodes, depth + 1, "Nodes");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_THROW: {
+        Node_Throw *throw = (Node_Throw *) n;
+        fprintf(f, "Throw '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
+        node_debug_impl(f, throw->value, depth + 1, "Value");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

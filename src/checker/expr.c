@@ -212,59 +212,64 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
     *is_ref_valid = true;
 }
 
+void check_expr_throw(Compiler *c, Node_Throw *throw) {
+    Node *n = (Node *) throw;
+
+    const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
+
+    bool fn_signature_ok = false;
+    if (fn_type->returns_count) {
+        const Type T = fn_type->returns[fn_type->returns_count - 1];
+        fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
+    }
+
+    if (!fn_signature_ok) {
+        error_token(
+            EK_ERROR,
+            n->token,
+            "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
+            token_kind_to_cstr(n->token.kind));
+        exit(c, 1);
+    }
+
+    check_expr(c, throw->value, REF_NONE);
+
+    const bool   is_group = type_kind_eq(throw->value->type, TYPE_GROUP);
+    const size_t actual_count = is_group ? throw->value->type.spec.group.count : 1;
+
+    if (actual_count != fn_type->returns_count) {
+        error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
+    }
+
+    assert(actual_count == fn_type->returns_count);
+    for (size_t i = 0; i < fn_type->returns_count; i++) {
+        i64   group_index = -1;
+        Node *n = get_node_from_group(throw->value, i, &group_index);
+        type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
+    }
+
+    // The inference of the individual group items might not have reflected here
+    throw->value->type = *fn_type->return_type;
+    n->type = throw->value->type;
+
+    if (type_kind_eq(n->type, TYPE_GROUP)) {
+        n->type.spec.group.count--;
+        if (n->type.spec.group.count == 1) {
+            n->type = *n->type.spec.group.data;
+        }
+    } else {
+        memset(&n->type, 0, sizeof(n->type));
+        if (!n->is_stmt) {
+            error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
+            exit(c, 1);
+        }
+    }
+}
+
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
     static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
-    case TOKEN_QUESTION: { // TODO: This should be its own AST node. For now, reusing Node_Unary.
-        const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
-
-        bool fn_signature_ok = false;
-        if (fn_type->returns_count) {
-            const Type T = fn_type->returns[fn_type->returns_count - 1];
-            fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
-        }
-
-        if (!fn_signature_ok) {
-            error_token(
-                EK_ERROR,
-                n->token,
-                "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
-                token_kind_to_cstr(n->token.kind));
-            exit(c, 1);
-        }
-
-        check_expr(c, unary->value, REF_NONE);
-
-        const bool   is_group = type_kind_eq(unary->value->type, TYPE_GROUP);
-        const size_t actual_count = is_group ? unary->value->type.spec.group.count : 1;
-
-        if (actual_count != fn_type->returns_count) {
-            error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
-        }
-
-        assert(actual_count == fn_type->returns_count);
-        for (size_t i = 0; i < fn_type->returns_count; i++) {
-            i64   group_index = -1;
-            Node *n = get_node_from_group(unary->value, i, &group_index);
-            type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
-        }
-
-        // The inference of the individual group items might not have reflected here
-        unary->value->type = *fn_type->return_type;
-        n->type = unary->value->type;
-
-        if (type_kind_eq(n->type, TYPE_GROUP)) {
-            n->type.spec.group.count--;
-        } else {
-            memset(&n->type, 0, sizeof(n->type));
-            if (!n->is_stmt) {
-                error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
-                exit(c, 1);
-            }
-        }
-    } break;
-
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
         if (!type_is_numeric(unary->value->type) && !type_is_pointer(unary->value->type)) {
@@ -808,11 +813,11 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
 
                 if (!ok) {
                     if (can_have_methods) {
-                        error_node(EK_ERROR, n, "Undefined method '" SV_Fmt "'", SV_Arg(n->token.sv));
+                        error_undefined_in(c, &n->token, &member->lhs->type, "method");
                     } else {
                         error_node(EK_ERROR, n, "Cannot access field of %s", type_to_cstr(member->lhs->type));
+                        exit(c, 1);
                     }
-                    exit(c, 1);
                 }
             }
         }
@@ -896,13 +901,9 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
                 check_expr(c, unary->value, REF_NONE);
                 type_assert(c, unary->value, (Type) {.kind = TYPE_STRING});
 
-                if (unary->value->kind == NODE_ATOM && unary->value->token.kind == TOKEN_STRING) {
-                    // No need to evaluate again
-                } else {
-                    const Const_Value value = eval_const_expr(c, unary->value, false);
-                    assert(value.kind == CONST_VALUE_STRING);
-                    unary->value->token.as.string = value.as.string;
-                }
+                const Const_Value value = eval_const_expr(c, unary->value, false);
+                assert(value.kind == CONST_VALUE_STRING);
+                unary->value->token.as.string = value.as.string;
             } else {
                 check_expr(c, unary->value, REF_NONE);
                 type_assert(c, unary->value, underlying);
@@ -2040,7 +2041,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -2064,6 +2065,10 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_GROUP:
         check_expr_group(c, (Node_Group *) n, ref, &is_ref_valid);
+        break;
+
+    case NODE_THROW:
+        check_expr_throw(c, (Node_Throw *) n);
         break;
 
     case NODE_UNARY:

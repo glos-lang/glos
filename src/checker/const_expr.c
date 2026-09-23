@@ -283,11 +283,6 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
     static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
-    case TOKEN_QUESTION:
-        error_node(EK_ERROR, n, "This expression is not constant at compile time");
-        exit(c, 1);
-        break;
-
     case TOKEN_SUB:
         value = eval_const_expr(c, unary->value, false);
         if (type_is_float(n->type)) {
@@ -1016,7 +1011,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1057,6 +1052,11 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         assert(embed->read);
         return const_value_string(embed->contents);
     }
+
+    case NODE_THROW:
+        error_node(EK_ERROR, n, "This expression is not constant at compile time");
+        exit(c, 1);
+        break;
 
     case NODE_UNARY:
         return eval_const_expr_unary(c, (Node_Unary *) n);

@@ -237,6 +237,7 @@ Node *monomorphize(Compiler *c, Node *n, Node *site);
 // Expressions /////////////////////////////////////////////////////////////////////////////////////
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid);
 void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref_valid);
+void check_expr_throw(Compiler *c, Node_Throw *throw);
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid);
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children);
 void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_ref_valid);

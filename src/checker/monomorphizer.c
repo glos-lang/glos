@@ -456,7 +456,7 @@ static void monomorphize_replace(Compiler *c, Node **from) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 static void monomorphize_node(Compiler *c, Node **np, bool first) {
     if (!*np) {
         return;

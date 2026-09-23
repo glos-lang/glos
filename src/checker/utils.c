@@ -394,7 +394,7 @@ void set_auto_cast(Compiler *c, Node *n, i64 index, Auto_Cast_Kind kind, Type fr
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 33, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {

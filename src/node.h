@@ -471,6 +471,7 @@ typedef enum {
     NODE_ATOM,
     NODE_EMBED,
     NODE_GROUP,
+    NODE_THROW,
     NODE_UNARY,
     NODE_BINARY,
     NODE_MEMBER,
@@ -660,6 +661,11 @@ typedef struct {
     Nodes  nodes;
     size_t count;
 } Node_Group;
+
+typedef struct {
+    Node  node;
+    Node *value;
+} Node_Throw;
 
 typedef struct {
     Node  node;

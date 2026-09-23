@@ -29,11 +29,11 @@ bool type_is_compound(Type type) {
 
 LLVMValueRef get_load_ptr(LLVMValueRef value) {
     assert(LLVMGetInstructionOpcode(value) == LLVMLoad);
-    assert(LLVMGetFirstUse(value) == NULL);
     return LLVMGetOperand(value, 0);
 }
 
 LLVMValueRef undo_load(LLVMValueRef value) {
+    assert(LLVMGetFirstUse(value) == NULL);
     LLVMValueRef ptr = get_load_ptr(value);
     LLVMInstructionEraseFromParent(value);
     return ptr;
