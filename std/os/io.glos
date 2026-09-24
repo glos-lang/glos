@@ -58,34 +58,35 @@ open :: (path: string, read: bool) -> File, error {
 
 // TODO: Only binary is supported
 read_entire_file :: (path: string, allocator := default_allocator) -> []char, error {
+    bytes  : []char
     f, err := open(path, true)
     if err != null {
-        return {}, err
+        return bytes, err
     }
     defer C.fclose(f)
 
     if C.fseek(f, 0, C.SEEK_END) == -1 {
-        return {}, C.get_errno()
+        return bytes, C.get_errno()
     }
 
     offset := C.ftell(f)
     if offset == -1 {
-        return {}, C.get_errno()
+        return bytes, C.get_errno()
     }
 
     if C.fseek(f, 0, C.SEEK_SET) == -1 {
-        return {}, C.get_errno()
+        return bytes, C.get_errno()
     }
 
     data := &char(allocator.alloc(offset + 1, zeroed = false))
     if data == null {
-        return {}, C.get_errno()
+        return bytes, C.get_errno()
     }
+    bytes = []char(data, offset + 1)
 
-    bytes  := []char(data, offset + 1)
     n, err := f.read(bytes)
     if err != null {
-        return {}, err // TODO: A single read() might not read everything.
+        return bytes, err // TODO: A single read() might not read everything.
     }
 
     bytes[n] = 0
