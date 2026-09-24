@@ -1,8 +1,8 @@
-find :: (this: string, p: Predicate, reverse := false) -> s64, bool {
+find :: (this: string, p: strings.Predicate, reverse := false) -> s64, bool {
     if p == {
     case rune
         if reverse {
-            for i, c := range Reverse(this) {
+            for i, c := range strings.Reverse(this) {
                 if c == p {
                     return i, true
                 }
@@ -44,7 +44,7 @@ find :: (this: string, p: Predicate, reverse := false) -> s64, bool {
         }
 
         if reverse {
-            for i, c := range Reverse(this) {
+            for i, c := range strings.Reverse(this) {
                 if p(c) {
                     return i, true
                 }
@@ -63,7 +63,7 @@ find :: (this: string, p: Predicate, reverse := false) -> s64, bool {
     return 0, false
 }
 
-split :: (this: string, p: Predicate) -> string, string, bool {
+split :: (this: string, p: strings.Predicate) -> string, string, bool {
     n, found := this.find(p)
     if !found {
         return "", this, false
@@ -77,11 +77,11 @@ split :: (this: string, p: Predicate) -> string, string, bool {
     }
 }
 
-trim :: (this: string, p: Predicate) -> string {
+trim :: (this: string, p: strings.Predicate) -> string {
     return this.trim_left(p).trim_right(p)
 }
 
-trim_left :: (this: string, p: Predicate) -> string {
+trim_left :: (this: string, p: strings.Predicate) -> string {
     if p == {
     case rune
         for i, c := range this {
@@ -119,10 +119,10 @@ trim_left :: (this: string, p: Predicate) -> string {
     return ""
 }
 
-trim_right :: (this: string, p: Predicate) -> string {
+trim_right :: (this: string, p: strings.Predicate) -> string {
     if p == {
     case rune
-        for i, c := range Reverse(this) {
+        for i, c := range strings.Reverse(this) {
             if c != p {
                 return this[..i + 1]
             }
@@ -141,7 +141,7 @@ trim_right :: (this: string, p: Predicate) -> string {
             return this
         }
 
-        for i, c := range Reverse(this) {
+        for i, c := range strings.Reverse(this) {
             if !p(c) {
                 return this[..i + 1]
             }
@@ -200,92 +200,13 @@ range :: (this: string, state: &s64) -> s64, rune, bool {
         return index, 0, false
     }
 
-    r, count := utf8_decode_at(this, index)
+    r, count := unicode.decode_at(this, index)
     *state += count
     return index, r, true
 }
 
-#private...
-Predicate :: union {
-    rune
-    string
-    (c: rune) -> bool
+reverse :: (this: string) -> strings.Reverse {
+    return strings.Reverse(this)
 }
 
-utf8_sequence_count :: (b: u8) -> s64 {
-    if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
-    if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
-    if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
-    if b & 0xF8 == 0xF0 then return 4 // 11110xxx
-    return 0
-}
-
-utf8_decode_at :: (s: string, start: s64) -> rune, s64 {
-    byte  := u8(s[start])
-    count := utf8_sequence_count(byte)
-
-    if count == 0 || start + count > s.count {
-        return -1, 0
-    }
-
-    if count == 1 {
-        return rune(byte), 1
-    }
-
-    cp:     rune
-    min_cp: s64
-    if count == {
-    case 2
-        cp = rune(byte) & 0x1F
-        min_cp = 0x80
-
-    case 3
-        cp = rune(byte) & 0x0F
-        min_cp = 0x800
-
-    case
-        cp = rune(byte) & 0x07
-        min_cp = 0x10000
-    }
-
-    for i := range 1..count {
-        b := u8(s[start + i])
-        if (b & 0xC0) != 0x80 {
-            return -1, 0
-        }
-        cp = (cp << 6) | rune(b & 0x3F)
-    }
-
-    if s64(cp) < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF {
-        return -1, 0
-    }
-
-    return cp, count
-}
-
-// TODO: Think of a better concept regarding reverse iteration.
-Reverse :: distinct string
-
-range :: (this: Reverse, state: &s64) -> s64, rune, bool {
-    end := this.count - *state
-    if end <= 0 {
-        return 0, 0, false
-    }
-
-    for count := 1; count <= 4 && count <= end; count += 1 {
-        start := end - count
-        lead  := u8(this[start])
-        if utf8_sequence_count(lead) == count {
-            r, n := utf8_decode_at(string(this), start)
-            if n == count {
-                *state = this.count - start
-                return start, r, true
-            }
-            break
-        }
-    }
-
-    start := end - 1
-    *state = this.count - start
-    return start, -1, true
-}
+unicode :: #import "unicode"

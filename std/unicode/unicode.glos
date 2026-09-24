@@ -1,0 +1,52 @@
+// TODO: Work on this
+
+sequence_count :: (b: u8) -> s64 {
+    if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
+    if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
+    if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
+    if b & 0xF8 == 0xF0 then return 4 // 11110xxx
+    return 0
+}
+
+decode_at :: (s: string, start: s64) -> rune, s64 {
+    byte  := u8(s[start])
+    count := sequence_count(byte)
+
+    if count == 0 || start + count > s.count {
+        return -1, 0
+    }
+
+    if count == 1 {
+        return rune(byte), 1
+    }
+
+    cp:     rune
+    min_cp: s64
+    if count == {
+    case 2
+        cp = rune(byte) & 0x1F
+        min_cp = 0x80
+
+    case 3
+        cp = rune(byte) & 0x0F
+        min_cp = 0x800
+
+    case
+        cp = rune(byte) & 0x07
+        min_cp = 0x10000
+    }
+
+    for i := range 1..count {
+        b := u8(s[start + i])
+        if (b & 0xC0) != 0x80 {
+            return -1, 0
+        }
+        cp = (cp << 6) | rune(b & 0x3F)
+    }
+
+    if s64(cp) < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF {
+        return -1, 0
+    }
+
+    return cp, count
+}

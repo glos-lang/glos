@@ -1,0 +1,33 @@
+Reverse :: distinct string
+
+range :: (this: Reverse, state: &s64) -> s64, rune, bool {
+    end := this.count - *state
+    if end <= 0 {
+        return 0, 0, false
+    }
+
+    for count := 1; count <= 4 && count <= end; count += 1 {
+        start := end - count
+        lead  := u8(this[start])
+        if unicode.sequence_count(lead) == count {
+            r, n := unicode.decode_at(string(this), start)
+            if n == count {
+                *state = this.count - start
+                return start, r, true
+            }
+            break
+        }
+    }
+
+    start := end - 1
+    *state = this.count - start
+    return start, -1, true
+}
+
+Predicate :: union {
+    rune
+    string
+    (c: rune) -> bool
+}
+
+unicode :: #import "unicode"
