@@ -1,9 +1,17 @@
-find :: (this: string, p: Predicate) -> s64, bool {
+find :: (this: string, p: Predicate, reverse := false) -> s64, bool {
     if p == {
     case rune
-        for i, c := range this {
-            if c == p {
-                return i, true
+        if reverse {
+            for i, c := range Reverse(this) {
+                if c == p {
+                    return i, true
+                }
+            }
+        } else {
+            for i, c := range this {
+                if c == p {
+                    return i, true
+                }
             }
         }
 
@@ -12,9 +20,21 @@ find :: (this: string, p: Predicate) -> s64, bool {
             return 0, true
         }
 
-        for i := range this.count {
-            if this[i..].begins_with(p) {
-                return i, true
+        if p.count > this.count {
+            return 0, false
+        }
+
+        if reverse {
+            for i := this.count; i >= p.count; i -= 1 {
+                if this[i..].begins_with(p) {
+                    return i, true
+                }
+            }
+        } else {
+            for i := range this.count - p.count + 1 {
+                if this[i..].begins_with(p) {
+                    return i, true
+                }
             }
         }
 
@@ -23,9 +43,17 @@ find :: (this: string, p: Predicate) -> s64, bool {
             return 0, false
         }
 
-        for i, c := range this {
-            if p(c) {
-                return i, true
+        if reverse {
+            for i, c := range Reverse(this) {
+                if p(c) {
+                    return i, true
+                }
+            }
+        } else {
+            for i, c := range this {
+                if p(c) {
+                    return i, true
+                }
             }
         }
 
