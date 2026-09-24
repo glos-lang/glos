@@ -1,0 +1,9 @@
+Foo :: enum {
+    Urmom
+    Noice "Haha deez nuts"
+}
+
+main :: () {
+    println(Foo.Urmom)
+    println(Foo.Noice)
+}

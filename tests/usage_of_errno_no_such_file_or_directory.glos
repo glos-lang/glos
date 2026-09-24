@@ -1,0 +1,6 @@
+main :: () {
+    C.fopen("Non existant file", "r")
+    println(C.get_errno())
+}
+
+C :: #import "C"

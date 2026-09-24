@@ -12,14 +12,23 @@ from_cstring :: (s: &char) -> string {
     return string([]char(s, C.strlen(s)))
 }
 
-// TODO: Range check
-to_integer :: (s: string, base := 10) -> s64, bool {
+to_s64 :: (s: string, base := 10) -> s64, error {
     cstr := to_cstring(s, temporary_allocator)
     defer temporary_allocator.rewind(rawptr(cstr))
 
+    C.set_errno(null)
     end: &char
     result := C.strtoll(cstr, &end, s32(base))
-    return result, *end == '\0'
+
+    err := C.get_errno()
+    if err != null {
+        return 0, err
+    }
+
+    if end == s.data || *end != '\0' {
+        return 0, C.Errno.EINVAL
+    }
+    return result, null
 }
 
 C   :: #import "C"

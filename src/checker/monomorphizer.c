@@ -183,7 +183,7 @@ void add_monomorph_parameter_default_value(
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *expected, Node *n, i64 group_index) {
     if (actual->ref < expected->ref) {
         return;
@@ -456,7 +456,7 @@ static void monomorphize_replace(Compiler *c, Node **from) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 static void monomorphize_node(Compiler *c, Node **np, bool first) {
     if (!*np) {
         return;
@@ -616,6 +616,11 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         }
     } break;
 
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        monomorphize_node(c, &ev->expr, first);
+    } break;
+
     case NODE_TRAIT: {
         Node_Trait *trait = (Node_Trait *) n;
         monomorphize_nodes(c, &trait->methods, first);
@@ -748,7 +753,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 static bool type_is_polymorphic(Type type) {
     switch (type.kind) {
     case TYPE_FN: {
@@ -761,9 +766,6 @@ static bool type_is_polymorphic(Type type) {
 
         return type_is_polymorphic(*spec->return_type);
     }
-
-    case TYPE_TRAIT:
-        return false;
 
     case TYPE_STRUCT:
         return type.spec.structt->polymorphs_count != 0;

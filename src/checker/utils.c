@@ -156,6 +156,7 @@ void error_redefinition_global(
     exit(c, 1);
 }
 
+// TODO: Show a hint maybe, about the real type?
 void error_number_of_return_values_mismatch(Compiler *c, Token token, size_t expected, size_t actual) {
     error_token(
         EK_ERROR,
@@ -176,7 +177,7 @@ void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 Int_Limit get_int_limit(Type type) {
     const Type_Kind type_kind = type_kind_eq(type, TYPE_ENUM) ? type.spec.enumm.underlying : type.kind;
     if (type_is_signed(type)) {
@@ -196,6 +197,7 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_U32] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
             [TYPE_U64] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
             [TYPE_CHAR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT8_MAX)},
+            [TYPE_ERROR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
         };
         return limits[type_kind];
     }
@@ -225,7 +227,7 @@ void check_int_limit(Compiler *c, Node *n, Int128 value) {
 }
 
 bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 32, "");
+    static_assert(COUNT_TYPES == 33, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
         [TYPE_CHAR] = "char",
@@ -245,6 +247,8 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
         [TYPE_F64] = "f64",
 
         [TYPE_RAWPTR] = "rawptr",
+
+        [TYPE_ERROR] = "error",
         [TYPE_STRING] = "string",
     };
 
@@ -261,10 +265,10 @@ bool get_builtin_type_kind(SV name, Type_Kind *kind) {
     return false;
 }
 
-Int128 get_enum_value(Compiler *c, Node_Enum *enumm, SV name, const Token *t) {
-    ll_foreach(it, &enumm->values) {
+Int128 get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t) {
+    ll_foreach(it, &enumm->definition->values) {
         if (sv_eq(it->token.sv, name)) {
-            if (type_is_signed(enumm->node.type)) {
+            if (type_is_signed(enumm->definition->node.type)) {
                 return int128_from_i64(it->token.as.integer);
             } else {
                 return int128_from_u64(it->token.as.integer);
@@ -273,7 +277,7 @@ Int128 get_enum_value(Compiler *c, Node_Enum *enumm, SV name, const Token *t) {
     }
 
     error_undefined(c, t, "enumeration value", true);
-    error_node(EK_NOTE, (Node *) enumm, "Enumeration defined here");
+    error_node(EK_NOTE, (Node *) enumm->definition, "Enumeration defined here");
     exit(c, 1);
 }
 
@@ -391,11 +395,11 @@ void set_auto_cast(Compiler *c, Node *n, i64 index, Auto_Cast_Kind kind, Type fr
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;
@@ -441,8 +445,11 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
         Node_Member *member = (Node_Member *) n;
         if (member->is_enum) {
             assert(type_kind_eq(member->node.type, TYPE_UNKNOWN_ENUM));
-            assert(type_kind_eq(expected, TYPE_ENUM));
-            member->enum_value = get_enum_value(c, expected.spec.enumm.definition, n->token.sv, &n->token);
+            if (type_kind_eq(expected, TYPE_ENUM)) {
+                member->enum_value = get_enum_value(c, &expected.spec.enumm, n->token.sv, &n->token);
+            } else {
+                unreachable();
+            }
             n->type = expected;
         } else {
             assert(member->module_access_definition); // Must be a module access
@@ -510,11 +517,11 @@ void finalize_untyped_type(Compiler *c, Node *n) {
 }
 
 bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
-    if (type_kind_eq(n->type, TYPE_INT) &&                                 //
-        (type_is_integer(expected) ||                                      //
-         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) || //
-         type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) || //
-         (type_kind_eq(expected, TYPE_ENUM) && !expected.ref)))            //
+    if (type_kind_eq(n->type, TYPE_INT) &&                                                       //
+        (type_is_integer(expected) ||                                                            //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) ||                       //
+         type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) ||                       //
+         (type_kind_eq(expected, TYPE_ENUM) && !expected.ref && !type_is_error_enum(expected)))) //
     {
         if (!type_kind_eq(expected, TYPE_INT)) {
             if (n->kind == NODE_RANGE) {
@@ -591,14 +598,21 @@ bool try_auto_cast_type_to_rtti(Compiler *c, Node *n, Type expected) {
 
 bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
     // untyped 'null' -> typed 'null'
-    if (node_is_null(n) && (expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
-        if (expected.kind == TYPE_POLYMORPH && expected.spec.polymorph.is_definition) {
-            return false;
+    if (node_is_null(n)) {
+        if ((expected.ref || type_kind_eq(expected, TYPE_RAWPTR) || type_kind_eq(expected, TYPE_FN))) {
+            if (expected.kind == TYPE_POLYMORPH && expected.spec.polymorph.is_definition) {
+                return false;
+            }
+
+            // NOTE: We are also checking for rawptr because distinct types exist
+            n->type = expected;
+            return true;
         }
 
-        // NOTE: We are also checking for rawptr because distinct types exist
-        n->type = expected;
-        return true;
+        if (type_eq(expected, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(expected)) {
+            n->type = expected;
+            return true;
+        }
     }
 
     // untyped string -> &char
@@ -653,6 +667,11 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
     if (group_index != -1) {
         assert(actual.kind == TYPE_GROUP);
         actual = actual.spec.group.data[group_index];
+    }
+
+    if (type_eq(expected, (Type) {.kind = TYPE_ERROR}) && type_is_error_enum(actual)) {
+        set_auto_cast(c, n, group_index, AUTO_CAST_SAME, actual, expected);
+        return true;
     }
 
     if (type_is_union(expected) && !type_is_unknown(actual) && !type_kind_eq(actual, TYPE_MODULE)) {

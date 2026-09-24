@@ -64,7 +64,7 @@ static void range_apply_token(Range *r, Token t) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 static void range_apply_node(Range *r, const Node *n) {
     if (!n) {
         return;
@@ -97,6 +97,11 @@ static void range_apply_node(Range *r, const Node *n) {
         Node_Group *group = (Node_Group *) n;
         range_apply_node(r, group->nodes.head);
         range_apply_node(r, group->nodes.tail);
+    } break;
+
+    case NODE_THROW: {
+        Node_Throw *throw = (Node_Throw *) n;
+        range_apply_node(r, throw->value);
     } break;
 
     case NODE_UNARY: {
@@ -150,8 +155,7 @@ static void range_apply_node(Range *r, const Node *n) {
 
     case NODE_INTERPOLATION: {
         Node_Interpolation *interpolation = (Node_Interpolation *) n;
-        range_apply_node(r, interpolation->children.head);
-        range_apply_node(r, interpolation->children.tail);
+        range_apply_token(r, interpolation->end);
     } break;
 
     case NODE_FN: {
@@ -177,6 +181,15 @@ static void range_apply_node(Range *r, const Node *n) {
     case NODE_ENUM: {
         Node_Enum *enumm = (Node_Enum *) n;
         range_apply_token(r, enumm->end);
+    } break;
+
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        if (ev->expr) {
+            range_apply_node(r, ev->expr);
+        } else if (ev->name.kind == TOKEN_STRING) {
+            range_apply_token(r, ev->name);
+        }
     } break;
 
     case NODE_TRAIT: {

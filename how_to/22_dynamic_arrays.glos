@@ -14,21 +14,31 @@ main :: () {
     // A dynamic array is represented at runtime like this:
     //
     //     struct {
-    //         data:     &Element_Type
-    //         count:    s64
-    //         capacity: s64
+    //         data:      &Element_Type
+    //         count:     s64
+    //         capacity:  s64
+    //         allocator: Allocator
     //     }
     //
-    println("sizeof(xs)  = \{sizeof(xs)}")
-    println("xs.data     = \{xs.data}")
-    println("xs.count    = \{xs.count}")
-    println("xs.capacity = \{xs.capacity}")
+    println("sizeof(xs)   = \{sizeof(xs)}")
+    println("xs.data      = \{xs.data}")
+    println("xs.count     = \{xs.count}")
+    println("xs.capacity  = \{xs.capacity}")
+    println("xs.allocator = \{xs.allocator}")
     //
     // The underlying memory buffer (pointed to by the field 'data') is not grown every time a new
     // element is pushed. Rather the field 'capacity' keeps track of the size of the current memory
     // buffer, and whenever the number of elements (the field 'count') exceeds the capacity of the
     // buffer, it doubles the capacity and reallocates the buffer. Therefore pushing to a dynamic
     // array is O(1) amortized.
+    //
+    // Lastly, the field 'allocator' is, well, the allocator used for managing the memory of the
+    // dynamic array. You don't need to worry about that for most use cases, but for more information
+    // you can see "std/builtin/allocator.glos".
+    //
+    // Custom allocators are an API detail, and will thus not be described in this tutorial. The
+    // source code of the standard library, and the error messages of the compiler should suffice for
+    // conveying that information.
 
     // You can index into dynamic arrays.
     println(xs[0])

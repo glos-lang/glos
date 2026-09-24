@@ -21,9 +21,9 @@ free :: (this: &App) {
 }
 
 save :: (this: &App) {
-    f, ok := os.open(TASKS_PATH, false)
-    if !ok {
-        eprintln("Error: Could not save tasks to '\{TASKS_PATH}'")
+    f, err := os.open(TASKS_PATH, false)
+    if err != null {
+        eprintln("Error: Could not save tasks to '\{TASKS_PATH}': \{err}")
         os.exit(1)
     }
     defer f.close()
@@ -80,9 +80,9 @@ main :: () {
             os.exit(1)
         }
 
-        index, ok := strings.to_integer(os.args[2])
-        if !ok {
-            eprintln("Error: Invalid index '\{os.args[2]}'")
+        index, err := strings.to_s64(os.args[2])
+        if err != null {
+            eprintln("Error: Invalid index '\{os.args[2]}': \{err}")
             os.exit(1)
         }
 
@@ -103,9 +103,9 @@ main :: () {
             os.exit(1)
         }
 
-        index, ok := strings.to_integer(os.args[2])
-        if !ok {
-            eprintln("Error: Invalid index '\{os.args[2]}'")
+        index, err := strings.to_s64(os.args[2])
+        if err != null {
+            eprintln("Error: Invalid index '\{os.args[2]}': \{err}")
             os.exit(1)
         }
 

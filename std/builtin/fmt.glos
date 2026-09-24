@@ -1,6 +1,6 @@
 #private ...
 
-write_rune :: (w: Writer, r: rune) {
+write_rune :: (w: Writer, r: rune) -> s64, error {
     cp := u32(r)
 
     // Treat anything invalid/out-of-range/surrogate as U+FFFD.
@@ -30,230 +30,242 @@ write_rune :: (w: Writer, r: rune) {
         count = 4
     }
 
-    w.write(buffer[..count])
+    return w.write(buffer[..count])
 }
 
-write_type :: (w: Writer, t: Type) {
+write_type :: (w: Writer, t: Type) -> s64, error {
     if t == null {
-        w.write([]char("null"))
-        return
+        return w.write([]char("null"))
     }
 
     if t.name.count != 0 {
-        w.write([]char(t.name))
-        return
+        return w.write([]char(t.name))
     }
 
+    n := 0
     v := t.variant
     if v == {
     case Type_Info_Boolean
-        w.write([]char("bool"))
+        n += w.write([]char("bool"))?
 
     case Type_Info_Character
-        w.write([]char("char"))
+        n += w.write([]char("char"))?
 
     case Type_Info_Rune
-        w.write([]char("rune"))
+        n += w.write([]char("rune"))?
 
     case Type_Info_Integer
         if v.signed {
-            w.write([]char("s"))
+            n += w.write([]char("s"))?
         } else {
-            w.write([]char("u"))
+            n += w.write([]char("u"))?
         }
-        wprint(w, t.size * 8)
+        n += wprint(w, t.size * 8)?
 
     case Type_Info_Float
-        w.write([]char("f"))
-        wprint(w, t.size * 8)
+        n += w.write([]char("f"))?
+        n += wprint(w, t.size * 8)?
 
     case Type_Info_Pointer
         if v.underlying != null {
-            w.write([]char("&"))
-            write_type(w, v.underlying)
+            n += w.write([]char("&"))?
+            n += write_type(w, v.underlying)?
         } else {
-            w.write([]char("rawptr"))
+            n += w.write([]char("rawptr"))?
         }
 
     case Type_Info_Function
-        w.write([]char("("))
-        for i := 0; i < v.args.count; i += 1 {
+        n += w.write([]char("("))?
+        for i, it := range v.args {
             if i > 0 {
-                w.write([]char(", "))
+                n += w.write([]char(", "))?
             }
-            write_type(w, v.args[i])
+
+            if i == v.args.count - 1 && v.variadics == .TYPED {
+                n += w.write([]char("..."))?
+                n += write_type(w, it.variant.(Type_Info_Slice).underlying)?
+            } else {
+                n += write_type(w, it)?
+            }
         }
-        w.write([]char(")"))
+
+        if v.variadics == .UNTYPED {
+            n += w.write([]char(", ..."))?
+        }
+        n += w.write([]char(")"))?
 
         if v.returns.count > 0 {
-            w.write([]char(" -> "))
+            n += w.write([]char(" -> "))?
             if v.returns.count > 1 {
-                w.write([]char("("))
+                n += w.write([]char("("))?
             }
 
-            for i := 0; i < v.returns.count; i += 1 {
+            for i, it := range v.returns {
                 if i > 0 {
-                    w.write([]char(", "))
+                    n += w.write([]char(", "))?
                 }
-                write_type(w, v.returns[i])
+                n += write_type(w, it)?
             }
 
             if v.returns.count > 1 {
-                w.write([]char(")"))
+                n += w.write([]char(")"))?
             }
         }
 
     case Type_Info_Enumeration
-        w.write([]char("enum "))
-        write_type(w, v.underlying)
+        n += w.write([]char("enum "))?
+        n += write_type(w, v.underlying)?
 
     case Type_Info_Trait
-        w.write([]char("trait {"))
+        n += w.write([]char("trait {"))?
         if v.names.count != 0 {
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
             for i := 0; i < v.names.count; i += 1 {
                 if i != 0 {
-                    w.write([]char("; "))
+                    n += w.write([]char("; "))?
                 }
 
-                wprint(w, "\{v.names[i]}: \{v.types[i]}")
+                n += wprint(w, "\{v.names[i]}: \{v.types[i]}")?
             }
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Union
-        w.write([]char("union {"))
+        n += w.write([]char("union {"))?
         if v.variants.count != 0 {
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
             for i := 0; i < v.variants.count; i += 1 {
                 if i != 0 {
-                    w.write([]char("; "))
+                    n += w.write([]char("; "))?
                 }
 
-                write_type(w, v.variants[i])
+                n += write_type(w, v.variants[i])?
             }
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Structure
-        w.write([]char("struct {"))
+        n += w.write([]char("struct {"))?
         if v.names.count != 0 {
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
             for i := 0; i < v.names.count; i += 1 {
                 if i != 0 {
-                    w.write([]char("; "))
+                    n += w.write([]char("; "))?
                 }
 
-                wprint(w, "\{v.names[i]}: \{v.types[i]}")
+                n += wprint(w, "\{v.names[i]}: \{v.types[i]}")?
             }
-            w.write([]char(" "))
+            n += w.write([]char(" "))?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Array
-        wprint(w, "[\{v.count}]\{v.underlying}")
+        n += wprint(w, "[\{v.count}]\{v.underlying}")?
 
     case Type_Info_Dynamic_Array
-        wprint(w, "[..]\{v.underlying}")
+        n += wprint(w, "[..]\{v.underlying}")?
 
     case Type_Info_Map
-        wprint(w, "map[\{v.key}]\{v.value}")
+        n += wprint(w, "map[\{v.key}]\{v.value}")?
 
     case Type_Info_Slice
-        wprint(w, "[]\{v.underlying}")
+        n += wprint(w, "[]\{v.underlying}")?
+
+    case Type_Info_Error
+        n += w.write([]char("error"))?
 
     case Type_Info_String
-        w.write([]char("string"))
+        n += w.write([]char("string"))?
 
     case null
-        w.write([]char("null"))
+        n += w.write([]char("null"))?
     }
+
+    return n, null
 }
 
-write_quoted_rune :: (w: Writer, r: rune, quote: char) {
+write_quoted_rune :: (w: Writer, r: rune, quote: char) -> s64, error {
     if r == {
-    case '\e'; w.write([]char("\\e"))
-    case '\n'; w.write([]char("\\n"))
-    case '\r'; w.write([]char("\\r"))
-    case '\t'; w.write([]char("\\t"))
-    case '\0'; w.write([]char("\\0"))
-    case '\\'; w.write([]char("\\\\"))
+    case '\e'; return w.write([]char("\\e"))
+    case '\n'; return w.write([]char("\\n"))
+    case '\r'; return w.write([]char("\\r"))
+    case '\t'; return w.write([]char("\\t"))
+    case '\0'; return w.write([]char("\\0"))
+    case '\\'; return w.write([]char("\\\\"))
 
     case '\''
         if quote == '\'' {
-            w.write([]char("\\'"))
+            return w.write([]char("\\'"))
         } else {
-            w.write([]char("'"))
+            return w.write([]char("'"))
         }
 
     case '\"'
         if quote == '\"' {
-            w.write([]char("\\\""))
+            return w.write([]char("\\\""))
         } else {
-            w.write([]char("\""))
+            return w.write([]char("\""))
         }
 
-    case; write_rune(w, r)
+    case; return write_rune(w, r)
     }
 }
 
-write_value :: (w: Writer, a: Any, nested: bool) {
+write_value :: (w: Writer, a: Any, nested: bool) -> s64, error {
     if a.type != null && a.type.format != null {
-        a.type.format(a.data, w, nested)
-        return
+        return a.type.format(a.data, w, nested)
     }
 
     if a.type == Type {
-        write_type(w, *&Type(a.data))
-        return
+        return write_type(w, *&Type(a.data))
     }
 
+    n := 0
     if a.type == Interpolation && !nested {
         a := *&Interpolation(a.data)
         if a == {
         case []Any
             for i := 0; i < a.count; i += 1 {
-                write_value(w, a[i], false)
+                n += write_value(w, a[i], false)?
             }
 
         case string
-            write_value(w, a, false)
+            n += write_value(w, a, false)?
 
         case
             unreachable()
         }
-        return
+        return n, null
     }
 
     if a.type == Source_Code_Location {
         l := *&Source_Code_Location(a.data)
-        wprint(w, "\{l.path}:\{l.row}:\{l.col}:")
-        return
+        return wprint(w, "\{l.path}:\{l.row}:\{l.col}:")
     }
 
     v := a.type.variant
     if v == {
     case Type_Info_Boolean
         if *&bool(a.data) {
-            w.write([]char("true"))
+            n += w.write([]char("true"))?
         } else {
-            w.write([]char("false"))
+            n += w.write([]char("false"))?
         }
 
     case Type_Info_Character
         ch := *&char(a.data)
         if nested {
-            w.write([]char("'"))
-            write_quoted_rune(w, rune(ch), '\'')
-            w.write([]char("'"))
+            n += w.write([]char("'"))?
+            n += write_quoted_rune(w, rune(ch), '\'')?
+            n += w.write([]char("'"))?
         } else {
-            w.write([]char(&ch, 1))
+            n += w.write([]char(&ch, 1))?
         }
 
     case Type_Info_Rune
-        write_rune(w, *(&rune)(a.data))
+        n += write_rune(w, *(&rune)(a.data))?
 
     case Type_Info_Integer
         buffer: [32]char
@@ -275,7 +287,7 @@ write_value :: (w: Writer, a: Any, nested: bool) {
             case;   unreachable()
             }
         }
-        w.write(buffer[..count])
+        n += w.write(buffer[..count])?
 
     case Type_Info_Float
         buffer: [32]char
@@ -285,16 +297,16 @@ write_value :: (w: Writer, a: Any, nested: bool) {
         case 8; count = C.snprintf(buffer.data, u64(buffer.count), "%.14g".data, *&f64(a.data))
         case;   unreachable()
         }
-        w.write(buffer[..count])
+        n += w.write(buffer[..count])?
 
     case Type_Info_Pointer, Type_Info_Function
         ptr := *&rawptr(a.data)
         if ptr == null {
-            w.write([]char("null"))
+            n += w.write([]char("null"))?
         } else {
             buffer: [32]char
             count := C.snprintf(buffer.data, u64(buffer.count), "0x%zx".data, ptr)
-            w.write(buffer[..count])
+            n += w.write(buffer[..count])?
         }
 
     case Type_Info_Enumeration
@@ -308,86 +320,95 @@ write_value :: (w: Writer, a: Any, nested: bool) {
 
         for i := 0; i < v.values.count; i += 1 {
             if v.values[i] == value {
-                w.write([]char(v.names[i]))
-                return
+                n += w.write([]char(v.names[i]))?
+                return n, null
             }
         }
 
-        wprint(w, "(Invalid enum value: \{value})")
+        if v.underlying == error {
+            err := u64(value)
+            if err == 0 {
+                n += w.write([]char("null"))?
+            } else {
+                n += wprint(w, "(Invalid error value: \{err})")?
+            }
+        } else {
+            n += wprint(w, "(Invalid enum value: \{value})")?
+        }
 
     case Type_Info_Trait
         t: Any
         t.type = *&Type(a.data)
         t.data = *&rawptr(a.data + rawptr(8))
         if t.type == null {
-            w.write([]char("null"))
+            n += w.write([]char("null"))?
         } else {
-            write_value(w, t, nested)
+            n += write_value(w, t, nested)?
         }
 
     case Type_Info_Union
         tag := *&s64(a.data)
         if tag == 0 {
-            w.write([]char("null"))
+            n += w.write([]char("null"))?
         } else if tag - 1 >= v.variants.count {
-            wprint(w, "(Invalid union tag: \{tag})")
+            n += wprint(w, "(Invalid union tag: \{tag})")?
         } else {
             t: Any
             t.type = v.variants[tag - 1]
             t.data = a.data + rawptr(8)
-            write_value(w, t, nested)
+            n += write_value(w, t, nested)?
         }
 
     case Type_Info_Structure
-        w.write([]char("{"))
+        n += w.write([]char("{"))?
         for i := 0; i < v.types.count; i += 1 {
             field: Any
             field.type = v.types[i]
             field.data = a.data + rawptr(v.offsets[i])
             if i != 0 {
-                w.write([]char(", "))
+                n += w.write([]char(", "))?
             }
-            write_value(w, field, true)
+            n += write_value(w, field, true)?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Array
-        w.write([]char("{"))
+        n += w.write([]char("{"))?
         for i := 0; i < v.count; i += 1 {
             if i != 0 {
-                w.write([]char(", "))
+                n += w.write([]char(", "))?
             }
 
             item: Any
             item.type = v.underlying
             item.data = a.data + rawptr(i * v.underlying.size)
-            write_value(w, item, true)
+            n += write_value(w, item, true)?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Dynamic_Array
         data  := *&rawptr(a.data)
         count := *&s64(a.data + rawptr(8))
 
-        w.write([]char("{"))
+        n += w.write([]char("{"))?
         for i := 0; i < count; i += 1 {
             if i != 0 {
-                w.write([]char(", "))
+                n += w.write([]char(", "))?
             }
 
             item: Any
             item.type = v.underlying
             item.data = data + rawptr(i * v.underlying.size)
-            write_value(w, item, true)
+            n += write_value(w, item, true)?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Map
         data     := *&rawptr(a.data)
         count    := *&s64(a.data + rawptr(8))
         capacity := *&s64(a.data + rawptr(16))
 
-        w.write([]char("{"))
+        n += w.write([]char("{"))?
         if count != 0 {
             first := true
             for i := range capacity {
@@ -399,52 +420,79 @@ write_value :: (w: Writer, a: Any, nested: bool) {
                 if first {
                     first = false
                 } else {
-                    w.write([]char(", "))
+                    n += w.write([]char(", "))?
                 }
 
                 a: Any
                 a.type = v.key
                 a.data = key_ptr
-                write_value(w, a, true)
+                n += write_value(w, a, true)?
 
-                w.write([]char(" = "))
+                n += w.write([]char(" = "))?
                 a.type = v.value
                 a.data = value_ptr
-                write_value(w, a, true)
+                n += write_value(w, a, true)?
             }
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
 
     case Type_Info_Slice
         count := *&s64(a.data + rawptr(8))
         data  := *&rawptr(a.data)
 
-        w.write([]char("{"))
+        n += w.write([]char("{"))?
         for i := 0; i < count; i += 1 {
             if i != 0 {
-                w.write([]char(", "))
+                n += w.write([]char(", "))?
             }
 
             item: Any
             item.type = v.underlying
             item.data = data + rawptr(i * v.underlying.size)
-            write_value(w, item, true)
+            n += write_value(w, item, true)?
         }
-        w.write([]char("}"))
+        n += w.write([]char("}"))?
+
+    case Type_Info_Error
+        err := *(&u64)(a.data)
+        if err == 0 {
+            n += w.write([]char("null"))?
+            return n, null
+        }
+
+        index := u32(err >> 32)
+        if index != 0 {
+            index -= 1
+            if s64(index) < error_enums.count {
+                v := error_enums[index].variant.(Type_Info_Enumeration)
+                for i := 0; i < v.values.count; i += 1 {
+                    if v.values[i] == s64(err) {
+                        n += w.write([]char(v.names[i]))?
+                        return n, null
+                    }
+                }
+            }
+        }
+
+        n += wprint(w, "(Invalid error value: \{err})")?
 
     case Type_Info_String
         s := *&string(a.data)
         if nested {
-            w.write([]char("\""))
+            n += w.write([]char("\""))?
             for _, c := range s {
-                write_quoted_rune(w, c, '"')
+                n += write_quoted_rune(w, c, '"')?
             }
-            w.write([]char("\""))
+            n += w.write([]char("\""))?
         } else {
-            w.write([]char(s))
+            n += w.write([]char(s))?
         }
 
     case null
-        w.write([]char("null"))
+        n += w.write([]char("null"))?
     }
+
+    return n, null
 }
+
+error_enums: []Type

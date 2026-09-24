@@ -1,7 +1,7 @@
 #include "../dwarf.h"
 #include "compiler.h"
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 LLVMTypeRef compile_type(Compiler *c, Type *type) {
     if (!type) {
         return NULL;
@@ -53,6 +53,7 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
     case TYPE_S64:
     case TYPE_U64:
     case TYPE_INT:
+    case TYPE_ERROR:
         type->llvm = LLVMInt64TypeInContext(c->llvm_context);
         break;
 
@@ -265,7 +266,7 @@ get_debug_for_builtin_compound_type(Compiler *c, SV name, Builtin_Compound_Type_
     return typedef_metadata;
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
     assert(!type->is_meta);
     if (type->ref) {
@@ -739,6 +740,9 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
         arena_reset(&temp_arena, checkpoint);
         return metadata;
     }
+
+    case TYPE_ERROR:
+        return LLVMDIBuilderCreateBasicType(c->llvm_debug_builder, "error", strlen("error"), 64, DW_ATE_unsigned, 0);
 
     case TYPE_STRING: {
         Builtin_Compound_Type_Field fields[2] = {0};

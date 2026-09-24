@@ -1,7 +1,7 @@
 #include "../checker.h"
 #include "compiler.h"
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_compound(Type type) {
     if (type.ref) {
         return false;
@@ -29,11 +29,11 @@ bool type_is_compound(Type type) {
 
 LLVMValueRef get_load_ptr(LLVMValueRef value) {
     assert(LLVMGetInstructionOpcode(value) == LLVMLoad);
-    assert(LLVMGetFirstUse(value) == NULL);
     return LLVMGetOperand(value, 0);
 }
 
 LLVMValueRef undo_load(LLVMValueRef value) {
+    assert(LLVMGetFirstUse(value) == NULL);
     LLVMValueRef ptr = get_load_ptr(value);
     LLVMInstructionEraseFromParent(value);
     return ptr;

@@ -115,12 +115,14 @@ to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := d
     panic("Builder does not contain the address \{from}", location = location)
 }
 
-format :: (this: &Builder, w: Writer, nested := false) {
+format :: (this: &Builder, w: Writer, nested := false) -> s64, error {
+    n := 0
     for p := this.page_first; p != null; p = p.next {
         if p.count != 0 {
-            w.write(p.bytes[..p.count])
+            n += w.write(p.bytes[..p.count])?
         }
     }
+    return n, null
 }
 
 #private ...

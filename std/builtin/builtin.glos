@@ -11,12 +11,12 @@ panic :: noreturn (message: ...Any, location := #caller_location, label := "") {
         needed: bool
     }
 
-    write :: (this: &Prefix_With_Colon, bytes: []char) {
+    write :: (this: &Prefix_With_Colon, bytes: []char) -> s64, error {
         if this.needed && bytes.count != 0 {
             this.needed = false
-            os.stderr.write([]char(": "))
+            os.stderr.write([]char(": "))?
         }
-        os.stderr.write(bytes)
+        return os.stderr.write(bytes)
     }
 }
 

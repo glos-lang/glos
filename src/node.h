@@ -102,6 +102,7 @@ typedef enum {
     TYPE_MAP,
 
     TYPE_SLICE,
+    TYPE_ERROR,
     TYPE_STRING,
 
     TYPE_POLYMORPH,
@@ -351,6 +352,7 @@ bool type_is_scalar(Type type);
 bool type_is_signed(Type type);
 bool type_is_untyped(Type type);
 bool type_is_unknown(Type type);
+bool type_is_error_enum(Type type);
 
 void hasher_add_type(Hasher *h, const Type *type);
 u64  ht_hasheq_type(const void *va, const void *vb, size_t n);
@@ -469,6 +471,7 @@ typedef enum {
     NODE_ATOM,
     NODE_EMBED,
     NODE_GROUP,
+    NODE_THROW,
     NODE_UNARY,
     NODE_BINARY,
     NODE_MEMBER,
@@ -481,6 +484,7 @@ typedef enum {
     NODE_FN,
     NODE_MAP,
     NODE_ENUM,
+    NODE_ENUM_VALUE,
     NODE_TRAIT,
     NODE_UNION,
     NODE_STRUCT,
@@ -509,6 +513,7 @@ typedef enum {
 
 typedef enum {
     AUTO_CAST_NONE,
+    AUTO_CAST_SAME,
     AUTO_CAST_TO_TRAIT,
     AUTO_CAST_TO_UNION,
     AUTO_CAST_ARRAY_TO_SLICE,
@@ -536,6 +541,7 @@ struct Node {
     Token token;
     Token parenthesis;
 
+    bool is_stmt;
     bool is_memory;
     bool is_called;
     bool is_defined_as_constant;
@@ -660,6 +666,11 @@ typedef struct {
 typedef struct {
     Node  node;
     Node *value;
+} Node_Throw;
+
+typedef struct {
+    Node  node;
+    Node *value;
 
     // For things like sizeof(), typeof()
     Token end;
@@ -680,6 +691,9 @@ typedef struct {
 
     Node  *union_check;
     size_t union_check_index;
+
+    Node  *error_check;
+    size_t error_check_index;
 } Node_Binary;
 
 typedef struct {
@@ -727,7 +741,6 @@ struct Node_Import {
     Module *module;
     Nodes   libraries;
 
-    bool is_stmt;
     bool is_local;
 };
 
@@ -769,6 +782,7 @@ typedef struct {
     size_t children_count;
     bool   is_constant;
     bool   do_not_allocate;
+    Token  end;
 } Node_Interpolation;
 
 struct Node_Fn {
@@ -865,11 +879,19 @@ struct Node_Enum {
     Node_Fn    *defined_in_fn;
     Node_Block *defined_in_block;
 
+    size_t error_enums_list_index;
+
     Token end;
 
     LLVMTypeRef     llvm;
     LLVMMetadataRef debug;
 };
+
+typedef struct {
+    Node  node;
+    Node *expr;
+    Token name;
+} Node_Enum_Value;
 
 // This represents a type
 struct Node_Trait {
@@ -984,8 +1006,6 @@ typedef struct {
     };
 
     bool is_monomorphization_of_polymorphic_type;
-
-    bool is_stmt;
 } Node_Call;
 
 typedef struct {
@@ -1091,8 +1111,10 @@ typedef struct {
     Node_Enum  *enumeration;
     Node_Trait *trait;
     Node_Union *unionn;
-    bool        is_expr_type_info;
     Node_Fn    *compare_overload;
+
+    bool is_expr_error_or_error_enum;
+    bool is_expr_type_info;
 
     bool       is_compile_time;
     Node_Case *compile_time_real;

@@ -107,6 +107,8 @@ void         compile_call_arg(Compiler *c, Call_Compiler *call, size_t arg_index
 LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, bool ref);
 LLVMValueRef compile_call(Compiler *c, Typed_LLVM_Value fn, Typed_LLVM_Value *args, size_t args_count, bool ref);
 
+void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group_values_count_save);
+
 // Constant Values /////////////////////////////////////////////////////////////////////////////////
 LLVMValueRef compile_const_value_into_memory(Compiler *c, LLVMValueRef value);
 LLVMValueRef compile_string_into_const_value(Compiler *c, SV sv);
@@ -123,6 +125,7 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn);
 void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_Fn *fn_spec, Pos caller_location);
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref);
+LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref);
 LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref);
 LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary);
 LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref);

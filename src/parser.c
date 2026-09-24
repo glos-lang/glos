@@ -105,6 +105,12 @@ static bool read_token(Parser *p, Token_Kind kind) {
     return !p->state.peeked;
 }
 
+static bool read_token_in_current_line(Parser *p, Token_Kind kind) {
+    peek_token(p);
+    p->state.peeked = p->state.ahead.kind != kind || p->state.ahead.newline;
+    return !p->state.peeked;
+}
+
 static Token expect_token(Parser *p, const Token_Kind *kinds) {
     const Token token = next_token(p);
     for (const Token_Kind *it = kinds; *it != TOKEN_EOF; it++) {
@@ -823,7 +829,18 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     return (Node *) compound;
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
+    if ((p->state.fn_current != NULL) != expected_is_local) {
+        if (!label) {
+            label = token_kind_to_cstr(token.kind);
+        }
+
+        error_token(EK_ERROR, token, "Unexpected %s in %s scope", label, p->state.fn_current ? "local" : "global");
+        exit(1);
+    }
+}
+
+static_assert(COUNT_TOKENS == 95, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -885,17 +902,19 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     case TOKEN_ISTRING: {
         node = node_alloc(p->module_current, NODE_INTERPOLATION, token);
         Node_Interpolation *interp = (Node_Interpolation *) node;
-        if (token.as.string.count) {
-            nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, token));
+
+        interp->end = token;
+        if (interp->end.as.string.count) {
+            nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, interp->end));
         }
 
-        while (token.kind == TOKEN_ISTRING) {
+        while (interp->end.kind == TOKEN_ISTRING) {
             nodes_push(&interp->children, parse_expr(p, POWER_SET, false, true, NULL));
             expect_token(p, TOKEN_RBRACE); // This also ensures that there is nothing left in the buffer
 
-            token = lexer_get_string(&p->state.lexer, p->state.lexer.pos, node->token.pos);
-            if (token.as.string.count) {
-                nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, token));
+            interp->end = lexer_get_string(&p->state.lexer, p->state.lexer.pos, node->token.pos);
+            if (interp->end.as.string.count) {
+                nodes_push(&interp->children, node_alloc(p->module_current, NODE_ATOM, interp->end));
             }
         }
     } break;
@@ -923,7 +942,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 32, "");
+        static_assert(COUNT_NODES == 34, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1270,13 +1289,21 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            Node *it = node_alloc(p->module_current, NODE_UNARY, expect_token(p, TOKEN_IDENT));
-            if (read_token(p, TOKEN_SET)) {
-                Node_Unary *unary = (Node_Unary *) it;
-                unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+            Node_Enum_Value *it =
+                (Node_Enum_Value *) node_alloc(p->module_current, NODE_ENUM_VALUE, expect_token(p, TOKEN_IDENT));
+
+            if (read_token_in_current_line(p, TOKEN_STRING)) {
+                it->name = p->state.ahead;
+            } else {
+                it->name = it->node.token;
+                it->name.as.string = it->name.sv;
             }
 
-            nodes_push(&enumm->values, it);
+            if (read_token_in_current_line(p, TOKEN_SET)) {
+                it->expr = parse_expr(p, POWER_SET, false, true, NULL);
+            }
+
+            nodes_push(&enumm->values, (Node *) it);
             enumm->values_count++;
             expect_stmt_terminator(p);
         }
@@ -1585,6 +1612,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             node = (Node *) group;
         } break;
 
+        case TOKEN_LNOT:
+        case TOKEN_QUESTION: {
+            local_assert(p, true, token, NULL);
+
+            Node_Throw *throw = (Node_Throw *) node_alloc(p->module_current, NODE_THROW, token);
+            throw->value = node;
+            node = (Node *) throw;
+        } break;
+
         case TOKEN_LPAREN: {
             Node_Call *call = (Node_Call *) node_alloc(p->module_current, NODE_CALL, token);
             call->fn_source = node;
@@ -1714,18 +1750,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     return node;
 }
 
-static void local_assert(Parser *p, bool expected_is_local, Token token, const char *label) {
-    if ((p->state.fn_current != NULL) != expected_is_local) {
-        if (!label) {
-            label = token_kind_to_cstr(token.kind);
-        }
-
-        error_token(EK_ERROR, token, "Unexpected %s in %s scope", label, p->state.fn_current ? "local" : "global");
-        exit(1);
-    }
-}
-
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -2036,17 +2061,12 @@ static Node *parse_stmt(Parser *p) {
     default:
         buffer_token(p, token);
         node = parse_expr(p, POWER_NIL, true, true, NULL);
+        node->is_stmt = true;
         if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
-            if (node->kind == NODE_IMPORT) {
-                ((Node_Import *) node)->is_stmt = true;
-            } else {
+            if (node->kind != NODE_IMPORT) {
                 local_assert(p, true, node->token, "expression");
             }
-        }
-
-        if (node->kind == NODE_CALL) {
-            ((Node_Call *) node)->is_stmt = true;
         }
         break;
     }

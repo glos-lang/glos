@@ -49,7 +49,7 @@ void      check_int_limit_ex(Compiler *c, Node *n, Int128 value, bool min_zero, 
 void      check_int_limit(Compiler *c, Node *n, Int128 value);
 
 bool     get_builtin_type_kind(SV name, Type_Kind *kind);
-Int128   get_enum_value(Compiler *c, Node_Enum *enumm, SV name, const Token *t);
+Int128   get_enum_value(Compiler *c, const Type_Enum *enumm, SV name, const Token *t);
 size_t   get_union_type_index(Compiler *c, Node *n, Type unionn);
 Node    *get_node_from_group(Node *n, size_t index, i64 *group_index);
 Node_Fn *get_function_literal(Node *fn);
@@ -111,6 +111,8 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start);
 void define_orderless_nodes_of_module(Compiler *c, Module *module, const Token *unqualified_import_token);
 
 void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from, Type to);
+bool push_context_replace_if_needed(Compiler *c, Context_Replace *replace, Node *from, Node *to);
+
 void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type, bool called_from_if_needed);
 void check_definition_if_needed(Compiler *c, Node_Atom *definition, Node *usage, Ref_Kind ref);
 void check_ident(Compiler *c, Node *n, Ref_Kind ref);
@@ -235,6 +237,7 @@ Node *monomorphize(Compiler *c, Node *n, Node *site);
 // Expressions /////////////////////////////////////////////////////////////////////////////////////
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid);
 void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref_valid);
+void check_expr_throw(Compiler *c, Node_Throw *throw);
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid);
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children);
 void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_ref_valid);

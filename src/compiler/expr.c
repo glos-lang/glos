@@ -579,7 +579,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -649,11 +649,69 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     }
 }
 
+LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref) {
+    Node *n = (Node *) throw;
+
+    const size_t group_values_count_save = c->group_values.count;
+    LLVMValueRef value = compile_expr(c, throw->value, false);
+    const size_t group_values_count_final = c->group_values.count;
+
+    LLVMValueRef error = value;
+    if (c->group_values.count > group_values_count_save) {
+        error = c->group_values.data[c->group_values.count - 1];
+    }
+
+    LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef error_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildCondBr(
+        c->llvm_builder,
+        LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, error, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), ""),
+        null_block,
+        error_block);
+
+    // If error, then return
+    LLVMPositionBuilderAtEnd(c->llvm_builder, error_block);
+
+    if (n->token.kind == TOKEN_LNOT) {
+        compile_panic(c, n->token.pos, CONTRACT_PANIC_UNWRAPPED_ERROR, error, NULL, NULL);
+    } else if (n->token.kind == TOKEN_QUESTION) {
+        const Type n_type_save = n->type;
+        n->type = throw->value->type;
+        compile_return(c, n, value, group_values_count_save);
+        n->type = n_type_save;
+        LLVMBuildUnreachable(c->llvm_builder);
+    } else {
+        unreachable();
+    }
+
+    c->group_values.count = group_values_count_final;
+
+    // If null, then do the mbappe special
+    LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
+
+    // "Pop off" the error if null
+    if (ref) {
+        // This seems to be the only case where 'ref' might be true.
+        assert(c->group_values.count == group_values_count_save + 2);
+        c->group_values.count = group_values_count_save;
+        return get_load_ptr(c->group_values.data[c->group_values.count]);
+    }
+
+    if (c->group_values.count > group_values_count_save) {
+        c->group_values.count--;
+        if (c->group_values.count == group_values_count_save + 1) {
+            return c->group_values.data[--c->group_values.count];
+        }
+    }
+
+    return NULL;
+}
+
 LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -754,9 +812,11 @@ static bool is_empty_string(Node *n) {
 }
 
 LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
+    LLVMTypeRef i64_type = LLVMInt64TypeInContext(c->llvm_context);
+    LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+
     Node *n = (Node *) binary;
     if (binary->trait_check) {
-        LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
         LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, ptr_type, compile_expr(c, binary->trait_check, true), "");
 
         LLVMValueRef expected = NULL;
@@ -770,14 +830,22 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 
     if (binary->union_check) {
-        LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
         LLVMValueRef value = LLVMBuildLoad2(c->llvm_builder, i64_type, compile_expr(c, binary->union_check, true), "");
-
         return LLVMBuildICmp(
             c->llvm_builder,
             n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
             value,
             LLVMConstInt(i64_type, binary->union_check_index, true),
+            "");
+    }
+
+    if (binary->error_check) {
+        LLVMValueRef value = compile_expr(c, binary->error_check, false);
+        return LLVMBuildICmp(
+            c->llvm_builder,
+            n->token.kind == TOKEN_EQ ? LLVMIntEQ : LLVMIntNE,
+            LLVMBuildLShr(c->llvm_builder, value, LLVMConstInt(i64_type, 32, true), ""),
+            LLVMConstInt(i64_type, binary->error_check_index, true),
             "");
     }
 
@@ -789,7 +857,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -818,9 +886,8 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
             const bool is_pointer_arithmetic = type_is_pointer(n->type);
             if (is_pointer_arithmetic) {
-                LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-                lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
-                rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
+                lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
+                rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, i64_type, "");
             }
 
             set_debug_pos(c, n->token.pos);
@@ -847,7 +914,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -880,8 +947,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
                     if (check_empty) {
                         LLVMValueRef count = LLVMBuildExtractValue(c->llvm_builder, check_empty, 1, "");
-                        return LLVMBuildICmp(
-                            c->llvm_builder, op.i, count, LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context)), "");
+                        return LLVMBuildICmp(c->llvm_builder, op.i, count, LLVMConstNull(i64_type), "");
                     }
                 }
             }
@@ -909,7 +975,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -929,9 +995,6 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             const size_t group_values_count_save = c->group_values.count;
             const size_t group_count = binary->lhs->type.kind == TYPE_GROUP ? binary->lhs->type.spec.group.count : 0;
 
-            LLVMTypeRef llvm_type_i64 = LLVMInt64TypeInContext(c->llvm_context);
-            LLVMTypeRef llvm_type_ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
-
             const size_t group_values_ptr_start = c->group_values.count;
             LLVMValueRef ptr = compile_expr(c, binary->lhs, true);
 
@@ -947,7 +1010,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
                     LLVMValueRef lhs = LLVMBuildLoad2(c->llvm_builder, type->llvm, ptr, "");
                     if (type_is_pointer(*type)) {
-                        lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                        lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
                     }
                     da_push(&c->group_values, lhs);
                 }
@@ -955,7 +1018,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             } else {
                 lhs = LLVMBuildLoad2(c->llvm_builder, binary->lhs->type.llvm, ptr, "");
                 if (type_is_pointer(binary->lhs->type)) {
-                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, llvm_type_i64, "");
+                    lhs = LLVMBuildPtrToInt(c->llvm_builder, lhs, i64_type, "");
                 }
             }
 
@@ -966,12 +1029,12 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                 for (size_t i = 0; i < group_count; i++) {
                     LLVMValueRef *rhs = &c->group_values.data[group_values_rhs_start + i];
                     if (type_is_pointer(binary->lhs->type.spec.group.data[i])) {
-                        *rhs = LLVMBuildPtrToInt(c->llvm_builder, *rhs, llvm_type_i64, "");
+                        *rhs = LLVMBuildPtrToInt(c->llvm_builder, *rhs, i64_type, "");
                     }
                 }
             } else {
                 if (type_is_pointer(binary->lhs->type)) {
-                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, llvm_type_i64, "");
+                    rhs = LLVMBuildPtrToInt(c->llvm_builder, rhs, i64_type, "");
                 }
             }
 
@@ -998,7 +1061,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                     }
 
                     if (type_is_pointer(*it)) {
-                        result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
+                        result = LLVMBuildIntToPtr(c->llvm_builder, result, ptr_type, "");
                     }
                     LLVMBuildStore(c->llvm_builder, result, ptr);
                 }
@@ -1016,7 +1079,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
                 }
 
                 if (type_is_pointer(binary->lhs->type)) {
-                    result = LLVMBuildIntToPtr(c->llvm_builder, result, llvm_type_ptr, "");
+                    result = LLVMBuildIntToPtr(c->llvm_builder, result, ptr_type, "");
                 }
                 LLVMBuildStore(c->llvm_builder, result, ptr);
             }
@@ -1026,7 +1089,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;
@@ -1121,7 +1184,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
     if (!size) {
         return;
@@ -1144,6 +1207,7 @@ static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, s
 
     case TYPE_INT:
     case TYPE_ENUM:
+    case TYPE_ERROR:
 
     case TYPE_FN:
     case TYPE_RAWPTR:
@@ -1364,6 +1428,29 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
                     LLVMBuildPtrToInt(c->llvm_builder, actual, i64, ""),
                     LLVMBuildPtrToInt(c->llvm_builder, expected, i64, ""),
                     NULL);
+            } else if (member->lhs->type.kind == TYPE_ERROR) {
+                LLVMValueRef lhs_value = lhs;
+                if (LLVMGetTypeKind(LLVMTypeOf(lhs_value)) == LLVMPointerTypeKind) {
+                    lhs_value = LLVMBuildLoad2(c->llvm_builder, i64, lhs_value, "");
+                }
+
+                LLVMTypeRef  i32 = LLVMInt32TypeInContext(c->llvm_context);
+                LLVMValueRef actual = compile_cast(
+                    c, LLVMBuildLShr(c->llvm_builder, lhs_value, LLVMConstInt(i64, 32, false), ""), i32, false, false);
+                LLVMValueRef expected = LLVMConstInt(i32, n->type.spec.enumm.definition->error_enums_list_index, true);
+
+                LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, actual, expected, "");
+                LLVMBuildCondBr(c->llvm_builder, check, success, failure);
+
+                // Failure
+                LLVMPositionBuilderAtEnd(c->llvm_builder, failure);
+                compile_panic(
+                    c,
+                    member->dot.pos,
+                    CONTRACT_PANIC_ERROR_TYPE_MISMATCH,
+                    compile_cast(c, actual, i64, false, true),
+                    compile_cast(c, expected, i64, false, true),
+                    NULL);
             } else if (member->union_index) {
                 LLVMValueRef actual = LLVMBuildLoad2(c->llvm_builder, i64, lhs, "");
                 LLVMValueRef expected = LLVMConstInt(i64, member->union_index, true);
@@ -1388,7 +1475,11 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
             LLVMPositionBuilderAtEnd(c->llvm_builder, success);
         }
 
-        LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        LLVMValueRef payload = lhs;
+        if (member->lhs->type.kind != TYPE_ERROR) {
+            payload = LLVMBuildStructGEP2(c->llvm_builder, lhs_type, lhs, 1, "");
+        }
+
         if (member->lhs->type.kind == TYPE_TRAIT) {
             payload = LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), payload, "");
         }
@@ -1827,7 +1918,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     Type  element_type_buffer = {0};
     Type *element_type = &element_type_buffer;
 
-    static_assert(COUNT_TYPES == 32, "");
+    static_assert(COUNT_TYPES == 33, "");
     switch (index->lhs->type.kind) {
     case TYPE_ARRAY:
         element_type = index->lhs->type.spec.array.element;
@@ -1859,13 +1950,15 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     } else {
         lhs = compile_expr(c, index->lhs, true);
     }
+
     LLVMValueRef a = compile_expr(c, index->a, false);
+    if (a) {
+        a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
+    }
 
     compile_type(c, element_type);
     if (index->is_ranged) {
-        if (a) {
-            a = compile_cast(c, a, LLVMInt64TypeInContext(c->llvm_context), type_is_signed(index->a->type), true);
-        } else {
+        if (!a) {
             a = LLVMConstNull(LLVMInt64TypeInContext(c->llvm_context));
         }
 
@@ -2017,7 +2110,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return NULL;
@@ -2063,6 +2156,9 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
         }
         return NULL;
     }
+
+    case NODE_THROW:
+        return compile_expr_throw(c, (Node_Throw *) n, ref);
 
     case NODE_UNARY:
         return compile_expr_unary(c, (Node_Unary *) n, ref);
@@ -2110,8 +2206,11 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 }
 
 static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result, Auto_Cast *auto_cast, bool ref) {
-    static_assert(COUNT_AUTO_CASTS == 5, "");
+    static_assert(COUNT_AUTO_CASTS == 6, "");
     switch (auto_cast->kind) {
+    case AUTO_CAST_SAME:
+        return result;
+
     case AUTO_CAST_TO_TRAIT: {
         result = compile_cast_to_trait(c, &auto_cast->from, auto_cast->trait_impl, result, ref);
         n->type = auto_cast->to;
@@ -2126,11 +2225,15 @@ static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result,
     }
 
     case AUTO_CAST_ARRAY_TO_SLICE: {
-        LLVMValueRef memory = undo_load(result);
         assert(auto_cast->from.kind == TYPE_ARRAY);
 
         LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
-        LLVMBuildStore(c->llvm_builder, memory, slice);
+        if (auto_cast->from.spec.array.count) {
+            LLVMBuildStore(c->llvm_builder, undo_load(result), slice);
+        } else {
+            LLVMBuildStore(c->llvm_builder, LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0)), slice);
+        }
+
         LLVMBuildStore(
             c->llvm_builder,
             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), auto_cast->from.spec.array.count, true),

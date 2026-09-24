@@ -1,0 +1,16 @@
+main :: () {
+    a: error = Foo.A
+    println(a.(Foo))
+    println(a.(Bar))
+}
+
+// Details
+Foo :: enum error {
+    A
+    B
+}
+
+Bar :: enum error {
+    C
+    D
+}

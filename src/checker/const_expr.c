@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -73,6 +73,9 @@ Const_Value default_const_value(Compiler *c, Type type) {
         array.element_type = type.spec.slice.element;
         return const_value_array(array);
     }
+
+    case TYPE_ERROR:
+        return const_value_u64(0);
 
     case TYPE_STRING:
         return const_value_string((SV) {0});
@@ -170,7 +173,7 @@ Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
 Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -278,7 +281,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
     Const_Value value = {0};
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = eval_const_expr(c, unary->value, false);
@@ -420,7 +423,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             double (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = int128_add, .f = fadd},
             [TOKEN_SUB] = {.i = int128_sub, .f = fsub},
@@ -460,7 +463,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
             bool (*f)(double lhs, double rhs);
         } Op;
 
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = int128_gt, .f = fgt},
             [TOKEN_GE] = {.i = int128_ge, .f = fge},
@@ -482,7 +485,7 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_LOR:
         lhs = eval_const_expr(c, binary->lhs, false);
@@ -541,6 +544,25 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
     Const_Value lhs = eval_const_expr(c, member->lhs, false);
     while (lhs.kind == CONST_VALUE_VAR) {
         lhs = const_value_of_var(c, lhs.as.var);
+    }
+
+    if (type_eq(member->lhs->type, (Type) {.kind = TYPE_ERROR})) {
+        assert(member->rhs);
+        assert(lhs.kind == CONST_VALUE_INT);
+        assert(member->rhs->type.is_meta && type_is_error_enum(type_without_meta(member->rhs->type)));
+
+        const size_t actual = lhs.as.integer.low >> 32;
+        if (actual != member->rhs->type.spec.enumm.definition->error_enums_list_index) {
+            error_token_range(
+                EK_ERROR,
+                member->dot,
+                member->rhs_end,
+                "Type Mismatch: Accessing %s, but real type is %s",
+                type_to_cstr(type_without_meta(member->rhs->type)),
+                actual ? type_to_cstr(type_without_meta(c->error_enums_list.data[actual - 1]->node.type)) : "null");
+            exit(c, 1);
+        }
+        return lhs;
     }
 
     static_assert(COUNT_CONST_VALUES == 14, "");
@@ -989,7 +1011,7 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
         return (Const_Value) {0};
@@ -1030,6 +1052,11 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         assert(embed->read);
         return const_value_string(embed->contents);
     }
+
+    case NODE_THROW:
+        error_node(EK_ERROR, n, "This expression is not constant at compile time");
+        exit(c, 1);
+        break;
 
     case NODE_UNARY:
         return eval_const_expr_unary(c, (Node_Unary *) n);
@@ -1118,8 +1145,12 @@ Const_Value eval_const_expr(Compiler *c, Node *n, bool ref) {
     if (n->auto_casts) {
         n->type = n_type_save;
 
-        static_assert(COUNT_AUTO_CASTS == 5, "");
+        static_assert(COUNT_AUTO_CASTS == 6, "");
         switch (n->auto_casts[0].kind) {
+        case AUTO_CAST_SAME:
+            // Pass
+            break;
+
         case AUTO_CAST_TO_TRAIT:
             result = const_value_to_trait(n, &n->auto_casts[0].from, n->auto_casts[0].trait_impl, result);
             break;

@@ -99,12 +99,12 @@ Node_Fn *get_main(Compiler *c) {
     return c->main_fn;
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
-        if (import->is_stmt) {
+        if (n->is_stmt) {
             make_sure_import_is_ready(c, import);
 
             bool imported = false;
@@ -226,27 +226,8 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                 if (iff->compile_time_real == iff->consequence) {
                     if (iff->condition->kind == NODE_BINARY && iff->condition->token.kind == TOKEN_EQ) {
                         Node_Binary *condition = (Node_Binary *) iff->condition;
-                        if ((type_is_trait(condition->lhs->type) || type_is_union(condition->lhs->type)) &&
-                            condition->lhs->kind == NODE_ATOM) //
-                        {
-                            if (!node_is_null(condition->rhs)) {
-                                push_context_replace(
-                                    c,
-                                    &iff->context_replace,
-                                    ((Node_Atom *) condition->lhs)->definition,
-                                    condition->rhs->type);
-                            }
-                        } else if (
-                            (type_is_trait(condition->rhs->type) || type_is_union(condition->rhs->type)) &&
-                            condition->rhs->kind == NODE_ATOM) //
-                        {
-                            if (!node_is_null(condition->lhs)) {
-                                push_context_replace(
-                                    c,
-                                    &iff->context_replace,
-                                    ((Node_Atom *) condition->rhs)->definition,
-                                    condition->lhs->type);
-                            }
+                        if (!push_context_replace_if_needed(c, &iff->context_replace, condition->lhs, condition->rhs)) {
+                            push_context_replace_if_needed(c, &iff->context_replace, condition->rhs, condition->lhs);
                         }
                     }
                 }
@@ -319,15 +300,8 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
             Node_Case *branch = sw->compile_time_real;
             if (branch) {
                 branch->context_replace.outer = c->context.replace;
-
-                if ((sw->trait || sw->unionn) && sw->expr->kind == NODE_ATOM && branch->preds_count == 1) {
-                    if (!node_is_null(branch->preds.head)) {
-                        push_context_replace(
-                            c,
-                            &branch->context_replace,
-                            ((Node_Atom *) sw->expr)->definition,
-                            branch->preds.head->type);
-                    }
+                if (branch->preds_count == 1) {
+                    push_context_replace_if_needed(c, &branch->context_replace, sw->expr, branch->preds.head);
                 }
 
                 assert(branch->body->kind == NODE_BLOCK);
@@ -393,7 +367,7 @@ void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from
 
     // Technically the code generated in the mismatch condition will access invalid memory.
     // However it will be unreachable, so does it even matter?
-    if (replace->to->definition_spec->is_const) {
+    if (replace->to->definition_spec->is_const && !type_eq(replace->from->node.type, (Type) {.kind = TYPE_ERROR})) {
         Const_Value *value = &replace->to->definition_spec->const_value;
 
         static_assert(COUNT_CONST_VALUES == 14, "");
@@ -420,6 +394,18 @@ void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from
     }
 
     c->context.replace = replace;
+}
+
+bool push_context_replace_if_needed(Compiler *c, Context_Replace *replace, Node *from, Node *to) {
+    if ((type_is_trait(from->type) || type_is_union(from->type) || type_eq(from->type, (Type) {.kind = TYPE_ERROR})) &&
+        from->kind == NODE_ATOM) //
+    {
+        if (!node_is_null(to)) {
+            push_context_replace(c, replace, ((Node_Atom *) from)->definition, to->type);
+        }
+        return true;
+    }
+    return false;
 }
 
 void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type, bool called_from_if_needed) {

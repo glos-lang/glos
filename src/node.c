@@ -105,7 +105,7 @@ static void sb_push_polymorphs(SB *sb, Polymorphs ps) {
     sb_push(sb, ')');
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 void sb_push_type(SB *sb, Type type) {
     assert(!type.is_meta);
     if (type.distinct) {
@@ -365,6 +365,10 @@ void sb_push_type(SB *sb, Type type) {
         sb_push_type(sb, *type.spec.slice.element);
         break;
 
+    case TYPE_ERROR:
+        sb_push_cstr(sb, "error");
+        break;
+
     case TYPE_STRING:
         sb_push_cstr(sb, "string");
         break;
@@ -496,7 +500,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_eq(Type a, Type b) {
     if (a.is_meta) {
         return b.is_meta;
@@ -595,7 +599,7 @@ bool type_meta_kind_eq(Type type, Type_Kind kind) {
     return type.is_meta && type.kind == kind;
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_numeric(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -618,7 +622,7 @@ bool type_is_numeric(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -643,7 +647,7 @@ bool type_is_integer(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_float(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -658,6 +662,7 @@ bool type_is_pointer(Type type) {
     return type.ref != 0 || type.kind == TYPE_RAWPTR;
 }
 
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_scalar(Type type) {
     if (type.is_meta) {
         return false;
@@ -667,14 +672,19 @@ bool type_is_scalar(Type type) {
         return true;
     }
 
-    if (type.kind == TYPE_BOOL || type.kind == TYPE_CHAR || type.kind == TYPE_RUNE || type.kind == TYPE_FN) {
+    switch (type.kind) {
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+    case TYPE_RUNE:
+    case TYPE_FN:
         return true;
-    }
 
-    return false;
+    default:
+        return false;
+    }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -708,7 +718,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_untyped(Type type) {
     if (type.is_meta || type.ref) {
         return false;
@@ -717,13 +727,17 @@ bool type_is_untyped(Type type) {
     return type.kind == TYPE_INT || type.kind == TYPE_FLOAT;
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta || type.ref) {
         return false;
     }
 
     return type.kind == TYPE_UNKNOWN_ENUM || type.kind == TYPE_UNKNOWN_COMPOUND;
+}
+
+bool type_is_error_enum(Type type) {
+    return !type.ref && type_kind_eq(type, TYPE_ENUM) && type.spec.enumm.underlying == TYPE_ERROR;
 }
 
 static void hasher_add_type_fn(Hasher *h, const Type_Fn *fn, bool skip_first) {
@@ -766,7 +780,7 @@ static void hasher_add_type_struct(Hasher *h, const Type_Struct *structt) {
     }
 }
 
-static_assert(COUNT_TYPES == 32, "");
+static_assert(COUNT_TYPES == 33, "");
 void hasher_add_type(Hasher *h, const Type *t) {
     if (!t) {
         return;
@@ -774,7 +788,6 @@ void hasher_add_type(Hasher *h, const Type *t) {
 
     hasher_add_bytes(h, &t->kind, sizeof(t->kind));
     hasher_add_bytes(h, &t->ref, sizeof(t->ref));
-    hasher_add_bytes(h, &t->is_meta, sizeof(t->is_meta));
 
     if (t->distinct) {
         hasher_add_bytes(h, &t->distinct, sizeof((void *) t->distinct));
@@ -859,7 +872,7 @@ u64 ht_hasheq_type(const void *va, const void *vb, size_t n) {
 
     const Type *a = va;
     if (vb) {
-        return type_eq(*a, *(const Type *) vb);
+        return type_eq(type_without_meta(*a), type_without_meta(*(const Type *) vb));
     }
 
     Hasher h = {0};
@@ -1194,12 +1207,13 @@ void hasher_add_const_value(Hasher *h, const Const_Value *v) {
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
         [NODE_EMBED] = sizeof(Node_Embed),
         [NODE_GROUP] = sizeof(Node_Group),
+        [NODE_THROW] = sizeof(Node_Throw),
         [NODE_UNARY] = sizeof(Node_Unary),
         [NODE_BINARY] = sizeof(Node_Binary),
         [NODE_MEMBER] = sizeof(Node_Member),
@@ -1213,6 +1227,7 @@ size_t node_size(Node_Kind kind) {
         [NODE_FN] = sizeof(Node_Fn),
         [NODE_MAP] = sizeof(Node_Map),
         [NODE_ENUM] = sizeof(Node_Enum),
+        [NODE_ENUM_VALUE] = sizeof(Node_Enum_Value),
         [NODE_TRAIT] = sizeof(Node_Trait),
         [NODE_UNION] = sizeof(Node_Union),
         [NODE_STRUCT] = sizeof(Node_Struct),
@@ -1384,7 +1399,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 32, "");
+static_assert(COUNT_NODES == 34, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1415,6 +1430,13 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         Node_Group *group = (Node_Group *) n;
         fprintf(f, "Group {\n");
         nodes_debug_impl(f, group->nodes, depth + 1, "Nodes");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_THROW: {
+        Node_Throw *throw = (Node_Throw *) n;
+        fprintf(f, "Throw '" SV_Fmt "' {\n", SV_Arg(n->token.sv));
+        node_debug_impl(f, throw->value, depth + 1, "Value");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 
@@ -1506,6 +1528,13 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
         Node_Enum *enumm = (Node_Enum *) n;
         fprintf(f, "Enumeration {\n");
         nodes_debug_impl(f, enumm->values, depth + 1, "Values");
+        fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
+    } break;
+
+    case NODE_ENUM_VALUE: {
+        Node_Enum_Value *ev = (Node_Enum_Value *) n;
+        fprintf(f, "Enumeration Value {\n");
+        node_debug_impl(f, ev->expr, depth + 1, "Expr");
         fprintf(f, Indent_Fmt "}\n", Indent_Arg(depth));
     } break;
 

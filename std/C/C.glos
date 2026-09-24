@@ -3,7 +3,7 @@ extern {
     printf :: (fmt: &char, ...) -> s32
     fprintf :: (f: os.File, fmt: &char, ...) -> s32
     snprintf :: (out: &char, size: u64, fmt: &char, ...) -> s32
-    fwrite :: (ptr: rawptr, size: u64, count: u64, f: os.File)
+    fwrite :: (ptr: rawptr, size: u64, count: u64, f: os.File) -> u64
     fflush :: (f: os.File)
     abort :: noreturn ()
     memcmp :: (a: rawptr, b: rawptr, n: u64) -> s32

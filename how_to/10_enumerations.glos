@@ -2,7 +2,7 @@ main :: () {
     Fruit :: enum {
         MANGO
         APPLE
-        ORANGE
+        ORANGE "Custom name for Orange"
     }
 
     f: Fruit
@@ -15,6 +15,7 @@ main :: () {
 
     // The standard printing functions display enumerations by their names.
     println(f)
+    println(Fruit.ORANGE)
 
     // However, enumerations are represented at runtime by integer values.
     println("Fruit.MANGO  = \{s64(Fruit.MANGO)}")
