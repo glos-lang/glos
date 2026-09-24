@@ -36,10 +36,20 @@ main :: () {
         // type 'Bar' instead of 'error'.
         //
         println(typeof(err))
-        //
-        // This is also valid for switch statements, which is not shown here for the sake of
-        // brevity.
     }
+
+    // This also works for switch statements
+    if err == {
+    case null
+        println("null")
+
+    case Foo
+        println("typeof(err) = \{typeof(err)}") // err is Foo here.
+
+    case Bar
+        println("typeof(err) = \{typeof(err)}") // err is Bar here.
+    }
+
 
     // You can access the underlying type of an error value.
     //
@@ -53,20 +63,26 @@ main :: () {
     //
     // The 'ID' is an integer assigned by the compiler to each 'enum error' type, while
     // 'Value' is what you would expect from a typical enumeration.
-    //
+
     // Let's confirm this.
     {
         err := *(&u64)(&err)
         println("ID    = \{u32(err >> 32)}")
         println("Value = \{u32(err)}")
 
-        // Since the integral value of an 'error' involves bit shenanigans, therefore the compiler
-        // restricts casting to and from integer types. Of course, you can typepun a pointer to it, as
-        // demonstrated here. But direct casts are forbidden to increase the reliability of the language
-        // and to reduce potential foot guns.
+        // Since the integral value of an 'error' involves compiler assigned IDs, therefore casting to and
+        // from integer types is restricted. Of course, you can type-pun a pointer to it, as demonstrated here.
+        // But direct casts are forbidden to increase reliability and to reduce potential foot guns.
     }
 
-    // Lastly let's look at the postfix operators which help dealing with errors.
+    // Accessing the wrong type is a runtime error unless '-O3' is used.
+    // err.(Foo) // Uncomment this and see what happens.
+
+    // You can cast from 'enum error' to 'error', but not from 'error' to 'enum error'.
+    // For the latter, you must use the '.(Type)' syntax. This conveys the semantic meaning
+    // to the reader that runtime checks are occuring.
+
+    // Lastly let's look at the postfix operators which help in dealing with errors.
     error_propagate_operator()
 }
 
@@ -92,6 +108,23 @@ error_propagate_operator :: () {
         c := safe_div(a, b)?
         println("Twice!")
         return safe_div(c, b)
+
+        // The type of EXPR must be the same as the return type of the function it is used in.
+        // The following line is an error, because it is expected to return '(s64, error)' but
+        // the actual type is 'rawptr' instead.
+        //
+        // null?
+
+        // The auto casting rules of 'enum error' -> 'error' is applicable here too.
+        foo :: () -> s64, Div_Error {
+            return 0, null
+        }
+
+        // This is allowed. It is legal to cast an 'enum error' to an 'error'.
+        //
+        foo()?
+        //
+        // The opposite would not be allowed though.
     }
 
     println(divide_twice(276, 2))
@@ -106,7 +139,4 @@ error_propagate_operator :: () {
     println(divide_and_inc(1337, 0))
 
     unreachable("This statement will never be evaluated")
-
-    // BTW, in case it wasn't obvious. These operators are also applicable for `enum error`.
-    // The same type system rules as explained before will be applicable here.
 }
