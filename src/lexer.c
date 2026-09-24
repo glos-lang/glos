@@ -5,10 +5,25 @@
 #include <ctype.h>
 #include <errno.h>
 
-static SV first_line(SV sv) {
-    const char *p = memchr(sv.data, '\n', sv.count);
-    sv.count = p ? (size_t) (p - sv.data) : sv.count;
-    return sv;
+static void lexer_load_first_line_into_pos(Lexer *l) {
+    l->pos.line = l->sv;
+    const char *p = memchr(l->pos.line.data, '\n', l->pos.line.count);
+    l->pos.line.count = p ? (size_t) (p - l->pos.line.data) : l->pos.line.count;
+    if (l->inside_string_or_comment) {
+        return;
+    }
+
+    bool is_conflict = false;
+    if (sv_has_prefix(l->pos.line, SV_Lit("<<<<<<<")) || sv_has_prefix(l->pos.line, SV_Lit(">>>>>>>"))) {
+        is_conflict = l->pos.line.count == 7 || isspace(l->pos.line.data[7]);
+    } else {
+        is_conflict = sv_eq(l->pos.line, SV_Lit("======="));
+    }
+
+    if (is_conflict) {
+        error_parts(EK_ERROR, l->pos.line, l->pos, "Unresolved git conflict artifacts");
+        exit(1);
+    }
 }
 
 bool lexer_open(Lexer *l, const char *path) {
@@ -18,7 +33,7 @@ bool lexer_open(Lexer *l, const char *path) {
     }
 
     l->pos.path = path;
-    l->pos.line = first_line(l->sv);
+    lexer_load_first_line_into_pos(l);
     return true;
 }
 
@@ -35,7 +50,7 @@ static void next_char(Lexer *l) {
             l->sv.data++;
             l->sv.count--;
 
-            l->pos.line = first_line(l->sv);
+            lexer_load_first_line_into_pos(l);
             return;
         }
     } else {
@@ -99,10 +114,13 @@ static void skip_whitespace(Lexer *l) {
 
         case '/':
             if (peek_char(l, 1) == '/') {
+                l->inside_string_or_comment = true;
                 while (l->sv.count && *l->sv.data != '\n') {
                     next_char(l);
                 }
+                l->inside_string_or_comment = false;
             } else if (peek_char(l, 1) == '*') {
+                l->inside_string_or_comment = true;
                 const Pos begin = l->pos;
 
                 size_t depth = 0;
@@ -126,6 +144,7 @@ static void skip_whitespace(Lexer *l) {
                 // Skip the '*/'
                 next_char(l);
                 next_char(l);
+                l->inside_string_or_comment = false;
             } else {
                 return;
             }
@@ -260,6 +279,7 @@ static Rune next_rune_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
 }
 
 Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
+    l->inside_string_or_comment = true;
     const size_t default_sb_count_save = default_sb.count;
 
     Token token = {
@@ -290,6 +310,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
     token.as.string.count = default_sb.count - default_sb_count_save;
     token.as.string.data = arena_clone(&default_arena, default_sb.data + default_sb_count_save, token.as.string.count);
     default_sb.count = default_sb_count_save;
+    l->inside_string_or_comment = false;
     return token;
 }
 

@@ -2065,7 +2065,10 @@ static Node *parse_stmt(Parser *p) {
         if (node->kind != NODE_DEFINE) {
             not_in_extern_assert(p, token);
             if (node->kind != NODE_IMPORT) {
-                local_assert(p, true, node->token, "expression");
+                if (!p->state.fn_current) {
+                    error_node(EK_ERROR, node, "Unexpected expression in global scope");
+                    exit(1);
+                }
             }
         }
         break;

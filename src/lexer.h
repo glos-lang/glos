@@ -8,6 +8,7 @@ typedef struct {
     SV   sv;
     bool newline;
     bool after_operator_keyword;
+    bool inside_string_or_comment;
 } Lexer;
 
 bool lexer_open(Lexer *l, const char *path);

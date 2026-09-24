@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 117
+tests/error_unresolved_git_conflict_artifacts_top.glos:2:1: Error: Unresolved git conflict artifacts
+
+    <<<<<<< A
+
+
