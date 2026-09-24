@@ -37,33 +37,33 @@ main :: () {
     custom_iterators()
 }
 
-First :: struct($A: Type, $B: Type, $N: s64) {
-    as: [N]A
-    bs: [N]B
-}
-
-// This is the bare minimum that you must implement:
-//
-//     range :: (this: Iterable, state: &Iterator) -> &V1, &V2, ..., bool {}
-//
-range :: (this: First($A, $B, $N), state: &s64) -> s64, A, B, bool {
-    a: A
-    b: B
-    i := *state
-    if i >= N {
-        // Return the last argument as false to stop the iteration
-        return i, a, b, false
+custom_iterators :: () {
+    First :: struct($A: Type, $B: Type, $N: s64) {
+        as: [N]A
+        bs: [N]B
     }
 
-    a = this.as[i]
-    b = this.bs[i]
-    *state += 1
+    // This is the bare minimum that you must implement:
+    //
+    //     range :: (this: Iterable, state: &Iterator) -> &V1, &V2, ..., bool {}
+    //
+    range :: (this: First($A, $B, $N), state: &s64) -> s64, A, B, bool {
+        a: A
+        b: B
+        i := *state
+        if i >= N {
+            // Return the last argument as false to stop the iteration
+            return i, a, b, false
+        }
 
-    // Return the last argument as true to continue the iteration
-    return i, a, b, true
-}
+        a = this.as[i]
+        b = this.bs[i]
+        *state += 1
 
-custom_iterators :: () {
+        // Return the last argument as true to continue the iteration
+        return i, a, b, true
+    }
+
     first := First(s64, string, 2) {
         {69, 420},
         {"foo", "bar"},
@@ -82,34 +82,30 @@ custom_iterators :: () {
     // That is because user defined iterators must explicitly specify reference semantics.
 
     // Let's take a look at that.
-    custom_referencable_iterators()
-}
-
-Second :: struct($A: Type, $B: Type, $N: s64) {
-    as: [N]A
-    bs: [N]B
-}
-
-// 1. The receiver must be a pointer.
-// 2. Use the '#reference' directive to mark the return values that you want to make referencable.
-//
-// Here, we marked the second iteration result as referencable.
-range :: (this: &Second($A, $B, $N), state: &s64) -> s64, #reference A, B, bool {
-    a: &A
-    b: B
-    i := *state
-    if i >= N {
-        return i, a, b, false
+    Second :: struct($A: Type, $B: Type, $N: s64) {
+        as: [N]A
+        bs: [N]B
     }
 
-    a = &this.as[i]
-    b = this.bs[i]
-    *state += 1
+    // 1. The receiver must be a pointer.
+    // 2. Use the '#reference' directive to mark the return values that you want to make referencable.
+    //
+    // Here, we marked the second iteration result as referencable.
+    range :: (this: &Second($A, $B, $N), state: &s64) -> s64, #reference A, B, bool {
+        a: &A
+        b: B
+        i := *state
+        if i >= N {
+            return i, a, b, false
+        }
 
-    return i, a, b, true
-}
+        a = &this.as[i]
+        b = this.bs[i]
+        *state += 1
 
-custom_referencable_iterators :: () {
+        return i, a, b, true
+    }
+
     second := Second(s64, string, 2) {
         {69, 420},
         {"foo", "bar"},
