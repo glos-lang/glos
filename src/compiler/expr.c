@@ -2225,11 +2225,15 @@ static LLVMValueRef compile_auto_cast(Compiler *c, Node *n, LLVMValueRef result,
     }
 
     case AUTO_CAST_ARRAY_TO_SLICE: {
-        LLVMValueRef memory = undo_load(result);
         assert(auto_cast->from.kind == TYPE_ARRAY);
 
         LLVMValueRef slice = compile_alloca(c, c->llvm_slice_type);
-        LLVMBuildStore(c->llvm_builder, memory, slice);
+        if (auto_cast->from.spec.array.count) {
+            LLVMBuildStore(c->llvm_builder, undo_load(result), slice);
+        } else {
+            LLVMBuildStore(c->llvm_builder, LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0)), slice);
+        }
+
         LLVMBuildStore(
             c->llvm_builder,
             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), auto_cast->from.spec.array.count, true),
