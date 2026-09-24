@@ -8,8 +8,8 @@ main :: () {
             x, y: s32
         }
 
-        format :: (this: &Vec2, w: Writer, nested: bool) {
-            wprint(w, "Vec2(\{this.x}, \{this.y})")
+        format :: (this: &Vec2, w: Writer, nested: bool) -> s64, error {
+            return wprint(w, "Vec2(\{this.x}, \{this.y})")
         }
 
         println(Vec2 {69, 420})
@@ -24,8 +24,8 @@ main :: () {
             x, y, z: s32
         }
 
-        format :: (this: &Vec3, w: Writer, nested: bool) {
-            wprint(w, "Vec3(\{this.x}, \{this.y}, \{this.z})")
+        format :: (this: &Vec3, w: Writer, nested: bool) -> s64, error {
+            return wprint(w, "Vec3(\{this.x}, \{this.y}, \{this.z})")
         } #not_formatter
 
         println(Vec3 {69, 420, 1337})

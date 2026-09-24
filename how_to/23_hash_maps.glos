@@ -37,6 +37,15 @@ main :: () {
     m.clear()
     println(m.count)
 
+    // There is also a field 'allocator' which points to the allocator used for managing the memory of
+    // the hashmap. You don't need to worry about that for most use cases, but for more information you
+    // can see "std/builtin/allocator.glos".
+    //
+    // Custom allocators are an API detail, and will thus not be described in this tutorial. The source
+    // code of the standard library, and the error messages of the compiler should suffice for conveying
+    // that information.
+    println(m.allocator)
+
     // Now let's look at custom types as keys.
     custom_types_as_keys()
 }

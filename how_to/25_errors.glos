@@ -1,0 +1,112 @@
+main :: () {
+    // The 'error' type is represented at runtime as an unsigned 64-bit integer.
+    err: error
+
+    // The zero value of an error is 'null', which represents no error.
+    println(err)
+
+    // By itself, the type 'error' has no use. It is the definition of `enum error` types
+    // that give this a purpose.
+    Foo :: enum error {
+        Bar
+        Lmao
+    }
+
+    // Any 'enum error' is usable as an 'error' value.
+    err = Foo.Bar
+    println(err)
+
+    // You can also do explicit casts if you want.
+    err = error(Foo.Lmao)
+
+    Bar :: enum error {
+        A = 69
+        B "Btw you can also have custom names here"
+    }
+
+    // As mentioned above, any 'enum error' is usable as an 'error'.
+    err = Bar.A
+    println(err)
+
+    // You can check what is the underlying enum of an error value.
+    println(err == Bar)
+
+    if err == Bar {
+        // The narrowing rules apply here too. Inside this block, the variable 'err' will have
+        // type 'Bar' instead of 'error'.
+        //
+        println(typeof(err))
+        //
+        // This is also valid for switch statements, which is not shown here for the sake of
+        // brevity.
+    }
+
+    // You can access the underlying type of an error value.
+    //
+    println(u64(err.(Bar)))
+    //
+    // Surprised by the output? Yes, error values are not a simple 0, 1, 2 enumeration.
+    //
+    // In reality the 64-bit 'error' is a combination of two 32-bit integers:
+    //
+    //     (ID << 32) | Value
+    //
+    // The 'ID' is an integer assigned by the compiler to each 'enum error' type, while
+    // 'Value' is what you would expect from a typical enumeration.
+    //
+    // Let's confirm this.
+    {
+        err := *(&u64)(&err)
+        println("ID    = \{u32(err >> 32)}")
+        println("Value = \{u32(err)}")
+
+        // Since the integral value of an 'error' involves bit shenanigans, therefore the compiler
+        // restricts casting to and from integer types. Of course, you can typepun a pointer to it, as
+        // demonstrated here. But direct casts are forbidden to increase the reliability of the language
+        // and to reduce potential foot guns.
+    }
+
+    // Lastly let's look at the postfix operators which help dealing with errors.
+    error_propagate_operator()
+}
+
+error_propagate_operator :: () {
+    Div_Error :: enum error {
+        By_Zero
+    }
+
+    safe_div :: (a: s64, b: s64) -> s64, error {
+        if b == 0 {
+            return 0, Div_Error.By_Zero
+        }
+        return a / b, null
+    }
+
+    divide_twice :: (a: s64, b: s64) -> s64, error {
+        // The syntax of the '?' operator is as follows:
+        //
+        //     EXPR ?
+        //
+        // This operator expects the last value of EXPR to be an 'error' or 'enum error'.
+        // As you can imagine, it simply returns the expression if the error is not null.
+        c := safe_div(a, b)?
+        println("Twice!")
+        return safe_div(c, b)
+    }
+
+    println(divide_twice(276, 2))
+    println(divide_twice(420, 0)) // As you saw in the output, the message "Twice!" was not displayed for this.
+
+    // There is also the postfix '!' operator that panics immediately instead of returning.
+    divide_and_inc :: (a: s64, b: s64) -> s64 {
+        return safe_div(a, b)! + 1
+    }
+
+    println(divide_and_inc(838, 2))
+    println(divide_and_inc(1337, 0))
+
+    unreachable("This statement will never be evaluated")
+
+    // BTW, in case it wasn't obvious. These operators are also applicable for `enum error`.
+    // The same type system rules as explained before will be applicable here.
+}

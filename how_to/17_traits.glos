@@ -153,13 +153,13 @@ main :: () {
         // Assign the implementation
         my_trait_in_heap.impl = My_Trait.(Int32)
 
-        // New() is a function defined in the builtin standard module of Glos. It uses
-        // compile time polymorphism, which will be described in the next document.
+        // mem.new() is a function that uses compile time polymorphism, which will be described in
+        // the next document.
         //
         // For now, just know that you should call this function providing a type as its argument.
         // And it will allocate an object of that type on the heap (using the default allocator) and
         // return a pointer to that memory
-        int32_in_heap := New(Int32)
+        int32_in_heap := mem.new(Int32)
         int32_in_heap.x = 69
 
         // Now assign the memory.
@@ -172,6 +172,8 @@ main :: () {
         println(my_trait_in_heap)
         println(my_trait_in_heap.foo())
         println(my_trait_in_heap.bar(351))
+
+        mem :: #import "memory"
     }
     println()
 

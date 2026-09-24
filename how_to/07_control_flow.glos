@@ -193,17 +193,17 @@ defer_real_world_example :: () {
     // Import the "os" module from the standard library. Modules will be described later.
     os :: #import "os"
 
-    f, ok := os.open(PATH, true)
+    f, err := os.open(PATH, true)
     defer f.close() // Just like that, we don't have to worry about this file handle anymore.
 
-    if !ok {
+    if err != null {
         eprintln("Error: Could not open file '\{PATH}'")
         os.exit(1)
     }
 
     buffer: [64]char
-    n, ok := f.read(buffer)
-    if !ok {
+    n, err := f.read(buffer)
+    if err != null {
         eprintln("Error: Could not read file '\{PATH}'")
         os.exit(1)
     }
