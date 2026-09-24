@@ -352,6 +352,7 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 iterator_type = assignees[0].type->llvm;
             }
 
+            bool is_ascending = true;
             if (range->overload) {
                 if (range->overload_deref) {
                     iterable_a = undo_load(iterable_a);
@@ -410,8 +411,10 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                     LLVMBuildStore(c->llvm_builder, LLVMConstNull(iterator_type), iterator_memory);
                 }
 
+                bool         is_signed = true;
                 LLVMValueRef count = NULL;
                 if (range->is_integer) {
+                    is_signed = type_is_signed(range->a->type);
                     if (iterable_node_b) {
                         LLVMBuildStore(c->llvm_builder, iterable_a, iterator_memory);
                         count = iterable_b;
@@ -450,8 +453,30 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
 
                 // Check the iterator
                 iterator_loaded = LLVMBuildLoad2(c->llvm_builder, iterator_type, iterator_memory, "");
+
+                LLVMIntPredicate predicate = is_signed ? LLVMIntSLT : LLVMIntULT;
+                switch (range->direction) {
+                case TOKEN_LE:
+                    predicate = is_signed ? LLVMIntSLE : LLVMIntULE;
+                    break;
+
+                case TOKEN_GT:
+                    predicate = is_signed ? LLVMIntSGT : LLVMIntUGT;
+                    is_ascending = false;
+                    break;
+
+                case TOKEN_GE:
+                    predicate = is_signed ? LLVMIntSGE : LLVMIntUGE;
+                    is_ascending = false;
+                    break;
+
+                default:
+                    // Pass
+                    break;
+                }
+
                 LLVMBuildCondBr(
-                    c->llvm_builder, LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, iterator_loaded, count, ""), body, end);
+                    c->llvm_builder, LLVMBuildICmp(c->llvm_builder, predicate, iterator_loaded, count, ""), body, end);
             }
 
             LLVMPositionBuilderAtEnd(c->llvm_builder, body);
@@ -519,7 +544,8 @@ void compile_stmt_for(Compiler *c, Node_For *forr) {
                 // Update the iterator
                 LLVMBuildStore(
                     c->llvm_builder,
-                    LLVMBuildAdd(c->llvm_builder, iterator_loaded, LLVMConstInt(iterator_type, 1, true), ""),
+                    (is_ascending ? LLVMBuildAdd : LLVMBuildSub)(
+                        c->llvm_builder, iterator_loaded, LLVMConstInt(iterator_type, 1, true), ""),
                     iterator_memory);
             }
 

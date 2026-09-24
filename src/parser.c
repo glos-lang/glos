@@ -1476,6 +1476,21 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         Node_Range *range = (Node_Range *) node;
         range->a = parse_expr(p, POWER_SET, false, false, NULL);
         if (read_token(p, TOKEN_SLICE)) {
+            token = peek_token(p);
+            switch (token.kind) {
+            case TOKEN_LT:
+            case TOKEN_LE:
+            case TOKEN_GT:
+            case TOKEN_GE:
+                p->state.peeked = false;
+                range->direction = token.kind;
+                break;
+
+            default:
+                // Pass
+                break;
+            }
+
             range->b = parse_expr(p, POWER_SET, false, false, NULL);
         }
         range_for->range = range;

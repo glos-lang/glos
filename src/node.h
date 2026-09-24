@@ -1013,6 +1013,8 @@ typedef struct {
     Node *a;
     Node *b;
 
+    Token_Kind direction;
+
     Node_Fn *overload;
     bool     overload_deref;
 

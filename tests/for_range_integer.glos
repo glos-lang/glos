@@ -2,8 +2,29 @@ main :: () {
     for i := range 5 {
         println(i)
     }
+    println()
 
     for i := range 5..10 {
+        println(i)
+    }
+    println()
+
+    for i := range 1..<5 {
+        println(i)
+    }
+    println()
+
+    for i := range 1..<=5 {
+        println(i)
+    }
+    println()
+
+    for i := range 5..>1 {
+        println(i)
+    }
+    println()
+
+    for i := range 5..>=1 {
         println(i)
     }
 }

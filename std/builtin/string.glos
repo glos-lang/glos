@@ -25,7 +25,7 @@ find :: (this: string, p: strings.Predicate, reverse := false) -> s64, bool {
         }
 
         if reverse {
-            for i := this.count; i >= p.count; i -= 1 {
+            for i := range this.count..>=p.count {
                 if this[i..].begins_with(p) {
                     return i, true
                 }
@@ -205,7 +205,7 @@ range :: (this: string, state: &s64) -> s64, rune, bool {
     return index, r, true
 }
 
-reverse :: (this: string) -> strings.Reverse {
+reverse :: inline (this: string) -> strings.Reverse {
     return strings.Reverse(this)
 }
 
