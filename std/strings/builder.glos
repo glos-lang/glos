@@ -16,7 +16,7 @@ free :: (this: &Builder) {
     }
 }
 
-write :: (this: &Builder, bytes: []char) {
+write :: (this: &Builder, bytes: []char) -> s64, error {
     if this.page_last == null {
         if this.allocator == null then this.allocator = default_allocator
         this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)
@@ -25,6 +25,7 @@ write :: (this: &Builder, bytes: []char) {
         this.page_last.next  = null
     }
 
+    n := bytes.count
     for bytes.count != 0 {
         page      := this.page_last
         available := page.bytes.count - page.count
@@ -37,7 +38,7 @@ write :: (this: &Builder, bytes: []char) {
             page.count += bytes.count
             this.count += bytes.count
             this.cursor = page.bytes.data + &char(page.count)
-            return
+            return n, null
         }
 
         if available != 0 {
@@ -54,9 +55,11 @@ write :: (this: &Builder, bytes: []char) {
         this.page_last.count = 0
         this.page_last.next  = null
     }
+
+    return n, null
 }
 
-rewind :: (this: &Builder, from: &char = null, allocator := default_allocator, location := #caller_location) {
+rewind :: (this: &Builder, from: &char = null, location := #caller_location) {
     if this.page_first == null then return
     if from == null            then from = this.page_first.bytes.data
 
