@@ -1,3 +1,4 @@
 main :: () {
-    println(string([]char {'H', 'i', '!'}))
+    println(string([]u8 {'H', 'i', '!'}))
+    println(string([]s8 {'L', 'o', 'L'}))
 }

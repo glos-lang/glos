@@ -77,7 +77,7 @@ static void put_raw_bytes_into_words(Compiler *c, QWords *words, size_t offset, 
     put_scalar_type_into_qword(c, words, LLVMIntTypeInContext(c->llvm_context, size * 8), offset);
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 static void split_type_into_qwords(Compiler *c, QWords *words, const Type *type, size_t offset, size_t size) {
     if (type->ref) {
         put_scalar_type_into_qword(c, words, LLVMPointerTypeInContext(c->llvm_context, 0), offset);
@@ -86,7 +86,6 @@ static void split_type_into_qwords(Compiler *c, QWords *words, const Type *type,
 
     switch (type->kind) {
     case TYPE_BOOL:
-    case TYPE_CHAR:
     case TYPE_RUNE:
 
     case TYPE_S8:
@@ -224,7 +223,7 @@ ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     }
 
     // Special cases
-    static_assert(COUNT_TYPES == 33, "");
+    static_assert(COUNT_TYPES == 32, "");
     switch (type->kind) {
     case TYPE_VOID:
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);

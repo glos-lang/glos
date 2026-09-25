@@ -261,7 +261,7 @@ static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c,
     return (Node_Fn *) result;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node *n, const Type *type) {
     assert(!type->is_meta);
     if (!c->type_info_cache.hasheq) {
@@ -276,7 +276,6 @@ static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node 
     ht_set(&c->type_info_cache, *type, (Type_Info) {0});
     switch (type->kind) {
     case TYPE_BOOL:
-    case TYPE_CHAR:
     case TYPE_RUNE:
     case TYPE_S8:
     case TYPE_S16:

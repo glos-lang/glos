@@ -599,7 +599,7 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return compile_ident(c, n, (Node_Atom *) atom->definition, ref);
 
     case TOKEN_STRING: {
-        if (type_eq(n->type, (Type) {.kind = TYPE_CHAR, .ref = 1})) {
+        if (n->type.ref) {
             return compile_const_value_into_memory(
                 c, LLVMConstStringInContext(c->llvm_context, n->token.as.string.data, n->token.as.string.count, false));
         }
@@ -1184,7 +1184,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
     if (!size) {
         return;
@@ -1192,7 +1192,6 @@ static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, s
 
     switch (type->kind) {
     case TYPE_BOOL:
-    case TYPE_CHAR:
     case TYPE_RUNE:
 
     case TYPE_S8:
@@ -1918,7 +1917,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     Type  element_type_buffer = {0};
     Type *element_type = &element_type_buffer;
 
-    static_assert(COUNT_TYPES == 33, "");
+    static_assert(COUNT_TYPES == 32, "");
     switch (index->lhs->type.kind) {
     case TYPE_ARRAY:
         element_type = index->lhs->type.spec.array.element;
@@ -1933,7 +1932,7 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
         break;
 
     case TYPE_STRING:
-        element_type_buffer.kind = TYPE_CHAR;
+        element_type_buffer.kind = TYPE_U8;
         break;
 
     default:

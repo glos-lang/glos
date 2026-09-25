@@ -4,7 +4,7 @@ main :: () {
     // You can define external variables and functions inside 'extern' blocks.
     extern {
         stdout: rawptr
-        printf :: (fmt: &char, ...) -> s32 // Notice how there is no function body
+        printf :: (fmt: &u8, ...) -> s32 // Notice how there is no function body
 
         // You can provide custom link names using the '#link' directive
         #link "operator"
@@ -32,10 +32,10 @@ main :: () {
             timerfd_create :: (clockid: s32, flags: s32) -> s32
 
         case .MACOS
-            _NSGetExecutablePath :: (buffer: &char, size: &u32) -> s32
+            _NSGetExecutablePath :: (buffer: &u8, size: &u32) -> s32
 
         case .WINDOWS
-            MessageBoxA :: (hWnd: rawptr, lpText: &char, lpCaption: &char, uType: u32) -> s32
+            MessageBoxA :: (hWnd: rawptr, lpText: &u8, lpCaption: &u8, uType: u32) -> s32
             #library "user32"
         }
     }

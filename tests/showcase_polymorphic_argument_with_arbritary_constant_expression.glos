@@ -17,7 +17,7 @@ main :: () {
     foo(s64)
     foo(union { s64; string }     ("Hello, world!"))
     foo(struct { x: s64; y: s64 } {420, 1337})
-    foo([]char {'H', 'i', '!'})
+    foo([]u8 {'H', 'i', '!'})
     bar(&x)
     baz(main)
 }

@@ -1,10 +1,10 @@
 EXIT 0
-STDOUT 49
+STDOUT 47
 69
 s64
 Hello, world!
 {420, 1337}
-{'H', 'i', '!'}
+{72, 105, 33}
 
 STDERR 0
 

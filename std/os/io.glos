@@ -1,6 +1,6 @@
 File :: distinct rawptr
 
-read :: (this: File, bytes: []char) -> s64, error {
+read :: (this: File, bytes: []u8) -> s64, error {
     n := C.fread(rawptr(bytes.data), 1, u64(bytes.count), this)
     if C.ferror(this) != 0 {
         return s64(n), C.get_errno()
@@ -8,8 +8,8 @@ read :: (this: File, bytes: []char) -> s64, error {
     return s64(n), null
 }
 
-write :: (this: File, bytes: []char) -> s64, error {
-    n := C.fwrite(rawptr(bytes.data), sizeof(char), u64(bytes.count), this)
+write :: (this: File, bytes: []u8) -> s64, error {
+    n := C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), this)
     if C.ferror(this) != 0 {
         return s64(n), C.get_errno()
     }
@@ -61,7 +61,7 @@ open :: (path: string, read: bool) -> File, error {
 }
 
 // TODO: Only binary is supported
-read_entire_file :: (path: string, allocator := default_allocator) -> []char, error {
+read_entire_file :: (path: string, allocator := default_allocator) -> []u8, error {
     f, err := open(path, true)
     if err != null {
         return {}, err
@@ -81,11 +81,11 @@ read_entire_file :: (path: string, allocator := default_allocator) -> []char, er
         return {}, C.get_errno()
     }
 
-    data := &char(allocator.alloc(offset + 1, zeroed = false))
+    data := &u8(allocator.alloc(offset + 1, zeroed = false))
     if data == null {
         return {}, C.get_errno()
     }
-    bytes := []char(data, offset + 1)
+    bytes := []u8(data, offset + 1)
 
     n, err := f.read(bytes)
     if err != null {

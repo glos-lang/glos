@@ -44,19 +44,19 @@ get_f64 :: (this: &Rand, min := 0.0, max := 1.0) -> f64 {
     return min + (max - min) * f64(v >> 11) * (1.0 / 9007199254740992.0)
 }
 
-read :: (this: &Rand, bytes: []char) -> s64, bool {
+read :: (this: &Rand, bytes: []u8) -> s64, bool {
     data  := bytes.data
     count := bytes.count
     for count >= 8 {
         v := this.get_u64()
-        mem.copy(data, &char(&v), sizeof(v))
-        data  += &char(sizeof(v))
+        mem.copy(data, &u8(&v), sizeof(v))
+        data  += &u8(sizeof(v))
         count -= sizeof(v)
     }
 
     if count > 0 {
         v := this.get_u64()
-        mem.copy(data, &char(&v), count)
+        mem.copy(data, &u8(&v), count)
     }
     return bytes.count, true
 

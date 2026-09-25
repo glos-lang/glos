@@ -15,10 +15,31 @@ main :: () {
         println(i, x)
     }
 
+    // String iteration is by UTF-8 runes.
+    s := "Hi! ☀️☕️😊你好!"
+    println()
+    for i, c := range s {
+        println(i, c)
+    }
+    println()
+
+    // If you want to iterate by the raw bytes of a string, then cast it to a '[]u8' or '[]s8' first.
+    for i, c := range []u8(s) {
+        println(i, c)
+    }
+    println()
+
     // Iterating by reference. Notice that we are taking pointer to 'xs'.
     for i, x := range &xs {
         *x = "deeznuts"[i * 4..(i + 1) * 4]
     }
+
+    // You cannot iterate by reference on a string. You must cast it to a '[]u8' or '[]s8' first.
+    //
+    // for i, c := range &s {} // Uncomment this line and see what happens
+    //
+    // This restriction is present because UTF-8 runes do not correspond 1:1 to the underlying
+    // memory, unless we are working with the limited ASCII character set.
 
     // You can assign instead of define if you want.
     i: s64; x: string
@@ -26,6 +47,25 @@ main :: () {
         println(i, x)
     }
     println("After iteration: i = \{i}; x = \{x}")
+
+    {
+        foo :: () -> s64 {
+            println("Side effect!")
+            #static i := 0
+            i += 1
+            return i - 1
+        }
+
+        i: s64
+        ys: [2]string
+
+        // Any assignable value can be used as the iterator.
+        println()
+        for i, ys[foo()] = range xs {
+            println(i, ys)
+        }
+        println()
+    }
 
     // You can skip assignment entirely.
     for range xs {

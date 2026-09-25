@@ -1,15 +1,15 @@
-to_cstring :: (s: string, allocator := default_allocator) -> &char {
-    p := &char(allocator.alloc(s.count + 1, zeroed = false))
+to_cstring :: (s: string, allocator := default_allocator) -> &u8 {
+    p := &u8(allocator.alloc(s.count + 1, zeroed = false))
     if s.count != 0 {
         mem.copy(p, s.data, s.count, overlaps = false)
     }
 
-    *(p + &char(s.count)) = 0
+    *(p + &u8(s.count)) = 0
     return p
 }
 
-from_cstring :: (s: &char) -> string {
-    return string([]char(s, C.strlen(s)))
+from_cstring :: (s: &u8) -> string {
+    return string([]u8(s, C.strlen(s)))
 }
 
 to_s64 :: (s: string, base := 10) -> s64, error {
@@ -17,7 +17,7 @@ to_s64 :: (s: string, base := 10) -> s64, error {
     defer temporary_allocator.rewind(rawptr(cstr))
 
     C.set_errno(null)
-    end: &char
+    end: &u8
     result := C.strtoll(cstr, &end, s32(base))
 
     err := C.get_errno()

@@ -1,5 +1,5 @@
 Builder :: struct {
-    cursor:    &char
+    cursor:    &u8
     count:     s64
     allocator: Allocator
 
@@ -16,7 +16,7 @@ free :: (this: &Builder) {
     }
 }
 
-write :: (this: &Builder, bytes: []char) -> s64, error {
+write :: (this: &Builder, bytes: []u8) -> s64, error {
     if this.page_last == null {
         if this.allocator == null then this.allocator = default_allocator
         this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)
@@ -32,12 +32,12 @@ write :: (this: &Builder, bytes: []char) -> s64, error {
 
         if bytes.count <= available {
             if bytes.count != 0 {
-                mem.copy(page.bytes.data + &char(page.count), bytes.data, bytes.count)
+                mem.copy(page.bytes.data + &u8(page.count), bytes.data, bytes.count)
             }
 
             page.count += bytes.count
             this.count += bytes.count
-            this.cursor = page.bytes.data + &char(page.count)
+            this.cursor = page.bytes.data + &u8(page.count)
             return n, null
         }
 
@@ -47,7 +47,7 @@ write :: (this: &Builder, bytes: []char) -> s64, error {
 
         page.count += available
         this.count += available
-        this.cursor = page.bytes.data + &char(page.count)
+        this.cursor = page.bytes.data + &u8(page.count)
         bytes = bytes[available..]
 
         page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
@@ -59,13 +59,13 @@ write :: (this: &Builder, bytes: []char) -> s64, error {
     return n, null
 }
 
-rewind :: (this: &Builder, from: &char = null, location := #caller_location) {
+rewind :: (this: &Builder, from: &u8 = null, location := #caller_location) {
     if this.page_first == null then return
     if from == null            then from = this.page_first.bytes.data
 
     for p := this.page_first; p != null; p = p.next {
         begin := p.bytes.data
-        end   := begin + &char(p.count)
+        end   := begin + &u8(p.count)
         if from >= begin && from <= end {
             for a := s64(from - begin); p != null; p = p.next {
                 p.count = a
@@ -78,18 +78,18 @@ rewind :: (this: &Builder, from: &char = null, location := #caller_location) {
     panic("Builder does not contain the address \{from}", location = location)
 }
 
-to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
+to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
     if this.page_first == null then return ""
     if from == null            then from = this.page_first.bytes.data
 
     head := 0
     for p := this.page_first; p != null; p = p.next {
         begin := p.bytes.data
-        end   := begin + &char(p.count)
+        end   := begin + &u8(p.count)
         if from >= begin && from <= end {
             a     := s64(from - begin)
             count := this.count - (head + a)
-            bytes := mem.new(char, count, allocator = allocator, zeroed = false)
+            bytes := mem.new(u8, count, allocator = allocator, zeroed = false)
 
             head := 0
             left := count
@@ -100,7 +100,7 @@ to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := d
                 }
 
                 if available != 0 {
-                    mem.copy(bytes + &char(head), p.bytes.data + &char(a), available, overlaps = false)
+                    mem.copy(bytes + &u8(head), p.bytes.data + &u8(a), available, overlaps = false)
                 }
 
                 head += available
@@ -110,7 +110,7 @@ to_string :: (this: &Builder, from: &char = null, rewind := true, allocator := d
                 a = 0
                 p = p.next
             }
-            return string([]char(bytes, count))
+            return string([]u8(bytes, count))
         }
         head += p.count
     }
@@ -132,7 +132,7 @@ format :: (this: &Builder, w: Writer, nested := false) -> s64, error {
 #private ...
 
 Page :: struct {
-    bytes: [4096]char
+    bytes: [4096]u8
     count: s64
     next:  &Page
 }

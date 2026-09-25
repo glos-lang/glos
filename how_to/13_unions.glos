@@ -52,7 +52,7 @@ main :: () {
 
     case string
         println("typeof(v) = \{typeof(v)}")
-        println([]char(v)) // v is string here.
+        println([]u8(v)) // v is string here.
     }
 
     // This will not work if you combine cases.

@@ -1,5 +1,5 @@
 main :: () {
-    putc :: (c: char) {
+    putc :: (c: u8) {
         extern {
             putchar :: (ch: s32) -> s32
         }

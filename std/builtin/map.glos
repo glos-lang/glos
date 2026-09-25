@@ -114,7 +114,7 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, k
             data := data + rawptr(it.offset)
             if it.kind == {
             case .RAW
-                hasher.bytes([]char(&char(data), it.size))
+                hasher.bytes([]u8(&u8(data), it.size))
 
             case .FLOAT
                 if it.size == {
@@ -124,7 +124,7 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, k
                 }
 
             case .STRING
-                hasher.bytes(*(&[]char)(data))
+                hasher.bytes(*(&[]u8)(data))
             }
         }
         start = hasher.finish()

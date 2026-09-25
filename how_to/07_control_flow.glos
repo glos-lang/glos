@@ -201,7 +201,7 @@ defer_real_world_example :: () {
         os.exit(1)
     }
 
-    buffer: [64]char
+    buffer: [64]u8
     n, err := f.read(buffer)
     if err != null {
         eprintln("Error: Could not read file '\{PATH}'")

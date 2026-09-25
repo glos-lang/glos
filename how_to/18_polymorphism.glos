@@ -22,7 +22,7 @@ main :: () {
     }
 
     bar([]string {"Foo", "Bar"})
-    bar([]char {'L', 'i', 'g', 'm', 'a'})
+    bar([]u8 {'L', 'i', 'g', 'm', 'a'})
 
     // Now let's look at polymorphic arguments.
     baz :: ($N: s64) {

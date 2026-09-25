@@ -1,10 +1,9 @@
-Cstring :: distinct &char
+Cstring :: distinct &u8
 
 extern {
     puts :: (this: Cstring)
 }
 
 main :: () {
-    message: Cstring = "Hello, world!"
-    message.puts()
+    Cstring("Hello, world!").puts()
 }

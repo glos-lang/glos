@@ -2,7 +2,6 @@ main :: () {
     // Primitives
     {
         write_type(bool)
-        write_type(char)
         write_type(rune)
 
         write_type(s8)
@@ -134,9 +133,6 @@ write_type :: (ti: Type) {
         if variant == {
         case Type_Info_Boolean
             write_string("bool")
-
-        case Type_Info_Character
-            write_string("char")
 
         case Type_Info_Rune
             write_string("rune")

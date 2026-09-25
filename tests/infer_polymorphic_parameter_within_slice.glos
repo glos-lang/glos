@@ -4,5 +4,5 @@ foo :: (vs: []$T) {
 
 main :: () {
     foo([]s64 {69, 420})
-    foo([]char("Hi!"))
+    foo([]u8("Hi!"))
 }

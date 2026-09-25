@@ -1,8 +1,8 @@
 main :: () {
-    println("Hello, world!".data)
+    println("Hello, world!")
 }
 
 extern {
     #link "puts"
-    println :: (s: &char) -> s32
+    println :: (s: &u8) -> s32
 }

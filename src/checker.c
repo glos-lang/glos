@@ -79,10 +79,10 @@ void check_nodes(Compiler *c) {
         };
     }
 
-    // []char
+    // []u8
     {
-        const Type char_type = {.kind = TYPE_CHAR};
-        c->char_slice_type = (Type) {
+        const Type char_type = {.kind = TYPE_U8};
+        c->u8_slice_type = (Type) {
             .kind = TYPE_SLICE,
             .spec.slice.element = arena_clone(&default_arena, &char_type, sizeof(char_type)),
         };
@@ -143,11 +143,10 @@ void check_nodes(Compiler *c) {
 
         assert(type_info_variant->kind == TYPE_UNION);
         c->type_info_variants_union = type_info_variant->spec.unionn;
-        assert(c->type_info_variants_union->variants_count == 17);
+        assert(c->type_info_variants_union->variants_count == 16);
 
-        static_assert(COUNT_TYPES == 33, "");
+        static_assert(COUNT_TYPES == 32, "");
         c->type_info_variants[TYPE_BOOL] = CONTRACT_TYPE_INFO_BOOLEAN;
-        c->type_info_variants[TYPE_CHAR] = CONTRACT_TYPE_INFO_CHARACTER;
         c->type_info_variants[TYPE_RUNE] = CONTRACT_TYPE_INFO_RUNE;
 
         c->type_info_variants[TYPE_S8] = CONTRACT_TYPE_INFO_INTEGER;

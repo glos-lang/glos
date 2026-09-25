@@ -1,5 +1,5 @@
 Writer :: trait {
-    write: (bytes: []char) -> s64, error
+    write: (bytes: []u8) -> s64, error
 }
 
 wprint :: (w: Writer, vs: ...Any) -> s64, error {
@@ -9,7 +9,7 @@ wprint :: (w: Writer, vs: ...Any) -> s64, error {
         if interpolating != 0 {
             interpolating -= 1
         } else if i != 0 {
-            n += w.write([]char(" "))?
+            n += w.write([]u8(" "))?
         }
 
         v := vs[i]
@@ -19,7 +19,7 @@ wprint :: (w: Writer, vs: ...Any) -> s64, error {
         }
 
         if v == null {
-            n += w.write([]char("null"))?
+            n += w.write([]u8("null"))?
         } else {
             n += write_value(w, v, false)?
         }

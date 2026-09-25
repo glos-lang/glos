@@ -2,7 +2,7 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 Const_Value default_const_value(Compiler *c, Type type) {
     if (type.ref) {
         return const_value_u64(0);
@@ -10,7 +10,6 @@ Const_Value default_const_value(Compiler *c, Type type) {
 
     switch (type.kind) {
     case TYPE_BOOL:
-    case TYPE_CHAR:
     case TYPE_RUNE:
 
     case TYPE_S8:
@@ -233,7 +232,7 @@ Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return atom->definition->definition_spec->const_value;
 
     case TOKEN_STRING:
-        if (type_eq(n->type, (Type) {.kind = TYPE_CHAR, .ref = 1})) {
+        if (n->type.ref) {
             error_node(
                 EK_ERROR,
                 n,

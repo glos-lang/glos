@@ -1,6 +1,7 @@
 EXIT 0
-STDOUT 4
+STDOUT 8
 Hi!
+LoL
 
 STDERR 0
 

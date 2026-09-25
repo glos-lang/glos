@@ -115,7 +115,7 @@ main :: () {
     // The C FFI will be described in detail later
     extern {
         // By omitting the type of the variadic argument, it becomes untyped
-        printf :: (fmt: &char, ...) -> s32
+        printf :: (fmt: &u8, ...) -> s32
     }
 
     printf("Check this out: %zd %.14g\n", 69, 420.1337)

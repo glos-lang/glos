@@ -3,7 +3,7 @@ main :: () {
 }
 
 Opaque :: struct($T: Type) {
-    data: [sizeof(T)]char
+    data: [sizeof(T)]u8
 }
 
 make_opaque :: (x: $T) -> Opaque(T) {

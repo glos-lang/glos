@@ -17,7 +17,7 @@ println_str :: (s: string) {
     putchar(s32('\n'))
 }
 
-println_char :: (c: char) {
+println_char :: (c: u8) {
     putchar(s32(c))
     putchar(s32('\n'))
 }

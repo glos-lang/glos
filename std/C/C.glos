@@ -1,8 +1,8 @@
 extern {
-    puts :: (s: &char) -> s32
-    printf :: (fmt: &char, ...) -> s32
-    fprintf :: (f: os.File, fmt: &char, ...) -> s32
-    snprintf :: (out: &char, size: u64, fmt: &char, ...) -> s32
+    puts :: (s: &u8) -> s32
+    printf :: (fmt: &u8, ...) -> s32
+    fprintf :: (f: os.File, fmt: &u8, ...) -> s32
+    snprintf :: (out: &u8, size: u64, fmt: &u8, ...) -> s32
     fwrite :: (ptr: rawptr, size: u64, count: u64, f: os.File) -> u64
     fflush :: (f: os.File)
     abort :: noreturn ()
@@ -15,16 +15,16 @@ extern {
     memmove :: (dst: rawptr, src: rawptr, count: u64) -> rawptr
     memset :: (dst: rawptr, ch: s32, count: u64) -> rawptr
     memchr :: (s: rawptr, ch: s32, count: u64) -> rawptr
-    strlen :: (s: &char) -> u64
+    strlen :: (s: &u8) -> u64
     atexit :: (function: ()) -> s32
-    getenv :: (name: &char) -> &char
-    fopen :: (path: &char, mode: &char) -> os.File
+    getenv :: (name: &u8) -> &u8
+    fopen :: (path: &u8, mode: &u8) -> os.File
     fclose :: (f: os.File) -> s32
     fseek :: (f: os.File, offset: s64, whence: s32) -> s32
     ftell :: (f: os.File) -> s64
     ferror :: (f: os.File) -> s32
     fread :: (ptr: rawptr, size: u64, count: u64, f: os.File) -> u64
-    strtoll :: (s: &char, end: &&char, base: s32) -> s64
+    strtoll :: (s: &u8, end: &&u8, base: s32) -> s64
 }
 
 SEEK_SET :: 0

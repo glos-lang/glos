@@ -3,5 +3,5 @@ main :: () {
 }
 
 extern {
-    printf :: (fmt: &char, ...)
+    printf :: (fmt: &u8, ...)
 }

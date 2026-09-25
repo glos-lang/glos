@@ -3,7 +3,7 @@ Hasher :: struct {
     count: u64
 }
 
-bytes :: (this: &Hasher, bytes: []char) {
+bytes :: (this: &Hasher, bytes: []u8) {
     HASHER_FNV_PRIME :: 0x100_0000_01B3
 
     hash := this.hash
@@ -12,14 +12,14 @@ bytes :: (this: &Hasher, bytes: []char) {
     for left >= 8 {
         hash ^= *(&u64)(data)
         hash *= HASHER_FNV_PRIME
-        data += &char(8)
+        data += &u8(8)
         left -= 8
     }
 
     for left > 0 {
         hash ^= u64(*data)
         hash *= HASHER_FNV_PRIME
-        data += &char(1)
+        data += &u8(1)
         left -= 1
     }
 
@@ -30,7 +30,7 @@ bytes :: (this: &Hasher, bytes: []char) {
 float :: (this: &Hasher, f: f64) {
     if f == 0.0 then f = 0.0                   // +0.0 and -0.0 have different bit representations
     if f != f   then f = 0h7FF8_0000_0000_0000 // NaN
-    this.bytes([]char(&char(&f), sizeof(f)))
+    this.bytes([]u8(&u8(&f), sizeof(f)))
 }
 
 finish :: (this: Hasher) -> u64 {

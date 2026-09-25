@@ -6,7 +6,7 @@ main :: () {
     print(string(CONTENTS))
     println("```")
 
-    // The '#embed' directive creates a '[]char' value.
+    // The '#embed' directive creates a '[]u8' value.
     println("typeof(CONTENTS) = \{typeof(CONTENTS)}")
     println()
 

@@ -177,7 +177,7 @@ void maybe_show_note_about_underlying_types_being_equal_and_suggest_an_explicit_
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 Int_Limit get_int_limit(Type type) {
     const Type_Kind type_kind = type_kind_eq(type, TYPE_ENUM) ? type.spec.enumm.underlying : type.kind;
     if (type_is_signed(type)) {
@@ -196,7 +196,6 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_U16] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT16_MAX)},
             [TYPE_U32] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
             [TYPE_U64] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
-            [TYPE_CHAR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT8_MAX)},
             [TYPE_ERROR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
         };
         return limits[type_kind];
@@ -227,10 +226,9 @@ void check_int_limit(Compiler *c, Node *n, Int128 value) {
 }
 
 bool get_builtin_type_kind(SV name, Type_Kind *kind) {
-    static_assert(COUNT_TYPES == 33, "");
+    static_assert(COUNT_TYPES == 32, "");
     static const char *names[COUNT_TYPES] = {
         [TYPE_BOOL] = "bool",
-        [TYPE_CHAR] = "char",
         [TYPE_RUNE] = "rune",
 
         [TYPE_S8] = "s8",
@@ -519,7 +517,6 @@ void finalize_untyped_type(Compiler *c, Node *n) {
 bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
     if (type_kind_eq(n->type, TYPE_INT) &&                                                       //
         (type_is_integer(expected) ||                                                            //
-         type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR}) ||                       //
          type_eq_without_distinct(expected, (Type) {.kind = TYPE_RUNE}) ||                       //
          (type_kind_eq(expected, TYPE_ENUM) && !expected.ref && !type_is_error_enum(expected)))) //
     {
@@ -615,23 +612,23 @@ bool try_auto_cast_literal(Compiler *c, Node *n, Type expected) {
         }
     }
 
-    // untyped string -> &char
+    // untyped string -> &u8 or &s8
     if (n->kind == NODE_ATOM && n->token.kind == TOKEN_STRING &&
-        type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR, .ref = 1})) //
+        (!expected.is_meta && expected.ref == 1 && (expected.kind == TYPE_S8 || expected.kind == TYPE_U8))) //
     {
         n->type = expected;
         return true;
     }
 
     if (n->kind == NODE_ATOM && n->token.kind == TOKEN_CHAR &&
-        type_eq_without_distinct(expected, (Type) {.kind = TYPE_CHAR})) //
+        (!expected.is_meta && expected.ref == 0 && (expected.kind == TYPE_S8 || expected.kind == TYPE_U8))) //
     {
         if (n->token.as.integer > UINT8_MAX) {
             error_node(
                 EK_ERROR,
                 n,
                 "Character U+%X is invalid for %s, which must be in range [0, %zu]",
-                (uint32_t) n->token.as.integer,
+                (u32) n->token.as.integer,
                 type_to_cstr(expected),
                 (size_t) UINT8_MAX);
             exit(c, 1);

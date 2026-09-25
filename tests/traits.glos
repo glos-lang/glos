@@ -1,9 +1,9 @@
 Writer :: trait {
-    write: (bytes: []char)
+    write: (bytes: []u8)
 }
 
 greet :: (w: Writer) {
-    w.write([]char("Hello, world!\n"))
+    w.write([]u8("Hello, world!\n"))
 }
 
 File :: distinct os.File
@@ -12,8 +12,8 @@ main :: () {
     greet(File(os.stdout))
 }
 
-write :: (this: File, bytes: []char) {
-    C.fwrite(rawptr(bytes.data), sizeof(char), u64(bytes.count), os.File(this))
+write :: (this: File, bytes: []u8) {
+    C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), os.File(this))
 }
 
 C  :: #import "C"

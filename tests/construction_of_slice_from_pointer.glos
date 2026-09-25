@@ -1,12 +1,12 @@
 main :: () {
     source :: "Hello, world!"
-    println([]char(source.data, 5))
+    println([]u8(source.data, 5))
 
-    foo :: () -> &char, s64 { return source.data, source.count }
-    println([]char(foo()))
+    foo :: () -> &u8, s64 { return source.data, source.count }
+    println([]u8(foo()))
 }
 
-foo :: (s: &char) -> string {
-    return string([]char(s, strlen(s)))
-    extern { strlen :: (s: &char) -> u64 }
+foo :: (s: &u8) -> string {
+    return string([]u8(s, strlen(s)))
+    extern { strlen :: (s: &u8) -> u64 }
 }

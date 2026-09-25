@@ -5,12 +5,12 @@ foo :: () {
 
 extern {
     #private
-    puts :: (s: &char) -> s32
-    printf :: (s: &char, ...) -> s32
+    puts :: (s: &u8) -> s32
+    printf :: (s: &u8, ...) -> s32
 }
 
 #private
 extern {
-    fputs :: (s: &char, f: File) -> s32
+    fputs :: (s: &u8, f: File) -> s32
     fputc :: (c: s32, f: File) -> s32
 }

@@ -87,7 +87,7 @@ typedef struct {
     Optimization_Level optimization_level;
 
     Type main_fn_type;
-    Type char_slice_type;
+    Type u8_slice_type;
     DA(Type_Struct_Field) struct_fields;
 
     DA(Node *) designated_initializers;

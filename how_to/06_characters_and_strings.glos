@@ -1,9 +1,19 @@
 main :: () {
-    // Characters are 1 byte values
-    println("sizeof(char) = \{sizeof(char)}")
+    // The type 'rune' is used for representing UTF-8 characters.
+    ch: rune = 'A'
+    println(ch)
 
-    ch: char = 'E'
-    print(ch)
+    // It is an unsigned 32-bit integer.
+    println("sizeof(rune) = \{sizeof(rune)}")
+
+    // You can also use 'u8' and 's8' for characters, but then the character set will be limited.
+    {
+        ch: u8 = 'B'
+        println(ch)
+
+        ch: s8 = 'C'
+        println(ch)
+    }
 
     // The typical special characters are supported: '\e', '\n', '\r', '\t', '\0', '\'', '\"', '\\'
     ch = '\n'
@@ -16,13 +26,13 @@ main :: () {
     // Strings are sized views in Glos, and are compiled to this compound value.
     //
     //     struct {
-    //         data:  &char
+    //         data:  &u8
     //         count: i64
     //     }
     //
 
     // You can access the 'data' and 'count' fields
-    println("typeof(s.data) = \{typeof(s.data)}; s.data = \{s.data}")
+    println("typeof(s.data)  = \{typeof(s.data)}; s.data  = \{s.data}")
     println("typeof(s.count) = \{typeof(s.count)}; s.count = \{s.count}")
 
     // You can modify the fields. This is a low level language.
@@ -37,7 +47,7 @@ main :: () {
     println(s[1..])
     println(s[..])
 
-    // You can index into strings. The resultant value is of type 'char'
+    // You can index into strings. The resultant value is of type 'u8'
     println("typeof(s[0]) = \{typeof(s[0])}; s[0] = \{s[0]}")
 
     // Indexing and slicing are bounds checked at runtime, just like arrays and
@@ -47,12 +57,20 @@ main :: () {
     // s[420..1337] // Uncomment this and see what happens
     // s[1337..420] // Uncomment this and see what happens
 
-    // You can cast between strings and character slices.
-    chars := []char(s)
-    println(chars)
+    // You can cast between strings and i8 or u8 slices.
+    {
+        chars := []u8(s)
+        println(chars)
 
-    chars.count = 4
-    println(string(chars))
+        chars.count = 4
+        println(string(chars))
+
+        chars := []s8(s)
+        println(chars)
+
+        chars.count = 4
+        println(string(chars))
+    }
 
     // Now let's address the elephant in the room: String interpolation.
     println("Yes. this is \{"supported"}. In fact, arbitrary expressions are allowed like this: \{nice()}")
@@ -76,25 +94,30 @@ main :: () {
     //
     // No matter how superior the sized string view model of Glos is, at the end of the day,
     // to write useful software we need to interact with C code. And for that we need the
-    // stinky NULL terminated '&char' values.
+    // stinky NULL terminated '&u8' or '&s8' values.
 
     // Define an external function 'puts'
     extern {
-        puts :: (s: &char) -> s32
+        #link "puts"
+        uputs :: (s: &u8) -> s32
+
+        #link "puts"
+        sputs :: (s: &s8) -> s32
 
         // The C FFI mechanisms will be described in detail later
     }
 
-    // String literals can be automatically casted to '&char'.
-    puts("Hello from Glos using C!")
+    // String literals can be automatically casted to '&u8' or '&s8'.
+    uputs("Hello from Glos using C!")
+    sputs("Hello from Glos using C!")
 
     // However, this will not work for variable string values.
     // puts(s) // This is an error.
 
     // You can try to access the 'data' field, but it will not behave correctly due to lacking a NULL terminator.
-    puts(s.data) // This prints "Hello, world!", and not "Hello"
+    uputs(s.data) // This prints "Hello, world!", and not "Hello"
 
     // For runtime 'string' values, a helper function from the standard library can be used
     strings :: #import "strings" // Modules and imports will be covered later
-    puts(strings.to_cstring(s))  // The 'to_cstring' allocates dynamic memory at runtime using the default allocator.
+    uputs(strings.to_cstring(s))  // The 'to_cstring' allocates dynamic memory at runtime using the default allocator.
 }

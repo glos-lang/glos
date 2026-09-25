@@ -756,7 +756,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRING)) {
                 if (sv_match(n->token.sv, "data")) {
-                    n->type = (Type) {.kind = TYPE_CHAR, .ref = 1};
+                    n->type = (Type) {.kind = TYPE_U8, .ref = 1};
                     member->field_index = 0;
                 } else if (sv_match(n->token.sv, "count")) {
                     n->type = (Type) {.kind = TYPE_S64};
@@ -1686,22 +1686,34 @@ void check_expr_call(Compiler *c, Node_Call *call) {
             } else if (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) && type_is_error_enum(*from_type)) {
                 same = true;
             } else {
-                Type char_type = {.kind = TYPE_CHAR};
-                Type char_slice_type = {
+                Type s8_type = {.kind = TYPE_S8};
+                Type s8_slice_type = {
                     .kind = TYPE_SLICE,
-                    .spec.slice.element = &char_type,
+                    .spec.slice.element = &s8_type,
                 };
-                Type string_type = {.kind = TYPE_STRING};
 
-                if (type_eq(*to_type, string_type) && type_eq(*from_type, char_slice_type)) {
-                    same = true;
-                } else if (type_eq(*from_type, string_type) && type_eq(*to_type, char_slice_type)) {
+                Type u8_type = {.kind = TYPE_U8};
+                Type u8_slice_type = {
+                    .kind = TYPE_SLICE,
+                    .spec.slice.element = &u8_type,
+                };
+
+                Type string_type = {.kind = TYPE_STRING};
+                if (type_eq(*to_type, string_type) &&
+                    (type_eq(*from_type, s8_slice_type) || type_eq(*from_type, u8_slice_type))) //
+                {
                     same = true;
                 } else if (
-                    type_eq(*to_type, string_type) &&                                     //
-                    (from_type->ref == 0 &&                                               //
-                     type_kind_eq(*from_type, TYPE_ARRAY) &&                              //
-                     type_eq(*from_type->spec.array.element, (Type) {.kind = TYPE_CHAR})) //
+                    type_eq(*from_type, string_type) &&
+                    (type_eq(*to_type, s8_slice_type) || type_eq(*to_type, u8_slice_type))) //
+                {
+                    same = true;
+                } else if (
+                    type_eq(*to_type, string_type) &&        //
+                    (from_type->ref == 0 &&                  //
+                     type_kind_eq(*from_type, TYPE_ARRAY) && //
+                     (type_eq(*from_type->spec.array.element, s8_type) ||
+                      type_eq(*from_type->spec.array.element, u8_type))) //
                 ) {
                     call->type_cast = TYPE_CAST_ARRAY_TO_SLICE;
                 } else {
@@ -1727,8 +1739,10 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                         from->type = c->type_info_pointer_type;
                         same = true;
                     } else if (
-                        type_eq_without_distinct(*to_type, (Type) {.kind = TYPE_CHAR, .ref = 1}) && //
-                        from->kind == NODE_ATOM && from->token.kind == TOKEN_STRING)                //
+                        (!to_type->is_meta && to_type->ref == 1 &&                  //
+                         (to_type->kind == TYPE_S8 || to_type->kind == TYPE_U8)) && //
+                        from->kind == NODE_ATOM &&                                  //
+                        from->token.kind == TOKEN_STRING)                           //
                     {
                         same = true;
                         from->type = *to_type;
@@ -1940,7 +1954,7 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
         } else if (type_kind_eq(index->lhs->type, TYPE_STRING)) {
             check_expr(c, index->a, REF_NONE);
             type_assert_numeric(c, index->a, false, false);
-            n->type = (Type) {.kind = TYPE_CHAR};
+            n->type = (Type) {.kind = TYPE_U8};
         } else {
             index->overload = get_operator_overload(c, OPERATOR_INDEX, index->lhs, n, n->module);
 
@@ -2052,7 +2066,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
             error_node(EK_ERROR, n, "Could not read file '" SV_Fmt "'", SV_Arg(embed->path.as.string));
             exit(c, 1);
         }
-        n->type = c->char_slice_type;
+        n->type = c->u8_slice_type;
     } break;
 
     case NODE_GROUP:

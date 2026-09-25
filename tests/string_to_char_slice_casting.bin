@@ -1,7 +1,9 @@
 EXIT 0
-STDOUT 38
+STDOUT 68
 Hello
-{'H', 'e', 'l', 'l', 'o'}
+{72, 101, 108, 108, 111}
+Hello
+{72, 101, 108, 108, 111}
 Hello
 
 STDERR 0

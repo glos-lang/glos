@@ -70,7 +70,6 @@ void modules_free(Modules *m);
 typedef enum {
     TYPE_VOID,
     TYPE_BOOL,
-    TYPE_CHAR,
     TYPE_RUNE,
 
     TYPE_S8,

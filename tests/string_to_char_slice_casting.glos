@@ -2,9 +2,15 @@ main :: () {
     a := "Hello"
     println(a)
 
-    b := []char(a)
+    b := []u8(a)
     println(b)
 
     c := string(b)
     println(c)
+
+    d := []s8(c)
+    println(d)
+
+    e := string(d)
+    println(e)
 }

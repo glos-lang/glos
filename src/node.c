@@ -93,7 +93,7 @@ static void sb_push_polymorphs(SB *sb, Polymorphs ps) {
     sb_push(sb, ')');
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 void sb_push_type(SB *sb, Type type) {
     assert(!type.is_meta);
     if (type.distinct) {
@@ -118,10 +118,6 @@ void sb_push_type(SB *sb, Type type) {
 
     case TYPE_BOOL:
         sb_push_cstr(sb, "bool");
-        break;
-
-    case TYPE_CHAR:
-        sb_push_cstr(sb, "char");
         break;
 
     case TYPE_RUNE:
@@ -488,7 +484,7 @@ static bool type_struct_eq(Type_Struct *a, Type_Struct *b) {
     return true;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_eq(Type a, Type b) {
     if (a.is_meta) {
         return b.is_meta;
@@ -587,7 +583,7 @@ bool type_meta_kind_eq(Type type, Type_Kind kind) {
     return type.is_meta && type.kind == kind;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_numeric(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -598,7 +594,6 @@ bool type_is_numeric(Type type) {
     }
 
     switch (type.kind) {
-    case TYPE_CHAR:
     case TYPE_RUNE:
     case TYPE_ENUM:
     case TYPE_UNKNOWN_ENUM:
@@ -610,7 +605,7 @@ bool type_is_numeric(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_integer(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -635,7 +630,7 @@ bool type_is_integer(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_float(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -650,7 +645,7 @@ bool type_is_pointer(Type type) {
     return type.ref != 0 || type.kind == TYPE_RAWPTR;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_scalar(Type type) {
     if (type.is_meta) {
         return false;
@@ -660,19 +655,10 @@ bool type_is_scalar(Type type) {
         return true;
     }
 
-    switch (type.kind) {
-    case TYPE_BOOL:
-    case TYPE_CHAR:
-    case TYPE_RUNE:
-    case TYPE_FN:
-        return true;
-
-    default:
-        return false;
-    }
+    return type.kind == TYPE_BOOL || type.kind == TYPE_RUNE || type.kind == TYPE_FN;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_signed(Type type) {
     if (type.ref || type.is_meta) {
         return false;
@@ -706,7 +692,7 @@ bool type_is_signed(Type type) {
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_untyped(Type type) {
     if (type.is_meta || type.ref) {
         return false;
@@ -715,7 +701,7 @@ bool type_is_untyped(Type type) {
     return type.kind == TYPE_INT || type.kind == TYPE_FLOAT;
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 bool type_is_unknown(Type type) {
     if (type.is_meta || type.ref) {
         return false;
@@ -768,7 +754,7 @@ static void hasher_add_type_struct(Hasher *h, const Type_Struct *structt) {
     }
 }
 
-static_assert(COUNT_TYPES == 33, "");
+static_assert(COUNT_TYPES == 32, "");
 void hasher_add_type(Hasher *h, const Type *t) {
     if (!t) {
         return;
@@ -984,14 +970,6 @@ static void sb_push_const_value_impl(SB *sb, Type type, Const_Value v, bool raw)
     case CONST_VALUE_INT:
         if (type_kind_eq(type, TYPE_BOOL)) {
             sb_push_cstr(sb, int128_is_zero(v.as.integer) ? "false" : "true");
-        } else if (type_kind_eq(type, TYPE_CHAR)) {
-            if (raw) {
-                sb_push(sb, (char) v.as.integer.low);
-            } else {
-                sb_push(sb, '\'');
-                sb_push_quoted_char(sb, (char) v.as.integer.low, '\'');
-                sb_push(sb, '\'');
-            }
         } else if (type_kind_eq(type, TYPE_RUNE)) {
             if (raw) {
                 sb_push_rune(sb, v.as.integer.low);

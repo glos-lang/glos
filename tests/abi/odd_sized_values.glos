@@ -7,19 +7,19 @@ main :: () {
 }
 
 S3 :: struct {
-    xs: [3]char
+    xs: [3]u8
 }
 
 S11 :: struct {
-    xs: [11]char
+    xs: [11]u8
 }
 
 extern {
     #library "abi"
 
     s3_foo :: (s: S3)
-    s3_ret :: (xs: &char) -> S3
+    s3_ret :: (xs: &u8) -> S3
 
     s11_foo :: (s: S11)
-    s11_ret :: (xs: &char) -> S11
+    s11_ret :: (xs: &u8) -> S11
 }
