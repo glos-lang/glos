@@ -1,8 +1,4 @@
-Writer :: trait {
-    write: (bytes: []u8) -> s64, error
-}
-
-wprint :: (w: Writer, vs: ...Any) -> s64, error {
+wprint :: (w: io.Writer, vs: ...Any) -> s64, error {
     n := 0
     interpolating := 0
     for i := 0; i < vs.count; i += 1 {
@@ -27,7 +23,7 @@ wprint :: (w: Writer, vs: ...Any) -> s64, error {
     return n, null
 }
 
-wprintln :: (w: Writer, vs: ...Any) -> s64, error {
+wprintln :: (w: io.Writer, vs: ...Any) -> s64, error {
     wprint(w, ...vs)?
     return wprint(w, '\n')
 }

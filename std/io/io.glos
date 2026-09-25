@@ -1,0 +1,9 @@
+Writer :: trait {
+    write: (bytes: []u8) -> s64, error
+}
+
+Seek :: enum {
+    START   = 0
+    CURRENT = 1
+    END     = 2
+}

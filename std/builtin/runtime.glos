@@ -93,6 +93,7 @@ runtime_deinit :: () {
 }
 
 C       :: #import "C"
+io      :: #import "io"
 os      :: #import "os"
 mem     :: #import "memory"
 strings :: #import "strings"

@@ -1,5 +1,5 @@
 Allocator :: trait {
-    alloc:  (size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr
+    alloc:  (size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr, error
     rewind: (ptr: rawptr, align := true, location := #caller_location)
 }
 
@@ -10,25 +10,31 @@ temporary_allocator := Allocator(&t_allocator)
 
 C_Allocator :: struct {}
 
-alloc :: (this: &C_Allocator, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr {
+alloc :: (this: &C_Allocator, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr, error {
+    new: rawptr
     if old != null {
         if size == 0 {
             C.free(old)
-            return null
+            return new, null
         }
 
-        return C.realloc(old, C.size_t(size))
+        new = C.realloc(old, C.size_t(size))
     } else {
         if size == 0 {
-            return null
+            return new, null
         }
 
         if zeroed {
-            return C.calloc(1, C.size_t(size))
+            new = C.calloc(1, C.size_t(size))
+        } else {
+            new = C.malloc(C.size_t(size))
         }
-
-        return C.malloc(C.size_t(size))
     }
+
+    if new == null {
+        return new, C.get_errno()
+    }
+    return new, null
 }
 
 rewind :: (this: &C_Allocator, ptr: rawptr, align := true, location := #caller_location) {}

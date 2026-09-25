@@ -1,3 +1,5 @@
 main :: () {
     Writer.write
 }
+
+#import "io"

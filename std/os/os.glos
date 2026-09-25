@@ -2,5 +2,89 @@ args: []string
 
 exit :: C.exit
 
+File :: distinct rawptr
+
+// TODO: Only binary is supported
+open :: (path: string, read: bool) -> File, error {
+    path := strings.to_cstring(path, temporary_allocator)
+    defer temporary_allocator.rewind(rawptr(path))
+
+    f: File
+    if read {
+        f = File(C.fopen(path, "r"))
+    } else {
+        f = File(C.fopen(path, "w"))
+    }
+
+    if f == null {
+        return f, C.get_errno()
+    }
+    return f, null
+}
+
+seek :: (this: File, offset: s32, whence: io.Seek) -> s64, error {
+    if C.fseek(C.FILE(this), C.int(offset), C.int(whence)) != 0 {
+        return 0, C.get_errno()
+    }
+
+    #if PLATFORM == .WINDOWS {
+        n := C._ftelli64(C.FILE(this))
+    } else {
+        n := C.ftell(C.FILE(this))
+    }
+
+    if n == -1 {
+        return 0, C.get_errno()
+    }
+    return n, null
+}
+
+read :: (this: File, bytes: []u8) -> s64, error {
+    n := C.fread(rawptr(bytes.data), 1, C.size_t(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
+        return s64(n), C.get_errno()
+    }
+    return s64(n), null
+}
+
+write :: (this: File, bytes: []u8) -> s64, error {
+    n := C.fwrite(rawptr(bytes.data), sizeof(u8), C.size_t(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
+        return s64(n), C.get_errno()
+    }
+    return s64(n), null
+}
+
+close :: inline (this: &File) {
+    C.fclose(C.FILE(*this))
+    *this = null
+}
+
+rewind :: inline (this: File) {
+    C.rewind(C.FILE(this))
+}
+
+#if PLATFORM == {
+case .LINUX
+    extern {
+        stdin:  File
+        stdout: File
+        stderr: File
+    }
+
+case .MACOS
+    extern {
+        #link "__stdinp"  stdin:  File
+        #link "__stdoutp" stdout: File
+        #link "__stderrp" stderr: File
+    }
+
+case .WINDOWS
+    stdin:  File
+    stdout: File
+    stderr: File
+}
+
 C       :: #import "C"
+io      :: #import "io"
 strings :: #import "strings"

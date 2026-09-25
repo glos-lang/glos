@@ -5,7 +5,7 @@ App :: struct {
 }
 
 init :: (this: &App) {
-    contents, _ := os.read_entire_file(TASKS_PATH)
+    contents, _ := fs.read_entire_file(TASKS_PATH)
     contents := string(contents)
     for contents.count != 0 {
         lhs: string
@@ -141,7 +141,7 @@ main :: () {
         os.exit(1)
     }
 
-    usage :: (w: Writer) {
+    usage :: (w: io.Writer) {
         wprintln(w, "Usage: tasks <command> [args...]")
         wprintln(w, "Commands:")
         wprintln(w, "    help                    Show this message and exit")
@@ -152,5 +152,7 @@ main :: () {
     }
 }
 
+fs      :: #import "fs"
 os      :: #import "os"
+io      :: #import "io"
 strings :: #import "strings"

@@ -501,6 +501,11 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         monomorphize_nodes(c, &group->nodes, first);
     } break;
 
+    case NODE_THROW: {
+        Node_Throw *throw = (Node_Throw *) n;
+        monomorphize_node(c, &throw->value, first);
+    } break;
+
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
         monomorphize_node(c, &unary->value, first);

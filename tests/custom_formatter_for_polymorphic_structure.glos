@@ -3,7 +3,7 @@ Vec2 :: struct($T: Type) {
 }
 
 #hook
-format :: (this: &Vec2($T), w: Writer, nested: bool) -> s64, error {
+format :: (this: &Vec2($T), w: io.Writer, nested: bool) -> s64, error {
     return wprint(w, "Vec2(\{this.x}, \{this.y})")
 }
 
@@ -11,3 +11,5 @@ main :: () {
     println(Vec2(s32) {69, 420})
     println(Vec2(f32) {13.37, 800.85})
 }
+
+io :: #import "io"

@@ -1,7 +1,9 @@
-greet :: (w: $T/Writer) {
+greet :: (w: $T/io.Writer) {
     wprintln(w, "Hello, world!")
 }
 
 main :: () {
     greet("Urmom")
 }
+
+io :: #import "io"

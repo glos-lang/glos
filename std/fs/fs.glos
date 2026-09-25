@@ -1,0 +1,32 @@
+// TODO: Only binary is supported
+read_entire_file :: (path: string, allocator := default_allocator) -> []u8, error {
+    f, err := os.open(path, true)
+    if err != null {
+        return {}, err
+    }
+    defer f.close()
+
+    offset, err := f.seek(0, .END)
+    if err != null {
+        return {}, err
+    }
+    f.rewind()
+
+    data, err := allocator.alloc(offset + 1, zeroed = false)
+    if err != null {
+        return {}, err
+    }
+    bytes := []u8(&u8(data), offset + 1)
+
+    n, err := f.read(bytes)
+    if err != null {
+        return bytes, err // TODO: A single read() might not read everything.
+    }
+
+    bytes[n] = 0
+    bytes.count = n
+    allocator.rewind(rawptr(bytes.data) + rawptr(n + 1))
+    return bytes, null
+}
+
+os :: #import "os"

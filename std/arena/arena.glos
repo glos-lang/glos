@@ -4,7 +4,7 @@ Arena :: struct {
     capacity: s64
 }
 
-alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr {
+alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr, error {
     if this.data == null {
         if this.capacity == 0 {
             this.capacity = 256 * 1024 * 1024
@@ -12,19 +12,20 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
 
         #if PLATFORM == .WINDOWS {
             this.data = win.VirtualAlloc(null, win.SIZE_T(this.capacity), win.MEM_RESERVE | win.MEM_COMMIT, win.PAGE_READWRITE)
+            if this.data == null {
+                return null, C.get_errno()
+            }
         } else {
             this.data = posix.mmap(null, C.size_t(this.capacity), posix.PROT_READ | posix.PROT_WRITE, posix.MAP_PRIVATE | posix.MAP_ANONYMOUS, -1, 0)
             if this.data == posix.MAP_FAILED {
-                this.data = null
+                return null, C.get_errno()
             }
         }
-
-        assert(this.data != null)
     }
 
     ptr := this.data + rawptr(this.head)
     if size == 0 {
-        return ptr
+        return ptr, null
     }
 
     if align {
@@ -39,7 +40,7 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
     if zeroed {
         C.memset(ptr, 0, u64(size))
     }
-    return ptr
+    return ptr, null
 }
 
 rewind :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location) {

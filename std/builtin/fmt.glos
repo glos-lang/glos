@@ -1,6 +1,6 @@
 #private ...
 
-write_rune :: (w: Writer, r: rune) -> s64, error {
+write_rune :: (w: io.Writer, r: rune) -> s64, error {
     cp := u32(r)
 
     // Treat anything invalid/out-of-range/surrogate as U+FFFD.
@@ -33,7 +33,7 @@ write_rune :: (w: Writer, r: rune) -> s64, error {
     return w.write(buffer[..count])
 }
 
-write_type :: (w: Writer, t: Type) -> s64, error {
+write_type :: (w: io.Writer, t: Type) -> s64, error {
     if t == null {
         return w.write([]u8("null"))
     }
@@ -183,7 +183,7 @@ write_type :: (w: Writer, t: Type) -> s64, error {
     return n, null
 }
 
-write_quoted_rune :: (w: Writer, r: rune, quote: u8) -> s64, error {
+write_quoted_rune :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
     if r == {
     case '\e'; return w.write([]u8("\\e"))
     case '\n'; return w.write([]u8("\\n"))
@@ -210,7 +210,7 @@ write_quoted_rune :: (w: Writer, r: rune, quote: u8) -> s64, error {
     }
 }
 
-write_value :: (w: Writer, a: Any, nested: bool) -> s64, error {
+write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
     if a.type != null && a.type.format != null {
         return a.type.format(a.data, w, nested)
     }
