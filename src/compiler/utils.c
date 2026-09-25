@@ -218,6 +218,7 @@ void compile_panic(Compiler *c, Pos pos, Contract_Panic panic, LLVMValueRef v1, 
         location,
     };
 
+    set_debug_pos(c, pos);
     LLVMBuildCall2(c->llvm_builder, fn.type->llvm, fn.value, args, len(args), "");
     LLVMBuildUnreachable(c->llvm_builder);
 }

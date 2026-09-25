@@ -663,8 +663,9 @@ typedef struct {
 } Node_Group;
 
 typedef struct {
-    Node  node;
-    Node *value;
+    Node     node;
+    Node    *value;
+    Node_Fn *fn;
 } Node_Throw;
 
 typedef struct {

@@ -699,8 +699,6 @@ void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group
             unreachable();
         }
     } else {
-        set_debug_pos(c, n->token.pos);
-
         compile_defers(c, c->defers_start, false);
         set_debug_pos(c, n->token.pos);
         if (n->type.kind == TYPE_VOID) {
@@ -712,4 +710,60 @@ void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group
 
     LLVMPositionBuilderAtEnd(c->llvm_builder, LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, ""));
     c->group_values.count = group_values_count_save;
+}
+
+void compile_return_error(Compiler *c, Node *n, LLVMValueRef error) {
+    compile_defers(c, c->defers_start, false);
+    set_debug_pos(c, n->token.pos);
+
+    if (n->type.kind == TYPE_GROUP) {
+        ABI_Info abi = get_abi_info_for_type(c, &n->type, false);
+
+        static_assert(ABI_DIRECT_TYPES_MAX == 2, "");
+        switch (abi.direct_types_count) {
+        case 0: {
+            LLVMTypeRef  i8 = LLVMInt8TypeInContext(c->llvm_context);
+            LLVMValueRef zeroes = LLVMConstInt(
+                LLVMInt64TypeInContext(c->llvm_context),
+                LLVMABISizeOfType(c->llvm_target_data, n->type.llvm) -
+                    LLVMABISizeOfType(c->llvm_target_data, LLVMTypeOf(error)),
+                true);
+
+            LLVMValueRef memory = LLVMGetParam(c->llvm_fn, 0);
+            LLVMBuildMemSet(c->llvm_builder, memory, LLVMConstNull(i8), zeroes, 1);
+            LLVMBuildStore(c->llvm_builder, error, LLVMBuildGEP2(c->llvm_builder, i8, memory, &zeroes, 1, ""));
+            LLVMBuildRetVoid(c->llvm_builder);
+        } break;
+
+        case 1: {
+            // Only possible on ARM64 macOS. It gets compiled to [2 x i64]
+            assert(LLVMABISizeOfType(c->llvm_target_data, abi.direct_types[0]) == 16);
+
+            LLVMTypeRef  i64 = LLVMInt64TypeInContext(c->llvm_context);
+            LLVMValueRef memory = compile_alloca(c, abi.direct_types[0]);
+            LLVMBuildStore(c->llvm_builder, LLVMConstNull(i64), memory);
+
+            LLVMValueRef indices[] = {LLVMConstInt(i64, 1, true)};
+            LLVMBuildStore(
+                c->llvm_builder, error, LLVMBuildGEP2(c->llvm_builder, i64, memory, indices, len(indices), ""));
+
+            LLVMBuildRet(c->llvm_builder, LLVMBuildLoad2(c->llvm_builder, abi.direct_types[0], memory, ""));
+        } break;
+
+        case 2: {
+            LLVMTypeRef type =
+                LLVMStructTypeInContext(c->llvm_context, abi.direct_types, abi.direct_types_count, false);
+
+            LLVMValueRef memory = compile_alloca(c, type);
+            LLVMBuildStore(c->llvm_builder, LLVMConstNull(abi.direct_types[0]), memory);
+            LLVMBuildStore(c->llvm_builder, error, LLVMBuildStructGEP2(c->llvm_builder, type, memory, 1, ""));
+            LLVMBuildRet(c->llvm_builder, LLVMBuildLoad2(c->llvm_builder, type, memory, ""));
+        } break;
+
+        default:
+            unreachable();
+        }
+    } else {
+        LLVMBuildRet(c->llvm_builder, error);
+    }
 }

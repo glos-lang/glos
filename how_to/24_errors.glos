@@ -109,34 +109,37 @@ error_propagate_operator :: () {
         println("Twice!")
         return safe_div(c, b)
 
-        // The type of EXPR must be the same as the return type of the function it is used in.
-        // The following line is an error, because it is expected to return '(s64, error)' but
-        // the actual type is 'rawptr' instead.
-        //
-        // null?
-
         // The auto casting rules of 'enum error' -> 'error' is applicable here too.
         foo :: () -> s64, Div_Error {
             return 0, null
         }
+        foo()? // It is legal to cast an 'enum error' to an 'error'. The opposite is not though.
 
-        // This is allowed. It is legal to cast an 'enum error' to an 'error'.
-        //
-        foo()?
-        //
-        // The opposite would not be allowed though.
+        // The type of EXPR and the current function need not be same.
+        // Just the last type of the expression must be an 'error' or 'enum error'.
+        bar :: () -> Div_Error {
+            return null
+        }
+        bar()?
     }
 
-    println(divide_twice(276, 2))
-    println(divide_twice(420, 0)) // As you saw in the output, the message "Twice!" was not displayed for this.
+    println("First: ", divide_twice(276, 2))
+    println("Second:", divide_twice(420, 0)) // As you saw in the output, the message "Twice!" was not displayed for this.
+
+    // If an error is unwrapped, the '?' operator will return zero values for the other return types.
+    zeroes :: () -> s64, s64, error {
+        Div_Error.By_Zero? // This will return 0, 0, Div_Error.By_Zero
+        return 69, 420, null
+    }
+
+    println(zeroes())
 
     // There is also the postfix '!' operator that panics immediately instead of returning.
     divide_and_inc :: (a: s64, b: s64) -> s64 {
         return safe_div(a, b)! + 1
     }
 
-    println(divide_and_inc(838, 2))
-    println(divide_and_inc(1337, 0))
-
+    println("First: ", divide_and_inc(838, 2))
+    println("Second:", divide_and_inc(1337, 0))
     unreachable("This statement will never be evaluated")
 }

@@ -214,43 +214,49 @@ void check_expr_group(Compiler *c, Node_Group *group, Ref_Kind ref, bool *is_ref
 
 void check_expr_throw(Compiler *c, Node_Throw *throw) {
     Node *n = (Node *) throw;
+    check_expr(c, throw->value, REF_NONE);
 
-    const Type_Fn *fn_type = c->context.fn->fn->node.type.spec.fn;
-    if (n->token.kind == TOKEN_QUESTION) {
-        bool fn_signature_ok = false;
-        if (fn_type->returns_count) {
-            const Type T = fn_type->returns[fn_type->returns_count - 1];
-            fn_signature_ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
+    {
+        Type T = throw->value->type;
+        if (type_kind_eq(T, TYPE_GROUP)) {
+            T = T.spec.group.data[T.spec.group.count - 1];
         }
 
-        if (!fn_signature_ok) {
+        if (!type_eq(T, (Type) {.kind = TYPE_ERROR}) && !type_is_error_enum(T)) {
+            error_token(
+                EK_ERROR,
+                n->token,
+                "Cannot use the %s operator on an expression whose last type is not 'error' or 'enum error'",
+                token_kind_to_cstr(n->token.kind));
+            error_node(EK_NOTE, throw->value, "The type of this expression is %s", type_to_cstr(throw->value->type));
+            exit(c, 1);
+        }
+    }
+
+    throw->fn = c->context.fn->fn;
+    if (n->token.kind == TOKEN_QUESTION) {
+        bool ok = false;
+
+        const Type_Fn *fn_type = throw->fn->node.type.spec.fn;
+        if (fn_type->returns_count) {
+            const Type T = fn_type->returns[fn_type->returns_count - 1];
+            ok = type_eq(T, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(T);
+        }
+
+        if (!ok) {
             error_token(
                 EK_ERROR,
                 n->token,
                 "Cannot use the %s operator in a function whose last return type is not 'error' or 'enum error'",
                 token_kind_to_cstr(n->token.kind));
+
+            afprintf(
+                stderr,
+                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                "    The return type of the current function is %s\n\n",
+                type_to_cstr(throw->fn->node.type));
             exit(c, 1);
         }
-    }
-
-    check_expr(c, throw->value, REF_NONE);
-    if (n->token.kind == TOKEN_QUESTION) {
-        const bool   is_group = type_kind_eq(throw->value->type, TYPE_GROUP);
-        const size_t actual_count = is_group ? throw->value->type.spec.group.count : 1;
-
-        if (actual_count != fn_type->returns_count) {
-            error_number_of_return_values_mismatch(c, n->token, fn_type->returns_count, actual_count);
-        }
-
-        assert(actual_count == fn_type->returns_count);
-        for (size_t i = 0; i < fn_type->returns_count; i++) {
-            i64   group_index = -1;
-            Node *n = get_node_from_group(throw->value, i, &group_index);
-            type_assert_grouped(c, n, group_index, fn_type->returns[i], NULL);
-        }
-
-        // The inference of the individual group items might not have reflected here
-        throw->value->type = *fn_type->return_type;
     }
 
     n->type = throw->value->type;
@@ -1665,6 +1671,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 node_is_null(from)) //
             {
                 same = true;
+                from->type = *to_type;
             } else if (type_is_scalar(*to_type)) {
                 // Will be dealt later
             } else if (call->args_count == 2) {
