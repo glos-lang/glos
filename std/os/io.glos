@@ -1,7 +1,7 @@
 File :: distinct rawptr
 
 read :: (this: File, bytes: []u8) -> s64, error {
-    n := C.fread(rawptr(bytes.data), 1, u64(bytes.count), C.FILE(this))
+    n := C.fread(rawptr(bytes.data), 1, C.size_t(bytes.count), C.FILE(this))
     if C.ferror(C.FILE(this)) != 0 {
         return s64(n), C.get_errno()
     }
@@ -9,7 +9,7 @@ read :: (this: File, bytes: []u8) -> s64, error {
 }
 
 write :: (this: File, bytes: []u8) -> s64, error {
-    n := C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), C.FILE(this))
+    n := C.fwrite(rawptr(bytes.data), sizeof(u8), C.size_t(bytes.count), C.FILE(this))
     if C.ferror(C.FILE(this)) != 0 {
         return s64(n), C.get_errno()
     }
@@ -72,7 +72,7 @@ read_entire_file :: (path: string, allocator := default_allocator) -> []u8, erro
         return {}, C.get_errno()
     }
 
-    offset := C.ftell(C.FILE(f))
+    offset := s64(C.ftell(C.FILE(f)))
     if offset == -1 {
         return {}, C.get_errno()
     }
