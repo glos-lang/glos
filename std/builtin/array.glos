@@ -13,7 +13,7 @@ push :: (this: &[..]$T, vs: ...T) {
             this.capacity *= 2
         }
 
-        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator))
+        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator)!)
     }
 
     if vs.count != 0 {

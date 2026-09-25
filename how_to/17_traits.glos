@@ -159,7 +159,7 @@ main :: () {
         // For now, just know that you should call this function providing a type as its argument.
         // And it will allocate an object of that type on the heap (using the default allocator) and
         // return a pointer to that memory
-        int32_in_heap := #import "memory".new(Int32)
+        int32_in_heap := #import "memory".new(Int32)!
         int32_in_heap.x = 69
 
         // Now assign the memory.

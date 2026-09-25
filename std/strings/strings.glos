@@ -1,11 +1,11 @@
-to_cstring :: (s: string, allocator := default_allocator) -> &C.char {
-    p := &C.char(allocator.alloc(s.count + 1, zeroed = false)!)
+to_cstring :: (s: string, allocator := default_allocator) -> &C.char, error {
+    p := &C.char(allocator.alloc(s.count + 1, zeroed = false)?)
     if s.count != 0 {
         mem.copy(p, &C.char(s.data), s.count, overlaps = false)
     }
 
     *(p + &C.char(s.count)) = 0
-    return p
+    return p, null
 }
 
 from_cstring :: (s: &C.char) -> string {
@@ -13,7 +13,7 @@ from_cstring :: (s: &C.char) -> string {
 }
 
 to_s64 :: (s: string, base := 10) -> s64, error {
-    cstr := to_cstring(s, temporary_allocator)
+    cstr := to_cstring(s, temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(cstr))
 
     C.set_errno(null)

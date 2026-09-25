@@ -126,5 +126,9 @@ main :: () {
 
     // For runtime 'string' values, a helper function from the standard library can be used
     strings :: #import "strings" // Modules and imports will be covered later
-    puts(strings.to_cstring(s))  // The 'to_cstring' allocates dynamic memory at runtime using the default allocator.
+
+    // The function 'to_cstring' allocates dynamic memory at runtime using the default allocator.
+    //
+    // Memory allocation can fail, so use the '!' operator to panic. Errors values will be described in a later document.
+    puts(strings.to_cstring(s)!)
 }

@@ -6,7 +6,7 @@ File :: distinct rawptr
 
 // TODO: Only binary is supported
 open :: (path: string, read: bool) -> File, error {
-    path := strings.to_cstring(path, temporary_allocator)
+    path := strings.to_cstring(path, temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
     f: File

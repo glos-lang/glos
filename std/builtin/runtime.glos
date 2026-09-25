@@ -80,7 +80,7 @@ runtime_init :: inline (argc: C.int, argv: &&C.char) {
         os.stderr = __acrt_iob_func(2)
     }
 
-    os.args = []string(mem.new(string, s64(argc)), argc)
+    os.args = []string(mem.new(string, s64(argc))!, argc)
     for i, arg := range []&C.char(argv, argc) {
         os.args[i] = strings.from_cstring(arg)
     }

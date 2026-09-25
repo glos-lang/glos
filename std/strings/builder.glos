@@ -19,7 +19,7 @@ free :: (this: &Builder) {
 write :: (this: &Builder, bytes: []u8) -> s64, error {
     if this.page_last == null {
         if this.allocator == null then this.allocator = default_allocator
-        this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)
+        this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)?
         this.page_last = this.page_first
         this.page_last.count = 0
         this.page_last.next  = null
@@ -50,7 +50,7 @@ write :: (this: &Builder, bytes: []u8) -> s64, error {
         this.cursor = page.bytes.data + &u8(page.count)
         bytes = bytes[available..]
 
-        page.next = mem.new(Page, allocator = this.allocator, zeroed = false)
+        page.next = mem.new(Page, allocator = this.allocator, zeroed = false)?
         this.page_last = page.next
         this.page_last.count = 0
         this.page_last.next  = null
@@ -78,8 +78,8 @@ rewind :: (this: &Builder, from: &u8 = null, location := #caller_location) {
     panic("Builder does not contain the address \{from}", location = location)
 }
 
-to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string {
-    if this.page_first == null then return ""
+to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string, error {
+    if this.page_first == null then return "", null
     if from == null            then from = this.page_first.bytes.data
 
     head := 0
@@ -89,7 +89,7 @@ to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := def
         if from >= begin && from <= end {
             a     := s64(from - begin)
             count := this.count - (head + a)
-            bytes := mem.new(u8, count, allocator = allocator, zeroed = false)
+            bytes := mem.new(u8, count, allocator = allocator, zeroed = false)?
 
             head := 0
             left := count
@@ -110,7 +110,7 @@ to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := def
                 a = 0
                 p = p.next
             }
-            return string([]u8(bytes, count))
+            return string([]u8(bytes, count)), null
         }
         head += p.count
     }

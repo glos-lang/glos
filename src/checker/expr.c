@@ -21,6 +21,10 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
 static_assert(COUNT_TOKENS == 95, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
+    if (op != TOKEN_SET && n->kind == NODE_INDEX) {
+        ((Node_Index *) n)->is_assign = false;
+    }
+
     switch (op) {
     case TOKEN_ADD_SET:
     case TOKEN_SUB_SET:

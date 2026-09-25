@@ -66,7 +66,7 @@ find :: (this: string, p: strings.Predicate, reverse := false) -> s64, bool {
 split :: (this: string, p: strings.Predicate) -> string, string, bool {
     n, found := this.find(p)
     if !found {
-        return "", this, false
+        return this, "", false
     }
 
     lhs := this[..n]

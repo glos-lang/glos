@@ -1,13 +1,14 @@
-new :: ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> &T {
-    return &T(allocator.alloc(n * sizeof(T), zeroed = zeroed)!)
+new :: ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> &T, error {
+    return &T(allocator.alloc(n * sizeof(T), zeroed = zeroed)?), null
 }
 
-free :: (p: &$T, allocator := default_allocator) {
-    allocator.alloc(0, old = rawptr(p))!
+free :: (p: &$T, allocator := default_allocator) -> error {
+    allocator.alloc(0, old = rawptr(p))?
+    return null
 }
 
-resize :: (p: &$T, size: s64, allocator := default_allocator) -> &T {
-    return &T(allocator.alloc(size * sizeof(T), old = rawptr(p))!)
+resize :: (p: &$T, size: s64, allocator := default_allocator) -> &T, error {
+    return &T(allocator.alloc(size * sizeof(T), old = rawptr(p))?), null
 }
 
 zero :: (v: &$T, count := 1) -> &T {
@@ -22,8 +23,8 @@ copy :: (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
     }
 }
 
-clone :: (v: $T, allocator := default_allocator) -> &T {
-    return &T(C.memcpy(allocator.alloc(sizeof(T), zeroed = false)!, rawptr(&v), sizeof(v)))
+clone :: (v: $T, allocator := default_allocator) -> &T, error {
+    return &T(C.memcpy(allocator.alloc(sizeof(T), zeroed = false)?, rawptr(&v), sizeof(v))), null
 }
 
 C :: #import "C"

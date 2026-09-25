@@ -1,6 +1,6 @@
 free :: (this: &map[$K]$V) {
     if this.allocator == null then this.allocator = default_allocator
-    mem.free(&rawptr(this.data))
+    mem.free(&rawptr(this.data))!
     mem.zero(this)
 }
 
@@ -41,7 +41,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
             capacity := this.capacity * 2
             if capacity == 0 then capacity = INIT_CAPACITY
 
-            data := &KV(mem.new(KV, capacity, allocator = this.allocator))
+            data := &KV(mem.new(KV, capacity, allocator = this.allocator)!)
             for i := 0; i < this.capacity; i += 1 {
                 src := &KV(this.data) + &KV(i * sizeof(KV))
                 if src.state == .OCCUPIED {
@@ -50,7 +50,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
                 }
             }
 
-            mem.free(&rawptr(this.data))
+            mem.free(&rawptr(this.data))!
             this.data = rawptr(data)
             this.capacity = capacity
         }
