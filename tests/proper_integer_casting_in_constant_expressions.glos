@@ -1,0 +1,7 @@
+main :: () {
+    #assert(u8(s64(-1)) == 0xFF)
+    #assert(s8(u64(0xFF)) == -1)
+
+    #assert(u16(s8(-1)) == 0xFFFF)
+    #assert(s16(u8(0xFF)) == 0xFF)
+}

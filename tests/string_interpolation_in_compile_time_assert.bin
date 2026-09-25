@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 124
+tests/string_interpolation_in_compile_time_assert.glos:2:5: Assertion Failed: Hi! 69
+
+    #assert(false, "Hi! \{34 + 35}")
+
+

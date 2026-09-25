@@ -50,6 +50,15 @@
 // ```
 void basic_init(void);
 
+typedef int8_t  i8;
+typedef uint8_t u8;
+
+typedef int16_t  i16;
+typedef uint16_t u16;
+
+typedef int32_t  i32;
+typedef uint32_t u32;
+
 // AAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 //
 // On Linux, long is 64 bits, long long is 64 bits, int64_t is long

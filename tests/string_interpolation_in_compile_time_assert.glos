@@ -1,0 +1,3 @@
+main :: () {
+    #assert(false, "Hi! \{34 + 35}")
+}

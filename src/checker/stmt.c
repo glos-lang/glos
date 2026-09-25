@@ -100,18 +100,39 @@ void check_stmt_assert(Compiler *c, Node_Assert *assertt) {
     check_expr(c, assertt->expr, REF_NONE);
     type_assert(c, assertt->expr, (Type) {.kind = TYPE_BOOL});
 
+    bool is_message_interpolation = false;
     if (assertt->message) {
         check_expr(c, assertt->message, REF_NONE);
-        type_assert(c, assertt->message, (Type) {.kind = TYPE_STRING});
+
+        const Type string_type = (Type) {.kind = TYPE_STRING};
+        if (type_eq(assertt->message->type, c->interpolation_type)) {
+            is_message_interpolation = true;
+        } else if (!type_eq(assertt->message->type, string_type)) {
+            error_node(
+                EK_ERROR,
+                assertt->message,
+                "Expected %s or %s, got %s",
+                type_to_cstr(string_type),
+                type_to_cstr(c->interpolation_type),
+                type_to_cstr(assertt->message->type));
+            exit(c, 1);
+        }
     }
 
     if (int128_is_zero(eval_const_expr(c, assertt->expr, false).as.integer)) {
         error_node_begin(EK_BLANK, n);
         afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, "Assertion Failed");
         if (assertt->message) {
-            const SV message = eval_const_expr(c, assertt->message, false).as.string;
+            Const_Value message = eval_const_expr(c, assertt->message, false);
             afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, ": ");
-            fprintf(stderr, SV_Fmt, SV_Arg(message));
+
+            if (is_message_interpolation) {
+                assert(message.kind == CONST_VALUE_UNION);
+                message = *message.as.unionn.real;
+            }
+
+            assert(message.kind == CONST_VALUE_STRING);
+            fprintf(stderr, SV_Fmt, SV_Arg(message.as.string));
         }
         error_finalize();
         exit(c, 1);

@@ -834,6 +834,51 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
 
             return const_value_int(result);
         }
+
+        if (value.kind == CONST_VALUE_INT) {
+            const bool   is_to_signed = type_is_signed(n->type);
+            const size_t to_size = compile_sizeof(c, &n->type);
+            const u64    int_value = i64_from_int128(c, from, value.as.integer, false, NULL);
+
+            if (is_to_signed) {
+                switch (to_size) {
+                case 1:
+                    value = const_value_i64((i8) int_value);
+                    break;
+
+                case 2:
+                    value = const_value_i64((i16) int_value);
+                    break;
+
+                case 4:
+                    value = const_value_i64((i32) int_value);
+                    break;
+
+                case 8:
+                    value = const_value_i64((i64) int_value);
+                    break;
+                }
+            } else {
+                switch (to_size) {
+                case 1:
+                    value = const_value_u64((u8) int_value);
+                    break;
+
+                case 2:
+                    value = const_value_u64((u16) int_value);
+                    break;
+
+                case 4:
+                    value = const_value_u64((u32) int_value);
+                    break;
+
+                case 8:
+                    value = const_value_u64((u64) int_value);
+                    break;
+                }
+            }
+        }
+
         return value;
 
     case TYPE_CAST_TO_BOOL:
