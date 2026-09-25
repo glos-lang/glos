@@ -3,8 +3,8 @@ Allocator :: trait {
     rewind: (ptr: rawptr, align := true, location := #caller_location)
 }
 
-default_allocator:   Allocator = &c_allocator
-temporary_allocator: Allocator = &t_allocator
+default_allocator   := Allocator(&c_allocator)
+temporary_allocator := Allocator(&t_allocator)
 
 #private...
 

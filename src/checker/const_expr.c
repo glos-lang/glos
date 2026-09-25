@@ -758,6 +758,10 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
 
     Const_Value value = eval_const_expr(c, from, false);
     if (value.kind == CONST_VALUE_VAR || (!n->type.is_meta && n->type.ref)) {
+        if (type_kind_eq(n->type, TYPE_TRAIT) && !n->type.ref) {
+            return const_value_to_trait(n, &from->type, call->type_cast_trait_impl, value);
+        }
+
         error_node(EK_ERROR, n, "This expression is not constant at compile time");
         exit(c, 1);
     }
