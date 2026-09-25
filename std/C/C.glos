@@ -1,66 +1,37 @@
+FILE :: distinct rawptr
+
 extern {
-    puts :: (s: &u8) -> s32
-    printf :: (fmt: &u8, ...) -> s32
-    fprintf :: (f: os.File, fmt: &u8, ...) -> s32
-    snprintf :: (out: &u8, size: u64, fmt: &u8, ...) -> s32
-    fwrite :: (ptr: rawptr, size: u64, count: u64, f: os.File) -> u64
-    fflush :: (f: os.File)
+    puts :: (s: &char) -> int
+    printf :: (fmt: &char, ...) -> int
+    fprintf :: (f: FILE, fmt: &char, ...) -> int
+    snprintf :: (out: &char, size: size_t, fmt: &char, ...) -> int
+    fwrite :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
+    fflush :: (f: FILE)
+    exit :: noreturn (code: int)
     abort :: noreturn ()
-    memcmp :: (a: rawptr, b: rawptr, n: u64) -> s32
+    memcmp :: (a: rawptr, b: rawptr, n: size_t) -> int
     free :: (ptr: rawptr)
-    malloc :: (size: u64) -> rawptr
-    calloc :: (count: u64, size: u64) -> rawptr
-    realloc :: (ptr: rawptr, size: u64) -> rawptr
-    memcpy :: (dst: rawptr, src: rawptr, count: u64) -> rawptr
-    memmove :: (dst: rawptr, src: rawptr, count: u64) -> rawptr
-    memset :: (dst: rawptr, ch: s32, count: u64) -> rawptr
-    memchr :: (s: rawptr, ch: s32, count: u64) -> rawptr
-    strlen :: (s: &u8) -> u64
-    atexit :: (function: ()) -> s32
-    getenv :: (name: &u8) -> &u8
-    fopen :: (path: &u8, mode: &u8) -> os.File
-    fclose :: (f: os.File) -> s32
-    fseek :: (f: os.File, offset: s64, whence: s32) -> s32
-    ftell :: (f: os.File) -> s64
-    ferror :: (f: os.File) -> s32
-    fread :: (ptr: rawptr, size: u64, count: u64, f: os.File) -> u64
-    strtoll :: (s: &u8, end: &&u8, base: s32) -> s64
+    malloc :: (size: size_t) -> rawptr
+    calloc :: (count: size_t, size: size_t) -> rawptr
+    realloc :: (ptr: rawptr, size: size_t) -> rawptr
+    memcpy :: (dst: rawptr, src: rawptr, count: size_t) -> rawptr
+    memmove :: (dst: rawptr, src: rawptr, count: size_t) -> rawptr
+    memset :: (dst: rawptr, ch: int, count: size_t) -> rawptr
+    memchr :: (s: rawptr, ch: int, count: size_t) -> rawptr
+    strlen :: (s: &char) -> size_t
+    atexit :: (function: ()) -> int
+    getenv :: (name: &char) -> &char
+    fopen :: (path: &char, mode: &char) -> FILE
+    fclose :: (f: FILE) -> int
+    fseek :: (f: FILE, offset: int, whence: int) -> int
+    ftell :: (f: FILE) -> long
+    ferror :: (f: FILE) -> int
+    fread :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
+    strtoll :: (s: &char, end: &&char, base: int) -> long_long
 }
 
 SEEK_SET :: 0
 SEEK_CUR :: 1
 SEEK_END :: 2
 
-#if PLATFORM == .WINDOWS {
-    MEM_COMMIT  :: 0x00001000
-    MEM_RESERVE :: 0x00002000
-    MEM_RELEASE :: 0x00008000
-
-    PAGE_READWRITE :: 0x04
-
-    extern {
-        VirtualAlloc :: (lpAddress: rawptr, dwSize: u64, flAllocationType: u32, flProtect: u32) -> rawptr
-        VirtualFree :: (lpAddress: rawptr, dwSize: u64, dwFreeType: u32) -> s32
-    }
-} else {
-    MAP_FAILED :: rawptr(-1)
-
-    PROT_READ  :: 0x1
-    PROT_WRITE :: 0x2
-
-    MAP_PRIVATE   :: 0x02
-
-    #if PLATFORM == .MACOS {
-        MAP_ANONYMOUS :: 0x1000
-    } else {
-        MAP_ANONYMOUS :: 0x20
-    }
-
-    extern {
-        mmap :: (addr: rawptr, length: u64, prot: s32, flags: s32, fd: s32, offset: s64) -> rawptr
-        munmap :: (addr: rawptr, length: u64) -> s32
-    }
-}
-
-// TODO: The glos standard library is a bit of a mess right now
-os :: #import "os"
+// TODO: This needs to be organised, perhaps by the header name

@@ -3,8 +3,8 @@ panic :: noreturn (message: ...Any, location := #caller_location, label := "") {
     wprint(&Prefix_With_Colon {label != ""}, ...message)
     eprintln()
 
-    C.fflush(os.stdout)
-    C.fflush(os.stderr)
+    C.fflush(C.FILE(os.stdout))
+    C.fflush(C.FILE(os.stderr))
     C.abort()
 
     Prefix_With_Colon :: struct {

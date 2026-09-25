@@ -1,0 +1,19 @@
+MAP_FAILED :: rawptr(-1)
+
+PROT_READ  :: 0x1
+PROT_WRITE :: 0x2
+
+MAP_PRIVATE   :: 0x02
+
+#if PLATFORM == .MACOS {
+    MAP_ANONYMOUS :: 0x1000
+} else {
+    MAP_ANONYMOUS :: 0x20
+}
+
+extern {
+    mmap   :: (addr: rawptr, length: C.size_t, prot: C.int, flags: C.int, fd: C.int, offset: C.long) -> rawptr
+    munmap :: (addr: rawptr, length: C.size_t) -> C.int
+}
+
+C :: #import "C"

@@ -1,23 +1,23 @@
 File :: distinct rawptr
 
 read :: (this: File, bytes: []u8) -> s64, error {
-    n := C.fread(rawptr(bytes.data), 1, u64(bytes.count), this)
-    if C.ferror(this) != 0 {
+    n := C.fread(rawptr(bytes.data), 1, u64(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
         return s64(n), C.get_errno()
     }
     return s64(n), null
 }
 
 write :: (this: File, bytes: []u8) -> s64, error {
-    n := C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), this)
-    if C.ferror(this) != 0 {
+    n := C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
         return s64(n), C.get_errno()
     }
     return s64(n), null
 }
 
 close :: (this: &File) {
-    C.fclose(*this)
+    C.fclose(C.FILE(*this))
     *this = null
 }
 
@@ -49,9 +49,9 @@ open :: (path: string, read: bool) -> File, error {
 
     f: File
     if read {
-        f = C.fopen(path, "r")
+        f = File(C.fopen(path, "r"))
     } else {
-        f = C.fopen(path, "w")
+        f = File(C.fopen(path, "w"))
     }
 
     if f == null {
@@ -66,18 +66,18 @@ read_entire_file :: (path: string, allocator := default_allocator) -> []u8, erro
     if err != null {
         return {}, err
     }
-    defer C.fclose(f)
+    defer C.fclose(C.FILE(f))
 
-    if C.fseek(f, 0, C.SEEK_END) == -1 {
+    if C.fseek(C.FILE(f), 0, C.SEEK_END) == -1 {
         return {}, C.get_errno()
     }
 
-    offset := C.ftell(f)
+    offset := C.ftell(C.FILE(f))
     if offset == -1 {
         return {}, C.get_errno()
     }
 
-    if C.fseek(f, 0, C.SEEK_SET) == -1 {
+    if C.fseek(C.FILE(f), 0, C.SEEK_SET) == -1 {
         return {}, C.get_errno()
     }
 

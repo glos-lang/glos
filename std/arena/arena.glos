@@ -11,10 +11,10 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
         }
 
         #if PLATFORM == .WINDOWS {
-            this.data = C.VirtualAlloc(null, u64(this.capacity), C.MEM_RESERVE | C.MEM_COMMIT, C.PAGE_READWRITE)
+            this.data = win.VirtualAlloc(null, win.SIZE_T(this.capacity), win.MEM_RESERVE | win.MEM_COMMIT, win.PAGE_READWRITE)
         } else {
-            this.data = C.mmap(null, u64(this.capacity), C.PROT_READ | C.PROT_WRITE, C.MAP_PRIVATE | C.MAP_ANONYMOUS, -1, 0)
-            if this.data == C.MAP_FAILED {
+            this.data = posix.mmap(null, C.size_t(this.capacity), posix.PROT_READ | posix.PROT_WRITE, posix.MAP_PRIVATE | posix.MAP_ANONYMOUS, -1, 0)
+            if this.data == posix.MAP_FAILED {
                 this.data = null
             }
         }
@@ -42,20 +42,6 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
     return ptr
 }
 
-free :: (this: &Arena) {
-    if this.data == null {
-        return
-    }
-
-    #if PLATFORM == .WINDOWS {
-        C.VirtualFree(this.data, 0, C.MEM_RELEASE)
-    } else {
-        C.munmap(this.data, u64(this.capacity))
-    }
-
-    C.memset(rawptr(this), 0, sizeof(*this))
-}
-
 rewind :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location) {
     if ptr < this.data || ptr > this.data + rawptr(this.head) {
         panic("Arena does not contain the memory address \{ptr}", location = location)
@@ -67,4 +53,24 @@ rewind :: (this: &Arena, ptr: rawptr, align := true, location := #caller_locatio
     }
 }
 
+free :: (this: &Arena) {
+    if this.data == null {
+        return
+    }
+
+    #if PLATFORM == .WINDOWS {
+        win.VirtualFree(this.data, 0, win.MEM_RELEASE)
+    } else {
+        posix.munmap(this.data, C.size_t(this.capacity))
+    }
+
+    C.memset(rawptr(this), 0, sizeof(*this))
+}
+
 C :: #import "C"
+
+#if PLATFORM == .WINDOWS {
+    win   :: #import "windows"
+} else {
+    posix :: #import "posix"
+}

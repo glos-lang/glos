@@ -13,7 +13,7 @@ main :: () {
 }
 
 write :: (this: File, bytes: []u8) {
-    C.fwrite(rawptr(bytes.data), sizeof(u8), u64(bytes.count), os.File(this))
+    C.fwrite(rawptr(bytes.data), sizeof(u8), C.size_t(bytes.count), C.FILE(this))
 }
 
 C  :: #import "C"

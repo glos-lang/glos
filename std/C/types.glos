@@ -1,0 +1,37 @@
+char          :: s8
+unsigned_char :: u8
+
+short          :: s16
+unsigned_short :: u16
+
+int          :: s32
+unsigned_int :: u32
+
+#if PLATFORM == .WINDOWS {
+    long          :: s32
+    unsigned_long :: u32
+    wchar_t       :: u16
+} else {
+    long          :: s64
+    unsigned_long :: u64
+    wchar_t       :: s32
+}
+
+long_long          :: s64
+unsigned_long_long :: u64
+
+signed   :: s32
+unsigned :: u32
+
+char16_t :: u16
+char32_t :: u32
+
+ssize_t   :: s64
+size_t    :: u64
+
+intptr_t  :: s64
+uintptr_t :: u64
+ptrdiff_t :: s64
+
+float  :: f32
+double :: f64

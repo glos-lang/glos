@@ -11,25 +11,19 @@ resize :: (p: &$T, size: s64, allocator := default_allocator) -> &T {
 }
 
 zero :: (v: &$T, count := 1) -> &T {
-    return &T(memset(rawptr(v), 0, u64(count) * sizeof(T)))
+    return &T(C.memset(rawptr(v), 0, C.size_t(count) * sizeof(T)))
 }
 
 copy :: (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
     #if overlaps {
-        return &T(memmove(rawptr(dst), rawptr(src), u64(count) * sizeof(T)))
+        return &T(C.memmove(rawptr(dst), rawptr(src), C.size_t(count) * sizeof(T)))
     } else {
-        return &T(memcpy(rawptr(dst), rawptr(src), u64(count) * sizeof(T)))
+        return &T(C.memcpy(rawptr(dst), rawptr(src), C.size_t(count) * sizeof(T)))
     }
 }
 
 clone :: (v: $T, allocator := default_allocator) -> &T {
-    return &T(memcpy(allocator.alloc(sizeof(T), zeroed = false), rawptr(&v), sizeof(v)))
+    return &T(C.memcpy(allocator.alloc(sizeof(T), zeroed = false), rawptr(&v), sizeof(v)))
 }
 
-#private...
-
-extern {
-    memset  :: (dst: rawptr, c: s32, n: u64) -> rawptr
-    memcpy  :: (dst: rawptr, src: rawptr, n: u64) -> rawptr
-    memmove :: (dst: rawptr, src: rawptr, n: u64) -> rawptr
-}
+C :: #import "C"

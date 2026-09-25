@@ -1,0 +1,65 @@
+#assert(PLATFORM == .WINDOWS)
+
+// Primitives
+BYTE      :: u8
+WORD      :: u16
+DWORD     :: u32
+QWORD     :: u64
+
+SHORT     :: s16
+USHORT    :: u16
+INT       :: s32
+UINT      :: u32
+LONG      :: s32
+ULONG     :: u32
+LONGLONG  :: s64
+ULONGLONG :: u64
+
+FLOAT     :: f32
+DOUBLE    :: f64
+
+// Pointer-Sized & Count Types
+INT_PTR    :: s64
+UINT_PTR   :: u64
+LONG_PTR   :: s64
+ULONG_PTR  :: u64
+DWORD_PTR  :: u64
+
+SIZE_T     :: u64
+SSIZE_T    :: s64
+
+// Booleans and Status Codes
+BOOL    :: s32
+BOOLEAN :: u8
+HRESULT :: s32
+NTSTATUS:: s32
+
+// Handles and Pointers
+HANDLE    :: rawptr
+HWND      :: rawptr
+HINSTANCE :: rawptr
+HMODULE   :: rawptr
+HDC       :: rawptr
+
+PVOID     :: rawptr
+LPVOID    :: rawptr
+LPCVOID   :: rawptr
+
+// ANSI Characters and Strings
+CHAR    :: u8
+PSTR    :: &u8
+LPSTR   :: &u8
+PCSTR   :: &u8
+LPCSTR  :: &u8
+
+// Wide Characters (UTF-16) and Strings
+WCHAR   :: u16
+PWSTR   :: &u16
+LPWSTR  :: &u16
+PCWSTR  :: &u16
+LPCWSTR :: &u16
+
+// TCHAR / LPTSTR (Varies by build, but wide strings are standard on modern Windows)
+TCHAR   :: u16
+LPTSTR  :: &u16
+LPCTSTR :: &u16

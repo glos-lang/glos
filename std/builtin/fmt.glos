@@ -259,18 +259,18 @@ write_value :: (w: Writer, a: Any, nested: bool) -> s64, error {
         count: s32
         if v.signed {
             if a.type.size == {
-            case 1; count = C.snprintf(buffer.data, u64(buffer.count), "%d".data, *&s8(a.data))
-            case 2; count = C.snprintf(buffer.data, u64(buffer.count), "%d".data, *&s16(a.data))
-            case 4; count = C.snprintf(buffer.data, u64(buffer.count), "%d".data, *&s32(a.data))
-            case 8; count = C.snprintf(buffer.data, u64(buffer.count), "%zd".data, *&s64(a.data))
+            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s8)(a.data))
+            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s16)(a.data))
+            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s32)(a.data))
+            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zd", *(&s64)(a.data))
             case;   unreachable()
             }
         } else {
             if a.type.size == {
-            case 1; count = C.snprintf(buffer.data, u64(buffer.count), "%u".data, *&u8(a.data))
-            case 2; count = C.snprintf(buffer.data, u64(buffer.count), "%u".data, *&u16(a.data))
-            case 4; count = C.snprintf(buffer.data, u64(buffer.count), "%u".data, *&u32(a.data))
-            case 8; count = C.snprintf(buffer.data, u64(buffer.count), "%zu".data, *&u64(a.data))
+            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u8)(a.data))
+            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u16)(a.data))
+            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u32)(a.data))
+            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zu", *(&u64)(a.data))
             case;   unreachable()
             }
         }
@@ -280,8 +280,8 @@ write_value :: (w: Writer, a: Any, nested: bool) -> s64, error {
         buffer: [32]u8
         count: s32
         if a.type.size == {
-        case 4; count = C.snprintf(buffer.data, u64(buffer.count), "%.7g".data, *&f32(a.data))
-        case 8; count = C.snprintf(buffer.data, u64(buffer.count), "%.14g".data, *&f64(a.data))
+        case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.7g", *&f32(a.data))
+        case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.14g", *&f64(a.data))
         case;   unreachable()
         }
         n += w.write(buffer[..count])?
@@ -292,7 +292,7 @@ write_value :: (w: Writer, a: Any, nested: bool) -> s64, error {
             n += w.write([]u8("null"))?
         } else {
             buffer: [32]u8
-            count := C.snprintf(buffer.data, u64(buffer.count), "0x%zx".data, ptr)
+            count := C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "0x%zx", ptr)
             n += w.write(buffer[..count])?
         }
 

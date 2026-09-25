@@ -1,5 +1,5 @@
 C :: #import "C"
 
 main :: () {
-    C.printf("Hello, world!\n".data)
+    C.printf("Hello, world!\n")
 }

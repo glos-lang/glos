@@ -1,8 +1,6 @@
 args: []string
 
-extern {
-    exit :: noreturn (code: s32)
-}
+exit :: C.exit
 
 C       :: #import "C"
 strings :: #import "strings"

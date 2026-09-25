@@ -6,7 +6,7 @@ main :: () {
     case;     #assert(false, "No funny :(")
     }
 
-    C.printf("Hello, world!\n".data)
+    C.printf("Hello, world!\n")
     funny.hello()
 
     #if true {

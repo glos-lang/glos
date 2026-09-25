@@ -13,28 +13,21 @@ C_Allocator :: struct {}
 alloc :: (this: &C_Allocator, size: s64, old := null, align := true, zeroed := true, location := #caller_location) -> rawptr {
     if old != null {
         if size == 0 {
-            free(old)
+            C.free(old)
             return null
         }
 
-        return realloc(old, u64(size))
+        return C.realloc(old, C.size_t(size))
     } else {
         if size == 0 {
             return null
         }
 
         if zeroed {
-            return calloc(1, u64(size))
+            return C.calloc(1, C.size_t(size))
         }
 
-        return malloc(u64(size))
-    }
-
-    extern {
-        free    :: (ptr: rawptr)
-        malloc  :: (size: u64) -> rawptr
-        calloc  :: (n: u64, size: u64) -> rawptr
-        realloc :: (ptr: rawptr, size: u64) -> rawptr
+        return C.malloc(C.size_t(size))
     }
 }
 

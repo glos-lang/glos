@@ -63,16 +63,16 @@ runtime_panic :: noreturn (p: Panic, a: s64, b: s64, c: s64, location: &Source_C
 }
 
 #link "main"
-runtime_entry :: (argc: s32, argv: &&u8) -> s32 {
+runtime_entry :: (argc: C.int, argv: &&C.char) -> C.int {
     runtime_init(argc, argv)
     #main()
     return 0
 }
 
-runtime_init :: inline (argc: s32, argv: &&u8) {
+runtime_init :: inline (argc: C.int, argv: &&C.char) {
     #if PLATFORM == .WINDOWS {
         extern {
-            __acrt_iob_func :: (fd: s32) -> os.File
+            __acrt_iob_func :: (fd: C.unsigned) -> os.File
         }
 
         os.stdin  = __acrt_iob_func(0)
@@ -81,7 +81,7 @@ runtime_init :: inline (argc: s32, argv: &&u8) {
     }
 
     os.args = []string(mem.new(string, s64(argc)), argc)
-    for i, arg := range []&u8(argv, argc) {
+    for i, arg := range []&C.char(argv, argc) {
         os.args[i] = strings.from_cstring(arg)
     }
 

@@ -164,8 +164,8 @@ map_entry_not_found :: noreturn (location: Source_Code_Location, key: $K) {
     write_value(os.stderr, key, true)
     wprintln(os.stderr)
 
-    C.fflush(os.stdout)
-    C.fflush(os.stderr)
+    C.fflush(C.FILE(os.stdout))
+    C.fflush(C.FILE(os.stderr))
     C.abort()
 }
 
