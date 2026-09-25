@@ -705,23 +705,6 @@ static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *
         type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}));
 }
 
-static void show_explanation_about_the_not_formatter_directive(const Node_Fn *fn) {
-    if (fn->body) {
-        assert(fn->body->kind == NODE_BLOCK);
-        error_token_begin(EK_NOTE, ((Node_Block *) fn->body)->end);
-    } else if (fn->returns.tail) {
-        error_node_begin(EK_NOTE, fn->returns.tail);
-    } else {
-        error_token_begin(EK_NOTE, fn->args_end_token);
-    }
-
-    fprintf(
-        stderr,
-        "If this method is not meant to be a formatter, then add the %s directive after this",
-        token_kind_to_cstr(TOKEN_DIRECTIVE_NOT_FORMATTER));
-    error_finalize();
-}
-
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
     Type receiver = fn_spec->args[0].type;
     if (receiver.distinct) {
@@ -761,7 +744,6 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
 
 error:
     show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
-    show_explanation_about_the_not_formatter_directive(fn);
     exit(c, 1);
 }
 
@@ -781,16 +763,7 @@ void define_orderless_methods(Compiler *c) {
             error_node(EK_NOTE, define->name, "This argument is taken to be the receiver");
             exit(c, 1);
         }
-
         const SV name = fn->defined_as->node.token.sv;
-        if (fn->is_not_formatter && !sv_eq(name, SV_Lit("format"))) {
-            error_token(
-                EK_ERROR,
-                fn->not_formatter_token,
-                "The %s directive can only be applied to a method named 'format'",
-                token_kind_to_cstr(fn->not_formatter_token.kind));
-            exit(c, 1);
-        }
 
         check_expr(c, define->type, REF_NONE);
         type_assert_type(c, define->type);
@@ -893,12 +866,11 @@ void define_orderless_methods(Compiler *c) {
             error_redefinition(c, (Node *) fn->defined_as, &(*previous)->defined_as->node.token.pos);
         }
 
-        if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
+        if (sv_eq(name, SV_Lit("format")) && fn->is_hook) {
             ll_foreach(it, &fn->polymorphs) {
                 if (it->arg_index) {
                     show_explanation_about_custom_formatter(c, fn, receiver_type);
                     error_node(EK_NOTE, (Node *) it, "Cannot have polymorphic parameters after the first argument");
-                    show_explanation_about_the_not_formatter_directive(fn);
                     exit(c, 1);
                 }
             }

@@ -101,6 +101,7 @@ typedef enum {
     TOKEN_DIRECTIVE_IF,
     TOKEN_DIRECTIVE_ASSERT,
 
+    TOKEN_DIRECTIVE_HOOK,
     TOKEN_DIRECTIVE_LINK,
     TOKEN_DIRECTIVE_EMBED,
     TOKEN_DIRECTIVE_IMPORT,
@@ -111,8 +112,6 @@ typedef enum {
 
     TOKEN_DIRECTIVE_LOCATION,
     TOKEN_DIRECTIVE_CALLER_LOCATION,
-
-    TOKEN_DIRECTIVE_NOT_FORMATTER,
 
     // Compiler directives intended for Glos development, not users. (Although they can still use these)
     TOKEN_DIRECTIVE_MAIN,

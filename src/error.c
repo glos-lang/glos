@@ -231,7 +231,12 @@ static void range_apply_node(Range *r, const Node *n) {
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;
-        range_apply_node(r, define->name);
+        if (define->operator_token.kind == TOKEN_OPERATOR) {
+            range_apply_token(r, define->operator_token);
+        } else {
+            range_apply_node(r, define->name);
+        }
+
         range_apply_node(r, define->type);
         range_apply_node(r, define->expr);
         range_apply_node(r, (Node *) define->name_polymorph);

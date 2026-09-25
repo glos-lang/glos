@@ -233,7 +233,7 @@ static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c,
         return NULL;
     }
 
-    if (method->is_not_formatter) {
+    if (!method->is_hook) {
         return NULL;
     }
 

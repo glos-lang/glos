@@ -810,11 +810,10 @@ struct Node_Fn {
     bool is_method;
     bool is_inline;
     bool is_noreturn;
-    bool is_not_formatter;
+    bool is_hook;
 
     Token inline_token;
     Token noreturn_token;
-    Token not_formatter_token;
 
     // Foo :: trait {
     //     foo: () // <- This function is a trait method type
@@ -1051,8 +1050,9 @@ struct Node_Define {
     Node *expr;
     Node *type;
 
-    bool  has_spread;
+    Token operator_token;
     Token spread_token;
+    bool  has_spread;
 
     bool   is_const;
     bool   is_value_known_at_compile_time;

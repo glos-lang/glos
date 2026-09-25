@@ -693,6 +693,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_IF;
         } else if (sv_match(token.sv, "#assert")) {
             token.kind = TOKEN_DIRECTIVE_ASSERT;
+        } else if (sv_match(token.sv, "#hook")) {
+            token.kind = TOKEN_DIRECTIVE_HOOK;
         } else if (sv_match(token.sv, "#link")) {
             token.kind = TOKEN_DIRECTIVE_LINK;
         } else if (sv_match(token.sv, "#embed")) {
@@ -711,8 +713,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_LOCATION;
         } else if (sv_match(token.sv, "#caller_location")) {
             token.kind = TOKEN_DIRECTIVE_CALLER_LOCATION;
-        } else if (sv_match(token.sv, "#not_formatter")) {
-            token.kind = TOKEN_DIRECTIVE_NOT_FORMATTER;
         } else if (sv_match(token.sv, "#main")) {
             token.kind = TOKEN_DIRECTIVE_MAIN;
         } else if (sv_match(token.sv, "#platform")) {

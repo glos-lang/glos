@@ -220,6 +220,9 @@ const char *token_kind_to_cstr(Token_Kind kind) {
     case TOKEN_DIRECTIVE_ASSERT:
         return "'#assert'";
 
+    case TOKEN_DIRECTIVE_HOOK:
+        return "'#hook'";
+
     case TOKEN_DIRECTIVE_LINK:
         return "'#link'";
 
@@ -246,9 +249,6 @@ const char *token_kind_to_cstr(Token_Kind kind) {
 
     case TOKEN_DIRECTIVE_CALLER_LOCATION:
         return "'#caller_location'";
-
-    case TOKEN_DIRECTIVE_NOT_FORMATTER:
-        return "'#not_formatter'";
 
     case TOKEN_DIRECTIVE_MAIN:
         return "'#main'";

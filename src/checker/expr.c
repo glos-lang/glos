@@ -2638,7 +2638,7 @@ void check_fn(
                 check_signature_of_slice_operator(c, fn, fn_spec);
             } else if (sv_eq(name, OPERATOR_RANGE)) {
                 check_signature_of_range_operator(c, fn, fn_spec);
-            } else if (sv_eq(name, SV_Lit("format")) && !fn->is_not_formatter) {
+            } else if (sv_eq(name, SV_Lit("format")) && fn->is_hook) {
                 check_signature_of_custom_formatter(c, fn, fn_spec);
             }
         }
@@ -2651,19 +2651,17 @@ void check_fn(
             *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
         }
     } else if (fn->body && !fn->polymorphs.count && !only_check_signature) {
-        if (fn->body) {
-            check_stmt(c, fn->body);
-            if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
-                assert(fn->body->kind == NODE_BLOCK);
-                Node_Block *block = (Node_Block *) fn->body;
-                if (fn_spec->is_noreturn) {
-                    error_token(
-                        EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
-                } else {
-                    error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
-                }
-                exit(c, 1);
+        check_stmt(c, fn->body);
+        if ((fn_spec->is_noreturn || fn_spec->returns_count) && !always_returns(fn->body)) {
+            assert(fn->body->kind == NODE_BLOCK);
+            Node_Block *block = (Node_Block *) fn->body;
+            if (fn_spec->is_noreturn) {
+                error_token(
+                    EK_ERROR, block->end, "This function is marked as 'noreturn', but control flow reaches here");
+            } else {
+                error_token(EK_ERROR, block->end, "Expected to return %s", type_to_cstr(*fn_spec->return_type));
             }
+            exit(c, 1);
         }
     }
 

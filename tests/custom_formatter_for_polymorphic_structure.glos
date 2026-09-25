@@ -2,6 +2,7 @@ Vec2 :: struct($T: Type) {
     x, y: T
 }
 
+#hook
 format :: (this: &Vec2($T), w: Writer, nested: bool) -> s64, error {
     return wprint(w, "Vec2(\{this.x}, \{this.y})")
 }
