@@ -63,8 +63,8 @@ find :: (this: string, p: strings.Predicate, reverse := false) -> s64, bool {
     return 0, false
 }
 
-split :: (this: string, p: strings.Predicate) -> string, string, bool {
-    n, found := this.find(p)
+split :: (this: string, p: strings.Predicate, reverse := false) -> string, string, bool {
+    n, found := this.find(p, reverse)
     if !found {
         return this, "", false
     }
