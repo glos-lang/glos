@@ -190,7 +190,12 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                     if (!is_method) {
                         Node_Atom *previous = module_globals_find(c, it->node.module, it->node.token.sv);
                         if (previous) {
-                            error_redefinition_global(c, (Node *) it, (Node *) previous, it->node.module, &c->context);
+                            if (previous->definition_spec->is_private && previous->node.module != it->node.module) {
+                                // OK
+                            } else {
+                                error_redefinition_global(
+                                    c, (Node *) it, (Node *) previous, it->node.module, &c->context);
+                            }
                         }
                         global_scope_push(&it->node.module->globals, it);
                     }
@@ -841,7 +846,10 @@ void check_ident(Compiler *c, Node *n, Ref_Kind ref) {
         if (!definition && atom) {
             if (module != c->builtin_module) {
                 module = c->builtin_module;
-                definition = module_globals_find(c, module, n->token.sv);
+                if (module->orderless_check_status == UNCHECKED) {
+                    define_orderless_nodes_of_module(c, module, NULL);
+                }
+                definition = global_scope_find(&module->globals, n->token.sv);
             }
         }
 

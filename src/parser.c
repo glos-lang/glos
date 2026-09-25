@@ -459,7 +459,6 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
                     (Node *) define,
                     lhs_count,
                     rhs_count,
-
                     add_trailing_s_if_plural("definition", lhs_count),
                     add_trailing_s_if_plural("assignment", rhs_count));
                 exit(1);
@@ -472,7 +471,6 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
                     (Node *) define,
                     lhs_count,
                     rhs_count,
-
                     add_trailing_s_if_plural("definition", lhs_count),
                     add_trailing_s_if_plural("assignment", rhs_count));
                 exit(1);
@@ -482,7 +480,6 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
             ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
                 assert(lhs_iota->kind == NODE_ATOM);
                 definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_static, is_assigned, iota++);
-
                 if (define->is_const && !p->state.fn_current && rhs_iota->kind == NODE_IMPORT) {
                     ((Node_Atom *) lhs_iota)->definition_spec->is_private = true;
                 }
