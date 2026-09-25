@@ -113,9 +113,11 @@ main :: () {
     // You can also have untyped variadics for interfacing with C code.
     //
     // The C FFI will be described in detail later
+
+    C :: #import "C"
     extern {
         // By omitting the type of the variadic argument, it becomes untyped
-        printf :: (fmt: &u8, ...) -> s32
+        printf :: (fmt: &C.char, ...) -> C.int
     }
 
     printf("Check this out: %zd %.14g\n", 69, 420.1337)

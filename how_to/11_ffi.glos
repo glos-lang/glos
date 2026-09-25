@@ -1,19 +1,30 @@
 // Let's face it. To write useful software, at the end of the day, we need to interface
 // with C code. This file will go over the mechanisms provided by Glos to do so.
 main :: () {
+    // First let's import this standard library module, so we get aliases for the C types.
+    //
+    // Check out the file "std/C/types.glos" to see the definitions.
+    C :: #import "C"
+
+    // There also exist platform specific modules like "windows" and "posix". See the "std/" folder
+    // to get the available modules.
+    #if PLATFORM == .WINDOWS {
+        win :: #import "windows"
+    }
+
     // You can define external variables and functions inside 'extern' blocks.
     extern {
         stdout: rawptr
-        printf :: (fmt: &u8, ...) -> s32 // Notice how there is no function body
+        printf :: (fmt: &C.char, ...) -> C.int // Notice how there is no function body
 
         // You can provide custom link names using the '#link' directive
         #link "operator"
-        my_operator :: () -> s64
+        my_operator :: () -> C.long
 
         #link "stderr"
         standard_error: rawptr
 
-        // You can use the '#library' directive to add libraries to the linker
+        // You can use the '#library' directive to add libraries to the linker.
         // #library "raylib" // For example
 
         // An enumeration 'Platform' is defined in the builtin standard module like this:
@@ -27,20 +38,27 @@ main :: () {
         // And a constant 'PLATFORM' is also defined of this type, which is evaluted to the actual platform.
         // You can use these when interfacing with external C code.
 
+        // You can have conditional statements inside extern blocks.
         #if PLATFORM == {
         case .LINUX
-            timerfd_create :: (clockid: s32, flags: s32) -> s32
+            timerfd_create :: (clockid: C.int, flags: C.int) -> C.int
 
         case .MACOS
-            _NSGetExecutablePath :: (buffer: &u8, size: &u32) -> s32
+            _NSGetExecutablePath :: (buffer: &C.char, size: &u32) -> C.int
 
         case .WINDOWS
-            MessageBoxA :: (hWnd: rawptr, lpText: &u8, lpCaption: &u8, uType: u32) -> s32
+            MessageBoxA :: (hWnd: win.HWND, lpText: win.LPCSTR, lpCaption: win.LPCSTR, uType: win.UINT) -> C.int
             #library "user32"
         }
     }
 
     printf("Hello, %zd\n", 69)
+
+    // Importing the modules "C", "windows", "posix", etc is not mandatory per say. They just provide a bit
+    // of convenience so you don't have to think about mapping the C types to the fixed width types of Glos.
+    //
+    // This is especially useful considering that Windows has some differences from Unix when it comes to
+    // the builtin C types. For example: a 'long' is 32 bits, a 'BOOL' is 32 bits, etc.
 }
 
 // BTW, Glos uses the C ABI, so you don't need to worry about compatibility. It Just Works™.

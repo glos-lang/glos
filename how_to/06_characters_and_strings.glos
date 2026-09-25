@@ -82,7 +82,7 @@ main :: () {
     //
     // The following two statements are identical in terms of memory management.
     automatic := "\{nice()}. This is nice!"
-    manual    := []Any { nice(), ". This is nice!" }
+    manual    := []Any {nice(), ". This is nice!"}
 
     // Although the memory semantics of the above two statements are similar, they actually have different
     // types as far as the compiler is concerned. String interpolations are implemented as an 'union' type,
@@ -96,20 +96,27 @@ main :: () {
     // to write useful software we need to interact with C code. And for that we need the
     // stinky NULL terminated '&u8' or '&s8' values.
 
-    // Define an external function 'puts'
+    // First let's import the builtin "C" module, to get these convenient type aliases:
+    //
+    //     char          :: s8
+    //     unsigned_char :: u8
+    //     int           :: s32
+    //
+    C :: #import "C"
+
+    // Define these external functions 'puts'
     extern {
-        #link "puts"
-        uputs :: (s: &u8) -> s32
+        puts :: (s: &C.char) -> C.int
 
         #link "puts"
-        sputs :: (s: &s8) -> s32
+        uputs :: (s: &C.unsigned_char) -> C.int
 
-        // The C FFI mechanisms will be described in detail later
+        // The C FFI mechanisms will be described in detail later.
     }
 
     // String literals can be automatically casted to '&u8' or '&s8'.
+    puts("Hello from Glos using C!")
     uputs("Hello from Glos using C!")
-    sputs("Hello from Glos using C!")
 
     // However, this will not work for variable string values.
     // puts(s) // This is an error.
@@ -119,5 +126,5 @@ main :: () {
 
     // For runtime 'string' values, a helper function from the standard library can be used
     strings :: #import "strings" // Modules and imports will be covered later
-    uputs(strings.to_cstring(s))  // The 'to_cstring' allocates dynamic memory at runtime using the default allocator.
+    puts(strings.to_cstring(s))  // The 'to_cstring' allocates dynamic memory at runtime using the default allocator.
 }

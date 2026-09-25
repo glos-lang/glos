@@ -7,8 +7,9 @@ Vec2 :: struct {
 length :: (this: Vec2) -> f32 {
     return sqrtf(this.x * this.x + this.y * this.y)
     extern {
-        sqrtf :: (x: f32) -> f32
+        sqrtf :: (x: C.float) -> C.float
     }
+    C :: #import "C"
 }
 
 // The pointer indirection of the receiver does not matter. The underlying type will be
