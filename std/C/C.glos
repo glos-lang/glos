@@ -29,10 +29,10 @@ extern {
     ferror :: (f: FILE) -> int
     fread :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
     strtoll :: (s: &char, end: &&char, base: int) -> long_long
-}
 
-#if PLATFORM == .WINDOWS {
-    _ftelli64 :: (f: FILE) -> s64
+    #if PLATFORM == .WINDOWS {
+        _ftelli64 :: (f: FILE) -> s64
+    }
 }
 
 // TODO: This needs to be organised, perhaps by the header name
