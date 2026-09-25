@@ -139,13 +139,7 @@ static void range_apply_node(Range *r, const Node *n) {
     case NODE_POLYMORPH: {
         Node_Polymorph *polymorph = (Node_Polymorph *) n;
         range_apply_node(r, (Node *) polymorph->name);
-        if (polymorph->constraints.head) {
-            if (polymorph->constraints.head->next) {
-                range_apply_token(r, polymorph->constraints_end_token);
-            } else {
-                range_apply_node(r, polymorph->constraints.head);
-            }
-        }
+        range_apply_node(r, polymorph->constraints.tail);
     } break;
 
     case NODE_DISTINCT: {

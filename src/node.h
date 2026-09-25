@@ -749,7 +749,6 @@ struct Node_Polymorph {
     Node_Atom *name;
 
     Nodes constraints;
-    Token constraints_end_token;
 
     size_t arg_index;
 

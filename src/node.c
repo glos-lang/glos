@@ -68,21 +68,9 @@ Type type_without_meta(Type t) {
 static void sb_push_polymorph(SB *sb, Node_Polymorph *p) {
     sb_push_sv(sb, p->name->node.token.sv);
     if (p->constraints.head) {
-        if (p->constraints.head->next) {
-            sb_push_cstr(sb, "/{");
-        } else {
-            sb_push(sb, '/');
-        }
-
         ll_foreach(it, &p->constraints) {
+            sb_push(sb, '/');
             sb_push_type(sb, it->type);
-            if (it->next) {
-                sb_push_cstr(sb, ", ");
-            }
-        }
-
-        if (p->constraints.head->next) {
-            sb_push(sb, '}');
         }
     }
 }

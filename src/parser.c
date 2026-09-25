@@ -882,20 +882,8 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         polymorph->arg_index = p->state.pb->arg_index;
         polymorph->is_type = true;
 
-        if (read_token(p, TOKEN_DIV)) {
-            if (read_token(p, TOKEN_LBRACE)) {
-                while (!read_token(p, TOKEN_RBRACE)) {
-                    nodes_push(&polymorph->constraints, parse_expr(p, POWER_REF, false, false, NULL));
-                    if (expect_token(p, TOKEN_COMMA, TOKEN_RBRACE).kind != TOKEN_COMMA) {
-                        break;
-                    }
-                }
-
-                assert(p->state.ahead.kind == TOKEN_RBRACE);
-                polymorph->constraints_end_token = p->state.ahead;
-            } else {
-                nodes_push(&polymorph->constraints, parse_expr(p, POWER_REF, false, false, NULL));
-            }
+        while (read_token(p, TOKEN_DIV)) {
+            nodes_push(&polymorph->constraints, parse_expr(p, POWER_REF, false, false, NULL));
         }
     } break;
 

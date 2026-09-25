@@ -228,7 +228,7 @@ polymorphic_parameter_constraints :: () {
     // foo(69) // This line is an error since 's64' does not implement 'Trait_A'
 
     // We can apply multiple constraints to a parameter
-    bar :: (into: $T/{Trait_A, Trait_B}, x: string) {
+    bar :: (into: $T/Trait_A/Trait_B, x: string) {
         println("bar: \{into.a()}")
         into.b(x)
         println("bar: \{into.a()}")
