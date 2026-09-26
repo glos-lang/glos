@@ -955,23 +955,19 @@ void check_expr_trait(Compiler *c, Node_Trait *trait) {
 
     if (trait->defined_as) {
         trait->defined_as->node.type = n->type;
-        trait->defined_as->definition_spec->check_status = CHECKED;
     }
 
-    spec->methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*spec->methods));
-    spec->methods_count = trait->methods_count;
-
-    size_t iota = 0;
+    const size_t methods_start = c->trait_methods.count;
     ll_foreach(method, &trait->methods) {
         assert(method->kind == NODE_DEFINE);
         Node_Define *define = (Node_Define *) method;
 
         assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
         Node_Atom *it = (Node_Atom *) define->name;
-        for (size_t i = 0; i < iota; i++) {
-            const Type_Trait_Method *previous = &spec->methods[i];
-            if (sv_eq(previous->name, it->node.token.sv)) {
-                error_redefinition(c, (const Node *) it, &previous->pos);
+        for (size_t i = methods_start; i < c->trait_methods.count; i++) {
+            const Type_Trait_Method previous = c->trait_methods.data[i];
+            if (sv_eq(previous.name, it->node.token.sv)) {
+                error_redefinition(c, (const Node *) it, &previous.pos);
             }
         }
 
@@ -980,14 +976,19 @@ void check_expr_trait(Compiler *c, Node_Trait *trait) {
         assert(define->type);
         assert(type_kind_eq(define->type->type, TYPE_FN) && !define->type->type.ref);
 
-        Type_Trait_Method *tm = &spec->methods[iota++];
-        tm->pos = it->node.token.pos;
-        tm->name = it->node.token.sv;
-        tm->type = define->type->type;
-
-        assert(define->type->kind == NODE_FN);
-        tm->signature = (Node_Fn *) define->type;
+        const Type_Trait_Method tm = {
+            .pos = it->node.token.pos,
+            .name = it->node.token.sv,
+            .type = define->type->type,
+            .signature = (Node_Fn *) define->type,
+        };
+        da_push(&c->trait_methods, tm);
     }
+
+    spec->methods_count = c->trait_methods.count - methods_start;
+    spec->methods = arena_clone(
+        &default_arena, &c->trait_methods.data[methods_start], spec->methods_count * sizeof(*spec->methods));
+    c->trait_methods.count = methods_start;
 }
 
 void check_expr_union(Compiler *c, Node_Union *unionn) {

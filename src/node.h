@@ -893,9 +893,8 @@ typedef struct {
 
 // This represents a type
 struct Node_Trait {
-    Node   node;
-    Nodes  methods;
-    size_t methods_count; // Calculated at parse time
+    Node  node;
+    Nodes methods;
 
     Node_Atom *defined_as;
     size_t     defined_as_anon_iota;

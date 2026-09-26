@@ -419,7 +419,7 @@ static bool type_trait_eq(Type_Trait *a, Type_Trait *b) {
         return a->definition->defined_as == b->definition->defined_as;
     }
 
-    if (a->definition->methods_count != b->definition->methods_count) {
+    if (a->methods_count != b->methods_count) {
         return false;
     }
 

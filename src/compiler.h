@@ -88,7 +88,9 @@ typedef struct {
 
     Type main_fn_type;
     Type u8_slice_type;
+
     DA(Type_Struct_Field) struct_fields;
+    DA(Type_Trait_Method) trait_methods;
 
     DA(Node *) designated_initializers;
 

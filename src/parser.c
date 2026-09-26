@@ -1295,7 +1295,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             }
 
             nodes_push(&trait->methods, method);
-            trait->methods_count++;
             expect_stmt_terminator(p);
         }
 
