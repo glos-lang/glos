@@ -77,11 +77,11 @@ split :: (this: string, p: strings.Predicate, reverse := false) -> string, strin
     }
 }
 
-trim :: (this: string, p: strings.Predicate) -> string {
+trim :: (this: string, p: strings.Predicate = unicode.is_space) -> string {
     return this.trim_left(p).trim_right(p)
 }
 
-trim_left :: (this: string, p: strings.Predicate) -> string {
+trim_left :: (this: string, p: strings.Predicate = unicode.is_space) -> string {
     if p == {
     case rune
         for i, c := range this {
@@ -119,7 +119,7 @@ trim_left :: (this: string, p: strings.Predicate) -> string {
     return ""
 }
 
-trim_right :: (this: string, p: strings.Predicate) -> string {
+trim_right :: (this: string, p: strings.Predicate = unicode.is_space) -> string {
     if p == {
     case rune
         for i, c := range strings.Reverse(this) {
