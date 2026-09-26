@@ -222,48 +222,49 @@ static bool escape_char(char *ch) {
     return true;
 }
 
-static char next_char_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
-    if (!l->sv.count) {
-        error_unterminated(l, pos, label);
+// For \uXXXX and \UXXXXXXXX. Assume that the '\' has been read.
+static bool parse_rune_from_escape_sequence(Lexer *l, Rune *out, Pos begin, const char *label) {
+    size_t count = 0;
+
+    assert(l->sv.count);
+    if (match_char(l, 'u')) {
+        count = 4;
+    } else if (match_char(l, 'U')) {
+        count = 8;
+    } else {
+        return false;
     }
 
-    char ch = read_char(l);
-    if (ch != '\\') {
-        return ch;
+    if (l->sv.count < count) {
+        error_unterminated(l, begin, label);
     }
 
-    if (!l->sv.count) {
-        error_unterminated(l, pos, label);
+    char buffer[16] = {0};
+    for (size_t i = 0; i < count; i++) {
+        if (!isxdigit(*l->sv.data)) {
+            error_invalid(l->pos, l->sv, "hexadecimal digit");
+        }
+        buffer[i] = read_char(l);
     }
 
-    ch = *l->sv.data;
-    if (!escape_char(&ch)) {
-        error_invalid(l->pos, l->sv, "escape character");
-    }
-
-    next_char(l);
-    return ch;
+    *out = strtoul(buffer, NULL, 16);
+    return true;
 }
 
-static Rune next_rune_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
+static Rune next_rune_with_parsed_escape(Lexer *l, Pos begin, const char *label) {
     if (!l->sv.count) {
-        error_unterminated(l, pos, label);
+        error_unterminated(l, begin, label);
     }
 
-    const SV     sv_save = l->sv;
-    const Rune   rune = read_rune_from_sv(&l->sv);
-    const size_t count = sv_save.count - l->sv.count;
-    if (count == 1) {
-        l->sv = sv_save;
-        next_char(l); // For tracking newlines
-    } else {
-        l->pos.col += count;
-    }
-
-    if (rune == '\\') {
-        assert(count == 1);
+    Rune rune = 0;
+    if (*l->sv.data == '\\') {
+        next_char(l);
         if (!l->sv.count) {
-            error_unterminated(l, pos, label);
+            error_unterminated(l, begin, label);
+        }
+
+        if (parse_rune_from_escape_sequence(l, &rune, begin, label)) {
+            return rune;
         }
 
         char ch = *l->sv.data;
@@ -275,10 +276,19 @@ static Rune next_rune_with_parsed_escape(Lexer *l, Pos pos, const char *label) {
         return ch;
     }
 
+    const SV sv_save = l->sv;
+    rune = read_rune_from_sv(&l->sv);
+    const size_t count = sv_save.count - l->sv.count;
+    if (count == 1) {
+        l->sv = sv_save;
+        next_char(l); // For tracking newlines
+    } else {
+        l->pos.col += count;
+    }
     return rune;
 }
 
-Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
+Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     l->inside_string_or_comment = true;
     const size_t default_sb_count_save = default_sb.count;
 
@@ -298,11 +308,34 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos start) {
             token.kind = TOKEN_ISTRING;
             break;
         }
-        sb_push(&default_sb, next_char_with_parsed_escape(l, start, "string"));
+
+        if (!l->sv.count) {
+            error_unterminated(l, pos, "string");
+        }
+
+        char ch = read_char(l);
+        if (ch == '\\') {
+            if (!l->sv.count) {
+                error_unterminated(l, pos, "string");
+            }
+
+            Rune rune = 0;
+            if (parse_rune_from_escape_sequence(l, &rune, begin, "string")) {
+                sb_push_rune(&default_sb, rune);
+                continue;
+            }
+
+            ch = *l->sv.data;
+            if (!escape_char(&ch)) {
+                error_invalid(l->pos, l->sv, "escape character");
+            }
+            next_char(l);
+        }
+        sb_push(&default_sb, ch);
     }
 
     if (!l->sv.count) {
-        error_unterminated(l, start, "string");
+        error_unterminated(l, begin, "string");
     }
     next_char(l);
     token.sv.count -= l->sv.count;
