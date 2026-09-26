@@ -206,7 +206,11 @@ range :: (this: string, state: &s64) -> s64, rune, bool {
     return index, r, true
 }
 
-reverse :: inline (this: string) -> strings.Reverse {
+split_iter :: inline (this: string, p: strings.Predicate = unicode.is_space) -> strings.Split {
+    return strings.Split {s = this, p = p}
+}
+
+reverse_iter :: inline (this: string) -> strings.Reverse {
     return strings.Reverse(this)
 }
 

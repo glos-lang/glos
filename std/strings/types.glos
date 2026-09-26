@@ -1,3 +1,24 @@
+Split :: struct {
+    s: string
+    p: Predicate
+}
+
+range :: (this: Split, state: &struct { s: string; index: s64 }) -> s64, string, bool {
+    if this.s  == "" then return 0, "", false
+    if state.s == "" {
+        if state.index == 0 {
+            state.s = this.s
+        } else {
+            return state.index, "", false
+        }
+    }
+
+    lhs: string
+    lhs, state.s, _ = state.s.split(this.p)
+    state.index += 1
+    return state.index - 1, lhs, true
+}
+
 Reverse :: distinct string
 
 range :: (this: Reverse, state: &s64) -> s64, rune, bool {
