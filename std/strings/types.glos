@@ -8,9 +8,9 @@ range :: (this: Reverse, state: &s64) -> s64, rune, bool {
 
     for count := 1; count <= 4 && count <= end; count += 1 {
         start := end - count
-        lead  := u8(this[start])
-        if unicode.sequence_count(lead) == count {
-            r, n := unicode.decode_at(string(this), start)
+        lead  := this[start]
+        if unicode.count(lead) == count {
+            r, n, _ := unicode.decode([]u8(this)[start..])
             if n == count {
                 *state = this.count - start
                 return start, r, true

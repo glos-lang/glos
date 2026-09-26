@@ -1710,21 +1710,23 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 };
 
                 Type string_type = {.kind = TYPE_STRING};
-                if (type_eq(*to_type, string_type) &&
-                    (type_eq(*from_type, s8_slice_type) || type_eq(*from_type, u8_slice_type))) //
+                if (type_eq_without_distinct(*to_type, string_type) &&      //
+                    (type_eq_without_distinct(*from_type, s8_slice_type) || //
+                     type_eq_without_distinct(*from_type, u8_slice_type)))  //
                 {
                     same = true;
                 } else if (
-                    type_eq(*from_type, string_type) &&
-                    (type_eq(*to_type, s8_slice_type) || type_eq(*to_type, u8_slice_type))) //
+                    type_eq_without_distinct(*from_type, string_type) &&  //
+                    (type_eq_without_distinct(*to_type, s8_slice_type) || //
+                     type_eq_without_distinct(*to_type, u8_slice_type)))  //
                 {
                     same = true;
                 } else if (
-                    type_eq(*to_type, string_type) &&        //
-                    (from_type->ref == 0 &&                  //
-                     type_kind_eq(*from_type, TYPE_ARRAY) && //
-                     (type_eq(*from_type->spec.array.element, s8_type) ||
-                      type_eq(*from_type->spec.array.element, u8_type))) //
+                    type_eq_without_distinct(*to_type, string_type) &&                     //
+                    (from_type->ref == 0 &&                                                //
+                     type_kind_eq(*from_type, TYPE_ARRAY) &&                               //
+                     (type_eq_without_distinct(*from_type->spec.array.element, s8_type) || //
+                      type_eq_without_distinct(*from_type->spec.array.element, u8_type)))  //
                 ) {
                     call->type_cast = TYPE_CAST_ARRAY_TO_SLICE;
                 } else {

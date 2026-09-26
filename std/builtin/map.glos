@@ -89,7 +89,7 @@ range :: (this: &map[$K]$V, index: &s64) -> K, #reference V, bool {
     return K {}, null, false
 }
 
-#private ...
+#private...
 Map_Entry_State :: enum {
     EMPTY
     OCCUPIED

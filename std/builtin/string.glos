@@ -200,8 +200,9 @@ range :: (this: string, state: &s64) -> s64, rune, bool {
         return index, 0, false
     }
 
-    r, count := unicode.decode_at(this, index)
-    *state += count
+    r, n, ok := unicode.decode([]u8(this)[index..])
+    if !ok then n = 1
+    *state += n
     return index, r, true
 }
 

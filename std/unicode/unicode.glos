@@ -1,6 +1,4 @@
-// TODO: Work on this
-
-sequence_count :: (b: u8) -> s64 {
+count :: (b: u8) -> s64 {
     if b & 0x80 == 0x00 then return 1 // 0xxxxxxx
     if b & 0xE0 == 0xC0 then return 2 // 110xxxxx
     if b & 0xF0 == 0xE0 then return 3 // 1110xxxx
@@ -8,16 +6,15 @@ sequence_count :: (b: u8) -> s64 {
     return 0
 }
 
-decode_at :: (s: string, start: s64) -> rune, s64 {
-    byte  := u8(s[start])
-    count := sequence_count(byte)
-
-    if count == 0 || start + count > s.count {
-        return -1, 0
+decode :: (s: []u8) -> rune, s64, bool {
+    byte  := s[0]
+    count := count(byte)
+    if count == 0 || count > s.count {
+        return -1, 0, false
     }
 
     if count == 1 {
-        return rune(byte), 1
+        return rune(byte), 1, true
     }
 
     cp:     rune
@@ -37,16 +34,50 @@ decode_at :: (s: string, start: s64) -> rune, s64 {
     }
 
     for i := range 1..count {
-        b := u8(s[start + i])
+        b := u8(s[i])
         if (b & 0xC0) != 0x80 {
-            return -1, 0
+            return -1, 0, false
         }
         cp = (cp << 6) | rune(b & 0x3F)
     }
 
     if s64(cp) < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF {
-        return -1, 0
+        return -1, 0, false
     }
 
-    return cp, count
+    return cp, count, true
+}
+
+encode :: (r: rune, buffer: []u8) -> s64, bool {
+    cp := u32(r)
+    ok := true
+
+    // Treat anything invalid/out-of-range/surrogate as U+FFFD.
+    if r < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+        cp = 0xFFFD
+        ok = false
+    }
+
+    n:  s64
+    if cp <= 0x7F {
+        buffer[0] = u8(cp)
+        n = 1
+    } else if cp <= 0x7FF {
+        buffer[0] = u8(0xC0 | (cp >> 6))
+        buffer[1] = u8(0x80 | (cp & 0x3F))
+        n = 2
+    } else if cp <= 0xFFFF {
+        buffer[0] = u8(0xE0 | (cp >> 12))
+        buffer[1] = u8(0x80 | ((cp >> 6) & 0x3F))
+        buffer[2] = u8(0x80 | (cp & 0x3F))
+        n = 3
+    } else {
+        buffer[0] = u8(0xF0 | (cp >> 18))
+        buffer[1] = u8(0x80 | ((cp >> 12) & 0x3F))
+        buffer[2] = u8(0x80 | ((cp >> 6) & 0x3F))
+        buffer[3] = u8(0x80 | (cp & 0x3F))
+        n = 4
+    }
+
+    return n, ok
 }
