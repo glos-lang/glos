@@ -1,0 +1,39 @@
+main :: () {
+    {
+        A :: 69
+
+        a := s8(69)
+        println(a  == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+
+        a := s16(69)
+        println(a == A)
+    }
+
+    {
+        B :: 4.2
+
+        b := f32(4.2)
+        println(b == B)
+
+        b := f64(4.2)
+        println(b == B)
+    }
+}

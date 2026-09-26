@@ -190,7 +190,17 @@ LLVMValueRef compile_ident(Compiler *c, Node *n, Node_Atom *definition, bool ref
 
                 assert(definition->definition_spec);
                 if (!definition->definition_spec->llvm) {
-                    definition->definition_spec->llvm = compile_const_value(c, *const_value, n->type);
+                    compile_type(c, &definition->node.type);
+                    definition->definition_spec->llvm = compile_const_value(c, *const_value, definition->node.type);
+                }
+
+                if (const_value->kind == CONST_VALUE_INT || const_value->kind == CONST_VALUE_FLOAT) {
+                    return compile_cast(
+                        c,
+                        definition->definition_spec->llvm,
+                        n->type.llvm,
+                        type_is_signed(definition->node.type),
+                        type_is_signed(n->type));
                 }
                 return definition->definition_spec->llvm;
             }

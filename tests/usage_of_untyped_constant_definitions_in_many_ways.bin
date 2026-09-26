@@ -1,0 +1,15 @@
+EXIT 0
+STDOUT 50
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+
+STDERR 0
+
