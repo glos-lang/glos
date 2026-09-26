@@ -20,14 +20,45 @@ to_s64 :: (s: string, base := 10) -> s64, error {
     end: &C.char
     result := C.strtoll(cstr, &end, s32(base))
 
-    err := C.get_errno()
-    if err != null {
-        return 0, err
+    if end == &C.char(s.data) || *end != '\0' {
+        C.Errno.EINVAL?
     }
+    C.get_errno()?
+    return result, null
+}
+
+to_u64 :: (s: string, base := 10) -> u64, error {
+    cstr := to_cstring(s, temporary_allocator)?
+    defer temporary_allocator.rewind(rawptr(cstr))
+
+    C.set_errno(null)
+    end: &C.char
+    result := C.strtoull(cstr, &end, s32(base))
 
     if end == &C.char(s.data) || *end != '\0' {
-        return 0, C.Errno.EINVAL
+        C.Errno.EINVAL?
     }
+    C.get_errno()?
+    return result, null
+}
+
+to_f64 :: (s: string) -> f64, error {
+    cstr := to_cstring(s, temporary_allocator)?
+    defer temporary_allocator.rewind(rawptr(cstr))
+
+    C.set_errno(null)
+    end: &C.char
+    result := C.strtod(cstr, &end)
+
+    if end == &C.char(s.data) || *end != '\0' {
+        C.Errno.EINVAL?
+    }
+
+    err := C.get_errno()
+    if err == .ERANGE {
+        return result, err
+    }
+    err?
     return result, null
 }
 

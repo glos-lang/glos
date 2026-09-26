@@ -28,7 +28,9 @@ extern {
     rewind :: (f: FILE)
     ferror :: (f: FILE) -> int
     fread :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
+    strtod :: (s: &char, end: &&char) -> double
     strtoll :: (s: &char, end: &&char, base: int) -> long_long
+    strtoull :: (s: &char, end: &&char, base: int) -> unsigned_long_long
 
     #if PLATFORM == .WINDOWS {
         #link "_ftelli64" ftelli64 :: (f: FILE) -> s64
