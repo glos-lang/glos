@@ -1,19 +1,8 @@
 File :: distinct rawptr
 
-#if PLATFORM == .WINDOWS {
-    Open_Flag :: enum s32 {
-        RDONLY = 0
-        WRONLY = 1
-        RDWR   = 2
-        APPEND = 8
-        CREAT  = 256
-        TRUNC  = 512
-        EXCL   = 1024
-        TEXT   = 16384
-        BINARY = 32768
-    }
-} else {
-    Open_Flag :: enum s32 {
+#if PLATFORM == {
+case .LINUX
+    Open_Flag :: enum {
         RDONLY = 0
         WRONLY = 1
         RDWR   = 2
@@ -23,6 +12,32 @@ File :: distinct rawptr
         APPEND = 1024
         TEXT   = 0
         BINARY = 0
+    }
+
+case .MACOS
+    Open_Flag :: enum {
+        RDONLY = 0
+        WRONLY = 1
+        RDWR   = 2
+        APPEND = 8
+        CREAT  = 512
+        TRUNC  = 1024
+        EXCL   = 2048
+        TEXT   = 0
+        BINARY = 0
+    }
+
+case .WINDOWS
+    Open_Flag :: enum {
+        RDONLY = 0
+        WRONLY = 1
+        RDWR   = 2
+        APPEND = 8
+        CREAT  = 256
+        TRUNC  = 512
+        EXCL   = 1024
+        TEXT   = 16384
+        BINARY = 32768
     }
 }
 

@@ -1,20 +1,11 @@
 read_entire_file :: (path: string, flags: os.Open_Flag = 0, allocator := default_allocator) -> []u8, error {
-    f, err := os.open(path, .RDONLY | flags, 0)
-    if err != null {
-        return {}, err
-    }
+    f := os.open(path, .RDONLY | flags, 0)?
     defer f.close()
 
-    offset, err := f.seek(0, .END)
-    if err != null {
-        return {}, err
-    }
+    offset := f.seek(0, .END)?
     f.rewind()
 
-    data, err := allocator.alloc(offset + 1, zeroed = false)
-    if err != null {
-        return {}, err
-    }
+    data := allocator.alloc(offset + 1, zeroed = false)?
     bytes := []u8(&u8(data), offset + 1)
 
     n, err := f.read(bytes)
