@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 111
+tests/error_trait_method_spreading_expected_trait.glos:2:8: Error: Expected trait type, got 's64'
+
+    ...s64
+
+

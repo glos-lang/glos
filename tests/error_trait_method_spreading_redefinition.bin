@@ -1,0 +1,20 @@
+EXIT 1
+STDOUT 0
+
+STDERR 438
+tests/error_trait_method_spreading_redefinition.glos:8:8: Error: While spreading this trait, we encountered a method 'x' that is already defined
+
+    ...Foo
+
+tests/error_trait_method_spreading_redefinition.glos:7:5: Note: It was first defined in this trait here
+
+    x: () -> string
+
+tests/error_trait_method_spreading_redefinition.glos:1:8: Note: Here is the trait we are spreading
+
+    Foo :: trait {
+        x: ()
+        y: ()
+    }
+
+

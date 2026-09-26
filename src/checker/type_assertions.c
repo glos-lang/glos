@@ -592,6 +592,7 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
             }
 
             if (!ok) {
+                error_node(EK_NOTE, (Node *) trait->definition, "Trait defined here");
                 exit(c, 1);
             }
         }

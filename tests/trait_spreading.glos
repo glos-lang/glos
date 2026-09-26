@@ -1,0 +1,33 @@
+main :: () {
+    foobar :: (f: FooBar) {
+        println(f.foo(69))
+        println(f.bar("Nuts"))
+    }
+
+    foobar(Int(69))
+}
+
+FooBar :: trait {
+    ...Foo
+    ...Bar
+}
+
+Foo :: trait {
+    foo: (s: s64) -> string
+}
+
+Bar :: trait {
+    bar: (s: string) -> s64
+}
+
+Int :: distinct s64
+
+foo :: (this: Int, s: s64) -> string {
+    println(s)
+    return "Deez"
+}
+
+bar :: (this: Int, s: string) -> s64 {
+    println(s)
+    return s64(this * 6 + 6)
+}

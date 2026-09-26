@@ -44,7 +44,7 @@ get_f64 :: (this: &Rand, min := 0.0, max := 1.0) -> f64 {
     return min + (max - min) * f64(v >> 11) * (1.0 / 9007199254740992.0)
 }
 
-read :: (this: &Rand, bytes: []u8) -> s64, bool {
+read :: (this: &Rand, bytes: []u8) -> s64, error {
     data  := bytes.data
     count := bytes.count
     for count >= 8 {
@@ -58,7 +58,7 @@ read :: (this: &Rand, bytes: []u8) -> s64, bool {
         v := this.get_u64()
         mem.copy(data, &u8(&v), count)
     }
-    return bytes.count, true
+    return bytes.count, null
 
 }
 

@@ -1254,44 +1254,50 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         expect_token(p, TOKEN_LBRACE);
         while (!read_token(p, TOKEN_RBRACE)) {
-            Node *name = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_IDENT));
-            if (sv_match(name->token.sv, "type") || //
-                sv_match(name->token.sv, "data") || //
-                sv_match(name->token.sv, "impl"))   //
-            {
-                error_node(EK_ERROR, name, "A trait method cannot be named '" SV_Fmt "'", SV_Arg(name->token.sv));
-                exit(1);
-            }
+            Node *method = NULL;
+            token = expect_token(p, TOKEN_IDENT, TOKEN_SPREAD);
+            if (token.kind == TOKEN_SPREAD) {
+                method = node_alloc(p->module_current, NODE_UNARY, token);
+                ((Node_Unary *) method)->value = parse_expr(p, POWER_PRE, false, false, NULL);
+            } else {
+                Node *name = node_alloc(p->module_current, NODE_ATOM, token);
+                if (sv_match(name->token.sv, "type") || //
+                    sv_match(name->token.sv, "data") || //
+                    sv_match(name->token.sv, "impl"))   //
+                {
+                    error_node(EK_ERROR, name, "A trait method cannot be named '" SV_Fmt "'", SV_Arg(name->token.sv));
+                    exit(1);
+                }
+                method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false, false);
 
-            Node *method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false, false);
+                Node_Define *define = (Node_Define *) method;
+                if (define->is_const) {
+                    error_node(EK_ERROR, method, "Expected trait method, got constant definition");
+                    exit(1);
+                }
 
-            Node_Define *define = (Node_Define *) method;
-            if (define->is_const) {
-                error_node(EK_ERROR, method, "Expected trait method, got constant definition");
-                exit(1);
-            }
+                if (define->expr) {
+                    error_node(EK_ERROR, define->expr, "Trait method definition cannot have assignment");
+                    exit(1);
+                }
 
-            if (define->expr) {
-                error_node(EK_ERROR, define->expr, "Trait method definition cannot have assignment");
-                exit(1);
-            }
+                if (define->type->kind != NODE_FN) {
+                    error_node(EK_ERROR, define->type, "Trait method must be a literal function type");
+                    exit(1);
+                }
 
-            if (define->type->kind != NODE_FN) {
-                error_node(EK_ERROR, define->type, "Trait method must be a literal function type");
-                exit(1);
-            }
+                Node_Fn *fn = (Node_Fn *) define->type;
+                fn->trait_method = trait;
 
-            Node_Fn *fn = (Node_Fn *) define->type;
-            fn->trait_method = trait;
+                if (fn->is_inline) {
+                    error_token(EK_ERROR, fn->variadics_spread_token, "Trait methods cannot be inline");
+                    exit(1);
+                }
 
-            if (fn->is_inline) {
-                error_token(EK_ERROR, fn->variadics_spread_token, "Trait methods cannot be inline");
-                exit(1);
-            }
-
-            if (fn->variadics_kind == VARIADICS_UNTYPED) {
-                error_token(EK_ERROR, fn->variadics_spread_token, "Trait methods cannot have untyped variadics");
-                exit(1);
+                if (fn->variadics_kind == VARIADICS_UNTYPED) {
+                    error_token(EK_ERROR, fn->variadics_spread_token, "Trait methods cannot have untyped variadics");
+                    exit(1);
+                }
             }
 
             nodes_push(&trait->methods, method);

@@ -302,6 +302,8 @@ struct Type_Trait_Method {
     SV   name;
     Type type;
 
+    Node *spread;
+
     // Used for diagnostic purposes
     Node_Fn *signature;
 
