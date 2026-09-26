@@ -1,6 +1,5 @@
-// TODO: Only binary is supported
-read_entire_file :: (path: string, allocator := default_allocator) -> []u8, error {
-    f, err := os.open(path, true)
+read_entire_file :: (path: string, flags: os.Open_Flag = 0, allocator := default_allocator) -> []u8, error {
+    f, err := os.open(path, .RDONLY | flags, 0)
     if err != null {
         return {}, err
     }

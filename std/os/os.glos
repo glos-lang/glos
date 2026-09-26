@@ -1,42 +1,62 @@
-args: []string
-
-exit :: C.exit
-
 File :: distinct rawptr
 
-// TODO: Only binary is supported
-open :: (path: string, read: bool) -> File, error {
+#if PLATFORM == .WINDOWS {
+    Open_Flag :: enum s32 {
+        RDONLY = 0
+        WRONLY = 1
+        RDWR   = 2
+        APPEND = 8
+        CREAT  = 256
+        TRUNC  = 512
+        EXCL   = 1024
+        TEXT   = 16384
+        BINARY = 32768
+    }
+} else {
+    Open_Flag :: enum s32 {
+        RDONLY = 0
+        WRONLY = 1
+        RDWR   = 2
+        CREAT  = 64
+        EXCL   = 128
+        TRUNC  = 512
+        APPEND = 1024
+        TEXT   = 0
+        BINARY = 0
+    }
+}
+
+open :: (path: string, flags: Open_Flag, perm: s32 = 0o666) -> File, error {
     path := strings.to_cstring(path, temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
-    f: File
-    if read {
-        f = File(C.fopen(path, "r"))
-    } else {
-        f = File(C.fopen(path, "w"))
+    fd := C.open(path, C.int(flags), C.int(perm))
+    if fd == -1 {
+        return null, C.get_errno()
     }
 
+    mode: &C.char
+    if flags & .RDWR != 0 {
+        if flags & .APPEND != 0 {
+            mode = "a+"
+        } else {
+            mode = "r+"
+        }
+    } else if flags & .WRONLY != 0 {
+        if flags & .APPEND != 0 {
+            mode = "a"
+        } else {
+            mode = "w"
+        }
+    } else {
+        mode = "r"
+    }
+
+    f := File(C.fdopen(fd, mode))
     if f == null {
-        return f, C.get_errno()
+        return null, C.get_errno()
     }
     return f, null
-}
-
-seek :: (this: File, offset: s32, whence: io.Seek) -> s64, error {
-    if C.fseek(C.FILE(this), C.int(offset), C.int(whence)) != 0 {
-        return 0, C.get_errno()
-    }
-
-    #if PLATFORM == .WINDOWS {
-        n := C._ftelli64(C.FILE(this))
-    } else {
-        n := C.ftell(C.FILE(this))
-    }
-
-    if n == -1 {
-        return 0, C.get_errno()
-    }
-    return n, null
 }
 
 read :: (this: File, bytes: []u8) -> s64, error {
@@ -45,6 +65,23 @@ read :: (this: File, bytes: []u8) -> s64, error {
         return s64(n), C.get_errno()
     }
     return s64(n), null
+}
+
+seek :: (this: File, offset: s32, whence: io.Seek) -> s64, error {
+    if C.fseek(C.FILE(this), C.int(offset), C.int(whence)) != 0 {
+        return 0, C.get_errno()
+    }
+
+    #if PLATFORM == .WINDOWS {
+        n := C.ftelli64(C.FILE(this))
+    } else {
+        n := C.ftell(C.FILE(this))
+    }
+
+    if n == -1 {
+        return 0, C.get_errno()
+    }
+    return n, null
 }
 
 write :: (this: File, bytes: []u8) -> s64, error {
@@ -84,6 +121,9 @@ case .WINDOWS
     stdout: File
     stderr: File
 }
+
+args: []string
+exit :: C.exit
 
 C       :: #import "C"
 io      :: #import "io"

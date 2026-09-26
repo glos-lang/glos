@@ -31,7 +31,12 @@ extern {
     strtoll :: (s: &char, end: &&char, base: int) -> long_long
 
     #if PLATFORM == .WINDOWS {
-        _ftelli64 :: (f: FILE) -> s64
+        #link "_ftelli64" ftelli64 :: (f: FILE) -> s64
+        #link "_open"     open :: (path: &char, flags: int, mode: int) -> int
+        #link "_fdopen"   fdopen :: (fd: int, mode: &char) -> FILE
+    } else {
+        open :: (path: &char, flags: int, mode: int) -> int
+        fdopen :: (fd: int, mode: &char) -> FILE
     }
 }
 
