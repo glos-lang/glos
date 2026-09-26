@@ -600,6 +600,7 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
         }
 
         check_that_type_is_known(c, member->lhs);
+        finalize_untyped_type(c, member->lhs);
         check_whether_member_access_is_valid(c, member);
 
         *is_ref_valid = true; // check_node() has already determined that the reference is valid

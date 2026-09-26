@@ -231,7 +231,7 @@ void compiler_build(Compiler *c, const char *output_path) {
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
 #ifndef PLATFORM_X86_64_WINDOWS
-        // Link against math just in case
+        // The '%' operator needs the math library to operate on floats in unoptimized builds.
         cmd_push(c->cmd, "-lm");
 #endif // PLATFORM_X86_64_WINDOWS
 

@@ -1,0 +1,86 @@
+extern {
+    #link "fabsf" abs :: (this: f32) -> f32
+    #link "fabs"  abs :: (this: f64) -> f64
+
+    #link "sqrtf" sqrt :: (this: f32) -> f32
+    #link "sqrt"  sqrt :: (this: f64) -> f64
+
+    #link "cbrtf" cbrt :: (this: f32) -> f32
+    #link "cbrt"  cbrt :: (this: f64) -> f64
+
+    #link "powf" pow :: (this: f32) -> f32
+    #link "pow"  pow :: (this: f64) -> f64
+
+    #link "expf" exp :: (this: f32) -> f32
+    #link "exp"  exp :: (this: f64) -> f64
+
+    #link "logf" log :: (this: f32) -> f32
+    #link "log"  log :: (this: f64) -> f64
+
+    #link "log2f" log2 :: (this: f32) -> f32
+    #link "log2"  log2 :: (this: f64) -> f64
+
+    #link "log10f" log10 :: (this: f32) -> f32
+    #link "log10"  log10 :: (this: f64) -> f64
+
+    #link "sinf" sin :: (this: f32) -> f32
+    #link "sin"  sin :: (this: f64) -> f64
+
+    #link "cosf" cos :: (this: f32) -> f32
+    #link "cos"  cos :: (this: f64) -> f64
+
+    #link "tanf" tan :: (this: f32) -> f32
+    #link "tan"  tan :: (this: f64) -> f64
+
+    #link "asinf" asin :: (this: f32) -> f32
+    #link "asin"  asin :: (this: f64) -> f64
+
+    #link "acosf" acos :: (this: f32) -> f32
+    #link "acos"  acos :: (this: f64) -> f64
+
+    #link "atanf" atan :: (this: f32) -> f32
+    #link "atan"  atan :: (this: f64) -> f64
+
+    #link "atan2f" atan2 :: (this: f32) -> f32
+    #link "atan2"  atan2 :: (this: f64) -> f64
+
+    #link "floorf" floor :: (this: f32) -> f32
+    #link "floor"  floor :: (this: f64) -> f64
+
+    #link "ceilf" ceil :: (this: f32) -> f32
+    #link "ceil"  ceil :: (this: f64) -> f64
+
+    #link "roundf" round :: (this: f32) -> f32
+    #link "round"  round :: (this: f64) -> f64
+
+    #link "truncf" trunc :: (this: f32) -> f32
+    #link "trunc"  trunc :: (this: f64) -> f64
+}
+
+is_nan :: (this: f32) -> bool {
+    bits := *(&u32)(&this)
+    exp  := (bits >> 23) & 0xFF
+    mant := bits & 0x7FFFFF
+    return exp == 0xFF && mant != 0
+}
+
+is_nan :: (this: f64) -> bool {
+    bits := *(&u64)(&this)
+    exp  := (bits >> 52) & 0x7FF
+    mant := bits & 0xFFFFFFFFFFFFF
+    return exp == 0x7FF && mant != 0
+}
+
+is_inf :: (this: f32) -> bool {
+    bits := *(&u32)(&this)
+    exp  := (bits >> 23) & 0xFF
+    mant := bits & 0x7FFFFF
+    return exp == 0xFF && mant == 0
+}
+
+is_inf :: (this: f64) -> bool {
+    bits := *(&u64)(&this)
+    exp  := (bits >> 52) & 0x7FF
+    mant := bits & 0xFFFFFFFFFFFFF
+    return exp == 0x7FF && mant == 0
+}
