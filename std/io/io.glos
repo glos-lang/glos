@@ -1,3 +1,7 @@
+Reader :: trait {
+    read: (bytes: []u8) -> s64, error
+}
+
 Writer :: trait {
     write: (bytes: []u8) -> s64, error
 }

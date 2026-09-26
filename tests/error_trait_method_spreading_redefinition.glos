@@ -1,0 +1,9 @@
+Foo :: trait {
+    x: ()
+    y: ()
+}
+
+Bar :: trait {
+    x: () -> string
+    ...Foo
+}

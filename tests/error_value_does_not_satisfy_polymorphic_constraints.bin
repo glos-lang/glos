@@ -1,14 +1,20 @@
 EXIT 1
 STDOUT 0
 
-STDERR 561
+STDERR 680
 tests/error_value_does_not_satisfy_polymorphic_constraints.glos:6:11: Error: Type 'string' does not implement 'Writer'
 
     greet("Urmom")
 
-std/io/io.glos:2:5: Note: The method 'write' is not defined for type 'string'
+std/io/io.glos:6:5: Note: The method 'write' is not defined for type 'string'
 
     write: (bytes: []u8) -> s64, error
+
+std/io/io.glos:5:11: Note: Trait defined here
+
+    Writer :: trait {
+        write: (bytes: []u8) -> s64, error
+    }
 
 tests/error_value_does_not_satisfy_polymorphic_constraints.glos:6:5: Note: While attempting to monomorphize this
 

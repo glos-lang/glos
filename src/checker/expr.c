@@ -955,39 +955,99 @@ void check_expr_trait(Compiler *c, Node_Trait *trait) {
 
     if (trait->defined_as) {
         trait->defined_as->node.type = n->type;
-        trait->defined_as->definition_spec->check_status = CHECKED;
     }
 
-    spec->methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*spec->methods));
-    spec->methods_count = trait->methods_count;
-
-    size_t iota = 0;
+    const size_t methods_start = c->trait_methods.count;
     ll_foreach(method, &trait->methods) {
-        assert(method->kind == NODE_DEFINE);
-        Node_Define *define = (Node_Define *) method;
+        if (method->kind == NODE_DEFINE) {
+            Node_Define *define = (Node_Define *) method;
 
-        assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
-        Node_Atom *it = (Node_Atom *) define->name;
-        for (size_t i = 0; i < iota; i++) {
-            const Type_Trait_Method *previous = &spec->methods[i];
-            if (sv_eq(previous->name, it->node.token.sv)) {
-                error_redefinition(c, (const Node *) it, &previous->pos);
+            assert(define->name->kind == NODE_ATOM && define->name->token.kind == TOKEN_IDENT);
+            Node_Atom *it = (Node_Atom *) define->name;
+            for (size_t i = methods_start; i < c->trait_methods.count; i++) {
+                const Type_Trait_Method previous = c->trait_methods.data[i];
+                if (sv_eq(previous.name, it->node.token.sv)) {
+                    if (previous.spread) {
+                        error_node(EK_ERROR, (Node *) it, "Redefinition of '" SV_Fmt "'", SV_Arg(it->node.token.sv));
+                        error_node(
+                            EK_NOTE, previous.spread, "It was first defined in this trait here by spreading this");
+
+                        Node_Trait *definition = previous.spread->type.spec.trait->definition;
+                        if (definition->defined_as) {
+                            error_node(EK_NOTE, (Node *) definition, "Here is the trait we are spreading from");
+                        }
+                        exit(c, 1);
+                    } else {
+                        error_redefinition(c, (const Node *) it, &previous.pos);
+                    }
+                }
             }
+
+            it->definition_spec->is_local = false;
+            check_definition(c, it, define->expr, define->type, false);
+            assert(define->type);
+            assert(type_kind_eq(define->type->type, TYPE_FN) && !define->type->type.ref);
+
+            const Type_Trait_Method tm = {
+                .pos = it->node.token.pos,
+                .name = it->node.token.sv,
+                .type = define->type->type,
+                .signature = (Node_Fn *) define->type,
+            };
+            da_push(&c->trait_methods, tm);
+        } else if (method->kind == NODE_UNARY && method->token.kind == TOKEN_SPREAD) {
+            Node_Unary *unary = (Node_Unary *) method;
+            check_expr(c, unary->value, REF_NONE);
+
+            const Type from = type_without_meta(type_assert_type(c, unary->value));
+            if (!type_kind_eq(from, TYPE_TRAIT)) {
+                error_node(EK_ERROR, unary->value, "Expected trait type, got %s", type_to_cstr(from));
+                exit(c, 1);
+            }
+
+            if (from.ref) {
+                error_node(
+                    EK_ERROR, unary->value, "Cannot spread %s without dereferencing it first", type_to_cstr(from));
+                exit(c, 1);
+            }
+
+            for (size_t i = 0; i < from.spec.trait->methods_count; i++) {
+                Type_Trait_Method it = from.spec.trait->methods[i];
+                if (!sv_match(it.name, "_")) {
+                    for (size_t i = methods_start; i < c->trait_methods.count; i++) {
+                        Type_Trait_Method previous = c->trait_methods.data[i];
+                        if (sv_eq(previous.name, it.name)) {
+                            error_node(
+                                EK_ERROR,
+                                unary->value,
+                                "While spreading this trait, we encountered a method '" SV_Fmt
+                                "' that is already defined",
+                                SV_Arg(it.name));
+                            error_parts(
+                                EK_NOTE, previous.name, previous.pos, "It was first defined in this trait here");
+
+                            Node_Trait *definition = from.spec.trait->definition;
+                            if (definition->defined_as) {
+                                error_node(EK_NOTE, (Node *) definition, "Here is the trait we are spreading");
+                            }
+
+                            exit(c, 1);
+                        }
+                    }
+                }
+
+                it.spread = unary->value;
+                da_push(&c->trait_methods, it);
+            }
+        } else {
+            unreachable();
         }
-
-        it->definition_spec->is_local = false;
-        check_definition(c, it, define->expr, define->type, false);
-        assert(define->type);
-        assert(type_kind_eq(define->type->type, TYPE_FN) && !define->type->type.ref);
-
-        Type_Trait_Method *tm = &spec->methods[iota++];
-        tm->pos = it->node.token.pos;
-        tm->name = it->node.token.sv;
-        tm->type = define->type->type;
-
-        assert(define->type->kind == NODE_FN);
-        tm->signature = (Node_Fn *) define->type;
     }
+
+    spec->methods_count = c->trait_methods.count - methods_start;
+    spec->methods = arena_clone(
+        &default_arena, &c->trait_methods.data[methods_start], spec->methods_count * sizeof(*spec->methods));
+    c->trait_methods.count = methods_start;
 }
 
 void check_expr_union(Compiler *c, Node_Union *unionn) {

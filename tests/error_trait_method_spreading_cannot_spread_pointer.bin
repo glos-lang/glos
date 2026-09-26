@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 140
+tests/error_trait_method_spreading_cannot_spread_pointer.glos:7:8: Error: Cannot spread '&Foo' without dereferencing it first
+
+    ...&Foo
+
+

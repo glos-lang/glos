@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 278
+STDERR 422
 tests/error_type_does_not_satisfy_trait_in_type_equality_checking.glos:7:10: Error: Type 's64' does not implement 'Foo'
 
     f == s64
@@ -9,5 +9,11 @@ tests/error_type_does_not_satisfy_trait_in_type_equality_checking.glos:7:10: Err
 tests/error_type_does_not_satisfy_trait_in_type_equality_checking.glos:2:5: Note: The method 'foo' is not defined for type 's64'
 
     foo: ()
+
+tests/error_type_does_not_satisfy_trait_in_type_equality_checking.glos:1:8: Note: Trait defined here
+
+    Foo :: trait {
+        foo: ()
+    }
 
 
