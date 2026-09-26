@@ -183,7 +183,7 @@ Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return const_value_u64(0);
 
     case TOKEN_FLOAT:
-        return const_value_float(n->token.as.real);
+        return const_value_float(type_kind_eq(n->type, TYPE_F32) ? n->token.as.f32 : n->token.as.f64);
 
     case TOKEN_IDENT:
         if (atom->definition && atom->definition->polymorph) {

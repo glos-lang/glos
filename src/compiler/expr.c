@@ -590,7 +590,7 @@ LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
         return LLVMConstNull(n->type.llvm);
 
     case TOKEN_FLOAT:
-        return LLVMConstReal(n->type.llvm, n->token.as.real);
+        return LLVMConstReal(n->type.llvm, n->type.kind == TYPE_F32 ? n->token.as.f32 : n->token.as.f64);
 
     case TOKEN_IDENT:
         if (sv_match(n->token.sv, "_")) {

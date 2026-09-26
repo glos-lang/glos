@@ -143,7 +143,8 @@ typedef struct {
 
     union {
         u64    integer;
-        double real;
+        float  f32;
+        double f64;
         SV     string;
     } as;
 } Token;

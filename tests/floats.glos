@@ -1,5 +1,8 @@
 main :: () {
     println(69.4201337)
+    println(6.94201337e4)
+    println(f32(0h7FBF_FFFF))
+    println(0h8000_0000_0000_0000)
 
     // Arithmetics
     println(34.5 + 34.5)

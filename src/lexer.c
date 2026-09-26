@@ -421,6 +421,15 @@ Token lexer_iter(Lexer *l) {
                     next_char(l);
                 }
             }
+
+            if (peek_char(l, 0) == 'e' && isdigit(peek_char(l, 1))) {
+                next_char(l);
+                next_char(l);
+                token.kind = TOKEN_FLOAT;
+                while (l->sv.count > 0 && (isdigit(*l->sv.data) || *l->sv.data == '_')) {
+                    next_char(l);
+                }
+            }
         }
         token.sv.count -= l->sv.count;
 
@@ -443,7 +452,7 @@ Token lexer_iter(Lexer *l) {
 
         errno = 0;
         if (token.kind == TOKEN_FLOAT && base == 10) {
-            token.as.real = strtod(buffer, NULL);
+            token.as.f64 = strtod(buffer, NULL);
         } else {
 #ifdef PLATFORM_X86_64_WINDOWS
             token.as.integer = strtoull(buffer, NULL, base);
@@ -453,7 +462,7 @@ Token lexer_iter(Lexer *l) {
         }
         arena_reset(&temp_arena, buffer);
 
-        if (!errno) {
+        if (!errno || (token.kind == TOKEN_FLOAT && base == 10)) {
             return token;
         }
 

@@ -405,6 +405,9 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
 
         case TOKEN_FLOAT:
             n->type = expected;
+            if (type_kind_eq(n->type, TYPE_F32) && !sv_has_prefix(n->token.sv, SV_Lit("0h"))) {
+                n->token.as.f32 = n->token.as.f64;
+            }
             break;
 
         case TOKEN_IDENT: {

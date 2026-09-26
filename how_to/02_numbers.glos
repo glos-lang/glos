@@ -77,6 +77,14 @@ main :: () {
     // Bitwise operators are not defined for floats. The following line is an error.
     // l | l
 
+    // You can use scientific notation.
+    println(6.94201337e4)
+
+    // You can use the 0h prefix to specify floats in hex, in IEEE-754 format.
+    // This lets us straightforwardly specify weird values if we want to.
+    println("nan32   = \{f32(0h7FBF_FFFF)}")      // NaN
+    println("weird64 = \{0h8000_0000_0000_0000}") // Negative zero, 64-bit version
+
     // These are the arithmetic assignment operators:
     //
     //    +=, -=, *=, /=, %=, <<=, >>=, |=, &=, ^=

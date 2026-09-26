@@ -1850,6 +1850,10 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                                 // This is guaranted to be a constant expression, since we are casting from 'float'
                                 eval_const_expr(c, n, false);
                             }
+                        } else if (type_kind_eq(*from_type, TYPE_FLOAT) && type_is_float(*to_type)) {
+                            // untyped float -> float
+                            ok = try_auto_cast_untyped(c, from, n->type);
+                            same = true;
                         } else if (
                             type_kind_eq(*from_type, TYPE_INT) &&
                             (type_is_integer(*to_type) || type_kind_eq(*to_type, TYPE_ENUM))) //
