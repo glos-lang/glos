@@ -1,21 +1,25 @@
-new :: ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> &T, error {
+new :: inline ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> &T, error {
     return &T(allocator.alloc(n * sizeof(T), zeroed = zeroed)?), null
 }
 
-free :: (p: &$T, allocator := default_allocator) -> error {
+free :: inline (p: &$T, allocator := default_allocator) -> error {
     allocator.alloc(0, old = rawptr(p))?
     return null
 }
 
-resize :: (p: &$T, size: s64, allocator := default_allocator) -> &T, error {
+resize :: inline (p: &$T, size: s64, allocator := default_allocator) -> &T, error {
     return &T(allocator.alloc(size * sizeof(T), old = rawptr(p))?), null
 }
 
-zero :: (v: &$T, count := 1) -> &T {
+offset :: inline (p: &$T, count: s64) -> &T {
+    return p + &T(count * sizeof(T))
+}
+
+zero :: inline (v: &$T, count := 1) -> &T {
     return &T(C.memset(rawptr(v), 0, C.size_t(count) * sizeof(T)))
 }
 
-copy :: (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
+copy :: inline (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
     #if overlaps {
         return &T(C.memmove(rawptr(dst), rawptr(src), C.size_t(count) * sizeof(T)))
     } else {
@@ -23,7 +27,7 @@ copy :: (dst: &$T, src: &T, count := 1, $overlaps := true) -> &T {
     }
 }
 
-clone :: (v: $T, allocator := default_allocator) -> &T, error {
+clone :: inline (v: $T, allocator := default_allocator) -> &T, error {
     return &T(C.memcpy(allocator.alloc(sizeof(T), zeroed = false)?, rawptr(&v), sizeof(v))), null
 }
 

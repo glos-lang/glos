@@ -5,36 +5,68 @@ free :: (this: &[..]$T) {
 }
 
 push :: (this: &[..]$T, vs: ...T) {
-    if this.count + vs.count > this.capacity {
-        if this.allocator == null then this.allocator = default_allocator
-        if this.capacity == 0     then this.capacity = 128
-
-        for this.count + vs.count > this.capacity {
-            this.capacity *= 2
-        }
-
-        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator)!)
-    }
-
     if vs.count != 0 {
-        mem.copy(this.data + &T(this.count * sizeof(T)), vs.data, vs.count)
+        this.reserve(this.count + vs.count)
+        mem.copy(mem.offset(this.data, this.count), vs.data, vs.count)
         this.count += vs.count
     }
 }
 
-remove :: (this: &[..]$T, index: s64, location := #caller_location) -> T {
-    if index >= this.count {
+insert :: (this: &[..]$T, index: s64, vs: ...T, location := #caller_location) {
+    if index > this.count {
         panic("Bounds Check Failed: Index \{index} is invalid since length is \{this.count}", location = location)
     }
 
-    value := (*this)[index]
-    if index + 1 < this.count {
-        n := this.count - index - 1
-        if n != 0 {
-            mem.copy(&this[index], &this[index + 1], n)
+    if vs.count != 0 {
+        this.reserve(this.count + vs.count)
+        if index < this.count {
+            mem.copy(mem.offset(this.data, index + vs.count), mem.offset(this.data, index), this.count - index)
+        }
+        mem.copy(mem.offset(this.data, index), vs.data, vs.count)
+        this.count += vs.count
+    }
+}
+
+remove :: (this: &[..]$T, index: s64, count := 1, location := #caller_location) {
+    if count == 0 {
+        return
+    }
+
+    if index + count > this.count {
+        if count == 1 {
+            panic("Bounds Check Failed: Index \{index} is invalid since length is \{this.count}", location = location)
+        } else {
+            panic(
+                "Bounds Check Failed: Range (\{index}..\{index + count}) is invalid since length is \{this.count}",
+                location = location
+            )
         }
     }
 
-    this.count -= 1
-    return value
+    if index + count < this.count {
+        n := this.count - index - count
+        if n != 0 {
+            mem.copy(mem.offset(this.data, index), mem.offset(this.data, index + count), n)
+        }
+    }
+
+    this.count -= count
+}
+
+clear :: (this: &[..]$T) {
+    if this.count != 0 {
+        mem.zero(this.data, this.count)
+        this.count = 0
+    }
+}
+
+reserve :: (this: &[..]$T, count: s64) {
+    if count > this.capacity {
+        if this.allocator == null then this.allocator = default_allocator
+        if this.capacity == 0     then this.capacity = 128
+        for count > this.capacity {
+            this.capacity *= 2
+        }
+        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator)!)
+    }
 }

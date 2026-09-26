@@ -21,7 +21,7 @@ free :: (this: &App) {
 }
 
 save :: (this: &App) {
-    f, err := os.open(TASKS_PATH, false)
+    f, err := os.open(TASKS_PATH, .CREAT | .TRUNC | .WRONLY)
     if err != null {
         eprintln("Error: Could not save tasks to '\{TASKS_PATH}': \{err}")
         os.exit(1)
@@ -92,7 +92,8 @@ main :: () {
             os.exit(1)
         }
 
-        title := app.tasks.remove(index)
+        title := app.tasks[index]
+        app.tasks.remove(index)
         app.save()
         println("Removed: \{title}")
 

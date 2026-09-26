@@ -193,7 +193,7 @@ defer_real_world_example :: () {
     // Import the "os" module from the standard library. Modules will be described later.
     os :: #import "os"
 
-    f, err := os.open(PATH, true)
+    f, err := os.open(PATH, .RDONLY)
     defer f.close() // Just like that, we don't have to worry about this file handle anymore.
 
     if err != null {
