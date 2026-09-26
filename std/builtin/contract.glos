@@ -133,12 +133,6 @@ Equivalence :: enum {
     NE = 1
 }
 
-// Interpolation
-Interpolation :: union {
-    []Any
-    string
-}
-
 // Hash Table
 Hash_Info :: struct {
     kind: enum {

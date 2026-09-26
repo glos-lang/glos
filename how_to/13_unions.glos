@@ -123,18 +123,20 @@ main :: () {
 
 // We can now talk about how string interpolations are represented at runtime.
 string_interpolation_explanation :: () {
-    // There is this union defined in the builtin standard module:
+    // There is this union defined in the standard module "fmt":
     //
     //     Interpolation :: union {
-    //         []Any
+    //         []Format
     //         string
     //     }
     //
-    // We have already looked at string. But what is 'Any'?
+    // We have already looked at string. But what is 'Format'?
     //
     // It is a trait with no required methods. We will look into traits in a later document, but
     // for now the relevant information is this:
-    any: Any
+    fmt :: #import "fmt"
+
+    any: fmt.Format
     any = 69
     any = "Hi!"
     any = true
@@ -154,7 +156,7 @@ string_interpolation_explanation :: () {
     //
 
     // Let us check.
-    println(auto.([]Any))
+    println(auto.([]fmt.Format))
     // That's absolutely correct!
 
     // But then what about the variant 'string'?

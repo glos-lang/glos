@@ -551,7 +551,7 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
                             {
                                 Type *type = &fn_spec->args[it_index].type;
                                 assert(!type->ref && type_kind_eq(*type, TYPE_SLICE));
-                                pass = type_eq(*type->spec.slice.element, c->any_type);
+                                pass = type_eq(*type->spec.slice.element, c->format_type);
 
                                 if (pass) {
                                     Node_Interpolation *interpolation = (Node_Interpolation *) it;

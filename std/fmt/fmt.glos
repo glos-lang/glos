@@ -1,6 +1,4 @@
-#private...
-
-write_type :: (w: io.Writer, t: Type) -> s64, error {
+type :: (w: io.Writer, t: Type) -> s64, error {
     if t == null {
         return w.write([]u8("null"))
     }
@@ -33,7 +31,7 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
     case Type_Info_Pointer
         if v.underlying != null {
             n += w.write([]u8("&"))?
-            n += write_type(w, v.underlying)?
+            n += type(w, v.underlying)?
         } else {
             return w.write([]u8("rawptr"))
         }
@@ -47,9 +45,9 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
 
             if i == v.args.count - 1 && v.variadics == .TYPED {
                 n += w.write([]u8("..."))?
-                n += write_type(w, it.variant.(Type_Info_Slice).underlying)?
+                n += type(w, it.variant.(Type_Info_Slice).underlying)?
             } else {
-                n += write_type(w, it)?
+                n += type(w, it)?
             }
         }
 
@@ -68,7 +66,7 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
                 if i > 0 {
                     n += w.write([]u8(", "))?
                 }
-                n += write_type(w, it)?
+                n += type(w, it)?
             }
 
             if v.returns.count > 1 {
@@ -78,7 +76,7 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
 
     case Type_Info_Enumeration
         n += w.write([]u8("enum "))?
-        n += write_type(w, v.underlying)?
+        n += type(w, v.underlying)?
 
     case Type_Info_Trait
         n += w.write([]u8("trait {"))?
@@ -104,7 +102,7 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
                     n += w.write([]u8("; "))?
                 }
 
-                n += write_type(w, v.variants[i])?
+                n += type(w, v.variants[i])?
             }
             n += w.write([]u8(" "))?
         }
@@ -150,7 +148,7 @@ write_type :: (w: io.Writer, t: Type) -> s64, error {
     return n, null
 }
 
-write_quoted_rune :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
+quote :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
     if r == {
     case '\e'; return w.write([]u8("\\e"))
     case '\n'; return w.write([]u8("\\n"))
@@ -180,26 +178,26 @@ write_quoted_rune :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
     }
 }
 
-write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
-    if a.type != null && a.type.format != null {
-        return a.type.format(a.data, w, nested)
+value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
+    if f.type != null && f.type.format != null {
+        return f.type.format(f.data, w, nested)
     }
 
-    if a.type == Type {
-        return write_type(w, *&Type(a.data))
+    if f.type == Type {
+        return type(w, *(&Type)(f.data))
     }
 
     n := 0
-    if a.type == Interpolation && !nested {
-        a := *&Interpolation(a.data)
-        if a == {
-        case []Any
-            for i := 0; i < a.count; i += 1 {
-                n += write_value(w, a[i], false)?
+    if f.type == Interpolation && !nested {
+        interpolation := *(&Interpolation)(f.data)
+        if interpolation == {
+        case []Format
+            for _, f := range interpolation {
+                n += value(w, f, false)?
             }
 
         case string
-            n += write_value(w, a, false)?
+            n += value(w, interpolation, false)?
 
         case
             unreachable()
@@ -207,15 +205,15 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
         return n, null
     }
 
-    if a.type == Source_Code_Location {
-        l := *&Source_Code_Location(a.data)
+    if f.type == Source_Code_Location {
+        l := *(&Source_Code_Location)(f.data)
         return wprint(w, "\{l.path}:\{l.row}:\{l.col}:")
     }
 
-    v := a.type.variant
+    v := f.type.variant
     if v == {
     case Type_Info_Boolean
-        if *&bool(a.data) {
+        if *(&bool)(f.data) {
             return w.write([]u8("true"))
         } else {
             return w.write([]u8("false"))
@@ -223,7 +221,7 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
 
     case Type_Info_Rune
         buffer: [4]u8
-        n, _ := unicode.encode(*(&rune)(a.data), buffer)
+        n, _ := unicode.encode(*(&rune)(f.data), buffer)
         return w.write(buffer[..n])
 
 
@@ -231,19 +229,19 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
         buffer: [32]u8
         count: s32
         if v.signed {
-            if a.type.size == {
-            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s8)(a.data))
-            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s16)(a.data))
-            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s32)(a.data))
-            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zd", *(&s64)(a.data))
+            if f.type.size == {
+            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s8)(f.data))
+            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s16)(f.data))
+            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%d", *(&s32)(f.data))
+            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zd", *(&s64)(f.data))
             case;   unreachable()
             }
         } else {
-            if a.type.size == {
-            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u8)(a.data))
-            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u16)(a.data))
-            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u32)(a.data))
-            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zu", *(&u64)(a.data))
+            if f.type.size == {
+            case 1; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u8)(f.data))
+            case 2; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u16)(f.data))
+            case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%u", *(&u32)(f.data))
+            case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zu", *(&u64)(f.data))
             case;   unreachable()
             }
         }
@@ -252,15 +250,15 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
     case Type_Info_Float
         buffer: [32]u8
         count: s32
-        if a.type.size == {
-        case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.7g", *&f32(a.data))
-        case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.14g", *&f64(a.data))
+        if f.type.size == {
+        case 4; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.7g", *(&f32)(f.data))
+        case 8; count = C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%.14g", *(&f64)(f.data))
         case;   unreachable()
         }
         return w.write(buffer[..count])
 
     case Type_Info_Pointer, Type_Info_Function
-        ptr := *&rawptr(a.data)
+        ptr := *(&rawptr)(f.data)
         if ptr == null {
             return w.write([]u8("null"))
         } else {
@@ -272,10 +270,10 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
     case Type_Info_Enumeration
         value: s64
         if v.underlying.size == {
-        case 1; value = s64(*&s8(a.data))
-        case 2; value = s64(*&s16(a.data))
-        case 4; value = s64(*&s32(a.data))
-        case 8; value = s64(*&s64(a.data))
+        case 1; value = s64(*(&s8)(f.data))
+        case 2; value = s64(*(&s16)(f.data))
+        case 4; value = s64(*(&s32)(f.data))
+        case 8; value = s64(*(&s64)(f.data))
         }
 
         for i := 0; i < v.values.count; i += 1 {
@@ -296,38 +294,38 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
         }
 
     case Type_Info_Trait
-        t: Any
-        t.type = *&Type(a.data)
-        t.data = *&rawptr(a.data + rawptr(8))
+        t: Format
+        t.type = *(&Type)(f.data)
+        t.data = *(&rawptr)(f.data + rawptr(8))
         if t.type == null {
             return w.write([]u8("null"))
         } else {
-            return write_value(w, t, nested)
+            return value(w, t, nested)
         }
 
     case Type_Info_Union
-        tag := *&s64(a.data)
+        tag := *(&s64)(f.data)
         if tag == 0 {
             return w.write([]u8("null"))
         } else if tag - 1 >= v.variants.count {
             return wprint(w, "(Invalid union tag: \{tag})")
         } else {
-            t: Any
+            t: Format
             t.type = v.variants[tag - 1]
-            t.data = a.data + rawptr(8)
-            return write_value(w, t, nested)
+            t.data = f.data + rawptr(8)
+            return value(w, t, nested)
         }
 
     case Type_Info_Structure
         n += w.write([]u8("{"))?
         for i := 0; i < v.types.count; i += 1 {
-            field: Any
+            field: Format
             field.type = v.types[i]
-            field.data = a.data + rawptr(v.offsets[i])
+            field.data = f.data + rawptr(v.offsets[i])
             if i != 0 {
                 n += w.write([]u8(", "))?
             }
-            n += write_value(w, field, true)?
+            n += value(w, field, true)?
         }
         n += w.write([]u8("}"))?
 
@@ -338,16 +336,16 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
                 n += w.write([]u8(", "))?
             }
 
-            item: Any
+            item: Format
             item.type = v.underlying
-            item.data = a.data + rawptr(i * v.underlying.size)
-            n += write_value(w, item, true)?
+            item.data = f.data + rawptr(i * v.underlying.size)
+            n += value(w, item, true)?
         }
         n += w.write([]u8("}"))?
 
     case Type_Info_Dynamic_Array
-        data  := *&rawptr(a.data)
-        count := *&s64(a.data + rawptr(8))
+        data  := *(&rawptr)(f.data)
+        count := *(&s64)(f.data + rawptr(8))
 
         n += w.write([]u8("{"))?
         for i := 0; i < count; i += 1 {
@@ -355,24 +353,24 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
                 n += w.write([]u8(", "))?
             }
 
-            item: Any
+            item: Format
             item.type = v.underlying
             item.data = data + rawptr(i * v.underlying.size)
-            n += write_value(w, item, true)?
+            n += value(w, item, true)?
         }
         n += w.write([]u8("}"))?
 
     case Type_Info_Map
-        data     := *&rawptr(a.data)
-        count    := *&s64(a.data + rawptr(8))
-        capacity := *&s64(a.data + rawptr(16))
+        data     := *(&rawptr)(f.data)
+        count    := *(&s64)(f.data + rawptr(8))
+        capacity := *(&s64)(f.data + rawptr(16))
 
         n += w.write([]u8("{"))?
         if count != 0 {
             first := true
             for i := range capacity {
-                entry, key_ptr, value_ptr := map_entry_get_raw(data, v.key, v.value, i)
-                if entry != .OCCUPIED {
+                key_ptr, value_ptr, ok := map_entry_get_raw(data, v.key, v.value, i)
+                if !ok {
                     continue
                 }
 
@@ -382,22 +380,30 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
                     n += w.write([]u8(", "))?
                 }
 
-                a: Any
-                a.type = v.key
-                a.data = key_ptr
-                n += write_value(w, a, true)?
+                f: Format
+                f.type = v.key
+                f.data = key_ptr
+                n += value(w, f, true)?
 
                 n += w.write([]u8(" = "))?
-                a.type = v.value
-                a.data = value_ptr
-                n += write_value(w, a, true)?
+                f.type = v.value
+                f.data = value_ptr
+                n += value(w, f, true)?
+
+                map_entry_get_raw :: inline (data: rawptr, key: Type, value: Type, index: s64) -> rawptr, rawptr, bool {
+                    Key_Offset   :: 8
+                    Value_Offset := (Key_Offset + key.size + 7) & -8
+                    Entry_Size   := (Value_Offset + value.size + 7) & -8
+                    entry        := data + rawptr(Entry_Size * index)
+                    return entry + rawptr(Key_Offset), entry + rawptr(Value_Offset), *(&s64)(entry) == 1
+                }
             }
         }
         n += w.write([]u8("}"))?
 
     case Type_Info_Slice
-        count := *&s64(a.data + rawptr(8))
-        data  := *&rawptr(a.data)
+        count := *(&s64)(f.data + rawptr(8))
+        data  := *(&rawptr)(f.data)
 
         n += w.write([]u8("{"))?
         for i := 0; i < count; i += 1 {
@@ -405,15 +411,15 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
                 n += w.write([]u8(", "))?
             }
 
-            item: Any
+            item: Format
             item.type = v.underlying
             item.data = data + rawptr(i * v.underlying.size)
-            n += write_value(w, item, true)?
+            n += value(w, item, true)?
         }
         n += w.write([]u8("}"))?
 
     case Type_Info_Error
-        err := *(&u64)(a.data)
+        err := *(&u64)(f.data)
         if err == 0 {
             return w.write([]u8("null"))
         }
@@ -434,11 +440,11 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
         return wprint(w, "(Invalid error value: \{err})")
 
     case Type_Info_String
-        s := *&string(a.data)
+        s := *(&string)(f.data)
         if nested {
             n += w.write([]u8("\""))?
             for _, c := range s {
-                n += write_quoted_rune(w, c, '"')?
+                n += quote(w, c, '"')?
             }
             n += w.write([]u8("\""))?
         } else {
@@ -452,4 +458,30 @@ write_value :: (w: io.Writer, a: Any, nested: bool) -> s64, error {
     return n, null
 }
 
-error_enums: []Type
+values :: (w: io.Writer, fs: []Format) -> s64, error {
+    n := 0
+    interpolating := 0
+    for i, f := range fs {
+        if interpolating != 0 {
+            interpolating -= 1
+        } else if i != 0 {
+            n += w.write([]u8(" "))?
+        }
+
+        if f.type == Interpolation_Marker {
+            interpolating = s64(f.data)
+            continue
+        }
+
+        if f == null {
+            n += w.write([]u8("null"))?
+        } else {
+            n += value(w, f, false)?
+        }
+    }
+    return n, null
+}
+
+C       :: #import "C"
+io      :: #import "io"
+unicode :: #import "unicode"

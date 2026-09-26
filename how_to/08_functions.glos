@@ -123,9 +123,9 @@ main :: () {
     printf("Check this out: %zd %.14g\n", 69, 420.1337)
 
     // You can have optional arguments after a typed variadic one.
-    python_like_print :: (vs: ...trait {}, sep := " ", end := "\n") {
-        // Don't worry about the 'trait'. We will cover that later.
-        // For now, just know that any type is valid for 'trait {}'
+    python_like_print :: (vs: ...Any, sep := " ", end := "\n") {
+        // Don't worry about 'Any'. We will cover that later.
+        // For now, just know that any type is valid for 'Any'.
 
         for i := 0; i < vs.count; i += 1 {
             if i != 0 then print(sep)

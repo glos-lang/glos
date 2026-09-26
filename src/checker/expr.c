@@ -2143,7 +2143,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
                     type_to_cstr(it->type));
                 exit(c, 1);
             }
-            type_assert(c, it, c->any_type);
+            type_assert(c, it, c->format_type);
             interpolation->children_count++;
         }
         n->type = c->interpolation_type;

@@ -94,16 +94,16 @@ void check_nodes(Compiler *c) {
 
     Const_Value value;
 
-    // Any
+    // Format
     {
-        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Any"), NULL);
+        value = get_const_definition_value(c, c->fmt_module, SV_Lit("Format"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
-        c->any_type = type_without_meta(value.as.type);
+        c->format_type = type_without_meta(value.as.type);
     }
 
     // Interpolation
     {
-        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Interpolation"), NULL);
+        value = get_const_definition_value(c, c->fmt_module, SV_Lit("Interpolation"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->interpolation_type = type_without_meta(value.as.type);
     }
@@ -221,14 +221,14 @@ void check_nodes(Compiler *c) {
 
     // Interpolation Marker. Needed for optimization.
     {
-        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Interpolation_Marker"), NULL);
+        value = get_const_definition_value(c, c->fmt_module, SV_Lit("Interpolation_Marker"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
         c->interpolation_marker_type = type_without_meta(value.as.type);
     }
 
     // The 'error_enums' variable
     {
-        c->error_enums_var = module_globals_find(c, c->builtin_module, SV_Lit("error_enums"));
+        c->error_enums_var = module_globals_find(c, c->fmt_module, SV_Lit("error_enums"));
         assert(c->error_enums_var);
     }
 }

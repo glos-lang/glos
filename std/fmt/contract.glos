@@ -1,0 +1,10 @@
+Format :: trait {}
+
+Interpolation :: union {
+    []Format
+    string
+}
+
+Interpolation_Marker :: distinct s64
+
+error_enums: []Type

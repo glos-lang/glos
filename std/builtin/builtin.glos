@@ -1,4 +1,4 @@
-panic :: noreturn (message: ...Any, location := #caller_location, label := "") {
+panic :: noreturn (message: ...fmt.Format, location := #caller_location, label := "") {
     eprint(location, label)
     wprint(&Prefix_With_Colon {label != ""}, ...message)
     eprintln()
@@ -20,16 +20,16 @@ panic :: noreturn (message: ...Any, location := #caller_location, label := "") {
     }
 }
 
-assert :: (cond: bool, message: ...Any, location := #caller_location) {
+assert :: (cond: bool, message: ...fmt.Format, location := #caller_location) {
     if !cond {
         panic(message = message, location = location, label = "Assertion Failed")
     }
 }
 
-todo :: noreturn (message: ...Any, location := #caller_location) {
+todo :: noreturn (message: ...fmt.Format, location := #caller_location) {
     panic(message = message, location = location, label = "TODO")
 }
 
-unreachable :: noreturn (message: ...Any, location := #caller_location) {
+unreachable :: noreturn (message: ...fmt.Format, location := #caller_location) {
     panic(message = message, location = location, label = "Unreachable")
 }

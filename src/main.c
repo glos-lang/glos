@@ -167,6 +167,42 @@ defer:
     return result;
 }
 
+static Module *import_std_module(Compiler *c, SV name) {
+    const SV    root = c->parser->std;
+    const char *absolute_path = get_absolute_path(root, name, &default_arena);
+    assert(directory_exists(absolute_path));
+
+    Module *module = module_get(c->parser, absolute_path);
+    if (module->name.count) {
+        arena_reset(&default_arena, absolute_path);
+        return module;
+    }
+    module->name = name;
+
+    c->parser->module_current = module;
+    switch (parse_directory(c->parser, module->relative_path)) {
+    case PARSE_OK:
+        // Pass
+        break;
+
+    case PARSE_FAILURE:
+        error_standalone(EK_ERROR, "Could not read directory '%s'", module->relative_path);
+        exit(1);
+        break;
+
+    case PARSE_EMPTY_DIRECTORY:
+        error_standalone(EK_ERROR, "Directory '%s' does not contain any glos files", module->relative_path);
+        exit(1);
+        break;
+
+    default:
+        unreachable();
+    }
+    c->parser->module_current = NULL;
+
+    return module;
+}
+
 int main(int argc, char **argv) {
     basic_init();
     atexit(warnings_flush);
@@ -304,45 +340,17 @@ int main(int argc, char **argv) {
         input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &default_arena);
     }
 
-    perf_begin();
-
     // Import the builtin module
-    {
-        const SV    name = sv_from_cstr("builtin");
-        const SV    root = parser.std;
-        const char *absolute_path = get_absolute_path(root, name, &default_arena);
-        assert(directory_exists(absolute_path));
-
-        compiler.builtin_module = module_get(&parser, absolute_path);
-        compiler.builtin_module->name = name;
-
-        parser.module_current = compiler.builtin_module;
-
-        switch (parse_directory(&parser, compiler.builtin_module->relative_path)) {
-        case PARSE_OK:
-            // Pass
-            break;
-
-        case PARSE_FAILURE:
-            error_standalone(EK_ERROR, "Could not read directory '%s'", compiler.builtin_module->relative_path);
-            exit(1);
-            break;
-
-        case PARSE_EMPTY_DIRECTORY:
-            error_standalone(
-                EK_ERROR, "Directory '%s' does not contain any glos files", compiler.builtin_module->relative_path);
-            exit(1);
-            break;
-
-        default:
-            unreachable();
-        }
-
-        parser.module_current = NULL;
-    }
-
+    perf_begin();
+    compiler.builtin_module = import_std_module(&compiler, SV_Lit("builtin"));
     perf_end("builtin module");
 
+    // Import the fmt module
+    perf_begin();
+    compiler.fmt_module = import_std_module(&compiler, SV_Lit("fmt"));
+    perf_end("fmt module");
+
+    // Main module
     perf_begin();
 
     parser.module_current = compiler.main_module;

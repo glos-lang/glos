@@ -134,6 +134,7 @@ typedef struct {
 
     Module *main_module;
     Module *builtin_module;
+    Module *fmt_module;
 
     Type type_info_type;         // This holds `Type_Info`
     Type type_info_pointer_type; // This holds `&Type_Info`
@@ -142,7 +143,7 @@ typedef struct {
     const Type_Union *type_info_variants_union;
 
     Type source_code_location_type;
-    Type any_type;
+    Type format_type;
 
     Type        allocator_type;
     Const_Value default_allocator;

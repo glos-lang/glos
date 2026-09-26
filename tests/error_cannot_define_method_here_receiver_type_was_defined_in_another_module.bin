@@ -1,17 +1,17 @@
 EXIT 1
 STDOUT 0
 
-STDERR 499
+STDERR 521
 tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_module.glos:1:15: Error: Can only define methods on types that are defined in the same module
 
-    foo :: (this: Interpolation) {}
+    foo :: (this: Source_Code_Location) {}
 
 tests/error_cannot_define_method_here_receiver_type_was_defined_in_another_module.glos:1:9: Note: This argument is taken to be the receiver
 
-    foo :: (this: Interpolation) {}
+    foo :: (this: Source_Code_Location) {}
 
-std/builtin/contract.glos:137:1: Note: Here is the definition of the receiver type
+std/builtin/contract.glos:118:1: Note: Here is the definition of the receiver type
 
-    Interpolation :: union {
+    Source_Code_Location :: struct {
 
 

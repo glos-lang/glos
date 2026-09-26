@@ -686,7 +686,7 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
 
     const size_t start = default_sb.count;
     ll_foreach(it, &interpolation->children) {
-        assert(type_eq(it->type, c->any_type));
+        assert(type_eq(it->type, c->format_type));
 
         Type it_type_save;
         if (it->auto_casts) {

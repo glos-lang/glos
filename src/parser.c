@@ -587,9 +587,9 @@ bool parser_import(Parser *p, Node_Import *import) {
     Module *module_current_save = p->module_current;
     {
         Module *module = module_get(p, absolute_path);
-
         if (module->name.count) {
             newly_imported = false;
+            arena_reset(&default_arena, absolute_path);
         } else {
             module->name = sv_from_cstr(get_relative_path(root, sv_from_cstr(module->absolute_path), &default_arena));
             if (sv_match(module->name, "main") || sv_match(module->name, "builtin")) {
@@ -598,7 +598,6 @@ bool parser_import(Parser *p, Node_Import *import) {
             }
 
             p->module_current = module;
-
             switch (parse_directory(p, module->relative_path)) {
             case PARSE_OK:
                 // Pass

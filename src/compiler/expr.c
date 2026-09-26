@@ -1520,12 +1520,12 @@ LLVMValueRef compile_expr_interpolation(Compiler *c, Node_Interpolation *interpo
                 interpolation->children_count - 1, // Do not count the marker
                 type_is_signed(c->interpolation_marker_type));
 
-            LLVMValueRef memory = compile_alloca(c, compile_type(c, &c->any_type));
+            LLVMValueRef memory = compile_alloca(c, compile_type(c, &c->format_type));
             LLVMBuildStore(c->llvm_builder, compile_type_info(c, &c->interpolation_marker_type), memory);
             LLVMBuildStore(
-                c->llvm_builder, marker, LLVMBuildStructGEP2(c->llvm_builder, c->any_type.llvm, memory, 1, ""));
+                c->llvm_builder, marker, LLVMBuildStructGEP2(c->llvm_builder, c->format_type.llvm, memory, 1, ""));
 
-            da_push(&c->group_values, LLVMBuildLoad2(c->llvm_builder, c->any_type.llvm, memory, ""));
+            da_push(&c->group_values, LLVMBuildLoad2(c->llvm_builder, c->format_type.llvm, memory, ""));
         }
 
         ll_foreach(it, &interpolation->children) {
@@ -1534,7 +1534,7 @@ LLVMValueRef compile_expr_interpolation(Compiler *c, Node_Interpolation *interpo
         return NULL;
     }
 
-    LLVMTypeRef  element_type = compile_type(c, &c->any_type);
+    LLVMTypeRef  element_type = compile_type(c, &c->format_type);
     LLVMValueRef memory = compile_alloca(c, LLVMArrayType(element_type, interpolation->children_count));
 
     size_t iota = 0;
@@ -1809,7 +1809,7 @@ LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref) {
 
             for (size_t i = 0; i < count; i++) {
                 Typed_LLVM_Value tv = {0};
-                tv.type = types ? &types[i] : &c->any_type;
+                tv.type = types ? &types[i] : &c->format_type;
                 tv.value = c->group_values.data[group_values_count_save + i];
                 if (variadics_memory && args_iota >= fn_spec->variadics_index) {
                     LLVMValueRef indices[] = {

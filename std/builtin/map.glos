@@ -91,9 +91,9 @@ range :: (this: &map[$K]$V, index: &s64) -> K, #reference V, bool {
 
 #private...
 Map_Entry_State :: enum {
-    EMPTY
-    OCCUPIED
-    TOMBSTONE
+    EMPTY     = 0
+    OCCUPIED  = 1
+    TOMBSTONE = 2
 }
 
 Map_Entry :: struct ($K: Type, $V: Type) {
@@ -161,18 +161,10 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, info: []Hash_Info, k
 
 map_entry_not_found :: noreturn (location: Source_Code_Location, key: $K) {
     wprint(os.stderr, "\{location} Entry not found: ")
-    write_value(os.stderr, key, true)
+    fmt.value(os.stderr, key, true)
     wprintln(os.stderr)
 
     C.fflush(C.FILE(os.stdout))
     C.fflush(C.FILE(os.stderr))
     C.abort()
-}
-
-map_entry_get_raw :: inline (data: rawptr, key: Type, value: Type, index: s64) -> Map_Entry_State, rawptr, rawptr {
-    Key_Offset   :: sizeof(Map_Entry_State)
-    Value_Offset := (Key_Offset + key.size + 7) & -8
-    Entry_Size   := (Value_Offset + value.size + 7) & -8
-    entry        := data + rawptr(Entry_Size * index)
-    return *(&Map_Entry_State)(entry), entry + rawptr(Key_Offset), entry + rawptr(Value_Offset)
 }
