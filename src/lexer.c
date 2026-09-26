@@ -199,6 +199,14 @@ static bool escape_char(char *ch) {
         *ch = '\t';
         break;
 
+    case 'v':
+        *ch = '\v';
+        break;
+
+    case 'f':
+        *ch = '\f';
+        break;
+
     case '0':
         *ch = '\0';
         break;

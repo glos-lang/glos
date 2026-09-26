@@ -590,6 +590,14 @@ void sb_push_quoted_char(SB *sb, char ch, char quote) {
         sb_push_cstr(sb, "\\t");
         break;
 
+    case '\v':
+        sb_push_cstr(sb, "\\v");
+        break;
+
+    case '\f':
+        sb_push_cstr(sb, "\\f");
+        break;
+
     case '\0':
         sb_push_cstr(sb, "\\0");
         break;

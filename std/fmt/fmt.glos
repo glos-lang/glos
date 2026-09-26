@@ -154,6 +154,8 @@ quote :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
     case '\n'; return w.write([]u8("\\n"))
     case '\r'; return w.write([]u8("\\r"))
     case '\t'; return w.write([]u8("\\t"))
+    case '\f'; return w.write([]u8("\\f"))
+    case '\v'; return w.write([]u8("\\v"))
     case '\0'; return w.write([]u8("\\0"))
     case '\\'; return w.write([]u8("\\\\"))
 
