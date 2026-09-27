@@ -1,0 +1,260 @@
+add :: (v: Var, name: string, description: string, location := #caller_location) {
+    if parsed {
+        panic("Cannot call this function after parsing flags", location = location)
+    }
+
+    if name == "" {
+        panic("Invalid flag name \{Quote {name}}: Cannot be empty", location = location)
+    }
+
+    if name == "" || name.begins_with("-") {
+        panic("Invalid flag name \{Quote {name}}: Cannot start with '-'", location = location)
+    }
+
+    if flags.contains(name) {
+        eprintln("\{location} Redefinition of flag \{Quote {name}}")
+        panic("Here is the first definition", location = flags[name].location)
+    }
+
+    flag: Flag
+    flag.var = v
+    flag.desc = description
+    flag.location = location
+
+    if v == {
+    case &bool;   flag.default = *v
+    case &s64;    flag.default = *v
+    case &u64;    flag.default = *v
+    case &f64;    flag.default = *v
+    case &string; flag.default = *v
+    case
+    }
+
+    flags[name] = flag
+}
+
+args :: (location := #caller_location) -> []string {
+    if !parsed {
+        panic("Cannot call this function before parsing flags", location = location)
+    }
+    return os.args[argn..]
+}
+
+parse :: (location := #caller_location) {
+    if parsed {
+        panic("Cannot call this function after parsing flags", location = location)
+    }
+    parsed = true
+
+    argn = 1
+    for argn < os.args.count {
+        arg := os.args[argn]; argn += 1
+        if !arg.begins_with("-") then break
+
+        flag := arg[1..]
+        if flag.begins_with("-") then flag = flag[1..]
+        if flag == ""            then break
+
+        if flags.contains(flag) {
+            var := flags[flag].var
+            if var == {
+            case &bool;       *var = true
+            case &s64;        *var = get_s64(arg)
+            case &u64;        *var = get_u64(arg)
+            case &f64;        *var = get_f64(arg)
+            case &string;     *var = get_string(arg)
+            case &[..]s64;    var.push(get_s64(arg))
+            case &[..]u64;    var.push(get_u64(arg))
+            case &[..]f64;    var.push(get_f64(arg))
+            case &[..]string; var.push(get_string(arg))
+            case null;        unreachable()
+            }
+            continue
+
+            get_s64 :: (arg: string) -> s64 {
+                value  := get_string(arg)
+                n, err := strings.to_s64(value)
+                if err != null {
+                    eprintln("Error: Invalid int \{Quote {value}}")
+                    eprintln()
+                    usage(os.stderr)
+                    os.exit(1)
+                }
+                return n
+            }
+
+            get_u64 :: (arg: string) -> u64 {
+                value  := get_string(arg)
+                n, err := strings.to_u64(value)
+                if err != null {
+                    eprintln("Error: Invalid uint \{Quote {value}}")
+                    eprintln()
+                    usage(os.stderr)
+                    os.exit(1)
+                }
+                return n
+            }
+
+            get_f64 :: (arg: string) -> f64 {
+                value  := get_string(arg)
+                n, err := strings.to_f64(value)
+                if err != null {
+                    eprintln("Error: Invalid float \{Quote {value}}")
+                    usage(os.stderr)
+                    os.exit(1)
+                }
+                return n
+            }
+
+            get_string :: (arg: string) -> string {
+                if argn >= os.args.count {
+                    eprintln("Error: Value not provided for \{Quote {arg}}")
+                    eprintln()
+                    usage(os.stderr)
+                    os.exit(1)
+                }
+
+                argn += 1
+                return os.args[argn - 1]
+            }
+        }
+
+        if flag == {
+        case "h", "help"
+            usage(os.stdout)
+            os.exit(0)
+        }
+
+        eprintln("Error: Invalid flag \{Quote {arg}}")
+        eprintln()
+        usage(os.stderr)
+        os.exit(1)
+    }
+
+    flags.free()
+}
+
+usage :: (w: io.Writer, location := #caller_location) {
+    if !parsed {
+        panic("Cannot call this function before parsing flags", location = location)
+    }
+
+    wprintln(w, "Usage:")
+    wprintln(w, "    \{os.args[0]} [FLAGS...]")
+    wprintln(w)
+    wprintln(w, "Flags:")
+
+    if !flags.contains("help") {
+        show(w, "help", "Show this help message and exit")
+    }
+
+    for name, flag := range flags {
+        arg: string
+        if flag.var == {
+        case &bool
+        case &s64,    &[..]s64;    arg = "int"
+        case &u64,    &[..]u64;    arg = "uint"
+        case &f64,    &[..]f64;    arg = "float"
+        case &string, &[..]string; arg = "string"
+        case null;                 unreachable()
+        }
+        show(w, name, flag.desc, arg, flag.default)
+    }
+
+    show :: (w: io.Writer, name: string, desc: string, arg := "", default := Default {}) {
+        #static first := true
+        if first {
+            first = false
+        } else {
+            wprintln(w)
+        }
+
+        wprint(w, "    -\{name}")
+        if arg != "" {
+            wprint(w, " \{arg}")
+        }
+        wprintln(w)
+
+        for _, line := range desc.split_iter('\n') {
+            wprintln(w, "        \{line}")
+        }
+
+        if default == {
+        case bool
+        case s64
+            if default != 0 {
+                wprintln(w, "        Default is \{default}")
+            }
+
+        case u64
+            if default != 0 {
+                wprintln(w, "        Default is \{default}")
+            }
+
+        case f64
+            if default != 0.0 {
+                wprintln(w, "        Default is \{default}")
+            }
+
+        case string
+            if default != "" {
+                wprintln(w, "        Default is \{Quote {default, '"'}}")
+            }
+
+        case null
+        }
+    }
+}
+
+#private...
+
+argn:   s64
+flags:  map[string]Flag
+parsed: bool
+
+Flag :: struct {
+    var:      Var
+    desc:     string
+    location: Source_Code_Location
+    default:  Default
+}
+
+Var :: union {
+    &bool
+    &s64
+    &u64
+    &f64
+    &string
+    &[..]s64
+    &[..]u64
+    &[..]f64
+    &[..]string
+}
+
+Default :: union {
+    bool
+    s64
+    u64
+    f64
+    string
+}
+
+Quote :: struct {
+    s: string
+    c: u8
+}
+
+#hook
+format :: (this: &Quote, w: io.Writer, nested: bool) -> s64, error {
+    n := w.write([]u8(&this.c, 1))?
+    for _, c := range this.s {
+        n += fmt.quote(w, c, this.c)?
+    }
+    n += w.write([]u8(&this.c, 1))?
+    return n, null
+}
+
+io      :: #import "io"
+os      :: #import "os"
+fmt     :: #import "fmt"
+strings :: #import "strings"

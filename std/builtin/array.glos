@@ -28,19 +28,19 @@ insert :: (this: &[..]$T, index: s64, vs: ...T, location := #caller_location) {
 }
 
 remove :: (this: &[..]$T, index: s64, count := 1, location := #caller_location) {
-    if count == 0 {
-        return
-    }
-
     if index + count > this.count {
-        if count == 1 {
-            panic("Bounds Check Failed: Index \{index} is invalid since length is \{this.count}", location = location)
-        } else {
+        if count > 1 {
             panic(
                 "Bounds Check Failed: Range (\{index}..\{index + count}) is invalid since length is \{this.count}",
                 location = location
             )
+        } else {
+            panic("Bounds Check Failed: Index \{index} is invalid since length is \{this.count}", location = location)
         }
+    }
+
+    if count == 0 {
+        return
     }
 
     if index + count < this.count {

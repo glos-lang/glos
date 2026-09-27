@@ -30,6 +30,8 @@ contains :: (this: &map[$K]$V, key: K) -> bool {
     return src != null && src.state == .OCCUPIED
 }
 
+// TODO: A safe version of []
+
 operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_location) -> &V {
     KV :: Map_Entry(K, V)
     if assign {

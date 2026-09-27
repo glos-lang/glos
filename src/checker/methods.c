@@ -686,10 +686,7 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *fn, Type receiver) {
     assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
     assert(type_kind_eq(c->type_info_type.spec.structt->fields[4].type, TYPE_FN));
-    Type_Fn *expected_spec = c->type_info_type.spec.structt->fields[4].type.spec.fn;
-    expected_spec->args[0].type =
-        type_with_ref(receiver, (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1);
-    expected_spec->args[0].name = SV_Lit("this");
+    const Type_Fn *spec = c->type_info_type.spec.structt->fields[4].type.spec.fn;
 
     error_token(
         EK_ERROR,
@@ -698,11 +695,30 @@ static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *
         SV_Arg(fn->defined_as->node.token.sv));
 
     afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
-    afprintf(
+    ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
+    fprintf(
         stderr,
-        ANSI_COLOR_MAGENTA | ANSI_BOLD,
-        "        format :: %s {}\n\n",
-        type_to_cstr_raw((Type) {.kind = TYPE_FN, .spec.fn = expected_spec}));
+        "        format :: (this: %s",
+        type_to_cstr_raw(type_with_ref(receiver, (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1)));
+
+    assert(spec->variadics_kind == VARIADICS_NONE);
+    for (size_t i = 1; i < spec->args_count; i++) {
+        const Type_Fn_Arg *it = &spec->args[i];
+        fprintf(stderr, ", " SV_Fmt ": %s", SV_Arg(it->name), type_to_cstr_raw(it->type));
+    }
+
+    fprintf(stderr, ")");
+    if (spec->returns_count) {
+        fprintf(stderr, " -> ");
+        for (size_t i = 0; i < spec->returns_count; i++) {
+            if (i) {
+                fprintf(stderr, ", ");
+            }
+            fprintf(stderr, "%s", type_to_cstr_raw(spec->returns[i]));
+        }
+    }
+    fprintf(stderr, " {}\n\n");
+    ansi_reset(stderr);
 }
 
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
