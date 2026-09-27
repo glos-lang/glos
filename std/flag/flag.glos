@@ -48,8 +48,9 @@ parse :: (location := #caller_location) {
 
     argn = 1
     for argn < os.args.count {
-        arg := os.args[argn]; argn += 1
+        arg := os.args[argn]
         if !arg.begins_with("-") then break
+        argn += 1
 
         flag := arg[1..]
         if flag.begins_with("-") then flag = flag[1..]
