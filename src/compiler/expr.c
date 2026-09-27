@@ -589,7 +589,7 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
 
 LLVMValueRef compile_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_INT:
     case TOKEN_BOOL:
@@ -717,11 +717,193 @@ LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref) {
     return NULL;
 }
 
+static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr);
+
+static void compile_hasher_bytes(Compiler *c, LLVMValueRef hasher, LLVMValueRef data, LLVMValueRef count) {
+    Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__bytes);
+    assert(fn.type->kind == TYPE_FN);
+    const Type_Fn *fn_spec = fn.type->spec.fn;
+
+    Typed_LLVM_Value args[2] = {0};
+    assert(len(args) == fn_spec->args_count);
+    args[0].type = &fn_spec->args[0].type;
+    args[0].value = hasher;
+
+    args[1].type = &fn_spec->args[1].type;
+    args[1].value = compile_alloca(c, args[1].type->llvm);
+    LLVMBuildStore(c->llvm_builder, data, args[1].value);
+    LLVMBuildStore(
+        c->llvm_builder, count, LLVMBuildStructGEP2(c->llvm_builder, args[1].type->llvm, args[1].value, 1, ""));
+
+    args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, args[1].value, "");
+    compile_call(c, fn, args, len(args), false);
+}
+
+static void compile_hasher_float(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
+    Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(
+        c, value_type->kind == TYPE_F32 ? c->hash__Hasher__float32 : c->hash__Hasher__float64);
+    assert(fn.type->kind == TYPE_FN);
+    const Type_Fn *fn_spec = fn.type->spec.fn;
+
+    Typed_LLVM_Value args[2] = {0};
+    assert(len(args) == fn_spec->args_count);
+    args[0].type = &fn_spec->args[0].type;
+    args[0].value = hasher;
+
+    args[1].type = value_type;
+    args[1].value = LLVMBuildLoad2(c->llvm_builder, value_type->llvm, value_ptr, "");
+    compile_call(c, fn, args, len(args), false);
+}
+
+static void
+compile_hasher_slice(Compiler *c, LLVMValueRef hasher, Type *element_type, LLVMValueRef data, LLVMValueRef count) //
+{
+    // Hash the count
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+    compile_hasher_bytes(c, hasher, get_load_ptr(count), LLVMConstInt(i64, 8, true));
+
+    // Integeral slices
+    if (type_is_scalar(*element_type) && !type_is_float(*element_type)) {
+        compile_hasher_bytes(c, hasher, data, count);
+        return;
+    }
+
+    LLVMBasicBlockRef before = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMBasicBlockRef loop = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef after = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildBr(c->llvm_builder, loop);
+
+    // Loop
+    LLVMPositionBuilderAtEnd(c->llvm_builder, loop);
+    LLVMValueRef i = LLVMBuildPhi(c->llvm_builder, i64, "");
+    LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
+    LLVMAddIncoming(i, &zero, &before, 1);
+
+    // Item
+    LLVMValueRef item = LLVMBuildGEP2(c->llvm_builder, compile_type(c, element_type), data, &i, 1, "");
+    compile_hasher(c, hasher, element_type, item);
+
+    LLVMValueRef one = LLVMConstInt(i64, 1, 0);
+    LLVMValueRef next = LLVMBuildAdd(c->llvm_builder, i, one, "");
+    LLVMValueRef cond = LLVMBuildICmp(c->llvm_builder, LLVMIntULT, next, count, "");
+    LLVMBuildCondBr(c->llvm_builder, cond, loop, after);
+    LLVMAddIncoming(i, &next, &loop, 1);
+
+    // After
+    LLVMPositionBuilderAtEnd(c->llvm_builder, after);
+}
+
+static_assert(COUNT_TYPES == 32, "");
+static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
+    if (value_type->ref) {
+        compile_hasher_bytes(
+            c,
+            hasher,
+            value_ptr,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
+        return;
+    }
+
+    switch (value_type->kind) {
+    case TYPE_BOOL:
+    case TYPE_RUNE:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+    case TYPE_ENUM:
+    case TYPE_ERROR:
+        compile_hasher_bytes(
+            c,
+            hasher,
+            value_ptr,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
+        break;
+
+    case TYPE_F32:
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        compile_hasher_float(c, hasher, value_type, value_ptr);
+        break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = value_type->spec.structt;
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            Type_Struct_Field *it = &spec->fields[i];
+            compile_hasher(c, hasher, &it->type, compile_ptr_offset(c, value_ptr, it->offset));
+        }
+    } break;
+
+    case TYPE_ARRAY: {
+        LLVMTypeRef  i64 = LLVMInt64TypeInContext(c->llvm_context);
+        LLVMValueRef count = compile_alloca(c, i64);
+        LLVMBuildStore(c->llvm_builder, LLVMConstInt(i64, value_type->spec.array.count, true), count);
+        compile_hasher_slice(
+            c, hasher, value_type->spec.array.element, value_ptr, LLVMBuildLoad2(c->llvm_builder, i64, count, ""));
+    } break;
+
+    case TYPE_DYNAMIC_ARRAY: {
+        LLVMValueRef data =
+            LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), value_ptr, "");
+
+        LLVMValueRef count = LLVMBuildLoad2(
+            c->llvm_builder,
+            LLVMInt64TypeInContext(c->llvm_context),
+            LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
+            "");
+
+        compile_hasher_slice(c, hasher, value_type->spec.dynamic_array.element, data, count);
+    } break;
+
+    case TYPE_SLICE: {
+        LLVMValueRef data =
+            LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), value_ptr, "");
+
+        LLVMValueRef count = LLVMBuildLoad2(
+            c->llvm_builder,
+            LLVMInt64TypeInContext(c->llvm_context),
+            LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
+            "");
+
+        compile_hasher_slice(c, hasher, value_type->spec.slice.element, data, count);
+    } break;
+
+    case TYPE_STRING: {
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__bytes);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        Typed_LLVM_Value args[2] = {0};
+        assert(len(args) == fn_spec->args_count);
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = hasher;
+
+        args[1].type = &fn_spec->args[1].type;
+        args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, value_ptr, "");
+        compile_call(c, fn, args, len(args), false);
+    } break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
 LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     Node *n = (Node *) unary;
 
     LLVMValueRef value = NULL;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = compile_expr(c, unary->value, false);
@@ -778,6 +960,34 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
         value = compile_expr(c, unary->value, false);
         set_debug_pos(c, n->token.pos);
         return LLVMBuildXor(c->llvm_builder, value, LLVMConstInt(n->type.llvm, true, false), "");
+
+    case TOKEN_HASHOF: {
+        value = compile_expr(c, unary->value, false);
+        if (LLVMGetInstructionOpcode(value) == LLVMLoad) {
+            value = undo_load(value);
+        } else {
+            LLVMValueRef memory = compile_alloca(c, unary->value->type.llvm);
+            LLVMBuildStore(c->llvm_builder, value, memory);
+            value = memory;
+        }
+        set_debug_pos(c, n->token.pos);
+
+        LLVMValueRef hasher = compile_alloca(c, c->hasher_type.llvm);
+        LLVMBuildStore(c->llvm_builder, LLVMConstNull(c->hasher_type.llvm), hasher);
+        compile_hasher(c, hasher, &unary->value->type, value);
+
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__finish);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        Typed_LLVM_Value args[1] = {0};
+        assert(len(args) == fn_spec->args_count);
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, hasher, "");
+
+        set_debug_pos(c, n->token.pos);
+        return compile_call(c, fn, args, len(args), false);
+    }
 
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
@@ -867,7 +1077,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 95, "");
+        static_assert(COUNT_TOKENS == 96, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -924,7 +1134,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMRealPredicate f;
         } Op;
 
-        static_assert(COUNT_TOKENS == 95, "");
+        static_assert(COUNT_TOKENS == 96, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_GT] = {.i = LLVMIntSGT, .u = LLVMIntUGT, .f = LLVMRealOGT},
             [TOKEN_GE] = {.i = LLVMIntSGE, .u = LLVMIntUGE, .f = LLVMRealOGE},
@@ -983,7 +1193,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
             LLVMValueRef (*f)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
         } Op;
 
-        static_assert(COUNT_TOKENS == 95, "");
+        static_assert(COUNT_TOKENS == 96, "");
         static const Op ops[COUNT_TOKENS] = {
             [TOKEN_ADD_SET] = {.i = LLVMBuildAdd, .f = LLVMBuildFAdd},
             [TOKEN_SUB_SET] = {.i = LLVMBuildSub, .f = LLVMBuildFSub},
@@ -1097,7 +1307,7 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         }
     }
 
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_SET: {
         const size_t group_values_count_save = c->group_values.count;

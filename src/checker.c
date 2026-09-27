@@ -231,4 +231,40 @@ void check_nodes(Compiler *c) {
         c->error_enums_var = module_globals_find(c, c->fmt_module, SV_Lit("error_enums"));
         assert(c->error_enums_var);
     }
+
+    // The 'Hasher' type
+    {
+        value = get_const_definition_value(c, c->hash_module, SV_Lit("Hasher"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+        c->hasher_type = type_without_meta(value.as.type);
+    }
+
+    // builtin.runtime_panic()
+    {
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("runtime_panic"), NULL);
+        assert(value.kind == CONST_VALUE_FN);
+        c->builtin__runtime_panic = value.as.fn;
+    }
+
+    // hash.Hasher.*
+    {
+        Method_Spec spec = {0};
+        assert(get_method_spec(c, NULL, c->hasher_type, (SV) {0}, &spec, NULL));
+
+        spec.name = SV_Lit("bytes");
+        c->hash__Hasher__bytes = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__bytes);
+
+        spec.name = SV_Lit("float32");
+        c->hash__Hasher__float32 = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__float32);
+
+        spec.name = SV_Lit("float64");
+        c->hash__Hasher__float64 = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__float64);
+
+        spec.name = SV_Lit("finish");
+        c->hash__Hasher__finish = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__finish);
+    }
 }

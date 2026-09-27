@@ -27,7 +27,13 @@ bytes :: (this: &Hasher, bytes: []u8) {
     this.count += u64(bytes.count)
 }
 
-float :: (this: &Hasher, f: f64) {
+float32 :: (this: &Hasher, f: f32) {
+    if f == 0.0 then f = 0.0         // +0.0 and -0.0 have different bit representations
+    if f != f   then f = 0h7FBF_FFFF // NaN
+    this.bytes([]u8(&u8(&f), sizeof(f)))
+}
+
+float64 :: (this: &Hasher, f: f64) {
     if f == 0.0 then f = 0.0                   // +0.0 and -0.0 have different bit representations
     if f != f   then f = 0h7FF8_0000_0000_0000 // NaN
     this.bytes([]u8(&u8(&f), sizeof(f)))

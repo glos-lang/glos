@@ -1,5 +1,6 @@
 #include "../error.h"
 #include "checker.h"
+#include <assert.h>
 
 static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     if (m->rhs) {
@@ -18,7 +19,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 96, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     if (op != TOKEN_SET && n->kind == NODE_INDEX) {
@@ -126,7 +127,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -278,9 +279,87 @@ void check_expr_throw(Compiler *c, Node_Throw *throw) {
     }
 }
 
+static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type) {
+    error_node(EK_ERROR, n, "Cannot hash %s", type_to_cstr(*type));
+    exit(c, 1);
+}
+
+static_assert(COUNT_TYPES == 32, "");
+static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) {
+    if (type->is_meta) {
+        error_type_is_not_hashable(c, n, type);
+    }
+
+    if (type->ref) {
+        return;
+    }
+
+    if (ht_get(&c->hash_intern, *type)) {
+        return;
+    }
+
+    ht_set(&c->hash_intern, *type, NULL);
+    switch (type->kind) {
+    case TYPE_BOOL:
+    case TYPE_RUNE:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_F32:
+    case TYPE_F64:
+
+    case TYPE_INT:
+    case TYPE_FLOAT:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+    case TYPE_ENUM:
+    case TYPE_STRING:
+    case TYPE_ERROR:
+        // Pass
+        break;
+
+    case TYPE_MAP:
+    case TYPE_TRAIT:
+    case TYPE_UNION:
+        error_type_is_not_hashable(c, n, type);
+        break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = type->spec.structt;
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            check_that_type_is_hashable(c, n, &spec->fields[i].type);
+        }
+    } break;
+
+    case TYPE_ARRAY:
+        check_that_type_is_hashable(c, n, type->spec.array.element);
+        break;
+
+    case TYPE_DYNAMIC_ARRAY:
+        check_that_type_is_hashable(c, n, type->spec.dynamic_array.element);
+        break;
+
+    case TYPE_SLICE:
+        check_that_type_is_hashable(c, n, type->spec.slice.element);
+        break;
+
+    default:
+        break;
+    }
+}
+
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -326,6 +405,14 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     case TOKEN_LNOT:
         check_expr(c, unary->value, REF_NONE);
         n->type = type_assert(c, unary->value, (Type) {.kind = TYPE_BOOL});
+        break;
+
+    case TOKEN_HASHOF:
+        check_expr(c, unary->value, REF_NONE);
+        check_that_type_is_known(c, unary->value);
+        finalize_untyped_type(c, unary->value);
+        check_that_type_is_hashable(c, unary->value, &unary->value->type);
+        n->type = (Type) {.kind = TYPE_U64};
         break;
 
     case TOKEN_SIZEOF:
@@ -391,7 +478,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -1423,6 +1510,11 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
             } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
                 // Pass
             } else {
+                // TODO: Broken
+                // ```
+                // xs: [..]s64 = {1, 2} // Broken
+                // xs.push({69, 420})   // Also broken
+                // ```
                 unreachable();
             }
         }

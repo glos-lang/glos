@@ -350,6 +350,11 @@ int main(int argc, char **argv) {
     compiler.fmt_module = import_std_module(&compiler, SV_Lit("fmt"));
     perf_end("fmt module");
 
+    // Import the hash module
+    perf_begin();
+    compiler.hash_module = import_std_module(&compiler, SV_Lit("hash"));
+    perf_end("hash module");
+
     // Main module
     perf_begin();
 

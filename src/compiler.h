@@ -97,6 +97,8 @@ typedef struct {
     Type interpolation_type;
     Type interpolation_marker_type;
 
+    HT(Type, Node_Fn *) hash_intern;
+
     HT(Type, LLVMValueRef) hash_info_intern;
     Type hash_info_type;
 
@@ -137,6 +139,7 @@ typedef struct {
     Module *main_module;
     Module *builtin_module;
     Module *fmt_module;
+    Module *hash_module;
 
     Type type_info_type;         // This holds `Type_Info`
     Type type_info_pointer_type; // This holds `&Type_Info`
@@ -146,9 +149,16 @@ typedef struct {
 
     Type source_code_location_type;
     Type format_type;
+    Type hasher_type;
 
     Type        allocator_type;
     Const_Value default_allocator;
+
+    Node_Fn *builtin__runtime_panic; // builtin.runtime_panic()
+    Node_Fn *hash__Hasher__bytes;    // hash.Hasher.bytes()
+    Node_Fn *hash__Hasher__float32;  // hash.Hasher.float32()
+    Node_Fn *hash__Hasher__float64;  // hash.Hasher.float64()
+    Node_Fn *hash__Hasher__finish;   // hash.Hasher.finish()
 
     // Rest all are only used by compiler
     Cmd        *cmd;
