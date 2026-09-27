@@ -696,6 +696,8 @@ typedef struct {
 
     Node  *error_check;
     size_t error_check_index;
+
+    Token end;
 } Node_Binary;
 
 typedef struct {

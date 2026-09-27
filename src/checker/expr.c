@@ -432,14 +432,6 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_with_meta(unary->value->type);
         break;
 
-    case TOKEN_MAP:
-        check_expr(c, unary->value, REF_NONE);
-        check_that_type_is_known(c, unary->value);
-        finalize_untyped_type(c, unary->value);
-        check_that_type_is_hashable(c, unary->value, &unary->value->type);
-        n->type = (Type) {.kind = TYPE_U64};
-        break;
-
     default:
         unreachable();
     }
@@ -633,6 +625,24 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     case TOKEN_BAND_SET:
     case TOKEN_BXOR_SET:
         check_assignment(c, binary);
+        break;
+
+    case TOKEN_MAP:
+        check_expr(c, binary->lhs, REF_NONE);
+        check_that_type_is_known(c, binary->lhs);
+        finalize_untyped_type(c, binary->lhs);
+        check_that_type_is_hashable(c, binary->lhs, &binary->lhs->type);
+        if (binary->rhs) {
+            check_expr(c, binary->rhs, REF_NONE);
+            type_assert(c, binary->rhs, type_with_ref(c->hasher_type, 1));
+
+            if (!n->is_stmt) {
+                error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
+                exit(c, 1);
+            }
+        } else {
+            n->type = (Type) {.kind = TYPE_U64};
+        }
         break;
 
     default:

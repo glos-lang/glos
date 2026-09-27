@@ -1204,11 +1204,15 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } else {
             extra = expect_token(p, TOKEN_IDENT);
             if (sv_eq(extra.sv, SV_Lit("hash"))) {
-                node = node_alloc(p->module_current, NODE_UNARY, token);
-                Node_Unary *unary = (Node_Unary *) node;
+                node = node_alloc(p->module_current, NODE_BINARY, token);
+                Node_Binary *binary = (Node_Binary *) node;
                 expect_token(p, TOKEN_LPAREN);
-                unary->value = parse_expr(p, POWER_SET, false, true, NULL);
-                unary->end = expect_token(p, TOKEN_RPAREN);
+                binary->lhs = parse_expr(p, POWER_SET, false, true, NULL);
+                binary->end = expect_token(p, TOKEN_COMMA, TOKEN_RPAREN);
+                if (binary->end.kind == TOKEN_COMMA) {
+                    binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                    binary->end = expect_token(p, TOKEN_RPAREN);
+                }
             } else {
                 error_token(
                     EK_ERROR, extra, "Invalid map operator '" SV_Fmt "'. A valid name is 'hash'.", SV_Arg(extra.sv));

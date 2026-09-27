@@ -1002,36 +1002,6 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
     case TOKEN_SIZEOF:
         return LLVMConstInt(n->type.llvm, compile_sizeof(c, &unary->value->type), false);
 
-    case TOKEN_MAP: {
-        value = compile_expr(c, unary->value, false);
-        if (LLVMGetInstructionOpcode(value) == LLVMLoad) {
-            value = undo_load(value);
-        } else {
-            LLVMValueRef memory = compile_alloca(c, unary->value->type.llvm);
-            LLVMBuildStore(c->llvm_builder, value, memory);
-            value = memory;
-        }
-
-        const Pos pos = get_leftmost_token_of_node(n).pos;
-        set_debug_pos(c, pos);
-
-        LLVMValueRef hasher = compile_alloca(c, c->hasher_type.llvm);
-        LLVMBuildStore(c->llvm_builder, LLVMConstNull(c->hasher_type.llvm), hasher);
-        compile_map_hash(c, pos, hasher, &unary->value->type, value);
-
-        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__finish);
-        assert(fn.type->kind == TYPE_FN);
-        const Type_Fn *fn_spec = fn.type->spec.fn;
-
-        Typed_LLVM_Value args[1] = {0};
-        assert(len(args) == fn_spec->args_count);
-        args[0].type = &fn_spec->args[0].type;
-        args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, hasher, "");
-
-        set_debug_pos(c, pos);
-        return compile_call(c, fn, args, len(args), false);
-    }
-
     default:
         unreachable();
     }
@@ -1435,6 +1405,45 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         LLVMBasicBlockRef phi_blocks[] = {lhs_block, rhs_block};
         LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
         return phi;
+    }
+
+    case TOKEN_MAP: {
+        LLVMValueRef value = compile_expr(c, binary->lhs, false);
+        if (LLVMGetInstructionOpcode(value) == LLVMLoad) {
+            value = undo_load(value);
+        } else {
+            LLVMValueRef memory = compile_alloca(c, binary->lhs->type.llvm);
+            LLVMBuildStore(c->llvm_builder, value, memory);
+            value = memory;
+        }
+
+        const Pos pos = get_leftmost_token_of_node(n).pos;
+        set_debug_pos(c, pos);
+
+        LLVMValueRef hasher = NULL;
+        if (binary->rhs) {
+            hasher = compile_expr(c, binary->rhs, false);
+        } else {
+            hasher = compile_alloca(c, c->hasher_type.llvm);
+            LLVMBuildStore(c->llvm_builder, LLVMConstNull(c->hasher_type.llvm), hasher);
+        }
+        compile_map_hash(c, pos, hasher, &binary->lhs->type, value);
+
+        if (binary->rhs) {
+            return NULL;
+        }
+
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__finish);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        Typed_LLVM_Value args[1] = {0};
+        assert(len(args) == fn_spec->args_count);
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, hasher, "");
+
+        set_debug_pos(c, pos);
+        return compile_call(c, fn, args, len(args), false);
     }
 
     default:
