@@ -944,21 +944,19 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
         if (op.i) {
             // Empty string comparison optimizations
-            if (c->optimization_level != O0) {
-                if (type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING}) &&
-                    (n->token.kind == TOKEN_EQ || n->token.kind == TOKEN_NE)) //
-                {
-                    LLVMValueRef check_empty = NULL;
-                    if (is_empty_string(binary->lhs)) {
-                        check_empty = compile_expr(c, binary->rhs, false);
-                    } else if (is_empty_string(binary->rhs)) {
-                        check_empty = compile_expr(c, binary->lhs, false);
-                    }
+            if (type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING}) &&
+                (n->token.kind == TOKEN_EQ || n->token.kind == TOKEN_NE)) //
+            {
+                LLVMValueRef check_empty = NULL;
+                if (is_empty_string(binary->lhs)) {
+                    check_empty = compile_expr(c, binary->rhs, false);
+                } else if (is_empty_string(binary->rhs)) {
+                    check_empty = compile_expr(c, binary->lhs, false);
+                }
 
-                    if (check_empty) {
-                        LLVMValueRef count = LLVMBuildExtractValue(c->llvm_builder, check_empty, 1, "");
-                        return LLVMBuildICmp(c->llvm_builder, op.i, count, LLVMConstNull(i64_type), "");
-                    }
+                if (check_empty) {
+                    LLVMValueRef count = LLVMBuildExtractValue(c->llvm_builder, check_empty, 1, "");
+                    return LLVMBuildICmp(c->llvm_builder, op.i, count, LLVMConstNull(i64_type), "");
                 }
             }
 

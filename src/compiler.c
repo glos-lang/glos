@@ -173,9 +173,12 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     perf_begin();
 
-    if (c->optimization_level != O0) {
+    {
+        char passes[16];
+        snprintf(passes, sizeof(passes), "default<O%d>", c->optimization_level);
+
         LLVMPassBuilderOptionsRef pass_builder_options = LLVMCreatePassBuilderOptions();
-        LLVMRunPasses(c->llvm_module, "always-inline", c->llvm_target_machine, pass_builder_options);
+        LLVMRunPasses(c->llvm_module, passes, c->llvm_target_machine, pass_builder_options);
         LLVMDisposePassBuilderOptions(pass_builder_options);
     }
 

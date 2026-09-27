@@ -84,7 +84,7 @@ static void usage(FILE *f, const char *program) {
         {"h", "             Show this message"},
         {"t", "             Run tests"},
         {"T", "             Run tests in non-interactive mode"},
-        {"O", "LEVEL        Run tests with this optimization level [0: None, 1: Less (Default), 2: Medium, 3: Aggressive]"},
+        {"O", "LEVEL        Run tests with this optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
         {"j", "NPROCS       Set the maximum number of parallel processes. Default is 5"},
     };
     // clang-format on

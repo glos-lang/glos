@@ -23,7 +23,7 @@ static void usage(FILE *f, const char *program) {
         {"h", "             Show this message"},
         {"r", "             Run the program"},
         {"o", "OUTPUT       Set the output path"},
-        {"O", "LEVEL        Set the optimization level [0: None, 1: Less (Default), 2: Medium, 3: Aggressive]"},
+        {"O", "LEVEL        Set the optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
         {"L", "PATH         Add a library path"},
         {"l", "NAME         Add a library"},
         {"-", "             End of compiler options. All following arguments are passed to the program if ran"},
@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
 
-    static Compiler compiler = {.optimization_level = O1};
+    static Compiler compiler = {0};
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (*arg == '-') {
