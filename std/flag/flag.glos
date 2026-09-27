@@ -7,7 +7,7 @@ add :: (v: Var, name: string, description: string, location := #caller_location)
         panic("Invalid flag name \{Quote {name}}: Cannot be empty", location = location)
     }
 
-    if name == "" || name.begins_with("-") {
+    if name == "" || strings.begins_with(name, "-") {
         panic("Invalid flag name \{Quote {name}}: Cannot start with '-'", location = location)
     }
 
@@ -49,11 +49,11 @@ parse :: (location := #caller_location) {
     argn = 1
     for argn < os.args.count {
         arg := os.args[argn]
-        if !arg.begins_with("-") then break
+        if !strings.begins_with(arg, "-") then break
         argn += 1
 
         flag := arg[1..]
-        if flag.begins_with("-") then flag = flag[1..]
+        if strings.begins_with(flag, "-") then flag = flag[1..]
         if flag == ""            then break
 
         if flags.contains(flag) {
@@ -176,7 +176,7 @@ usage :: (w: io.Writer, location := #caller_location) {
         }
         wprintln(w)
 
-        for _, line := range desc.split_iter('\n') {
+        for _, line := range (strings.Split {desc, '\n'}) {
             wprintln(w, "        \{line}")
         }
 

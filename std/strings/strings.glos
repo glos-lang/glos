@@ -1,66 +1,168 @@
-to_cstring :: (s: string, allocator := default_allocator) -> &C.char, error {
-    p := &C.char(allocator.alloc(s.count + 1, zeroed = false)?)
-    if s.count != 0 {
-        mem.copy(p, &C.char(s.data), s.count, overlaps = false)
+find :: (s: string, p: Predicate, reverse := false) -> s64, bool {
+    if p == {
+    case rune
+        if reverse {
+            for i, c := range Reverse(s) {
+                if c == p {
+                    return i, true
+                }
+            }
+        } else {
+            for i, c := range s {
+                if c == p {
+                    return i, true
+                }
+            }
+        }
+
+    case string
+        if p == "" {
+            return 0, true
+        }
+
+        if p.count > s.count {
+            return 0, false
+        }
+
+        if reverse {
+            for i := range s.count..>=p.count {
+                if begins_with(s[i..], p) {
+                    return i, true
+                }
+            }
+        } else {
+            for i := range s.count - p.count + 1 {
+                if begins_with(s[i..], p) {
+                    return i, true
+                }
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return 0, false
+        }
+
+        if reverse {
+            for i, c := range Reverse(s) {
+                if p(c) {
+                    return i, true
+                }
+            }
+        } else {
+            for i, c := range s {
+                if p(c) {
+                    return i, true
+                }
+            }
+        }
+
+    case null; unreachable()
     }
 
-    *(p + &C.char(s.count)) = 0
-    return p, null
+    return 0, false
 }
 
-from_cstring :: (s: &C.char) -> string {
-    return string([]C.char(s, C.strlen(s)))
-}
-
-to_s64 :: (s: string, base := 10) -> s64, error {
-    cstr := to_cstring(s, temporary_allocator)?
-    defer temporary_allocator.rewind(rawptr(cstr))
-
-    C.set_errno(null)
-    end: &C.char
-    result := C.strtoll(cstr, &end, s32(base))
-
-    if end == &C.char(s.data) || *end != '\0' {
-        C.Errno.EINVAL?
-    }
-    C.get_errno()?
-    return result, null
-}
-
-to_u64 :: (s: string, base := 10) -> u64, error {
-    cstr := to_cstring(s, temporary_allocator)?
-    defer temporary_allocator.rewind(rawptr(cstr))
-
-    C.set_errno(null)
-    end: &C.char
-    result := C.strtoull(cstr, &end, s32(base))
-
-    if end == &C.char(s.data) || *end != '\0' {
-        C.Errno.EINVAL?
-    }
-    C.get_errno()?
-    return result, null
-}
-
-to_f64 :: (s: string) -> f64, error {
-    cstr := to_cstring(s, temporary_allocator)?
-    defer temporary_allocator.rewind(rawptr(cstr))
-
-    C.set_errno(null)
-    end: &C.char
-    result := C.strtod(cstr, &end)
-
-    if end == &C.char(s.data) || *end != '\0' {
-        C.Errno.EINVAL?
+split :: (s: string, p: Predicate = unicode.is_space, reverse := false) -> string, string, bool {
+    n, found := find(s, p, reverse)
+    if !found {
+        return s, "", false
     }
 
-    err := C.get_errno()
-    if err == .ERANGE {
-        return result, err
+    lhs := s[..n]
+    if p == string {
+        return lhs, s[n + p.count..], true
+    } else {
+        return lhs, s[n + 1..], true
     }
-    err?
-    return result, null
 }
 
-C   :: #import "C"
-mem :: #import "memory"
+trim :: (s: string, p: Predicate = unicode.is_space) -> string {
+    return trim_right(trim_left(s, p), p)
+}
+
+trim_left :: (s: string, p: Predicate = unicode.is_space) -> string {
+    if p == {
+    case rune
+        for i, c := range s {
+            if c != p {
+                return s[i..]
+            }
+        }
+
+    case string
+        if p == "" {
+            return s
+        }
+
+        for i := 0; i < s.count; i += p.count {
+            s := s[i..]
+            if !begins_with(s, p) {
+                return s
+            }
+        }
+
+    case (c: rune) -> bool
+        if p == null {
+            return s
+        }
+
+        for i, c := range s {
+            if !p(c) {
+                return s[i..]
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return ""
+}
+
+trim_right :: (s: string, p: Predicate = unicode.is_space) -> string {
+    if p == {
+    case rune
+        for i, c := range Reverse(s) {
+            if c != p {
+                return s[..i + 1]
+            }
+        }
+
+    case string
+        if p != "" {
+            for ends_with(s, p) {
+                s.count -= p.count
+            }
+        }
+        return s
+
+    case (c: rune) -> bool
+        if p == null {
+            return s
+        }
+
+        for i, c := range Reverse(s) {
+            if !p(c) {
+                return s[..i + 1]
+            }
+        }
+
+    case null; unreachable()
+    }
+
+    return ""
+}
+
+begins_with :: (s: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return s.count >= p.count && C.memcmp(rawptr(s.data), rawptr(p.data), u64(p.count)) == 0
+}
+
+ends_with :: (s: string, p: string) -> bool {
+    if p == "" {
+        return true
+    }
+    return s.count >= p.count && C.memcmp(rawptr(&s[s.count - p.count]), rawptr(p.data), u64(p.count)) == 0
+}
