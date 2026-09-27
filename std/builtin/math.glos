@@ -55,6 +55,9 @@ extern {
 
     #link "truncf" trunc :: (this: f32) -> f32
     #link "trunc"  trunc :: (this: f64) -> f64
+
+    #link "copysignf" copysign :: (this: f32, that: f32) -> f32
+    #link "copysign"  copysign :: (this: f64, that: f64) -> f64
 }
 
 is_nan :: (this: f32) -> bool {
