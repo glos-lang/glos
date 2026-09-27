@@ -1,0 +1,29 @@
+Vec2 :: struct {
+    x, y: s32
+}
+
+#hook
+hash :: (this: Vec2, h: &Hasher) {
+    println("Vec2.hash()")
+    h.bytes([]u8(&u8(&this.x), sizeof(this.x)))
+    h.bytes([]u8(&u8(&this.y), sizeof(this.y)))
+}
+
+Vec3 :: struct($T: Type) {
+    x, y, z: T
+}
+
+#hook
+hash :: (this: Vec3($T), h: &Hasher) {
+    println("Vec3.hash()")
+    h.bytes([]u8(&u8(&this.x), sizeof(this.x)))
+    h.bytes([]u8(&u8(&this.y), sizeof(this.y)))
+    h.bytes([]u8(&u8(&this.z), sizeof(this.z)))
+}
+
+main :: () {
+    println(map.hash(Vec2 {69, 420}))
+    println(map.hash(Vec3(s32) {69, 420, 1337}))
+}
+
+#import "hash"

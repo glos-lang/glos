@@ -14,6 +14,10 @@ void link_flags_add_libpath(Link_Flags *ls, SV path);
 void link_flags_add_libname(Link_Flags *ls, SV name);
 
 typedef struct {
+    Node_Fn *hash;
+} Map_Operator;
+
+typedef struct {
     uintptr_t uid;
     SV        name;
 } Method_Spec;
@@ -84,7 +88,7 @@ typedef struct {
     Type interpolation_type;
     Type interpolation_marker_type;
 
-    HT(Type, Node_Fn *) hash_intern;
+    HT(Type, Map_Operator) map_operators;
 
     DA(Node *) partial_stack;
 

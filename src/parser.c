@@ -1801,9 +1801,12 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_DIRECTIVE_HOOK: {
         Node *name = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_IDENT));
-        if (!sv_eq(name->token.sv, SV_Lit("format"))) {
+        if (!sv_eq(name->token.sv, SV_Lit("format")) && !sv_eq(name->token.sv, SV_Lit("hash"))) {
             error_token(
-                EK_ERROR, name->token, "Invalid hook '" SV_Fmt "'. A valid name is 'format'.", SV_Arg(name->token.sv));
+                EK_ERROR,
+                name->token,
+                "Invalid hook '" SV_Fmt "'. Valid names are 'format' and 'hash'.",
+                SV_Arg(name->token.sv));
             exit(1);
         }
         node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);

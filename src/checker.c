@@ -108,6 +108,13 @@ void check_nodes(Compiler *c) {
         c->interpolation_type = type_without_meta(value.as.type);
     }
 
+    // Hasher
+    {
+        value = get_const_definition_value(c, c->hash_module, SV_Lit("Hasher"), NULL);
+        assert(value.kind == CONST_VALUE_TYPE);
+        c->hasher_type = type_without_meta(value.as.type);
+    }
+
     // Panic
     {
         value = get_const_definition_value(c, c->builtin_module, SV_Lit("Panic"), NULL);
@@ -223,13 +230,6 @@ void check_nodes(Compiler *c) {
     {
         c->error_enums_var = module_globals_find(c, c->fmt_module, SV_Lit("error_enums"));
         assert(c->error_enums_var);
-    }
-
-    // The 'Hasher' type
-    {
-        value = get_const_definition_value(c, c->hash_module, SV_Lit("Hasher"), NULL);
-        assert(value.kind == CONST_VALUE_TYPE);
-        c->hasher_type = type_without_meta(value.as.type);
     }
 
     // builtin.runtime_panic()

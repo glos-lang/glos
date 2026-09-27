@@ -263,7 +263,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     ht_free(&c->methods_table);
     da_free(&c->methods_to_check);
 
-    ht_free(&c->hash_intern);
+    ht_free(&c->map_operators);
 
     da_free(&c->partial_stack);
 

@@ -721,6 +721,24 @@ static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *
     ansi_reset(stderr);
 }
 
+static void show_explanation_about_custom_hasher(Compiler *c, const Node_Fn *fn, Type receiver) {
+    unused(c);
+    error_token(
+        EK_ERROR,
+        fn->defined_as->node.token,
+        "The method '" SV_Fmt "' is special because it implements a custom hasher",
+        SV_Arg(fn->defined_as->node.token.sv));
+
+    afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
+    ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
+    fprintf(
+        stderr,
+        "        hash :: (this: %s, h: %s) {}\n\n",
+        type_to_cstr_raw(type_with_ref(receiver, receiver.distinct ? receiver.distinct->node.type.ref : 0)),
+        type_to_cstr_raw(type_with_ref(c->hasher_type, 1)));
+    ansi_reset(stderr);
+}
+
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
     Type receiver = fn_spec->args[0].type;
     if (receiver.distinct) {
@@ -760,6 +778,45 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
 
 error:
     show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
+    exit(c, 1);
+}
+
+void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
+    Type receiver = fn_spec->args[0].type;
+    if (receiver.distinct) {
+        type_change_ref(&receiver, -receiver.distinct->node.type.ref);
+    }
+
+    if (receiver.ref) {
+        goto error;
+    }
+
+    if (fn_spec->args_count != 2) {
+        goto error;
+    }
+
+    if (!type_eq(fn_spec->args[1].type, type_with_ref(c->hasher_type, 1))) {
+        goto error;
+    }
+
+    if (fn_spec->returns_count) {
+        goto error;
+    }
+
+    if (!c->map_operators.hasheq) {
+        c->map_operators.hasheq = ht_hasheq_type;
+    }
+
+    Map_Operator *previous = ht_get(&c->map_operators, receiver);
+    if (previous) {
+        previous->hash = fn;
+    } else {
+        ht_set(&c->map_operators, receiver, (Map_Operator) {.hash = fn});
+    }
+    return;
+
+error:
+    show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
     exit(c, 1);
 }
 

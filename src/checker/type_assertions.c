@@ -221,46 +221,6 @@ void type_assert_type_or_Type(Compiler *c, const Node *n) {
     exit(c, 1);
 }
 
-static Node_Fn *register_formatter_for_monomorphized_struct_in_rtti(Compiler *c, Node_Struct *structt) {
-    Node *n = (Node *) structt;
-    assert(structt->monomorphs.count);
-
-    Method_Spec spec = {0};
-    assert(get_method_spec(c, n, type_without_meta(n->type), SV_Lit("format"), &spec, NULL));
-
-    Node_Fn *method = get_method(c, spec, n->module);
-    if (!method) {
-        return NULL;
-    }
-
-    if (!method->is_hook) {
-        return NULL;
-    }
-
-    assert(type_kind_eq(method->node.type, TYPE_FN));
-    const Type_Fn *method_spec = method->node.type.spec.fn;
-    assert(method_spec->args_count);
-
-    const size_t monomorph_parameters_begin_save = c->monomorph_parameters.begin;
-    c->monomorph_parameters.begin = c->monomorph_parameters.count;
-
-    const Monomorphizing_Site monomorphizing_site_save = c->monomorphizing_site;
-    c->monomorphizing_site.expr = n;
-    c->monomorphizing_site.node = (Node *) method;
-
-    const Type *expected = &method_spec->args[0].type;
-    const Type  actual = type_with_ref(type_without_meta(n->type), expected->ref);
-    infer_monomorph_parameters(c, &actual, expected, n, -1);
-    Node *result = monomorphize(c, (Node *) method, n);
-
-    c->monomorph_parameters.count = c->monomorph_parameters.begin;
-    c->monomorph_parameters.begin = monomorph_parameters_begin_save;
-    c->monomorphizing_site = monomorphizing_site_save;
-
-    assert(result->kind == NODE_FN);
-    return (Node_Fn *) result;
-}
-
 static_assert(COUNT_TYPES == 32, "");
 static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node *n, const Type *type) {
     assert(!type->is_meta);
@@ -314,7 +274,7 @@ static void register_formatter_for_monomorphized_type_in_rtti(Compiler *c, Node 
     case TYPE_STRUCT: {
         const Type_Struct *spec = type->spec.structt;
         if (spec->definition->monomorphs.count) {
-            Node_Fn *format = register_formatter_for_monomorphized_struct_in_rtti(c, spec->definition);
+            Node_Fn *format = monomorphize_hook_for_monomorphized_structure(c, spec->definition, SV_Lit("format"));
             if (format) {
                 // We are querying this from the hash map again, because the above function call might have modified it.
                 ht_get(&c->type_info_cache, *type)->format = format;

@@ -717,9 +717,9 @@ LLVMValueRef compile_expr_throw(Compiler *c, Node_Throw *throw, bool ref) {
     return NULL;
 }
 
-static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr);
+static void compile_map_hash(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr);
 
-static void compile_hasher_bytes(Compiler *c, LLVMValueRef hasher, LLVMValueRef data, LLVMValueRef count) {
+static void compile_map_hash_bytes(Compiler *c, Pos pos, LLVMValueRef hasher, LLVMValueRef data, LLVMValueRef count) {
     Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__bytes);
     assert(fn.type->kind == TYPE_FN);
     const Type_Fn *fn_spec = fn.type->spec.fn;
@@ -736,10 +736,13 @@ static void compile_hasher_bytes(Compiler *c, LLVMValueRef hasher, LLVMValueRef 
         c->llvm_builder, count, LLVMBuildStructGEP2(c->llvm_builder, args[1].type->llvm, args[1].value, 1, ""));
 
     args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, args[1].value, "");
+    set_debug_pos(c, pos);
     compile_call(c, fn, args, len(args), false);
 }
 
-static void compile_hasher_float(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
+static void
+compile_map_hash_float(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) //
+{
     Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(
         c, value_type->kind == TYPE_F32 ? c->hash__Hasher__float32 : c->hash__Hasher__float64);
     assert(fn.type->kind == TYPE_FN);
@@ -752,19 +755,20 @@ static void compile_hasher_float(Compiler *c, LLVMValueRef hasher, Type *value_t
 
     args[1].type = value_type;
     args[1].value = LLVMBuildLoad2(c->llvm_builder, value_type->llvm, value_ptr, "");
+    set_debug_pos(c, pos);
     compile_call(c, fn, args, len(args), false);
 }
 
-static void
-compile_hasher_slice(Compiler *c, LLVMValueRef hasher, Type *element_type, LLVMValueRef data, LLVMValueRef count) //
+static void compile_map_hash_slice(
+    Compiler *c, Pos pos, LLVMValueRef hasher, Type *element_type, LLVMValueRef data, LLVMValueRef count) //
 {
     // Hash the count
     LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
-    compile_hasher_bytes(c, hasher, get_load_ptr(count), LLVMConstInt(i64, 8, true));
+    compile_map_hash_bytes(c, pos, hasher, get_load_ptr(count), LLVMConstInt(i64, 8, true));
 
     // Integeral slices
     if ((type_is_scalar(*element_type) && !type_is_float(*element_type)) || element_type->kind == TYPE_ERROR) {
-        compile_hasher_bytes(c, hasher, data, count);
+        compile_map_hash_bytes(c, pos, hasher, data, count);
         return;
     }
 
@@ -781,7 +785,7 @@ compile_hasher_slice(Compiler *c, LLVMValueRef hasher, Type *element_type, LLVMV
 
     // Item
     LLVMValueRef item = LLVMBuildGEP2(c->llvm_builder, compile_type(c, element_type), data, &i, 1, "");
-    compile_hasher(c, hasher, element_type, item);
+    compile_map_hash(c, pos, hasher, element_type, item);
 
     LLVMValueRef one = LLVMConstInt(i64, 1, 0);
     LLVMValueRef next = LLVMBuildAdd(c->llvm_builder, i, one, "");
@@ -794,13 +798,38 @@ compile_hasher_slice(Compiler *c, LLVMValueRef hasher, Type *element_type, LLVMV
 }
 
 static_assert(COUNT_TYPES == 32, "");
-static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
+static void compile_map_hash(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
     if (value_type->ref) {
-        compile_hasher_bytes(
+        compile_map_hash_bytes(
             c,
+            pos,
             hasher,
             value_ptr,
             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
+        return;
+    }
+
+    if (!c->map_operators.hasheq) {
+        c->map_operators.hasheq = ht_hasheq_type;
+    }
+
+    Map_Operator *mp = ht_get(&c->map_operators, *value_type);
+    if (mp && mp->hash) {
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, mp->hash);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        assert(fn_spec->args_count >= 2);
+        Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, value_ptr, "");
+
+        args[1].type = &fn_spec->args[1].type;
+        args[1].value = hasher;
+
+        compile_optional_arguments(c, args, fn_spec, pos);
+        compile_call(c, fn, args, fn_spec->args_count, false);
+        arena_reset(&temp_arena, args);
         return;
     }
 
@@ -823,8 +852,9 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
     case TYPE_FN:
     case TYPE_ENUM:
     case TYPE_ERROR:
-        compile_hasher_bytes(
+        compile_map_hash_bytes(
             c,
+            pos,
             hasher,
             value_ptr,
             LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
@@ -833,14 +863,14 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
     case TYPE_F32:
     case TYPE_F64:
     case TYPE_FLOAT:
-        compile_hasher_float(c, hasher, value_type, value_ptr);
+        compile_map_hash_float(c, pos, hasher, value_type, value_ptr);
         break;
 
     case TYPE_STRUCT: {
         const Type_Struct *spec = value_type->spec.structt;
         for (size_t i = 0; i < spec->fields_count; i++) {
             Type_Struct_Field *it = &spec->fields[i];
-            compile_hasher(c, hasher, &it->type, compile_ptr_offset(c, value_ptr, it->offset));
+            compile_map_hash(c, pos, hasher, &it->type, compile_ptr_offset(c, value_ptr, it->offset));
         }
     } break;
 
@@ -848,8 +878,8 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
         LLVMTypeRef  i64 = LLVMInt64TypeInContext(c->llvm_context);
         LLVMValueRef count = compile_alloca(c, i64);
         LLVMBuildStore(c->llvm_builder, LLVMConstInt(i64, value_type->spec.array.count, true), count);
-        compile_hasher_slice(
-            c, hasher, value_type->spec.array.element, value_ptr, LLVMBuildLoad2(c->llvm_builder, i64, count, ""));
+        compile_map_hash_slice(
+            c, pos, hasher, value_type->spec.array.element, value_ptr, LLVMBuildLoad2(c->llvm_builder, i64, count, ""));
     } break;
 
     case TYPE_DYNAMIC_ARRAY: {
@@ -862,7 +892,7 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
             LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
             "");
 
-        compile_hasher_slice(c, hasher, value_type->spec.dynamic_array.element, data, count);
+        compile_map_hash_slice(c, pos, hasher, value_type->spec.dynamic_array.element, data, count);
     } break;
 
     case TYPE_SLICE: {
@@ -875,7 +905,7 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
             LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
             "");
 
-        compile_hasher_slice(c, hasher, value_type->spec.slice.element, data, count);
+        compile_map_hash_slice(c, pos, hasher, value_type->spec.slice.element, data, count);
     } break;
 
     case TYPE_STRING: {
@@ -890,6 +920,7 @@ static void compile_hasher(Compiler *c, LLVMValueRef hasher, Type *value_type, L
 
         args[1].type = &fn_spec->args[1].type;
         args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, value_ptr, "");
+        set_debug_pos(c, pos);
         compile_call(c, fn, args, len(args), false);
     } break;
 
@@ -973,11 +1004,13 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
             LLVMBuildStore(c->llvm_builder, value, memory);
             value = memory;
         }
-        set_debug_pos(c, n->token.pos);
+
+        const Pos pos = get_leftmost_token_of_node(n).pos;
+        set_debug_pos(c, pos);
 
         LLVMValueRef hasher = compile_alloca(c, c->hasher_type.llvm);
         LLVMBuildStore(c->llvm_builder, LLVMConstNull(c->hasher_type.llvm), hasher);
-        compile_hasher(c, hasher, &unary->value->type, value);
+        compile_map_hash(c, pos, hasher, &unary->value->type, value);
 
         Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__finish);
         assert(fn.type->kind == TYPE_FN);
@@ -988,7 +1021,7 @@ LLVMValueRef compile_expr_unary(Compiler *c, Node_Unary *unary, bool ref) {
         args[0].type = &fn_spec->args[0].type;
         args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, hasher, "");
 
-        set_debug_pos(c, n->token.pos);
+        set_debug_pos(c, pos);
         return compile_call(c, fn, args, len(args), false);
     }
 

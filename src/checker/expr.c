@@ -294,11 +294,15 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) 
         return;
     }
 
-    if (ht_get(&c->hash_intern, *type)) {
+    if (!c->map_operators.hasheq) {
+        c->map_operators.hasheq = ht_hasheq_type;
+    }
+
+    if (ht_get(&c->map_operators, *type)) {
         return;
     }
 
-    ht_set(&c->hash_intern, *type, NULL);
+    ht_set(&c->map_operators, *type, {0});
     switch (type->kind) {
     case TYPE_BOOL:
     case TYPE_RUNE:
@@ -335,6 +339,14 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) 
 
     case TYPE_STRUCT: {
         const Type_Struct *spec = type->spec.structt;
+        if (spec->definition->monomorphs.count) {
+            Node_Fn *hash = monomorphize_hook_for_monomorphized_structure(c, spec->definition, SV_Lit("hash"));
+            if (hash) {
+                // We are querying this from the hash map again, because the above function call might have modified it.
+                ht_get(&c->map_operators, *type)->hash = hash;
+            }
+        }
+
         for (size_t i = 0; i < spec->fields_count; i++) {
             check_that_type_is_hashable(c, n, &spec->fields[i].type);
         }
@@ -2821,6 +2833,8 @@ void check_fn(
                 check_signature_of_range_operator(c, fn, fn_spec);
             } else if (sv_eq(name, SV_Lit("format")) && fn->is_hook) {
                 check_signature_of_custom_formatter(c, fn, fn_spec);
+            } else if (sv_eq(name, SV_Lit("hash")) && fn->is_hook) {
+                check_signature_of_custom_hasher(c, fn, fn_spec);
             }
         }
     }
