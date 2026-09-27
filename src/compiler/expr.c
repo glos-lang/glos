@@ -763,7 +763,7 @@ compile_hasher_slice(Compiler *c, LLVMValueRef hasher, Type *element_type, LLVMV
     compile_hasher_bytes(c, hasher, get_load_ptr(count), LLVMConstInt(i64, 8, true));
 
     // Integeral slices
-    if (type_is_scalar(*element_type) && !type_is_float(*element_type)) {
+    if ((type_is_scalar(*element_type) && !type_is_float(*element_type)) || element_type->kind == TYPE_ERROR) {
         compile_hasher_bytes(c, hasher, data, count);
         return;
     }
