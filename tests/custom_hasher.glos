@@ -24,6 +24,10 @@ hash :: (this: Vec3($T), h: &Hasher) {
 main :: () {
     println(map.hash(Vec2 {69, 420}))
     println(map.hash(Vec3(s32) {69, 420, 1337}))
+    println(map.hash([]Vec2 {
+        {69,   420},
+        {1337, 80085},
+    }))
 }
 
 #import "hash"

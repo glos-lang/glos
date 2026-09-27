@@ -768,8 +768,15 @@ static void compile_map_hash_slice(
 
     // Integeral slices
     if ((type_is_scalar(*element_type) && !type_is_float(*element_type)) || element_type->kind == TYPE_ERROR) {
-        compile_map_hash_bytes(c, pos, hasher, data, count);
-        return;
+        if (!c->map_operators.hasheq) {
+            c->map_operators.hasheq = ht_hasheq_type;
+        }
+
+        Map_Operator *mp = ht_get(&c->map_operators, *element_type);
+        if (!mp || !mp->hash) {
+            compile_map_hash_bytes(c, pos, hasher, data, count);
+            return;
+        }
     }
 
     LLVMBasicBlockRef before = LLVMGetInsertBlock(c->llvm_builder);
