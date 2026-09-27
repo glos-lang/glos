@@ -264,7 +264,6 @@ void compiler_build(Compiler *c, const char *output_path) {
     da_free(&c->methods_to_check);
 
     ht_free(&c->hash_intern);
-    ht_free(&c->hash_info_intern);
 
     da_free(&c->partial_stack);
 

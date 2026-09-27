@@ -108,13 +108,6 @@ void check_nodes(Compiler *c) {
         c->interpolation_type = type_without_meta(value.as.type);
     }
 
-    // Hash Info
-    {
-        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Hash_Info"), NULL);
-        assert(value.kind == CONST_VALUE_TYPE);
-        c->hash_info_type = type_without_meta(value.as.type);
-    }
-
     // Panic
     {
         value = get_const_definition_value(c, c->builtin_module, SV_Lit("Panic"), NULL);

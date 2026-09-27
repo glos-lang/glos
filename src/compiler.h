@@ -2,7 +2,6 @@
 #define COMPILER_H
 
 #include "context.h"
-#include "contract.h"
 #include "node.h"
 #include "parser.h"
 
@@ -18,18 +17,6 @@ typedef struct {
     uintptr_t uid;
     SV        name;
 } Method_Spec;
-
-typedef struct {
-    Contract_Hash_Info_Kind kind;
-
-    size_t offset;
-    size_t size;
-} Hash_Info;
-
-typedef struct {
-    Hash_Info *data;
-    size_t     count;
-} Hash_Infos;
 
 typedef struct {
     Node_Polymorph *from;
@@ -98,9 +85,6 @@ typedef struct {
     Type interpolation_marker_type;
 
     HT(Type, Node_Fn *) hash_intern;
-
-    HT(Type, LLVMValueRef) hash_info_intern;
-    Type hash_info_type;
 
     DA(Node *) partial_stack;
 
