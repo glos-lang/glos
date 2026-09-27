@@ -19,7 +19,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 96, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     if (op != TOKEN_SET && n->kind == NODE_INDEX) {
@@ -127,7 +127,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 96, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -359,7 +359,7 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) 
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 96, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -407,14 +407,6 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         n->type = type_assert(c, unary->value, (Type) {.kind = TYPE_BOOL});
         break;
 
-    case TOKEN_HASHOF:
-        check_expr(c, unary->value, REF_NONE);
-        check_that_type_is_known(c, unary->value);
-        finalize_untyped_type(c, unary->value);
-        check_that_type_is_hashable(c, unary->value, &unary->value->type);
-        n->type = (Type) {.kind = TYPE_U64};
-        break;
-
     case TOKEN_SIZEOF:
         check_expr(c, unary->value, REF_NONE);
         check_that_type_is_known(c, unary->value);
@@ -426,6 +418,14 @@ void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
         check_that_type_is_known(c, unary->value);
         finalize_untyped_type(c, unary->value);
         n->type = type_with_meta(unary->value->type);
+        break;
+
+    case TOKEN_MAP:
+        check_expr(c, unary->value, REF_NONE);
+        check_that_type_is_known(c, unary->value);
+        finalize_untyped_type(c, unary->value);
+        check_that_type_is_hashable(c, unary->value, &unary->value->type);
+        n->type = (Type) {.kind = TYPE_U64};
         break;
 
     default:
@@ -478,7 +478,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 96, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:

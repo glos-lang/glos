@@ -836,7 +836,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 96, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1194,12 +1194,27 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_MAP: {
-        node = node_alloc(p->module_current, NODE_MAP, token);
-        Node_Map *map = (Node_Map *) node;
-        expect_token(p, TOKEN_LBRACKET);
-        map->key = parse_expr(p, POWER_SET, false, true, NULL);
-        expect_token(p, TOKEN_RBRACKET);
-        map->value = parse_expr(p, POWER_PRE, false, false, NULL);
+        Token extra = expect_token(p, TOKEN_LBRACKET, TOKEN_DOT);
+        if (extra.kind == TOKEN_LBRACKET) {
+            node = node_alloc(p->module_current, NODE_MAP, token);
+            Node_Map *map = (Node_Map *) node;
+            map->key = parse_expr(p, POWER_SET, false, true, NULL);
+            expect_token(p, TOKEN_RBRACKET);
+            map->value = parse_expr(p, POWER_PRE, false, false, NULL);
+        } else {
+            extra = expect_token(p, TOKEN_IDENT);
+            if (sv_eq(extra.sv, SV_Lit("hash"))) {
+                node = node_alloc(p->module_current, NODE_UNARY, token);
+                Node_Unary *unary = (Node_Unary *) node;
+                expect_token(p, TOKEN_LPAREN);
+                unary->value = parse_expr(p, POWER_SET, false, true, NULL);
+                unary->end = expect_token(p, TOKEN_RPAREN);
+            } else {
+                error_token(
+                    EK_ERROR, extra, "Invalid map operator '" SV_Fmt "'. A valid name is 'hash'.", SV_Arg(extra.sv));
+                exit(1);
+            }
+        }
     } break;
 
     case TOKEN_ENUM: {
@@ -1431,7 +1446,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         return node;
     }
 
-    case TOKEN_HASHOF:
     case TOKEN_SIZEOF:
     case TOKEN_TYPEOF: {
         node = node_alloc(p->module_current, NODE_UNARY, token);
@@ -1789,10 +1803,7 @@ static Node *parse_stmt(Parser *p) {
         Node *name = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_IDENT));
         if (!sv_eq(name->token.sv, SV_Lit("format"))) {
             error_token(
-                EK_ERROR,
-                name->token,
-                "Invalid hook '" SV_Fmt "'. A valid hook name is 'format'.",
-                SV_Arg(name->token.sv));
+                EK_ERROR, name->token, "Invalid hook '" SV_Fmt "'. A valid name is 'format'.", SV_Arg(name->token.sv));
             exit(1);
         }
         node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);

@@ -85,7 +85,6 @@ typedef enum {
     TOKEN_STRUCT,
 
     TOKEN_RANGE,
-    TOKEN_HASHOF,
     TOKEN_SIZEOF,
     TOKEN_TYPEOF,
 
