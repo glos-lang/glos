@@ -15,6 +15,7 @@ void link_flags_add_libname(Link_Flags *ls, SV name);
 
 typedef struct {
     Node_Fn *hash;
+    Node_Fn *compare;
 } Map_Operator;
 
 typedef struct {
@@ -128,6 +129,7 @@ typedef struct {
     Module *builtin_module;
     Module *fmt_module;
     Module *hash_module;
+    Module *C_module;
 
     Type type_info_type;         // This holds `Type_Info`
     Type type_info_pointer_type; // This holds `&Type_Info`
@@ -147,6 +149,7 @@ typedef struct {
     Node_Fn *hash__Hasher__float32;  // hash.Hasher.float32()
     Node_Fn *hash__Hasher__float64;  // hash.Hasher.float64()
     Node_Fn *hash__Hasher__finish;   // hash.Hasher.finish()
+    Node_Fn *C__memcmp;              // C.memcmp()
 
     // Rest all are only used by compiler
     Cmd        *cmd;

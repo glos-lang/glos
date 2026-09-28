@@ -260,4 +260,11 @@ void check_nodes(Compiler *c) {
         c->hash__Hasher__finish = get_method(c, spec, c->builtin_module);
         assert(c->hash__Hasher__finish);
     }
+
+    // C.memcmp
+    {
+        value = get_const_definition_value(c, c->C_module, SV_Lit("memcmp"), NULL);
+        assert(value.kind == CONST_VALUE_FN);
+        c->C__memcmp = value.as.fn;
+    }
 }

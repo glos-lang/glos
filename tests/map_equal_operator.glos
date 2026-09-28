@@ -1,0 +1,86 @@
+main :: () {
+    println(map.equal(true, true))
+    println(map.equal(true, false))
+    println()
+
+    println(map.equal(u8(69), 69))
+    println(map.equal(u8(69), 70))
+    println()
+
+    println(map.equal(u16(420), 420))
+    println(map.equal(u16(420), 421))
+    println()
+
+    println(map.equal(u32(1337), 1337))
+    println(map.equal(u32(1337), 1338))
+    println()
+
+    println(map.equal(u64(80085), 80085))
+    println(map.equal(u64(80085), 80086))
+    println()
+
+    println(map.equal(s8(-69), -69))
+    println(map.equal(s8(-69), 69))
+    println()
+
+    println(map.equal(s16(-420), -420))
+    println(map.equal(s16(-420), 420))
+    println()
+
+    println(map.equal(s32(-1337), -1337))
+    println(map.equal(s32(-1337), 1337))
+    println()
+
+    println(map.equal(s64(-80085), -80085))
+    println(map.equal(s64(-80085), 80085))
+    println()
+
+    println(map.equal(null, null))
+    println(map.equal(null, main))
+    println()
+
+    println(map.equal(f32(6.9), 6.9))
+    println(map.equal(f32(6.9), 7.0))
+    println()
+
+    println(map.equal(f64(13.37), 13.37))
+    println(map.equal(f64(13.37), 13.38))
+    println()
+
+    println(map.equal("Urmom", "Urmom"))
+    println(map.equal("Urmom", "urmom"))
+    println(map.equal("Urmom", "Urmoms"))
+    println()
+
+    println(map.equal([]s64 {69, 420}, {69, 420}))
+    println(map.equal([3]s64 {69, 420}, {69, 420, 1337}))
+    println(map.equal([]s64 {69, 420}, {70, 420}))
+    println(map.equal([]s64 {69, 420}, {69, 421}))
+    println()
+
+    println(map.equal([]string {"foo", "bar"}[..], {"foo", "bar"}))
+    println(map.equal([]string {"foo", "bar"}[..], {"foo", "bar", "baz"}))
+    println(map.equal([]string {"foo", "bar"}[..], {"Foo", "bar"}))
+    println(map.equal([]string {"foo", "bar"}[..], {"foo", "Bar"}))
+    println()
+
+    T :: struct { x, y:  s32; label: string }
+    println(map.equal(T {69, 420, "Urmom"}, {69, 420, "Urmom"}))
+    println(map.equal(T {69, 420, "Urmom"}, {0, 420, "Urmom"}))
+    println(map.equal(T {69, 420, "Urmom"}, {69, 0, "Urmom"}))
+    println(map.equal(T {69, 420, "Urmom"}, {69, 420, "urmom"}))
+    println()
+
+    xs: [..]s64
+    xs.push(69, 420)
+
+    ys: [..]s64
+    ys.push(69, 420, 1337)
+
+    zs: [..]s64
+    zs.push(70, 420)
+
+    println(map.equal(xs, xs))
+    println(map.equal(xs, ys))
+    println(map.equal(xs, zs))
+}

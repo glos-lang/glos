@@ -1,0 +1,39 @@
+main :: () {
+    println(map.hash(true))
+
+    println(map.hash(u8(69)))
+    println(map.hash(u16(420)))
+    println(map.hash(u32(1337)))
+    println(map.hash(u64(80085)))
+
+    println(map.hash(s8(-69)))
+    println(map.hash(s16(-420)))
+    println(map.hash(s32(-1337)))
+    println(map.hash(s64(-80085)))
+
+    println(map.hash(null))
+    println(map.hash(f32(6.9)))
+    println(map.hash(f64(13.37)))
+    println(map.hash("Urmom"))
+
+    println(map.hash([]s64 {69, 420}))
+    println(map.hash([]string {"foo", "bar"}[..]))
+
+    println(map.hash(struct {
+        x, y:  s32
+        label: string
+    } {
+        69, 420, "Urmom"
+    }))
+
+    xs: [..]s64
+    xs.push(69, 420)
+    println(map.hash(xs))
+
+    h: Hasher
+    map.hash(69, &h)
+    map.hash("Urmom", &h)
+    println(h.finish())
+}
+
+#import "hash"

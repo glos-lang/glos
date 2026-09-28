@@ -1204,6 +1204,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         } else {
             extra = expect_token(p, TOKEN_IDENT);
             if (sv_eq(extra.sv, SV_Lit("hash"))) {
+                token.as.integer = 0;
                 node = node_alloc(p->module_current, NODE_BINARY, token);
                 Node_Binary *binary = (Node_Binary *) node;
                 expect_token(p, TOKEN_LPAREN);
@@ -1213,9 +1214,21 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
                     binary->end = expect_token(p, TOKEN_RPAREN);
                 }
+            } else if (sv_eq(extra.sv, SV_Lit("equal"))) {
+                token.as.integer = 1;
+                node = node_alloc(p->module_current, NODE_BINARY, token);
+                Node_Binary *binary = (Node_Binary *) node;
+                expect_token(p, TOKEN_LPAREN);
+                binary->lhs = parse_expr(p, POWER_SET, false, true, NULL);
+                expect_token(p, TOKEN_COMMA);
+                binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                binary->end = expect_token(p, TOKEN_RPAREN);
             } else {
                 error_token(
-                    EK_ERROR, extra, "Invalid map operator '" SV_Fmt "'. A valid name is 'hash'.", SV_Arg(extra.sv));
+                    EK_ERROR,
+                    extra,
+                    "Invalid map operator '" SV_Fmt "'. Valid names are 'hash' and 'equal'.",
+                    SV_Arg(extra.sv));
                 exit(1);
             }
         }

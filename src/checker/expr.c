@@ -284,8 +284,13 @@ static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type) {
     exit(c, 1);
 }
 
+typedef enum {
+    MOH_HASH,
+    MOH_COMPARE
+} Map_Operator_Hook;
+
 static_assert(COUNT_TYPES == 32, "");
-static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) {
+static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type, Map_Operator_Hook moh) {
     if (type->is_meta) {
         error_type_is_not_hashable(c, n, type);
     }
@@ -340,28 +345,38 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type) 
     case TYPE_STRUCT: {
         const Type_Struct *spec = type->spec.structt;
         if (spec->definition->monomorphs.count) {
-            Node_Fn *hash = monomorphize_hook_for_monomorphized_structure(c, spec->definition, SV_Lit("hash"));
-            if (hash) {
-                // We are querying this from the hash map again, because the above function call might have modified it.
-                ht_get(&c->map_operators, *type)->hash = hash;
+            switch (moh) {
+            case MOH_HASH: {
+                Node_Fn *hash = monomorphize_hook_for_monomorphized_structure(c, spec->definition, SV_Lit("hash"));
+                if (hash) {
+                    ht_get(&c->map_operators, *type)->hash = hash;
+                }
+            } break;
+
+            case MOH_COMPARE: {
+                Node_Fn *compare = monomorphize_hook_for_monomorphized_structure(c, spec->definition, SV_Lit("<=>"));
+                if (compare) {
+                    ht_get(&c->map_operators, *type)->compare = compare;
+                }
+            } break;
             }
         }
 
         for (size_t i = 0; i < spec->fields_count; i++) {
-            check_that_type_is_hashable(c, n, &spec->fields[i].type);
+            check_that_type_is_hashable(c, n, &spec->fields[i].type, moh);
         }
     } break;
 
     case TYPE_ARRAY:
-        check_that_type_is_hashable(c, n, type->spec.array.element);
+        check_that_type_is_hashable(c, n, type->spec.array.element, moh);
         break;
 
     case TYPE_DYNAMIC_ARRAY:
-        check_that_type_is_hashable(c, n, type->spec.dynamic_array.element);
+        check_that_type_is_hashable(c, n, type->spec.dynamic_array.element, moh);
         break;
 
     case TYPE_SLICE:
-        check_that_type_is_hashable(c, n, type->spec.slice.element);
+        check_that_type_is_hashable(c, n, type->spec.slice.element, moh);
         break;
 
     default:
@@ -629,19 +644,32 @@ void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
 
     case TOKEN_MAP:
         check_expr(c, binary->lhs, REF_NONE);
-        check_that_type_is_known(c, binary->lhs);
-        finalize_untyped_type(c, binary->lhs);
-        check_that_type_is_hashable(c, binary->lhs, &binary->lhs->type);
-        if (binary->rhs) {
-            check_expr(c, binary->rhs, REF_NONE);
-            type_assert(c, binary->rhs, type_with_ref(c->hasher_type, 1));
+        if (n->token.as.integer == 0) {
+            check_that_type_is_known(c, binary->lhs);
+            finalize_untyped_type(c, binary->lhs);
+            check_that_type_is_hashable(c, binary->lhs, &binary->lhs->type, MOH_HASH);
 
-            if (!n->is_stmt) {
-                error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
-                exit(c, 1);
+            if (binary->rhs) {
+                check_expr(c, binary->rhs, REF_NONE);
+                type_assert(c, binary->rhs, type_with_ref(c->hasher_type, 1));
+
+                if (!n->is_stmt) {
+                    error_node(EK_ERROR, n, "This cannot be used as a value as it does not result in anything");
+                    exit(c, 1);
+                }
+            } else {
+                n->type = (Type) {.kind = TYPE_U64};
             }
+        } else if (n->token.as.integer == 1) {
+            check_expr(c, binary->rhs, REF_NONE);
+            type_assert_node(c, binary->rhs, binary->lhs);
+
+            check_that_type_is_known(c, binary->lhs);
+            finalize_untyped_type(c, binary->lhs);
+            check_that_type_is_hashable(c, binary->lhs, &binary->lhs->type, MOH_COMPARE);
+            n->type = (Type) {.kind = TYPE_BOOL};
         } else {
-            n->type = (Type) {.kind = TYPE_U64};
+            unreachable();
         }
         break;
 
@@ -2835,6 +2863,18 @@ void check_fn(
             } else if (sv_eq(name, OPERATOR_CMP)) {
                 check_signature_of_binary_comparison_operator(c, fn, fn_spec);
                 fn->is_compare_operator_complete = type_eq(*fn_spec->return_type, c->ordering_type);
+
+                if (!c->map_operators.hasheq) {
+                    c->map_operators.hasheq = ht_hasheq_type;
+                }
+
+                const Type    receiver = fn_spec->args[0].type;
+                Map_Operator *previous = ht_get(&c->map_operators, receiver);
+                if (previous) {
+                    previous->compare = fn;
+                } else {
+                    ht_set(&c->map_operators, receiver, (Map_Operator) {.compare = fn});
+                }
             } else if (sv_eq(name, OPERATOR_INDEX)) {
                 check_signature_of_index_operator(c, fn, fn_spec);
             } else if (sv_eq(name, OPERATOR_SLICE)) {
