@@ -355,7 +355,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 94, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -733,6 +733,20 @@ Token lexer_iter(Lexer *l) {
         }
         break;
 
+    case '@':
+        while (l->sv.count > 0 && is_ident(*l->sv.data)) {
+            next_char(l);
+        }
+        token.sv.count -= l->sv.count;
+
+        if (sv_match(token.sv, "@hash") || sv_match(token.sv, "@format")) {
+            token.kind = TOKEN_IDENT;
+        } else {
+            error_parts(EK_ERROR, token.sv, token.pos, "Invalid hook method '" SV_Fmt "'", SV_Arg(token.sv));
+            exit(1);
+        }
+        return token;
+
     case '#':
         while (l->sv.count > 0 && is_ident(*l->sv.data)) {
             next_char(l);
@@ -743,8 +757,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_IF;
         } else if (sv_match(token.sv, "#assert")) {
             token.kind = TOKEN_DIRECTIVE_ASSERT;
-        } else if (sv_match(token.sv, "#hook")) {
-            token.kind = TOKEN_DIRECTIVE_HOOK;
         } else if (sv_match(token.sv, "#link")) {
             token.kind = TOKEN_DIRECTIVE_LINK;
         } else if (sv_match(token.sv, "#embed")) {

@@ -3,16 +3,14 @@ io :: #import "io"
 main :: () {
     // Define the hook method 'format' to register your custom formatter.
     //
-    //     #hook
-    //     format :: (this: &Your_Type, w: Writer, nested: bool) -> s64, error {}
+    //     @format :: (this: &Your_Type, w: Writer, nested: bool) -> s64, error {}
     //
     {
         Vec2 :: struct {
             x, y: s32
         }
 
-        #hook
-        format :: (this: &Vec2, w: io.Writer, nested: bool) -> s64, error {
+        @format :: (this: &Vec2, w: io.Writer, nested: bool) -> s64, error {
             return wprint(w, "Vec2(\{this.x}, \{this.y})")
         }
 
@@ -22,7 +20,7 @@ main :: () {
     }
 
     // If you want to create a method named 'format' without making it a formatter, then don't
-    // use the '#hook' directive.
+    // use the '@' prefix.
     {
         Vec3 :: struct {
             x, y, z: s32

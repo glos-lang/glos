@@ -1,4 +1,2 @@
-Foo :: distinct &s64
-
-#hook
-format :: (this: Foo) {}
+Foo     :: distinct &s64
+@format :: (this: Foo) {}

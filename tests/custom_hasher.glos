@@ -1,7 +1,6 @@
 Int :: distinct s64
 
-#hook
-hash :: (this: Int, h: &Hasher) {
+@hash :: (this: Int, h: &Hasher) {
     println("Int.hash()")
     map.hash(s64(this), h)
 }
@@ -10,8 +9,7 @@ Vec2 :: struct {
     x, y: s32
 }
 
-#hook
-hash :: (this: Vec2, h: &Hasher) {
+@hash :: (this: Vec2, h: &Hasher) {
     println("Vec2.hash()")
     map.hash(this.x, h)
     map.hash(this.y, h)
@@ -21,8 +19,7 @@ Vec3 :: struct($T: Type) {
     x, y, z: T
 }
 
-#hook
-hash :: (this: Vec3($T), h: &Hasher) {
+@hash :: (this: Vec3($T), h: &Hasher) {
     println("Vec3.hash()")
     map.hash(this.x, h)
     map.hash(this.y, h)

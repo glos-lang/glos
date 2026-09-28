@@ -245,8 +245,7 @@ Quote :: struct {
     c: u8
 }
 
-#hook
-format :: (this: &Quote, w: io.Writer, nested: bool) -> s64, error {
+@format :: (this: &Quote, w: io.Writer, nested: bool) -> s64, error {
     n := w.write([]u8(&this.c, 1))?
     for _, c := range this.s {
         n += fmt.quote(w, c, this.c)?

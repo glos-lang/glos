@@ -836,7 +836,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1816,54 +1816,6 @@ static Node *parse_stmt(Parser *p) {
         }
     } break;
 
-    case TOKEN_DIRECTIVE_HOOK: {
-        Node *name = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_IDENT));
-        if (!sv_eq(name->token.sv, SV_Lit("format")) && !sv_eq(name->token.sv, SV_Lit("hash"))) {
-            error_token(
-                EK_ERROR,
-                name->token,
-                "Invalid hook '" SV_Fmt "'. Valid names are 'format' and 'hash'.",
-                SV_Arg(name->token.sv));
-            exit(1);
-        }
-        node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);
-
-        Node_Define *define = (Node_Define *) node;
-        if (!define->is_const || define->expr->kind != NODE_FN || !((Node_Fn *) define->expr)->is_method) {
-            error_node(
-                EK_ERROR, (Node *) define, "Hook definition must be a %s", define->is_const ? "method" : "constant");
-
-            if (define->is_const && define->expr->kind == NODE_FN) {
-                afprintf(
-                    stderr,
-                    ANSI_COLOR_YELLOW | ANSI_BOLD,
-                    "    The first argument of a method must be named 'this'. Try something like this:\n"
-                    "\n");
-            } else {
-                afprintf(
-                    stderr,
-                    ANSI_COLOR_YELLOW | ANSI_BOLD,
-                    "    Try something like this:\n"
-                    "\n");
-            }
-
-            afprintf(
-                stderr,
-                ANSI_COLOR_MAGENTA | ANSI_BOLD,
-                "        #hook\n"
-                "        " SV_Fmt " :: (this: T) {}\n",
-                SV_Arg(name->token.sv));
-
-            afprintf(
-                stderr,
-                ANSI_COLOR_YELLOW | ANSI_BOLD,
-                "\n"
-                "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n");
-            exit(1);
-        }
-        ((Node_Fn *) define->expr)->is_hook = true;
-    } break;
-
     case TOKEN_DIRECTIVE_LINK: {
         if (!p->state.in_extern) {
             local_assert(p, false, token, NULL);
@@ -2075,15 +2027,60 @@ static Node *parse_stmt(Parser *p) {
     } break;
 
     default:
-        buffer_token(p, token);
-        node = parse_expr(p, POWER_NIL, true, true, NULL);
-        node->is_stmt = true;
-        if (node->kind != NODE_DEFINE) {
-            not_in_extern_assert(p, token);
-            if (node->kind != NODE_IMPORT) {
-                if (!p->state.fn_current) {
-                    error_node(EK_ERROR, node, "Unexpected expression in global scope");
-                    exit(1);
+        if (token.kind == TOKEN_IDENT && *token.sv.data == '@') {
+            sv_drop_mut(&token.sv, 1);
+            token.pos.col++;
+
+            Node *name = node_alloc(p->module_current, NODE_ATOM, token);
+            node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);
+
+            Node_Define *define = (Node_Define *) node;
+            if (!define->is_const || define->expr->kind != NODE_FN || !((Node_Fn *) define->expr)->is_method) {
+                error_node(
+                    EK_ERROR,
+                    (Node *) define,
+                    "Hook definition must be a %s",
+                    define->is_const ? "method" : "constant");
+
+                if (define->is_const && define->expr->kind == NODE_FN) {
+                    afprintf(
+                        stderr,
+                        ANSI_COLOR_YELLOW | ANSI_BOLD,
+                        "    The first argument of a method must be named 'this'. Try something like this:\n"
+                        "\n");
+                } else {
+                    afprintf(
+                        stderr,
+                        ANSI_COLOR_YELLOW | ANSI_BOLD,
+                        "    Try something like this:\n"
+                        "\n");
+                }
+
+                afprintf(
+                    stderr,
+                    ANSI_COLOR_MAGENTA | ANSI_BOLD,
+                    "        @" SV_Fmt " :: (this: T) {}\n",
+                    SV_Arg(name->token.sv));
+
+                afprintf(
+                    stderr,
+                    ANSI_COLOR_YELLOW | ANSI_BOLD,
+                    "\n"
+                    "    Of course, you can add more arguments and returns, but this is the basic construction.\n\n");
+                exit(1);
+            }
+            ((Node_Fn *) define->expr)->is_hook = true;
+        } else {
+            buffer_token(p, token);
+            node = parse_expr(p, POWER_NIL, true, true, NULL);
+            node->is_stmt = true;
+            if (node->kind != NODE_DEFINE) {
+                not_in_extern_assert(p, token);
+                if (node->kind != NODE_IMPORT) {
+                    if (!p->state.fn_current) {
+                        error_node(EK_ERROR, node, "Unexpected expression in global scope");
+                        exit(1);
+                    }
                 }
             }
         }

@@ -1,7 +1,7 @@
 #include "../error.h"
 #include "checker.h"
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 94, "");
 SV token_kind_to_operator_method_name(Token_Kind kind) {
     switch (kind) {
     case TOKEN_ADD:
@@ -691,14 +691,14 @@ static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *
     error_token(
         EK_ERROR,
         fn->defined_as->node.token,
-        "The method '" SV_Fmt "' is special because it implements a custom formatter",
+        "The hook method '" SV_Fmt "' is special because it implements a custom formatter",
         SV_Arg(fn->defined_as->node.token.sv));
 
     afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
     ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
     fprintf(
         stderr,
-        "        format :: (this: %s",
+        "        @format :: (this: %s",
         type_to_cstr_raw(type_with_ref(receiver, (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1)));
 
     assert(spec->variadics_kind == VARIADICS_NONE);
@@ -726,14 +726,14 @@ static void show_explanation_about_custom_hasher(Compiler *c, const Node_Fn *fn,
     error_token(
         EK_ERROR,
         fn->defined_as->node.token,
-        "The method '" SV_Fmt "' is special because it implements a custom hasher",
+        "The hook method '" SV_Fmt "' is special because it implements a custom hasher",
         SV_Arg(fn->defined_as->node.token.sv));
 
     afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
     ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
     fprintf(
         stderr,
-        "        hash :: (this: %s, h: %s) {}\n\n",
+        "        @hash :: (this: %s, h: %s) {}\n\n",
         type_to_cstr_raw(type_with_ref(receiver, receiver.distinct ? receiver.distinct->node.type.ref : 0)),
         type_to_cstr_raw(type_with_ref(c->hasher_type, 1)));
     ansi_reset(stderr);

@@ -118,8 +118,7 @@ to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := def
     panic("Builder does not contain the address \{from}", location = location)
 }
 
-#hook
-format :: (this: &Builder, w: io.Writer, nested := false) -> s64, error {
+@format :: (this: &Builder, w: io.Writer, nested := false) -> s64, error {
     n := 0
     for p := this.page_first; p != null; p = p.next {
         if p.count != 0 {

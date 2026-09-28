@@ -44,8 +44,7 @@ main :: () {
             x: string
         }
 
-        #hook
-        hash :: (this: Item, h: &Hasher) {
+        @hash :: (this: Item, h: &Hasher) {
             println("Custom hash!")
             map.hash(this.x, h)
         }
@@ -64,8 +63,7 @@ main :: () {
             x: string
         }
 
-        #hook
-        hash :: (this: Item, h: &Hasher) {
+        @hash :: (this: Item, h: &Hasher) {
             println("Custom hash!")
             map.hash(this.x, h)
         }

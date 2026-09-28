@@ -1,4 +1,2 @@
-Foo :: struct {}
-
-#hook
-format :: (this: Foo) {}
+Foo     :: struct {}
+@format :: (this: Foo) {}
