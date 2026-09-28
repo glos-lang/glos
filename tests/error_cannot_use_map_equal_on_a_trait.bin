@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 129
+tests/error_cannot_use_map_equal_on_a_trait.glos:3:15: Error: Cannot use the 'map.equal' operator on 'Any'
+
+    map.equal(a, a)
+
+

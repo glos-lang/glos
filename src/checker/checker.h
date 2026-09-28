@@ -197,6 +197,16 @@ typedef struct {
 bool get_method_spec(
     Compiler *c, Node *receiver_node, Type receiver_type, SV name, Method_Spec *spec, Method_Defining *defining);
 
+typedef enum {
+    OMS_ARITH = 1,
+    OMS_CMP,
+    OMS_INDEX,
+    OMS_SLICE,
+    OMS_RANGE,
+} OMS;
+
+void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable);
+
 Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module);
 Node_Fn *get_operator_overload(Compiler *c, SV operator, Node * receiver, Node *op, Module *module);
 Node_Fn *get_operator_overload_ex(

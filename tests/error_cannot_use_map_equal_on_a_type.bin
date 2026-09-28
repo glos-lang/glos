@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 133
+tests/error_cannot_use_map_equal_on_a_type.glos:2:15: Error: Cannot use the 'map.equal' operator on a type
+
+    map.equal(s64, s64)
+
+

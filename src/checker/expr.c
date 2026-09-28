@@ -279,8 +279,24 @@ void check_expr_throw(Compiler *c, Node_Throw *throw) {
     }
 }
 
-static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type) {
-    error_node(EK_ERROR, n, "Cannot hash %s", type_to_cstr(n->type));
+typedef enum {
+    MOH_HASH,
+    MOH_COMPARE
+} Map_Operator_Hook;
+
+static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type, Map_Operator_Hook moh) {
+    const char *label = "";
+    switch (moh) {
+    case MOH_HASH:
+        label = "hash";
+        break;
+
+    case MOH_COMPARE:
+        label = "equal";
+        break;
+    }
+
+    error_node(EK_ERROR, n, "Cannot use the 'map.%s' operator on %s", label, type_to_cstr(n->type));
     if (&n->type != type) {
         afprintf(
             stderr,
@@ -288,18 +304,32 @@ static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type) {
             "    This contains %s, which is not hashable.\n\n",
             type_to_cstr(*type));
     }
+
+    if (!type->is_meta && !type_kind_eq(*type, TYPE_TRAIT)) {
+        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    You can provide a custom implementation if you want:\n\n");
+        switch (moh) {
+        case MOH_HASH:
+            ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
+            fprintf(
+                stderr,
+                "        @hash :: (this: %s, h: %s) {}\n\n",
+                type_to_cstr_raw(*type),
+                type_to_cstr_raw(type_with_ref(c->hasher_type, 1)));
+            ansi_reset(stderr);
+            break;
+
+        case MOH_COMPARE:
+            pretty_print_oms(OPERATOR_CMP, OMS_CMP, type, true);
+            break;
+        }
+    }
     exit(c, 1);
 }
-
-typedef enum {
-    MOH_HASH,
-    MOH_COMPARE
-} Map_Operator_Hook;
 
 static_assert(COUNT_TYPES == 32, "");
 static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type, Map_Operator_Hook moh) {
     if (type->is_meta) {
-        error_type_is_not_hashable(c, n, type);
+        error_type_is_not_hashable(c, n, type, moh);
     }
 
     if (type->ref) {
@@ -346,7 +376,7 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type, 
     case TYPE_MAP:
     case TYPE_TRAIT:
     case TYPE_UNION:
-        error_type_is_not_hashable(c, n, type);
+        error_type_is_not_hashable(c, n, type, moh);
         break;
 
     case TYPE_STRUCT: {

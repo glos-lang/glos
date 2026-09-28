@@ -1,0 +1,4 @@
+main :: () {
+    a := map[string]s64 {}
+    map.equal(a, a)
+}

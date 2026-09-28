@@ -1,0 +1,4 @@
+main :: () {
+    a := Any {}
+    map.equal(a, a)
+}

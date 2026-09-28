@@ -1,0 +1,18 @@
+EXIT 1
+STDOUT 0
+
+STDERR 632
+tests/error_cannot_use_map_equal.glos:3:15: Error: Cannot use the 'map.equal' operator on 'map[string]s64'
+
+    map.equal(a, a)
+
+    You can provide a custom implementation if you want:
+
+        operator <=> :: (this: map[string]s64, that: map[string]s64) -> Ordering | Equivalence {}
+
+    Return 'Ordering' if you want this method to implement both equality checking as well as ordered comparisons.
+    Otherwise return 'Equivalence' to implement just equality checking. Do NOT return 'Ordering | Equivalence' literally.
+
+    It may have other optional arguments at the end, but this is the bare minimum that must be implemented.
+
+

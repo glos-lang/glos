@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 128
+tests/error_cannot_use_map_hash_on_a_trait.glos:2:14: Error: Cannot use the 'map.hash' operator on 'Any'
+
+    map.hash(Any {})
+
+

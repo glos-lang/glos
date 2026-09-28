@@ -192,15 +192,7 @@ Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
     return method;
 }
 
-typedef enum {
-    OMS_ARITH = 1,
-    OMS_CMP,
-    OMS_INDEX,
-    OMS_SLICE,
-    OMS_RANGE,
-} OMS;
-
-static void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable) {
+void pretty_print_oms(SV name, OMS oms, const Type *receiver, bool partial_comparison_acceptable) {
     ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
     fprintf(stderr, "        %s" SV_Fmt " :: ", oms == OMS_RANGE ? "" : "operator ", SV_Arg(name));
 

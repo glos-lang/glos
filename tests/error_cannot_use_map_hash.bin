@@ -1,0 +1,13 @@
+EXIT 1
+STDOUT 0
+
+STDERR 253
+tests/error_cannot_use_map_hash.glos:2:14: Error: Cannot use the 'map.hash' operator on 'map[string]s64'
+
+    map.hash(map[string]s64 {})
+
+    You can provide a custom implementation if you want:
+
+        @hash :: (this: map[string]s64, h: &Hasher) {}
+
+
