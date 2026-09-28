@@ -1,0 +1,8 @@
+EXIT 0
+STDOUT 79
+Thread #1: a = 10, b = 10
+Thread #2: a = 20, b = 10
+Thread main: a = 20, b = 0
+
+STDERR 0
+

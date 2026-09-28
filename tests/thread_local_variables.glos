@@ -1,0 +1,66 @@
+        a: s32
+#thread b: s32
+
+main :: () {
+    t1, t2: Thread
+    t1.init(worker, rawptr(1))
+    t1.join()
+
+    t2.init(worker, rawptr(2))
+    t2.join()
+    println("Thread main: a = \{a}, b = \{b}")
+}
+
+worker :: (arg: rawptr) -> C.long {
+    a += 10
+    b += 10
+    println("Thread #\{s64(arg)}: a = \{a}, b = \{b}")
+    return 0
+}
+
+#if PLATFORM == .WINDOWS {
+    Thread :: distinct rawptr
+} else {
+    Thread :: distinct u64
+}
+
+init :: (this: &Thread, worker: ((arg: rawptr) -> C.long), arg: rawptr) {
+    #if PLATFORM == .WINDOWS {
+        extern {
+            CreateThread :: (
+                lpThreadAttributes: rawptr,
+                swStackSize: C.size_t,
+                lpStartAddress: ((arg: rawptr) -> C.long),
+                lpParameter: rawptr,
+                dwCreationFlags: u32, lpThreadId: rawptr
+            ) -> Thread
+        }
+
+        *this = CreateThread(null, 0, worker, arg, 0, null)
+        assert(*this != null)
+    } else {
+        extern {
+            pthread_create :: (thread: &Thread, attr: rawptr, start_routine: ((arg: rawptr) -> C.long), arg: rawptr) -> C.int
+        }
+        assert(pthread_create(this, null, worker, arg) == 0)
+    }
+}
+
+join :: (this: Thread) {
+    #if PLATFORM == .WINDOWS {
+        extern {
+            WaitForSingleObject :: (hHandle: rawptr, dwMilliseconds: u32) -> u32
+            CloseHandle :: (hObject: rawptr) -> s32
+        }
+
+        WaitForSingleObject(rawptr(this), 0xffffffff)
+        CloseHandle(rawptr(this))
+    } else {
+        extern {
+            pthread_join :: (thread: Thread, retval: &rawptr) -> C.int
+        }
+        assert(pthread_join(this, null) == 0)
+    }
+}
+
+C :: #import "C"

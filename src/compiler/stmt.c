@@ -45,6 +45,10 @@ void compile_var_def(Compiler *c, Node_Atom *it) {
             }
             compile_local_var_debug(c, it, var_debug_type);
         } else {
+            if (it->definition_spec->is_thread) {
+                LLVMSetThreadLocal(it->definition_spec->llvm, true);
+            }
+
             if (it->definition_spec->is_assigned) {
                 LLVMSetInitializer(
                     it->definition_spec->llvm, compile_const_value(c, it->definition_spec->const_value, it->node.type));

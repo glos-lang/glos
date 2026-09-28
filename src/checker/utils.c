@@ -397,7 +397,7 @@ static_assert(COUNT_NODES == 34, "");
 void cast_untyped(Compiler *c, Node *n, Type expected) {
     switch (n->kind) {
     case NODE_ATOM: {
-        static_assert(COUNT_TOKENS == 94, "");
+        static_assert(COUNT_TOKENS == 95, "");
         switch (n->token.kind) {
         case TOKEN_INT:
             n->type = expected;

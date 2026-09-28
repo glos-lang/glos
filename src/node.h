@@ -599,6 +599,7 @@ typedef struct {
     bool is_private;
     bool is_assigned;
     bool is_field;
+    bool is_thread;
 
     Node_Fn *static_var_fn;
 
@@ -1059,6 +1060,8 @@ struct Node_Define {
     bool  has_spread;
 
     bool   is_const;
+    bool   is_static;
+    bool   is_thread;
     bool   is_value_known_at_compile_time;
     size_t count;
 };

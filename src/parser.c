@@ -373,9 +373,10 @@ static void definition_lhs_atom_setup(
     Node_Define *define,
     Node_Atom   *it,
     Node        *it_expr,
-    bool         is_static,
     bool         is_assigned,
-    size_t       group_index) //
+    size_t       group_index,
+    bool         is_static,
+    bool         is_thread) //
 {
     if (!it->definition_spec) {
         it->definition_spec = arena_alloc(&default_arena, sizeof(*it->definition_spec));
@@ -387,12 +388,13 @@ static void definition_lhs_atom_setup(
     it->definition_spec->is_extern = p->state.in_extern;
     it->definition_spec->is_private = p->state.after_private;
     it->definition_spec->is_assigned = is_assigned;
+    it->definition_spec->is_thread = is_thread;
     it->definition_spec->definition_node = define;
     it->definition_spec->assignment_node = it_expr;
     it->definition_spec->polymorph = define->name_polymorph;
     it->definition_spec->defined_in_block = p->state.block_current;
 
-    if (is_static) {
+    if (is_static || is_thread) {
         it->definition_spec->static_var_fn = p->state.fn_current;
     }
 
@@ -426,9 +428,11 @@ static void definition_lhs_atom_setup(
     }
 }
 
-static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static) {
+static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static, bool is_thread) {
     const bool is_assigned = define->expr != NULL;
-    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current || is_static;
+    define->is_value_known_at_compile_time = define->is_const || !p->state.fn_current || is_static || is_thread;
+    define->is_static = is_static;
+    define->is_thread = is_thread;
 
     size_t lhs_count = 1;
     size_t rhs_count = 1;
@@ -445,7 +449,8 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
             exit(1);
         }
 
-        definition_lhs_atom_setup(p, define, (Node_Atom *) define->name, define->expr, is_static, is_assigned, 0);
+        definition_lhs_atom_setup(
+            p, define, (Node_Atom *) define->name, define->expr, is_assigned, 0, is_static, is_thread);
         if (define->is_const && !p->state.fn_current && define->expr->kind == NODE_IMPORT) {
             ((Node_Atom *) define->name)->definition_spec->is_private = true;
         }
@@ -479,7 +484,8 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
             size_t iota = 0;
             ll_foreach2(lhs_iota, rhs_iota, &lhs->nodes, &rhs->nodes) {
                 assert(lhs_iota->kind == NODE_ATOM);
-                definition_lhs_atom_setup(p, define, (Node_Atom *) lhs_iota, rhs_iota, is_static, is_assigned, iota++);
+                definition_lhs_atom_setup(
+                    p, define, (Node_Atom *) lhs_iota, rhs_iota, is_assigned, iota++, is_static, is_thread);
                 if (define->is_const && !p->state.fn_current && rhs_iota->kind == NODE_IMPORT) {
                     ((Node_Atom *) lhs_iota)->definition_spec->is_private = true;
                 }
@@ -487,7 +493,7 @@ static void definition_lhs_setup(Parser *p, Node_Define *define, bool is_static)
         } else {
             size_t iota = 0;
             ll_foreach(it, &lhs->nodes) {
-                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_static, is_assigned, iota++);
+                definition_lhs_atom_setup(p, define, (Node_Atom *) it, NULL, is_assigned, iota++, is_static, is_thread);
             }
         }
     }
@@ -633,7 +639,8 @@ static Node *parse_define(
     bool    compounds_allowed,
     bool    spread_allowed,
     bool    name_can_be_this,
-    bool    is_static) //
+    bool    is_static,
+    bool    is_thread) //
 {
     Polymorphs_Builder *pb_save = p->state.pb;
 
@@ -783,7 +790,7 @@ static Node *parse_define(
         }
     }
 
-    definition_lhs_setup(p, define, is_static);
+    definition_lhs_setup(p, define, is_static, is_thread);
     return (Node *) define;
 }
 
@@ -836,7 +843,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -980,7 +987,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             p->state.in_extern = false;
 
             node = parse_expr(p, POWER_SET, false, true, NULL);
-            node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, true, false, false);
+            node = parse_define(p, node, expect_token(p, TOKEN_COLON), false, true, true, false, false, false);
         } else {
             p->state.range_for = range_for; // '(EXPR)' == 'EXPR' semantically
             node = parse_expr(p, POWER_SET, false, true, NULL);
@@ -998,7 +1005,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                 p->state.fn_current = fn;
                 p->state.in_extern = false;
 
-                node = parse_define(p, node, next_token(p), false, true, true, true, false);
+                node = parse_define(p, node, next_token(p), false, true, true, true, false, false);
             } else {
                 node->parenthesis = token;
                 token = expect_token(p, TOKEN_RPAREN);
@@ -1113,7 +1120,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     unreachable();
                 }
 
-                arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false);
+                arg = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false, false);
             }
             p->state.pb = pb_save;
 
@@ -1316,7 +1323,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                     error_node(EK_ERROR, name, "A trait method cannot be named '" SV_Fmt "'", SV_Arg(name->token.sv));
                     exit(1);
                 }
-                method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false, false);
+                method = parse_define(p, name, expect_token(p, TOKEN_COLON), false, false, false, false, false, false);
 
                 Node_Define *define = (Node_Define *) method;
                 if (define->is_const) {
@@ -1395,7 +1402,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             while (!read_token(p, TOKEN_RPAREN)) {
                 buffer_token(p, expect_token(p, TOKEN_DOLLAR));
                 Node *name = parse_expr(p, POWER_SET, false, true, NULL);
-                parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false);
+                parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, true, false, false, false);
 
                 if (expect_token(p, TOKEN_COMMA, TOKEN_RPAREN).kind != TOKEN_COMMA) {
                     break;
@@ -1589,7 +1596,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         case TOKEN_COLON:
             p->state.range_for = range_for;
-            return parse_define(p, node, token, groups_allowed, compounds_allowed, false, false, false);
+            return parse_define(p, node, token, groups_allowed, compounds_allowed, false, false, false, false);
 
         case TOKEN_COMMA: {
             if (!groups_allowed) {
@@ -1773,7 +1780,7 @@ static Node *parse_stmt(Parser *p) {
         token.kind = TOKEN_IDENT;
 
         Node *name = node_alloc(p->module_current, NODE_ATOM, token);
-        node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);
+        node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false, false);
 
         Node_Define *define = (Node_Define *) node;
         if (is_operator) {
@@ -1909,7 +1916,29 @@ static Node *parse_stmt(Parser *p) {
             exit(1);
         }
 
-        definition_lhs_setup(p, define, true);
+        definition_lhs_setup(p, define, true, define->is_thread);
+    } break;
+
+    case TOKEN_DIRECTIVE_THREAD: {
+        if (p->state.in_extern) {
+            error_token(EK_ERROR, token, "Variables defined inside extern block cannot have thread storage");
+            exit(1);
+        }
+
+        node = parse_expr(p, POWER_NIL, true, true, NULL);
+        if (node->kind != NODE_DEFINE) {
+            error_node(EK_ERROR, node, "Expected variable definition after %s", token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        Node_Define *define = (Node_Define *) node;
+        if (define->is_const) {
+            error_node(
+                EK_ERROR, node, "Expected variable definition after %s, got constant", token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
+        definition_lhs_setup(p, define, define->is_static, true);
     } break;
 
     case TOKEN_DIRECTIVE_PRIVATE: {
@@ -2048,7 +2077,7 @@ static Node *parse_stmt(Parser *p) {
             token.pos.col++;
 
             Node *name = node_alloc(p->module_current, NODE_ATOM, token);
-            node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false);
+            node = parse_define(p, name, expect_token(p, TOKEN_COLON), false, true, false, false, false, false);
 
             Node_Define *define = (Node_Define *) node;
             if (!define->is_const || define->expr->kind != NODE_FN || !((Node_Fn *) define->expr)->is_method) {
