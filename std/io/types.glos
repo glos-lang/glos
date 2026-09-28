@@ -1,0 +1,38 @@
+Reader :: trait {
+    read: (bytes: []u8) -> s64, error
+}
+
+Writer :: trait {
+    write: (bytes: []u8) -> s64, error
+}
+
+Seeker :: trait {
+    seek: (offset: s64, whence: Seek) -> s64, error
+}
+
+Read_Writer :: trait {
+    ...Reader
+    ...Writer
+}
+
+Read_Seeker :: trait {
+    ...Reader
+    ...Seeker
+}
+
+Write_Seeker :: trait {
+    ...Writer
+    ...Seeker
+}
+
+Read_Write_Seeker :: trait {
+    ...Reader
+    ...Writer
+    ...Seeker
+}
+
+Seek :: enum {
+    START   = 0
+    CURRENT = 1
+    END     = 2
+}
