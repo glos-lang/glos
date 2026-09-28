@@ -120,7 +120,7 @@ map_entry_find :: (data: &Map_Entry($K, $V), capacity: s64, key: K) -> &Map_Entr
             }
 
         case .OCCUPIED
-            if entry.key == key {
+            if map.equal(entry.key, key) {
                 return entry
             }
 

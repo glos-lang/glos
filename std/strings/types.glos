@@ -3,18 +3,20 @@ Split :: struct {
     p: Predicate
 }
 
-range :: (this: Split, state: &struct { s: string; index: s64 }) -> s64, string, bool {
+range :: (this: Split, state: &struct { s: string; p: Predicate; index: s64 }) -> s64, string, bool {
     if this.s  == "" then return 0, "", false
     if state.s == "" {
         if state.index == 0 {
             state.s = this.s
+            state.p = this.p
+            if state.p == null then state.p = unicode.is_space
         } else {
             return state.index, "", false
         }
     }
 
     lhs: string
-    lhs, state.s, _ = split(state.s, this.p)
+    lhs, state.s, _ = split(state.s, state.p)
     state.index += 1
     return state.index - 1, lhs, true
 }
