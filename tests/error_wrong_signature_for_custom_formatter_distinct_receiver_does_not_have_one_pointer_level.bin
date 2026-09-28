@@ -1,7 +1,7 @@
 EXIT 1
 STDOUT 0
 
-STDERR 336
+STDERR 530
 tests/error_wrong_signature_for_custom_formatter_distinct_receiver_does_not_have_one_pointer_level.glos:2:2: Error: The hook method 'format' is special because it implements a custom formatter
 
     @format :: (this: Foo) {}
@@ -9,5 +9,9 @@ tests/error_wrong_signature_for_custom_formatter_distinct_receiver_does_not_have
     It should have this signature:
 
         @format :: (this: &Foo, w: Writer, nested: bool) -> s64, error {}
+
+tests/error_wrong_signature_for_custom_formatter_distinct_receiver_does_not_have_one_pointer_level.glos:2:13: Note: Expected the receiver to be '&Foo', got 'Foo'
+
+    @format :: (this: Foo) {}
 
 

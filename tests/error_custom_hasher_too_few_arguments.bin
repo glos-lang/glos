@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 363
+tests/error_custom_hasher_too_few_arguments.glos:2:2: Error: The hook method 'hash' is special because it implements a custom hasher
+
+    @hash :: (this: Foo) {}
+
+    It should have this signature:
+
+        @hash :: (this: Foo, h: &Hasher) {}
+
+tests/error_custom_hasher_too_few_arguments.glos:2:20: Note: Expected 2 arguments, got 1
+
+    @hash :: (this: Foo) {}
+
+

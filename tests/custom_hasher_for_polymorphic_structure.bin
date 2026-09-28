@@ -1,0 +1,12 @@
+EXIT 0
+STDOUT 85
+Vec2(T = s32).hash
+Vec2(T = s32).hash
+
+Vec2(T = s32).hash
+foo
+Vec2(T = s32).hash
+bar
+
+STDERR 0
+

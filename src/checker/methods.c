@@ -525,12 +525,19 @@ void check_signature_of_arithmetic_operator(Compiler *c, Node_Fn *fn, const Type
 
     if (!type_eq(*fn_spec->return_type, lhs_type)) {
         error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
-        error_token(
-            EK_NOTE,
-            fn->returns.head ? fn->returns.head->token : fn->body->token,
+        if (fn->returns.head) {
+            error_node_range_begin(EK_NOTE, fn->returns.head, fn->returns.tail);
+        } else {
+            error_token_begin(EK_NOTE, fn->body->token);
+        }
+
+        fprintf(
+            stderr,
             "Operand types and return type must be same: Expected to return %s, got %s",
             type_to_cstr(lhs_type),
             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+
+        error_finalize();
         exit(c, 1);
     }
 }
@@ -569,13 +576,20 @@ void check_signature_of_binary_comparison_operator(Compiler *c, Node_Fn *fn, con
     if (!type_eq(*fn_spec->return_type, c->equivalence_type) && !type_eq(*fn_spec->return_type, c->ordering_type)) //
     {
         error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
-        error_token(
-            EK_NOTE,
-            fn->returns.head ? fn->returns.head->token : fn->body->token,
+        if (fn->returns.head) {
+            error_node_range_begin(EK_NOTE, fn->returns.head, fn->returns.tail);
+        } else {
+            error_token_begin(EK_NOTE, fn->body->token);
+        }
+
+        fprintf(
+            stderr,
             "Expected to return %s or %s, got %s",
             type_to_cstr(c->equivalence_type),
             type_to_cstr(c->ordering_type),
             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+
+        error_finalize();
         exit(c, 1);
     }
 }
@@ -601,11 +615,18 @@ void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 
     if (!type_is_pointer(*fn_spec->return_type)) {
         error_operator_method_wrong_signature(fn->defined_as->node.token, oms, receiver);
-        error_token(
-            EK_NOTE,
-            fn->returns.head ? fn->returns.head->token : fn->body->token,
+        if (fn->returns.head) {
+            error_node_range_begin(EK_NOTE, fn->returns.head, fn->returns.tail);
+        } else {
+            error_token_begin(EK_NOTE, fn->body->token);
+        }
+
+        fprintf(
+            stderr,
             "Expected to return a pointer, got %s",
             fn_spec->returns_count ? type_to_cstr(*fn_spec->return_type) : "nothing");
+
+        error_finalize();
         exit(c, 1);
     }
 }
@@ -696,10 +717,7 @@ static void show_explanation_about_custom_formatter(Compiler *c, const Node_Fn *
 
     afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    It should have this signature:\n\n");
     ansi_set(stderr, ANSI_COLOR_MAGENTA | ANSI_BOLD);
-    fprintf(
-        stderr,
-        "        @format :: (this: %s",
-        type_to_cstr_raw(type_with_ref(receiver, (receiver.distinct ? receiver.distinct->node.type.ref : 0) + 1)));
+    fprintf(stderr, "        @format :: (this: %s", type_to_cstr_raw(receiver));
 
     assert(spec->variadics_kind == VARIADICS_NONE);
     for (size_t i = 1; i < spec->args_count; i++) {
@@ -746,11 +764,30 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
     }
 
     if (receiver.ref != 1) {
-        goto error;
+        receiver = fn_spec->args[0].type;
+        receiver = type_with_ref(receiver, receiver.distinct ? receiver.distinct->node.type.ref + 1 : 1);
+        show_explanation_about_custom_formatter(c, fn, receiver);
+        error_parts(
+            EK_NOTE,
+            fn_spec->args[0].name,
+            fn_spec->args[0].pos,
+            "Expected the receiver to be %s, got %s",
+            type_to_cstr(receiver),
+            type_to_cstr(fn_spec->args[0].type));
+        exit(c, 1);
     }
 
-    if (fn_spec->args_count != 3) {
-        goto error;
+    if (fn_spec->args_count < 3) {
+        show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
+        error_token(EK_NOTE, fn->args_end_token, "Expected 3 arguments, got %zu", fn_spec->args_count);
+        exit(c, 1);
+    }
+
+    if (fn_spec->args_count > 3) {
+        show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
+        error_parts(
+            EK_NOTE, fn_spec->args[3].name, fn_spec->args[3].pos, "Expected 3 arguments, got %zu", fn_spec->args_count);
+        exit(c, 1);
     }
 
     assert(type_kind_eq(c->type_info_type, TYPE_STRUCT));
@@ -759,13 +796,37 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
 
     assert(fn_spec->args_count == expected_spec->args_count);
     for (size_t i = 1; i < fn_spec->args_count; i++) {
-        if (!type_eq(fn_spec->args[i].type, expected_spec->args[i].type)) {
-            goto error;
+        const Type actual = fn_spec->args[i].type;
+        const Type expected = expected_spec->args[i].type;
+        if (!type_eq(actual, expected)) {
+            show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
+            error_parts(
+                EK_NOTE,
+                fn_spec->args[i].name,
+                fn_spec->args[i].pos,
+                "Expected this argument to be %s, got %s",
+                type_to_cstr(expected),
+                type_to_cstr(actual));
+            exit(c, 1);
         }
     }
 
     if (!type_eq(*fn_spec->return_type, *expected_spec->return_type)) {
-        goto error;
+        show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
+        if (fn->returns.head) {
+            error_node_range_begin(EK_NOTE, fn->returns.head, fn->returns.tail);
+        } else {
+            error_token_begin(EK_NOTE, fn->body->token);
+        }
+
+        fprintf(
+            stderr,
+            "Expected the return type to be %s, got %s",
+            type_to_cstr(*expected_spec->return_type),
+            type_to_cstr(*fn_spec->return_type));
+
+        error_finalize();
+        exit(c, 1);
     }
 
     if (!c->type_info_cache.hasheq) {
@@ -775,10 +836,6 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
     type_change_ref(&receiver, -1);
     ht_set(&c->type_info_cache, receiver, (Type_Info) {.format = fn});
     return;
-
-error:
-    show_explanation_about_custom_formatter(c, fn, fn_spec->args[0].type);
-    exit(c, 1);
 }
 
 void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec) {
@@ -788,19 +845,52 @@ void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *f
     }
 
     if (receiver.ref) {
-        goto error;
+        show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
+        error_parts(
+            EK_NOTE,
+            fn_spec->args[0].name,
+            fn_spec->args[0].pos,
+            "Expected the receiver to be %s, got %s",
+            type_to_cstr(type_without_ref(receiver)),
+            type_to_cstr(fn_spec->args[0].type));
+        exit(c, 1);
     }
 
-    if (fn_spec->args_count != 2) {
-        goto error;
+    if (fn_spec->args_count < 2) {
+        show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
+        error_token(EK_NOTE, fn->args_end_token, "Expected 2 arguments, got %zu", fn_spec->args_count);
+        exit(c, 1);
+    }
+
+    if (fn_spec->args_count > 2) {
+        show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
+        error_parts(
+            EK_NOTE, fn_spec->args[2].name, fn_spec->args[2].pos, "Expected 2 arguments, got %zu", fn_spec->args_count);
+        exit(c, 1);
     }
 
     if (!type_eq(fn_spec->args[1].type, type_with_ref(c->hasher_type, 1))) {
-        goto error;
+        show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
+        error_parts(
+            EK_NOTE,
+            fn_spec->args[1].name,
+            fn_spec->args[1].pos,
+            "Expected this argument to be %s, got %s",
+            type_to_cstr(type_with_ref(c->hasher_type, 1)),
+            type_to_cstr(fn_spec->args[1].type));
+        exit(c, 1);
     }
 
     if (fn_spec->returns_count) {
-        goto error;
+        show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
+        assert(fn->returns.head);
+        error_node_range(
+            EK_NOTE,
+            fn->returns.head,
+            fn->returns.tail,
+            "Expected to return nothing, got %s",
+            type_to_cstr(*fn_spec->return_type));
+        exit(c, 1);
     }
 
     if (!c->map_operators.hasheq) {
@@ -814,10 +904,6 @@ void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *f
         ht_set(&c->map_operators, receiver, (Map_Operator) {.hash = fn});
     }
     return;
-
-error:
-    show_explanation_about_custom_hasher(c, fn, fn_spec->args[0].type);
-    exit(c, 1);
 }
 
 void define_orderless_methods(Compiler *c) {

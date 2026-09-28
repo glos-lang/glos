@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 532
+tests/error_custom_formatter_return_type_mismatch.glos:2:2: Error: The hook method 'format' is special because it implements a custom formatter
+
+    @format :: (this: &Foo, w: io.Writer, nested: bool) -> s64, s64 {}
+
+    It should have this signature:
+
+        @format :: (this: &Foo, w: Writer, nested: bool) -> s64, error {}
+
+tests/error_custom_formatter_return_type_mismatch.glos:2:56: Note: Expected the return type to be '(s64, error)', got '(s64, s64)'
+
+    @format :: (this: &Foo, w: io.Writer, nested: bool) -> s64, s64 {}
+
+

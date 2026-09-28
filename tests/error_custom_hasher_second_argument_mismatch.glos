@@ -1,0 +1,2 @@
+Foo   :: struct {}
+@hash :: (this: Foo, h: s64) {}

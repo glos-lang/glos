@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 444
+tests/error_custom_hasher_return_type_mismatch.glos:2:2: Error: The hook method 'hash' is special because it implements a custom hasher
+
+    @hash :: (this: Foo, h: &hash.Hasher) -> s64, s64 {}
+
+    It should have this signature:
+
+        @hash :: (this: Foo, h: &Hasher) {}
+
+tests/error_custom_hasher_return_type_mismatch.glos:2:42: Note: Expected to return nothing, got '(s64, s64)'
+
+    @hash :: (this: Foo, h: &hash.Hasher) -> s64, s64 {}
+
+

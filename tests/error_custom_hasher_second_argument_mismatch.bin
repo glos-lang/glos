@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 415
+tests/error_custom_hasher_second_argument_mismatch.glos:2:2: Error: The hook method 'hash' is special because it implements a custom hasher
+
+    @hash :: (this: Foo, h: s64) {}
+
+    It should have this signature:
+
+        @hash :: (this: Foo, h: &Hasher) {}
+
+tests/error_custom_hasher_second_argument_mismatch.glos:2:22: Note: Expected this argument to be '&Hasher', got 's64'
+
+    @hash :: (this: Foo, h: s64) {}
+
+

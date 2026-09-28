@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 495
+tests/error_custom_formatter_third_argument_mismatch.glos:2:2: Error: The hook method 'format' is special because it implements a custom formatter
+
+    @format :: (this: &Foo, w: io.Writer, nested: s64) {}
+
+    It should have this signature:
+
+        @format :: (this: &Foo, w: Writer, nested: bool) -> s64, error {}
+
+tests/error_custom_formatter_third_argument_mismatch.glos:2:39: Note: Expected this argument to be 'bool', got 's64'
+
+    @format :: (this: &Foo, w: io.Writer, nested: s64) {}
+
+

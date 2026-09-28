@@ -1,0 +1,3 @@
+Foo     :: distinct s64
+@format :: (this: &Foo, w: io.Writer, nested: s64) {}
+io      :: #import "io"

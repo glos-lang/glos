@@ -1,0 +1,17 @@
+EXIT 1
+STDOUT 0
+
+STDERR 401
+tests/error_custom_hasher_too_many_arguments.glos:2:2: Error: The hook method 'hash' is special because it implements a custom hasher
+
+    @hash :: (this: Foo, a: bool, b: bool) {}
+
+    It should have this signature:
+
+        @hash :: (this: Foo, h: &Hasher) {}
+
+tests/error_custom_hasher_too_many_arguments.glos:2:31: Note: Expected 2 arguments, got 3
+
+    @hash :: (this: Foo, a: bool, b: bool) {}
+
+

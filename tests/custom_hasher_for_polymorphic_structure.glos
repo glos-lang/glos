@@ -1,0 +1,21 @@
+Vec2 :: struct($T: Type) {
+    x, y: T
+}
+
+@hash :: (this: Vec2($T), h: &hash.Hasher) {
+    println("Vec2(T = \{T}).hash")
+    map.hash(this.x, h)
+    map.hash(this.y, h)
+}
+
+main :: () {
+    m: map[Vec2(s32)]string
+    m[{69,   420  }] = "foo"
+    m[{1337, 80085}] = "bar"
+
+    println()
+    println(m[{69,   420  }])
+    println(m[{1337, 80085}])
+}
+
+hash :: #import "hash"

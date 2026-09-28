@@ -1,0 +1,3 @@
+Foo   :: struct {}
+@hash :: (this: Foo, h: &hash.Hasher) -> s64, s64 {}
+hash  :: #import "hash"
