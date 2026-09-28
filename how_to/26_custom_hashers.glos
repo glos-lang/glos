@@ -1,0 +1,91 @@
+hash :: #import "hash"
+
+main :: () {
+    // First let's take a look at the 'map.hash()' and 'map.equal()' operators.
+    {
+        // You can hash values.
+        println(map.hash(69))
+        println(map.hash("Urmom"))
+        println(map.hash([?]s32 {420, 1337}))
+        println()
+
+        // You can pass a '&hash.Hasher' value as the second argument, if you want a builder pattern.
+        h: hash.Hasher
+        map.hash(69, &h)
+        map.hash(420, &h)
+        map.hash("Urmom", &h)
+        println(h.finish())
+        println()
+
+        // You can use the 'map.equal()' operator to check whether two values are equal.
+        println(map.equal(69, 69))
+        println(map.equal(69, 420))
+        println()
+
+        println(map.equal("foo", "foo"))
+        println(map.equal("foo", "bar"))
+        println()
+
+        a := [?]s32 {69, 420}
+        b := [?]s32 {69, 1337}
+        println(map.equal(a, a))
+        println(map.equal(a, b))
+        println()
+
+        // If a type has a custom '==' overload, the 'map.equal()' will use that.
+        Int :: struct {
+            x: s64
+        }
+
+        operator <=> :: (this: Int, that: Int) -> Equivalence {
+            println("Custom equality operator for 'Foo'")
+            if this.x == that.x then return .EQ else return .NE
+        }
+
+        c := Int {69}
+        d := Int {420}
+        println(map.equal(c, c))
+        println(map.equal(c, d))
+        println()
+
+        // This also applies for nested types.
+        Bar :: struct {
+            i: Int
+            j: s64
+        }
+
+        e := Bar {c, 69}
+        f := Bar {d, 69}
+        g := Bar {d, 420}
+        println(map.equal(e, e))
+        println(map.equal(e, f))
+        println(map.equal(e, g))
+        println()
+    }
+
+    // Define the hook method '@hash' to register your custom hasher.
+    //
+    //     @hash :: (this: Your_Type, h: Hasher) {}
+    //
+    {
+        Vec2 :: struct {
+            x, y: s32
+        }
+
+        @hash :: (this: Vec2, h: &hash.Hasher) {
+            println("Custom hasher for 'Vec2'")
+            map.hash(this.x, h)
+            map.hash(this.y, h)
+        }
+
+        m: map[Vec2]string
+        m[{69,   420  }] = "foo"
+        m[{1337, 80085}] = "bar"
+        println(m)
+        println()
+
+        // As you can see, this custom hasher was used by the map index operator.
+    }
+
+    // Hash maps will respect custom '@hash' and 'operator <=>' implementations.
+}
