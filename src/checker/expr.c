@@ -280,7 +280,14 @@ void check_expr_throw(Compiler *c, Node_Throw *throw) {
 }
 
 static void error_type_is_not_hashable(Compiler *c, Node *n, const Type *type) {
-    error_node(EK_ERROR, n, "Cannot hash %s", type_to_cstr(*type));
+    error_node(EK_ERROR, n, "Cannot hash %s", type_to_cstr(n->type));
+    if (&n->type != type) {
+        afprintf(
+            stderr,
+            ANSI_COLOR_YELLOW | ANSI_BOLD,
+            "    This contains %s, which is not hashable.\n\n",
+            type_to_cstr(*type));
+    }
     exit(c, 1);
 }
 
