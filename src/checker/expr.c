@@ -1430,6 +1430,10 @@ void check_expr_struct(Compiler *c, Node_Struct *structt) {
 
 void check_expr_compound(Compiler *c, Node_Compound *compound) {
     Node *n = (Node *) compound;
+    if (!type_kind_eq(n->type, TYPE_UNKNOWN_COMPOUND)) {
+        compound->is_not_compound =
+            (n->type.ref || (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE));
+    }
 
     // For structure literal
     Type_Struct *struct_spec = NULL;
@@ -1557,11 +1561,6 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
             } else if (n->type.kind == TYPE_UNKNOWN_COMPOUND) {
                 // Pass
             } else {
-                // TODO: Broken
-                // ```
-                // xs: [..]s64 = {1, 2} // Broken
-                // xs.push({69, 420})   // Also broken
-                // ```
                 unreachable();
             }
         }
@@ -2382,11 +2381,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         if (compound->lhs) {
             check_expr(c, compound->lhs, REF_NONE);
             type_assert_type(c, compound->lhs);
-
             n->type = type_without_meta(compound->lhs->type);
-            compound->is_not_compound =
-                (n->type.ref ||
-                 (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE));
         } else {
             n->type = (Type) {.kind = TYPE_UNKNOWN_COMPOUND};
         }
