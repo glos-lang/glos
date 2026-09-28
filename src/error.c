@@ -107,7 +107,7 @@ static void range_apply_node(Range *r, const Node *n) {
     case NODE_UNARY: {
         Node_Unary *unary = (Node_Unary *) n;
         range_apply_node(r, unary->value);
-        if (n->token.kind == TOKEN_SIZEOF || n->token.kind == TOKEN_TYPEOF) {
+        if (unary->end.kind == TOKEN_RPAREN) {
             range_apply_token(r, unary->end);
         }
     } break;
@@ -116,6 +116,9 @@ static void range_apply_node(Range *r, const Node *n) {
         Node_Binary *binary = (Node_Binary *) n;
         range_apply_node(r, binary->lhs);
         range_apply_node(r, binary->rhs);
+        if (binary->end.kind == TOKEN_RPAREN) {
+            range_apply_token(r, binary->end);
+        }
     } break;
 
     case NODE_MEMBER: {

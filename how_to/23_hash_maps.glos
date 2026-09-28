@@ -46,6 +46,10 @@ main :: () {
     // that information.
     println(m.allocator)
 
+    // Quick note: Use the 'map.hash()' operator to get the hash of a value.
+    println("map.hash(69)      = \{map.hash(69)}")
+    println("map.hash(\"Urmom\") = \{map.hash("Urmom")}")
+
     // Now let's look at custom types as keys.
     custom_types_as_keys()
 }

@@ -1194,12 +1194,44 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     } break;
 
     case TOKEN_MAP: {
-        node = node_alloc(p->module_current, NODE_MAP, token);
-        Node_Map *map = (Node_Map *) node;
-        expect_token(p, TOKEN_LBRACKET);
-        map->key = parse_expr(p, POWER_SET, false, true, NULL);
-        expect_token(p, TOKEN_RBRACKET);
-        map->value = parse_expr(p, POWER_PRE, false, false, NULL);
+        Token extra = expect_token(p, TOKEN_LBRACKET, TOKEN_DOT);
+        if (extra.kind == TOKEN_LBRACKET) {
+            node = node_alloc(p->module_current, NODE_MAP, token);
+            Node_Map *map = (Node_Map *) node;
+            map->key = parse_expr(p, POWER_SET, false, true, NULL);
+            expect_token(p, TOKEN_RBRACKET);
+            map->value = parse_expr(p, POWER_PRE, false, false, NULL);
+        } else {
+            extra = expect_token(p, TOKEN_IDENT);
+            if (sv_eq(extra.sv, SV_Lit("hash"))) {
+                token.as.integer = 0;
+                node = node_alloc(p->module_current, NODE_BINARY, token);
+                Node_Binary *binary = (Node_Binary *) node;
+                expect_token(p, TOKEN_LPAREN);
+                binary->lhs = parse_expr(p, POWER_SET, false, true, NULL);
+                binary->end = expect_token(p, TOKEN_COMMA, TOKEN_RPAREN);
+                if (binary->end.kind == TOKEN_COMMA) {
+                    binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                    binary->end = expect_token(p, TOKEN_RPAREN);
+                }
+            } else if (sv_eq(extra.sv, SV_Lit("equal"))) {
+                token.as.integer = 1;
+                node = node_alloc(p->module_current, NODE_BINARY, token);
+                Node_Binary *binary = (Node_Binary *) node;
+                expect_token(p, TOKEN_LPAREN);
+                binary->lhs = parse_expr(p, POWER_SET, false, true, NULL);
+                expect_token(p, TOKEN_COMMA);
+                binary->rhs = parse_expr(p, POWER_SET, false, true, NULL);
+                binary->end = expect_token(p, TOKEN_RPAREN);
+            } else {
+                error_token(
+                    EK_ERROR,
+                    extra,
+                    "Invalid map operator '" SV_Fmt "'. Valid names are 'hash' and 'equal'.",
+                    SV_Arg(extra.sv));
+                exit(1);
+            }
+        }
     } break;
 
     case TOKEN_ENUM: {
@@ -1786,11 +1818,11 @@ static Node *parse_stmt(Parser *p) {
 
     case TOKEN_DIRECTIVE_HOOK: {
         Node *name = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_IDENT));
-        if (!sv_eq(name->token.sv, SV_Lit("format"))) {
+        if (!sv_eq(name->token.sv, SV_Lit("format")) && !sv_eq(name->token.sv, SV_Lit("hash"))) {
             error_token(
                 EK_ERROR,
                 name->token,
-                "Invalid hook '" SV_Fmt "'. A valid hook name is 'format'.",
+                "Invalid hook '" SV_Fmt "'. Valid names are 'format' and 'hash'.",
                 SV_Arg(name->token.sv));
             exit(1);
         }

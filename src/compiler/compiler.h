@@ -53,8 +53,9 @@ void            set_debug_pos(Compiler *c, Pos pos);
 
 LLVMValueRef compile_alloca(Compiler *c, LLVMTypeRef type);
 LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to, bool is_from_signed, bool is_to_signed);
+LLVMValueRef compile_ptr_offset(Compiler *c, LLVMValueRef ptr, size_t offset);
 
-Typed_LLVM_Value get_builtin_func(Compiler *c, SV name);
+Typed_LLVM_Value compile_fn_to_typed_llvm_value(Compiler *c, Node_Fn *fn);
 void compile_panic(Compiler *c, Pos pos, Contract_Panic panic, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3);
 
 // Types ///////////////////////////////////////////////////////////////////////////////////////////

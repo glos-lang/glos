@@ -2,7 +2,6 @@
 #define COMPILER_H
 
 #include "context.h"
-#include "contract.h"
 #include "node.h"
 #include "parser.h"
 
@@ -15,21 +14,14 @@ void link_flags_add_libpath(Link_Flags *ls, SV path);
 void link_flags_add_libname(Link_Flags *ls, SV name);
 
 typedef struct {
+    Node_Fn *hash;
+    Node_Fn *compare;
+} Map_Operator;
+
+typedef struct {
     uintptr_t uid;
     SV        name;
 } Method_Spec;
-
-typedef struct {
-    Contract_Hash_Info_Kind kind;
-
-    size_t offset;
-    size_t size;
-} Hash_Info;
-
-typedef struct {
-    Hash_Info *data;
-    size_t     count;
-} Hash_Infos;
 
 typedef struct {
     Node_Polymorph *from;
@@ -97,8 +89,7 @@ typedef struct {
     Type interpolation_type;
     Type interpolation_marker_type;
 
-    HT(Type, LLVMValueRef) hash_info_intern;
-    Type hash_info_type;
+    HT(Type, Map_Operator) map_operators;
 
     DA(Node *) partial_stack;
 
@@ -137,6 +128,8 @@ typedef struct {
     Module *main_module;
     Module *builtin_module;
     Module *fmt_module;
+    Module *hash_module;
+    Module *C_module;
 
     Type type_info_type;         // This holds `Type_Info`
     Type type_info_pointer_type; // This holds `&Type_Info`
@@ -146,9 +139,17 @@ typedef struct {
 
     Type source_code_location_type;
     Type format_type;
+    Type hasher_type;
 
     Type        allocator_type;
     Const_Value default_allocator;
+
+    Node_Fn *builtin__runtime_panic; // builtin.runtime_panic()
+    Node_Fn *hash__Hasher__bytes;    // hash.Hasher.bytes()
+    Node_Fn *hash__Hasher__float32;  // hash.Hasher.float32()
+    Node_Fn *hash__Hasher__float64;  // hash.Hasher.float64()
+    Node_Fn *hash__Hasher__finish;   // hash.Hasher.finish()
+    Node_Fn *C__memcmp;              // C.memcmp()
 
     // Rest all are only used by compiler
     Cmd        *cmd;

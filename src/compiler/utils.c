@@ -1,4 +1,3 @@
-#include "../checker.h"
 #include "compiler.h"
 
 static_assert(COUNT_TYPES == 32, "");
@@ -182,18 +181,24 @@ LLVMValueRef compile_cast(Compiler *c, LLVMValueRef from, LLVMTypeRef to_type, b
     unreachable();
 }
 
-Typed_LLVM_Value get_builtin_func(Compiler *c, SV name) {
-    const Const_Value value = get_const_definition_value(c, c->builtin_module, name, NULL);
-    assert(value.kind == CONST_VALUE_FN);
+LLVMValueRef compile_ptr_offset(Compiler *c, LLVMValueRef ptr, size_t offset) {
+    if (!offset) {
+        return ptr;
+    }
 
-    Typed_LLVM_Value result = {0};
-    result.value = compile_fn(c, value.as.fn);
-    result.type = &value.as.fn->node.type;
-    return result;
+    LLVMValueRef indices[] = {LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), offset, true)};
+    return LLVMBuildGEP2(c->llvm_builder, LLVMInt8TypeInContext(c->llvm_context), ptr, indices, len(indices), "");
+}
+
+Typed_LLVM_Value compile_fn_to_typed_llvm_value(Compiler *c, Node_Fn *fn) {
+    Typed_LLVM_Value tv = {0};
+    tv.type = &fn->node.type;
+    tv.value = compile_fn(c, fn);
+    return tv;
 }
 
 void compile_panic(Compiler *c, Pos pos, Contract_Panic panic, LLVMValueRef v1, LLVMValueRef v2, LLVMValueRef v3) {
-    Typed_LLVM_Value fn = get_builtin_func(c, sv_from_cstr("runtime_panic"));
+    Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->builtin__runtime_panic);
 
     LLVMTypeRef  i64 = LLVMInt64TypeInContext(c->llvm_context);
     LLVMValueRef zero = LLVMConstNull(i64);

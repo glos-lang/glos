@@ -108,11 +108,11 @@ void check_nodes(Compiler *c) {
         c->interpolation_type = type_without_meta(value.as.type);
     }
 
-    // Hash Info
+    // Hasher
     {
-        value = get_const_definition_value(c, c->builtin_module, SV_Lit("Hash_Info"), NULL);
+        value = get_const_definition_value(c, c->hash_module, SV_Lit("Hasher"), NULL);
         assert(value.kind == CONST_VALUE_TYPE);
-        c->hash_info_type = type_without_meta(value.as.type);
+        c->hasher_type = type_without_meta(value.as.type);
     }
 
     // Panic
@@ -230,5 +230,41 @@ void check_nodes(Compiler *c) {
     {
         c->error_enums_var = module_globals_find(c, c->fmt_module, SV_Lit("error_enums"));
         assert(c->error_enums_var);
+    }
+
+    // builtin.runtime_panic()
+    {
+        value = get_const_definition_value(c, c->builtin_module, SV_Lit("runtime_panic"), NULL);
+        assert(value.kind == CONST_VALUE_FN);
+        c->builtin__runtime_panic = value.as.fn;
+    }
+
+    // hash.Hasher.*
+    {
+        Method_Spec spec = {0};
+        assert(get_method_spec(c, NULL, c->hasher_type, (SV) {0}, &spec, NULL));
+
+        spec.name = SV_Lit("bytes");
+        c->hash__Hasher__bytes = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__bytes);
+
+        spec.name = SV_Lit("float32");
+        c->hash__Hasher__float32 = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__float32);
+
+        spec.name = SV_Lit("float64");
+        c->hash__Hasher__float64 = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__float64);
+
+        spec.name = SV_Lit("finish");
+        c->hash__Hasher__finish = get_method(c, spec, c->builtin_module);
+        assert(c->hash__Hasher__finish);
+    }
+
+    // C.memcmp
+    {
+        value = get_const_definition_value(c, c->C_module, SV_Lit("memcmp"), NULL);
+        assert(value.kind == CONST_VALUE_FN);
+        c->C__memcmp = value.as.fn;
     }
 }

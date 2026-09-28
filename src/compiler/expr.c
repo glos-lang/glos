@@ -821,6 +821,509 @@ static bool is_empty_string(Node *n) {
     return n->kind == NODE_ATOM && n->token.kind == TOKEN_STRING && n->token.as.string.count == 0;
 }
 
+static LLVMValueRef get_or_put_backing_memory(Compiler *c, LLVMValueRef value) {
+    if (LLVMGetInstructionOpcode(value) == LLVMLoad) {
+        return undo_load(value);
+    }
+
+    LLVMValueRef memory = compile_alloca(c, LLVMTypeOf(value));
+    LLVMBuildStore(c->llvm_builder, value, memory);
+    return memory;
+}
+
+static void compile_map_hash(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr);
+
+static void compile_map_hash_bytes(Compiler *c, Pos pos, LLVMValueRef hasher, LLVMValueRef data, LLVMValueRef count) {
+    Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__bytes);
+    assert(fn.type->kind == TYPE_FN);
+    const Type_Fn *fn_spec = fn.type->spec.fn;
+
+    Typed_LLVM_Value args[2] = {0};
+    assert(len(args) == fn_spec->args_count);
+    args[0].type = &fn_spec->args[0].type;
+    args[0].value = hasher;
+
+    args[1].type = &fn_spec->args[1].type;
+    args[1].value = compile_alloca(c, args[1].type->llvm);
+    LLVMBuildStore(c->llvm_builder, data, args[1].value);
+    LLVMBuildStore(
+        c->llvm_builder, count, LLVMBuildStructGEP2(c->llvm_builder, args[1].type->llvm, args[1].value, 1, ""));
+
+    args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, args[1].value, "");
+    set_debug_pos(c, pos);
+    compile_call(c, fn, args, len(args), false);
+}
+
+static void
+compile_map_hash_float(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) //
+{
+    Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(
+        c, value_type->kind == TYPE_F32 ? c->hash__Hasher__float32 : c->hash__Hasher__float64);
+    assert(fn.type->kind == TYPE_FN);
+    const Type_Fn *fn_spec = fn.type->spec.fn;
+
+    Typed_LLVM_Value args[2] = {0};
+    assert(len(args) == fn_spec->args_count);
+    args[0].type = &fn_spec->args[0].type;
+    args[0].value = hasher;
+
+    args[1].type = value_type;
+    args[1].value = LLVMBuildLoad2(c->llvm_builder, value_type->llvm, value_ptr, "");
+    set_debug_pos(c, pos);
+    compile_call(c, fn, args, len(args), false);
+}
+
+static void compile_map_hash_slice(
+    Compiler *c, Pos pos, LLVMValueRef hasher, Type *element_type, LLVMValueRef data, LLVMValueRef count) //
+{
+    // Hash the count
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+    compile_map_hash_bytes(c, pos, hasher, get_load_ptr(count), LLVMConstInt(i64, 8, true));
+
+    // Integeral slices
+    if ((type_is_scalar(*element_type) && !type_is_float(*element_type)) || element_type->kind == TYPE_ERROR) {
+        if (!c->map_operators.hasheq) {
+            c->map_operators.hasheq = ht_hasheq_type;
+        }
+
+        Map_Operator *mp = ht_get(&c->map_operators, *element_type);
+        if (!mp || !mp->hash) {
+            compile_map_hash_bytes(
+                c,
+                pos,
+                hasher,
+                data,
+                LLVMBuildMul(c->llvm_builder, count, LLVMConstInt(i64, compile_sizeof(c, element_type), true), ""));
+            return;
+        }
+    }
+
+    LLVMBasicBlockRef before = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMBasicBlockRef loop = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef after = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildBr(c->llvm_builder, loop);
+
+    // Loop
+    LLVMPositionBuilderAtEnd(c->llvm_builder, loop);
+    LLVMValueRef i = LLVMBuildPhi(c->llvm_builder, i64, "");
+    LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
+    LLVMAddIncoming(i, &zero, &before, 1);
+
+    // Item
+    LLVMValueRef item = LLVMBuildGEP2(c->llvm_builder, compile_type(c, element_type), data, &i, 1, "");
+    compile_map_hash(c, pos, hasher, element_type, item);
+
+    LLVMValueRef one = LLVMConstInt(i64, 1, 0);
+    LLVMValueRef next = LLVMBuildAdd(c->llvm_builder, i, one, "");
+    LLVMValueRef cond = LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, next, count, "");
+    LLVMBuildCondBr(c->llvm_builder, cond, loop, after);
+    LLVMAddIncoming(i, &next, &loop, 1);
+
+    // After
+    LLVMPositionBuilderAtEnd(c->llvm_builder, after);
+}
+
+static_assert(COUNT_TYPES == 32, "");
+static void compile_map_hash(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr) {
+    if (value_type->ref) {
+        compile_map_hash_bytes(
+            c,
+            pos,
+            hasher,
+            value_ptr,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
+        return;
+    }
+
+    if (!c->map_operators.hasheq) {
+        c->map_operators.hasheq = ht_hasheq_type;
+    }
+
+    Map_Operator *mp = ht_get(&c->map_operators, *value_type);
+    if (mp && mp->hash) {
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, mp->hash);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        assert(fn_spec->args_count >= 2);
+        Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, value_ptr, "");
+
+        args[1].type = &fn_spec->args[1].type;
+        args[1].value = hasher;
+
+        compile_optional_arguments(c, args, fn_spec, pos);
+        compile_call(c, fn, args, fn_spec->args_count, false);
+        arena_reset(&temp_arena, args);
+        return;
+    }
+
+    switch (value_type->kind) {
+    case TYPE_BOOL:
+    case TYPE_RUNE:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+    case TYPE_ENUM:
+    case TYPE_ERROR:
+        compile_map_hash_bytes(
+            c,
+            pos,
+            hasher,
+            value_ptr,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compile_sizeof(c, value_type), true));
+        break;
+
+    case TYPE_F32:
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        compile_map_hash_float(c, pos, hasher, value_type, value_ptr);
+        break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = value_type->spec.structt;
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            Type_Struct_Field *it = &spec->fields[i];
+            compile_map_hash(c, pos, hasher, &it->type, compile_ptr_offset(c, value_ptr, it->offset));
+        }
+    } break;
+
+    case TYPE_ARRAY: {
+        LLVMTypeRef  i64 = LLVMInt64TypeInContext(c->llvm_context);
+        LLVMValueRef count = compile_alloca(c, i64);
+        LLVMBuildStore(c->llvm_builder, LLVMConstInt(i64, value_type->spec.array.count, true), count);
+        compile_map_hash_slice(
+            c, pos, hasher, value_type->spec.array.element, value_ptr, LLVMBuildLoad2(c->llvm_builder, i64, count, ""));
+    } break;
+
+    case TYPE_DYNAMIC_ARRAY: {
+        LLVMValueRef data =
+            LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), value_ptr, "");
+
+        LLVMValueRef count = LLVMBuildLoad2(
+            c->llvm_builder,
+            LLVMInt64TypeInContext(c->llvm_context),
+            LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
+            "");
+
+        compile_map_hash_slice(c, pos, hasher, value_type->spec.dynamic_array.element, data, count);
+    } break;
+
+    case TYPE_SLICE: {
+        LLVMValueRef data =
+            LLVMBuildLoad2(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), value_ptr, "");
+
+        LLVMValueRef count = LLVMBuildLoad2(
+            c->llvm_builder,
+            LLVMInt64TypeInContext(c->llvm_context),
+            LLVMBuildStructGEP2(c->llvm_builder, compile_type(c, value_type), value_ptr, 1, ""),
+            "");
+
+        compile_map_hash_slice(c, pos, hasher, value_type->spec.slice.element, data, count);
+    } break;
+
+    case TYPE_STRING: {
+        Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__bytes);
+        assert(fn.type->kind == TYPE_FN);
+        const Type_Fn *fn_spec = fn.type->spec.fn;
+
+        Typed_LLVM_Value args[2] = {0};
+        assert(len(args) == fn_spec->args_count);
+        args[0].type = &fn_spec->args[0].type;
+        args[0].value = hasher;
+
+        args[1].type = &fn_spec->args[1].type;
+        args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, value_ptr, "");
+        set_debug_pos(c, pos);
+        compile_call(c, fn, args, len(args), false);
+    } break;
+
+    default:
+        unreachable();
+        break;
+    }
+}
+
+typedef struct {
+    Pos  pos;
+    bool checked;
+    bool skip_next_short_circuit;
+
+    LLVMValueRef result; // The variable
+    LLVMValueRef result_value;
+
+    LLVMBasicBlockRef end;
+} Map_Equal_Compiler;
+
+static void
+compile_map_equal(Compiler *c, Map_Equal_Compiler *mec, LLVMValueRef lhs_ptr, LLVMValueRef rhs_ptr, Type *type);
+
+static void mec_check_begin(Compiler *c, Map_Equal_Compiler *mec) {
+    if (mec->skip_next_short_circuit) {
+        mec->skip_next_short_circuit = false;
+        return;
+    }
+
+    if (mec->checked) {
+        if (!mec->end) {
+            mec->end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        }
+
+        LLVMBasicBlockRef if_true = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+        LLVMBuildCondBr(c->llvm_builder, mec->result_value, if_true, mec->end);
+        LLVMPositionBuilderAtEnd(c->llvm_builder, if_true);
+    }
+}
+
+static void mec_check_end(Compiler *c, Map_Equal_Compiler *mec, LLVMValueRef result) {
+    LLVMBuildStore(c->llvm_builder, result, mec->result);
+    mec->result_value = result;
+    mec->checked = true;
+}
+
+static void
+mec_check_bytes(Compiler *c, Map_Equal_Compiler *mec, LLVMValueRef lhs, LLVMValueRef rhs, LLVMValueRef count) //
+{
+    mec_check_begin(c, mec);
+    LLVMValueRef fn = compile_fn(c, c->C__memcmp);
+    assert(c->C__memcmp->node.type.kind == TYPE_FN);
+    const Type_Fn *fn_spec = c->C__memcmp->node.type.spec.fn;
+
+    LLVMValueRef args[3] = {lhs, rhs, count};
+    assert(len(args) == fn_spec->args_count);
+
+    LLVMValueRef result = LLVMBuildCall2(c->llvm_builder, c->C__memcmp->node.type.llvm, fn, args, len(args), "");
+    result = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, result, LLVMConstNull(fn_spec->return_type->llvm), "");
+    mec_check_end(c, mec, result);
+}
+
+static void mec_check_slice(
+    Compiler           *c,
+    Map_Equal_Compiler *mec,
+    Type               *element_type,
+    LLVMValueRef        lhs_ptr,
+    LLVMValueRef        rhs_ptr,
+    i64                 array_count // Pass -1 if not array
+) {
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(c->llvm_context, 0);
+
+    LLVMValueRef count = NULL;
+    if (array_count == -1) {
+        mec_check_begin(c, mec);
+        LLVMValueRef lhs_count = LLVMBuildLoad2(
+            c->llvm_builder, i64, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, lhs_ptr, 1, ""), "");
+        LLVMValueRef rhs_count = LLVMBuildLoad2(
+            c->llvm_builder, i64, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, rhs_ptr, 1, ""), "");
+        mec_check_end(c, mec, LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, lhs_count, rhs_count, ""));
+
+        mec_check_begin(c, mec);
+        lhs_ptr = LLVMBuildLoad2(
+            c->llvm_builder, ptr, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, lhs_ptr, 0, ""), "");
+        rhs_ptr = LLVMBuildLoad2(
+            c->llvm_builder, ptr, LLVMBuildStructGEP2(c->llvm_builder, c->llvm_slice_type, rhs_ptr, 0, ""), "");
+        count = lhs_count;
+        mec->skip_next_short_circuit = true;
+    }
+
+    if ((type_is_scalar(*element_type) && !type_is_float(*element_type)) || element_type->kind == TYPE_ERROR) {
+        if (!c->map_operators.hasheq) {
+            c->map_operators.hasheq = ht_hasheq_type;
+        }
+
+        Map_Operator *mp = ht_get(&c->map_operators, *element_type);
+        if (!mp || !mp->compare) {
+            if (array_count == -1) {
+                count =
+                    LLVMBuildMul(c->llvm_builder, count, LLVMConstInt(i64, compile_sizeof(c, element_type), true), "");
+            } else {
+                count = LLVMConstInt(i64, array_count * compile_sizeof(c, element_type), true);
+            }
+            mec_check_bytes(c, mec, lhs_ptr, rhs_ptr, count);
+            return;
+        }
+    }
+
+    if (!count) {
+        assert(array_count != -1);
+        count = LLVMConstInt(i64, array_count, true);
+    }
+
+    mec_check_begin(c, mec);
+    LLVMBasicBlockRef before = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMBasicBlockRef loop = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef after = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildBr(c->llvm_builder, loop);
+
+    // Loop
+    LLVMPositionBuilderAtEnd(c->llvm_builder, loop);
+    LLVMValueRef i = LLVMBuildPhi(c->llvm_builder, i64, "");
+    LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
+    LLVMAddIncoming(i, &zero, &before, 1);
+
+    // Item
+    LLVMValueRef lhs_item = LLVMBuildGEP2(c->llvm_builder, compile_type(c, element_type), lhs_ptr, &i, 1, "");
+    LLVMValueRef rhs_item = LLVMBuildGEP2(c->llvm_builder, compile_type(c, element_type), rhs_ptr, &i, 1, "");
+    mec->skip_next_short_circuit = true;
+    compile_map_equal(c, mec, lhs_item, rhs_item, element_type);
+
+    LLVMBasicBlockRef after_mec_equal = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    if (!mec->end) {
+        mec->end = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    }
+    LLVMBuildCondBr(c->llvm_builder, mec->result_value, after_mec_equal, mec->end);
+    LLVMPositionBuilderAtEnd(c->llvm_builder, after_mec_equal);
+
+    LLVMValueRef one = LLVMConstInt(i64, 1, 0);
+    LLVMValueRef next = LLVMBuildAdd(c->llvm_builder, i, one, "");
+    LLVMValueRef cond = LLVMBuildICmp(c->llvm_builder, LLVMIntSLT, next, count, "");
+    LLVMBuildCondBr(c->llvm_builder, cond, loop, after);
+    LLVMAddIncoming(i, &next, &after_mec_equal, 1);
+
+    // After
+    LLVMPositionBuilderAtEnd(c->llvm_builder, after);
+}
+
+static_assert(COUNT_TYPES == 32, "");
+static void
+compile_map_equal(Compiler *c, Map_Equal_Compiler *mec, LLVMValueRef lhs_ptr, LLVMValueRef rhs_ptr, Type *type) //
+{
+    if (type->ref) {
+        mec_check_begin(c, mec);
+        LLVMTypeRef llvm = compile_type(c, type);
+        mec_check_end(
+            c,
+            mec,
+            LLVMBuildICmp(
+                c->llvm_builder,
+                LLVMIntEQ,
+                LLVMBuildLoad2(c->llvm_builder, llvm, lhs_ptr, ""),
+                LLVMBuildLoad2(c->llvm_builder, llvm, rhs_ptr, ""),
+                ""));
+        return;
+    }
+
+    if (!type_eq(*type, (Type) {.kind = TYPE_STRING})) {
+        Map_Operator *mp = ht_get(&c->map_operators, *type);
+        if (mp && mp->compare) {
+            mec_check_begin(c, mec);
+            Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, mp->compare);
+            assert(fn.type->kind == TYPE_FN);
+            const Type_Fn *fn_spec = fn.type->spec.fn;
+
+            assert(fn_spec->args_count >= 2);
+            Typed_LLVM_Value *args = arena_alloc(&temp_arena, fn_spec->args_count * sizeof(*args));
+            args[0].type = &fn_spec->args[0].type;
+            args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, lhs_ptr, "");
+
+            args[1].type = &fn_spec->args[1].type;
+            args[1].value = LLVMBuildLoad2(c->llvm_builder, args[1].type->llvm, rhs_ptr, "");
+
+            compile_optional_arguments(c, args, fn_spec, mec->pos);
+            LLVMValueRef diff = compile_call(c, fn, args, fn_spec->args_count, false);
+            arena_reset(&temp_arena, args);
+
+            mec_check_end(
+                c, mec, LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, diff, LLVMConstNull(fn_spec->return_type->llvm), ""));
+            return;
+        }
+    }
+
+    switch (type->kind) {
+    case TYPE_BOOL:
+    case TYPE_RUNE:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+    case TYPE_INT:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+    case TYPE_ENUM:
+    case TYPE_ERROR: {
+        mec_check_begin(c, mec);
+        LLVMTypeRef llvm = compile_type(c, type);
+        mec_check_end(
+            c,
+            mec,
+            LLVMBuildICmp(
+                c->llvm_builder,
+                LLVMIntEQ,
+                LLVMBuildLoad2(c->llvm_builder, llvm, lhs_ptr, ""),
+                LLVMBuildLoad2(c->llvm_builder, llvm, rhs_ptr, ""),
+                ""));
+    } break;
+
+    case TYPE_F32:
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        mec_check_begin(c, mec);
+        LLVMTypeRef llvm = compile_type(c, type);
+        mec_check_end(
+            c,
+            mec,
+            LLVMBuildFCmp(
+                c->llvm_builder,
+                LLVMRealOEQ,
+                LLVMBuildLoad2(c->llvm_builder, llvm, lhs_ptr, ""),
+                LLVMBuildLoad2(c->llvm_builder, llvm, rhs_ptr, ""),
+                ""));
+        break;
+
+    case TYPE_STRUCT: {
+        const Type_Struct *spec = type->spec.structt;
+        for (size_t i = 0; i < spec->fields_count; i++) {
+            Type_Struct_Field *it = &spec->fields[i];
+            compile_map_equal(
+                c,
+                mec,
+                compile_ptr_offset(c, lhs_ptr, it->offset),
+                compile_ptr_offset(c, rhs_ptr, it->offset),
+                &it->type);
+        }
+    } break;
+
+    case TYPE_ARRAY:
+        mec_check_slice(c, mec, type->spec.array.element, lhs_ptr, rhs_ptr, type->spec.array.count);
+        break;
+
+    case TYPE_DYNAMIC_ARRAY:
+        mec_check_slice(c, mec, type->spec.dynamic_array.element, lhs_ptr, rhs_ptr, -1);
+        break;
+
+    case TYPE_SLICE:
+        mec_check_slice(c, mec, type->spec.slice.element, lhs_ptr, rhs_ptr, -1);
+        break;
+
+    case TYPE_STRING: {
+        Type element_type = {.kind = TYPE_U8};
+        mec_check_slice(c, mec, &element_type, lhs_ptr, rhs_ptr, -1);
+    } break;
+
+    default:
+        unreachable();
+    }
+}
+
 LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
     LLVMTypeRef i64_type = LLVMInt64TypeInContext(c->llvm_context);
     LLVMTypeRef ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
@@ -1187,132 +1690,59 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
         return phi;
     }
 
-    default:
-        unreachable();
-    }
-}
+    case TOKEN_MAP: {
+        LLVMValueRef lhs = get_or_put_backing_memory(c, compile_expr(c, binary->lhs, false));
+        const Pos    pos = get_leftmost_token_of_node(n).pos;
 
-static_assert(COUNT_TYPES == 32, "");
-static void push_hash_info(const Type *type, Hash_Infos *infos, size_t offset, size_t size) {
-    if (!size) {
-        return;
-    }
-
-    switch (type->kind) {
-    case TYPE_BOOL:
-    case TYPE_RUNE:
-
-    case TYPE_S8:
-    case TYPE_S16:
-    case TYPE_S32:
-    case TYPE_S64:
-
-    case TYPE_U8:
-    case TYPE_U16:
-    case TYPE_U32:
-    case TYPE_U64:
-
-    case TYPE_INT:
-    case TYPE_ENUM:
-    case TYPE_ERROR:
-
-    case TYPE_FN:
-    case TYPE_RAWPTR:
-
-    case TYPE_TRAIT:
-    case TYPE_UNION:
-    case TYPE_ARRAY:
-    case TYPE_DYNAMIC_ARRAY:
-    case TYPE_MAP:
-    case TYPE_SLICE: {
-        if (infos->count) {
-            Hash_Info *last = &infos->data[infos->count - 1];
-            if (last->kind == CONTRACT_HASH_INFO_RAW && last->offset + last->size == offset) {
-                // Merge consecutive raw infos
-                last->size += size;
-                return;
+        if (n->token.as.integer == 0) {
+            set_debug_pos(c, pos);
+            LLVMValueRef hasher = NULL;
+            if (binary->rhs) {
+                hasher = compile_expr(c, binary->rhs, false);
+            } else {
+                hasher = compile_alloca(c, c->hasher_type.llvm);
+                LLVMBuildStore(c->llvm_builder, LLVMConstNull(c->hasher_type.llvm), hasher);
             }
+            compile_map_hash(c, pos, hasher, &binary->lhs->type, lhs);
+
+            if (binary->rhs) {
+                return NULL;
+            }
+
+            Typed_LLVM_Value fn = compile_fn_to_typed_llvm_value(c, c->hash__Hasher__finish);
+            assert(fn.type->kind == TYPE_FN);
+            const Type_Fn *fn_spec = fn.type->spec.fn;
+
+            Typed_LLVM_Value args[1] = {0};
+            assert(len(args) == fn_spec->args_count);
+            args[0].type = &fn_spec->args[0].type;
+            args[0].value = LLVMBuildLoad2(c->llvm_builder, args[0].type->llvm, hasher, "");
+
+            set_debug_pos(c, pos);
+            return compile_call(c, fn, args, len(args), false);
+        } else if (n->token.as.integer == 1) {
+            LLVMValueRef rhs = get_or_put_backing_memory(c, compile_expr(c, binary->rhs, false));
+            set_debug_pos(c, pos);
+
+            Map_Equal_Compiler mec = {0};
+            mec.pos = pos;
+            mec.result = compile_alloca(c, n->type.llvm);
+            LLVMBuildStore(c->llvm_builder, LLVMConstInt(n->type.llvm, true, true), mec.result);
+            compile_map_equal(c, &mec, lhs, rhs, &binary->lhs->type);
+
+            if (mec.end) {
+                LLVMBuildBr(c->llvm_builder, mec.end);
+                LLVMPositionBuilderAtEnd(c->llvm_builder, mec.end);
+            }
+            return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, mec.result, "");
+        } else {
+            unreachable();
         }
-
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_RAW;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
-
-    case TYPE_F32:
-    case TYPE_F64:
-    case TYPE_FLOAT: {
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_FLOAT;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
-
-    case TYPE_STRUCT: {
-        const Type_Struct *spec = type->spec.structt;
-        assert(!spec->polymorphs_count);
-
-        for (size_t i = 0; i < spec->fields_count; i++) {
-            const Type_Struct_Field *it = &spec->fields[i];
-            push_hash_info(&it->type, infos, offset + it->offset, it->size);
-        }
-    } break;
-
-    case TYPE_STRING: {
-        Hash_Info *info = arena_alloc(&default_arena, sizeof(Hash_Info));
-        info->kind = CONTRACT_HASH_INFO_STRING;
-        info->offset = offset;
-        info->size = size;
-        assert(infos->data + infos->count == info);
-        infos->count++;
-    } break;
+    }
 
     default:
         unreachable();
-        break;
     }
-}
-
-static LLVMValueRef get_hash_info(Compiler *c, Type type) {
-    if (!c->hash_info_intern.hasheq) {
-        c->hash_info_intern.hasheq = ht_hasheq_type;
-    }
-
-    LLVMValueRef *previous = ht_get(&c->hash_info_intern, type);
-    if (previous) {
-        return *previous;
-    }
-
-    Hash_Infos infos = {.data = arena_alloc(&default_arena, 0)};
-    push_hash_info(&type, &infos, 0, compile_sizeof(c, &type));
-
-    LLVMValueRef *items = arena_alloc(&temp_arena, infos.count * sizeof(*items));
-    for (size_t i = 0; i < infos.count; i++) {
-        const Hash_Info it = infos.data[i];
-        LLVMValueRef    item[] = {
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.kind, true),
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.offset, true),
-            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it.size, true),
-        };
-        items[i] = LLVMConstStructInContext(c->llvm_context, item, len(item), false);
-    }
-
-    LLVMValueRef slice[] = {
-        compile_const_value_into_memory(c, LLVMConstArray(compile_type(c, &c->hash_info_type), items, infos.count)),
-        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), infos.count, true),
-    };
-    arena_reset(&temp_arena, items);
-
-    LLVMValueRef result =
-        compile_const_value_into_memory(c, LLVMConstStructInContext(c->llvm_context, slice, len(slice), false));
-
-    ht_set(&c->hash_info_intern, type, result);
-    return result;
 }
 
 LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
@@ -1333,15 +1763,8 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
         return compile_trait_impl(c, member->trait_impl);
     }
 
-    if (member->is_map_info) {
-        assert(member->lhs->type.kind == TYPE_MAP);
-        LLVMValueRef result = get_hash_info(c, *member->lhs->type.spec.map.key);
-        return ref ? result : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, result, "");
-    }
-
     LLVMValueRef lhs = NULL;
     LLVMTypeRef  lhs_type = NULL;
-
     if (member->lhs->type.ref) {
         lhs = compile_expr(c, member->lhs, false);
         set_debug_pos(c, n->token.pos);

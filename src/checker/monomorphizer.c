@@ -1043,3 +1043,43 @@ end:
     ht_clear(&c->monomorph_replacements);
     return n;
 }
+
+Node_Fn *monomorphize_hook_for_monomorphized_structure(Compiler *c, Node_Struct *structt, SV hook) {
+    Node *n = (Node *) structt;
+    assert(structt->monomorphs.count);
+
+    Method_Spec spec = {0};
+    assert(get_method_spec(c, n, type_without_meta(n->type), hook, &spec, NULL));
+
+    Node_Fn *method = get_method(c, spec, n->module);
+    if (!method) {
+        return NULL;
+    }
+
+    if (!method->is_hook) {
+        return NULL;
+    }
+
+    assert(type_kind_eq(method->node.type, TYPE_FN));
+    const Type_Fn *method_spec = method->node.type.spec.fn;
+    assert(method_spec->args_count);
+
+    const size_t monomorph_parameters_begin_save = c->monomorph_parameters.begin;
+    c->monomorph_parameters.begin = c->monomorph_parameters.count;
+
+    const Monomorphizing_Site monomorphizing_site_save = c->monomorphizing_site;
+    c->monomorphizing_site.expr = n;
+    c->monomorphizing_site.node = (Node *) method;
+
+    const Type *expected = &method_spec->args[0].type;
+    const Type  actual = type_with_ref(type_without_meta(n->type), expected->ref);
+    infer_monomorph_parameters(c, &actual, expected, n, -1);
+    Node *result = monomorphize(c, (Node *) method, n);
+
+    c->monomorph_parameters.count = c->monomorph_parameters.begin;
+    c->monomorph_parameters.begin = monomorph_parameters_begin_save;
+    c->monomorphizing_site = monomorphizing_site_save;
+
+    assert(result->kind == NODE_FN);
+    return (Node_Fn *) result;
+}

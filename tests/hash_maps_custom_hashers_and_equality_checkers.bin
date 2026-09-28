@@ -1,0 +1,20 @@
+EXIT 0
+STDOUT 133
+69
+
+Custom equality!
+420
+
+Custom hash!
+Custom hash!
+Custom hash!
+1337
+
+Custom hash!
+Custom hash!
+Custom hash!
+Custom equality!
+80085
+
+STDERR 0
+

@@ -146,6 +146,8 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
+    compile_type(c, &c->hasher_type);
+    compile_type(c, &c->format_type);
     compile_type(c, &c->type_info_type);
     compile_type(c, &c->source_code_location_type);
 
@@ -261,7 +263,7 @@ void compiler_build(Compiler *c, const char *output_path) {
     ht_free(&c->methods_table);
     da_free(&c->methods_to_check);
 
-    ht_free(&c->hash_info_intern);
+    ht_free(&c->map_operators);
 
     da_free(&c->partial_stack);
 

@@ -1,0 +1,80 @@
+main :: () {
+    {
+        m: map[Item]s64
+        defer m.free()
+
+        m[{"foo"}] = 69
+        m[{"bar"}] = 420
+        println(m[{"foo"}])
+
+        Item :: struct {
+            x: string
+        }
+    }
+    println()
+
+    {
+        m: map[Item]s64
+        defer m.free()
+
+        m[{"foo"}] = 69
+        m[{"bar"}] = 420
+        println(m[{"bar"}])
+
+        Item :: struct {
+            x: string
+        }
+
+        operator <=> :: (this: Item, that: Item) -> Equivalence {
+            println("Custom equality!")
+            if this.x == that.x then return .EQ else return .NE
+        }
+    }
+    println()
+
+    {
+        m: map[Item]s64
+        defer m.free()
+
+        m[{"foo"}] = 1337
+        m[{"bar"}] = 80085
+        println(m[{"foo"}])
+
+        Item :: struct {
+            x: string
+        }
+
+        #hook
+        hash :: (this: Item, h: &Hasher) {
+            println("Custom hash!")
+            map.hash(this.x, h)
+        }
+    }
+    println()
+
+    {
+        m: map[Item]s64
+        defer m.free()
+
+        m[{"foo"}] = 1337
+        m[{"bar"}] = 80085
+        println(m[{"bar"}])
+
+        Item :: struct {
+            x: string
+        }
+
+        #hook
+        hash :: (this: Item, h: &Hasher) {
+            println("Custom hash!")
+            map.hash(this.x, h)
+        }
+
+        operator <=> :: (this: Item, that: Item) -> Equivalence {
+            println("Custom equality!")
+            if this.x == that.x then return .EQ else return .NE
+        }
+    }
+}
+
+#import "hash"

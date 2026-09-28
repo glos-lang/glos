@@ -216,6 +216,7 @@ void check_signature_of_index_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 void check_signature_of_slice_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
+void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 
 void define_orderless_methods(Compiler *c);
 
@@ -232,7 +233,8 @@ void add_monomorph_parameter_default_value(
     Node           *default_value_as_caller_location);
 void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *expected, Node *n, i64 group_index);
 
-Node *monomorphize(Compiler *c, Node *n, Node *site);
+Node    *monomorphize(Compiler *c, Node *n, Node *site);
+Node_Fn *monomorphize_hook_for_monomorphized_structure(Compiler *c, Node_Struct *structt, SV hook);
 
 // Expressions /////////////////////////////////////////////////////////////////////////////////////
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid);
