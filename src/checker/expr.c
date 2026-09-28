@@ -1611,12 +1611,7 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
     }
 
     if (n->type.kind == TYPE_SLICE) {
-        const Type array = {
-            .kind = TYPE_ARRAY,
-            .spec.array.count = array_count,
-            .spec.array.element = n->type.spec.slice.element,
-        };
-        set_auto_cast(c, n, -1, AUTO_CAST_ARRAY_TO_SLICE, array, n->type);
+        compound->slice_literal_array_count = array_count;
     }
 }
 

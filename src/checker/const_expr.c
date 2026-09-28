@@ -715,8 +715,16 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
 
 Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
     Node *n = (Node *) compound;
+    Type  n_type = n->type;
+    if (n->type.kind == TYPE_SLICE) {
+        n_type = (Type) {
+            .kind = TYPE_ARRAY,
+            .spec.array.count = compound->slice_literal_array_count,
+            .spec.array.element = n_type.spec.slice.element,
+        };
+    }
 
-    Const_Value value = default_const_value(c, n->type);
+    Const_Value value = default_const_value(c, n_type);
     if (compound->is_not_compound) {
         return (compound->children.head) ? eval_const_expr(c, compound->children.head, false) : value;
     }
@@ -736,15 +744,18 @@ Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
             it = it_binary->rhs;
         }
 
-        if (n->type.kind == TYPE_STRUCT) {
+        if (n_type.kind == TYPE_STRUCT) {
             value.as.structt.fields[it_iota] = eval_const_expr(c, it, false);
-        } else if (n->type.kind == TYPE_ARRAY) {
+        } else if (n_type.kind == TYPE_ARRAY) {
             value.as.array.data[it_iota] = eval_const_expr(c, it, false);
         } else {
             unreachable();
         }
     }
 
+    if (n->type.kind == TYPE_SLICE) {
+        value.as.array.is_slice = true;
+    }
     return value;
 }
 

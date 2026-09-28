@@ -1990,17 +1990,27 @@ LLVMValueRef compile_expr_interpolation(Compiler *c, Node_Interpolation *interpo
 
 LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool ref) {
     Node *n = (Node *) compound;
-    if (compound->is_not_compound) {
-        LLVMValueRef memory = compile_alloca(c, n->type.llvm);
-        LLVMBuildStore(
-            c->llvm_builder,
-            compound->children.head ? compile_expr(c, compound->children.head, false) : LLVMConstNull(n->type.llvm),
-            memory);
-        return ref ? memory : LLVMBuildLoad2(c->llvm_builder, n->type.llvm, memory, "");
+    Type  n_type = n->type;
+    if (n->type.kind == TYPE_SLICE) {
+        n_type = (Type) {
+            .kind = TYPE_ARRAY,
+            .spec.array.count = compound->slice_literal_array_count,
+            .spec.array.element = n_type.spec.slice.element,
+        };
+        compile_type(c, &n_type);
     }
 
-    LLVMValueRef memory = compile_alloca(c, n->type.llvm);
-    LLVMBuildStore(c->llvm_builder, LLVMConstNull(n->type.llvm), memory);
+    if (compound->is_not_compound) {
+        LLVMValueRef memory = compile_alloca(c, n_type.llvm);
+        LLVMBuildStore(
+            c->llvm_builder,
+            compound->children.head ? compile_expr(c, compound->children.head, false) : LLVMConstNull(n_type.llvm),
+            memory);
+        return ref ? memory : LLVMBuildLoad2(c->llvm_builder, n_type.llvm, memory, "");
+    }
+
+    LLVMValueRef memory = compile_alloca(c, n_type.llvm);
+    LLVMBuildStore(c->llvm_builder, LLVMConstNull(n_type.llvm), memory);
 
     size_t ordered_iota = 0;
     for (Node *iter = compound->children.head; iter; iter = iter->next) {
@@ -2018,10 +2028,10 @@ LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool re
         }
 
         LLVMValueRef ptr = NULL;
-        if (n->type.kind == TYPE_STRUCT) {
-            ptr = LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, memory, it_iota, "");
-        } else if (n->type.kind == TYPE_ARRAY) {
-            LLVMTypeRef  element_type = n->type.spec.array.element->llvm;
+        if (n_type.kind == TYPE_STRUCT) {
+            ptr = LLVMBuildStructGEP2(c->llvm_builder, n_type.llvm, memory, it_iota, "");
+        } else if (n_type.kind == TYPE_ARRAY) {
+            LLVMTypeRef  element_type = n_type.spec.array.element->llvm;
             LLVMValueRef indices[] = {
                 LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), it_iota, true),
             };
@@ -2032,6 +2042,16 @@ LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool re
 
         LLVMValueRef value = compile_expr(c, it, false);
         LLVMBuildStore(c->llvm_builder, value, ptr);
+    }
+
+    if (n->type.kind == TYPE_SLICE) {
+        LLVMValueRef slice = compile_alloca(c, n->type.llvm);
+        LLVMBuildStore(c->llvm_builder, memory, slice);
+        LLVMBuildStore(
+            c->llvm_builder,
+            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), compound->slice_literal_array_count, true),
+            LLVMBuildStructGEP2(c->llvm_builder, n->type.llvm, slice, 1, ""));
+        memory = slice;
     }
 
     if (ref) {

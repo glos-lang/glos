@@ -947,6 +947,7 @@ typedef struct {
 
     Nodes  children;
     size_t children_count;
+    size_t slice_literal_array_count;
 
     Token end;
 
