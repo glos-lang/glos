@@ -82,7 +82,7 @@ main :: () {
     //
     // The following two statements are identical in terms of memory management.
     automatic := "\{nice()}. This is nice!"
-    manual    := []Any {nice(), ". This is nice!"}
+    manual    := [?]Any {nice(), ". This is nice!"}
 
     // Although the memory semantics of the above two statements are similar, they actually have different
     // types as far as the compiler is concerned. String interpolations are implemented as an 'union' type,

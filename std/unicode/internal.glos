@@ -271,7 +271,7 @@ char_properties :: [MAX_LATIN1 + 1]u8 {
 	0xFF = pLl | pp, // 'ÿ'
 }
 
-alpha_ranges :: []s32 {
+alpha_ranges :: [?]s32 {
 	0x00d8,  0x00f6,
 	0x00f8,  0x01f5,
 	0x0250,  0x02a8,
@@ -426,7 +426,7 @@ alpha_ranges :: []s32 {
 	0xffda,  0xffdc,
 }
 
-alpha_singlets :: []s32 {
+alpha_singlets :: [?]s32 {
 	0x00aa,
 	0x00b5,
 	0x00ba,
@@ -461,7 +461,7 @@ alpha_singlets :: []s32 {
 	0xfe74,
 }
 
-to_lower_ranges :: []s32 {
+to_lower_ranges :: [?]s32 {
 	0x0041,  0x005a, 532, // A-Z a-z
 	0x00c0,  0x00d6, 532, // - -
 	0x00d8,  0x00de, 532, // - -
@@ -500,7 +500,7 @@ to_lower_ranges :: []s32 {
 	0xff21,  0xff3a, 532, // - -
 }
 
-to_lower_singlets :: []s32 {
+to_lower_singlets :: [?]s32 {
 	0x0100, 501,
 	0x0102, 501,
 	0x0104, 501,
@@ -836,7 +836,7 @@ to_lower_singlets :: []s32 {
 	0x1ffc, 491,
 }
 
-to_title_singlets := []s32 {
+to_title_singlets :: [?]s32 {
 	0x01c4, 501,
 	0x01c6, 499,
 	0x01c7, 501,
@@ -847,7 +847,7 @@ to_title_singlets := []s32 {
 	0x01f3, 499,
 }
 
-to_upper_ranges :: []s32 {
+to_upper_ranges :: [?]s32 {
 	0x0061,  0x007a, 468, // a-z A-Z
 	0x00e0,  0x00f6, 468,
 	0x00f8,  0x00fe, 468,
@@ -885,7 +885,7 @@ to_upper_ranges :: []s32 {
 	0xff41,  0xff5a, 468,
 }
 
-to_upper_singlets :: []s32 {
+to_upper_singlets :: [?]s32 {
 	0x00ff, 621,
 	0x0101, 499,
 	0x0103, 499,
@@ -1228,7 +1228,7 @@ to_upper_singlets :: []s32 {
 	0x1ff3, 509,
 }
 
-space_ranges := []s32 {
+space_ranges :: [?]s32 {
 	0x0009,  0x000d, // tab and newline
 	0x0020,  0x0020, // space
 	0x0085,  0x0085, // next line
@@ -1243,7 +1243,7 @@ space_ranges := []s32 {
 	0xfeff,  0xfeff,
 }
 
-spacing_mark_ranges := []s32 {
+spacing_mark_ranges :: [?]s32 {
 	0x0903, 0x0903,
 	0x093B, 0x093B,
 	0x093E, 0x0940,
@@ -1428,7 +1428,7 @@ spacing_mark_ranges := []s32 {
 	0x1D16D, 0x1D172,
 }
 
-nonspacing_mark_ranges := []s32 {
+nonspacing_mark_ranges :: [?]s32 {
 	0x0300, 0x036F,
 	0x0483, 0x0487,
 	0x0591, 0x05BD,
@@ -1777,7 +1777,7 @@ nonspacing_mark_ranges := []s32 {
 	0xE0100, 0xE01EF,
 }
 
-emoji_extended_pictographic_ranges := []s32 {
+emoji_extended_pictographic_ranges :: [?]s32 {
 	0x00A9, 0x00A9,
 	0x00AE, 0x00AE,
 	0x203C, 0x203C,
@@ -2291,7 +2291,7 @@ emoji_extended_pictographic_ranges := []s32 {
 	0x1FC00, 0x1FFFD,
 }
 
-grapheme_extend_ranges := []s32 {
+grapheme_extend_ranges :: [?]s32 {
 	0x0300, 0x036F,
 	0x0483, 0x0487,
 	0x0488, 0x0489,
@@ -2670,7 +2670,7 @@ grapheme_extend_ranges := []s32 {
 	0xE0100, 0xE01EF,
 }
 
-hangul_syllable_lv_singlets := []s32 {
+hangul_syllable_lv_singlets :: [?]s32 {
 	0xAC00,
 	0xAC1C,
 	0xAC38,
@@ -3072,7 +3072,7 @@ hangul_syllable_lv_singlets := []s32 {
 	0xD788,
 }
 
-hangul_syllable_lvt_ranges := []s32 {
+hangul_syllable_lvt_ranges :: [?]s32 {
 	0xAC01, 0xAC1B,
 	0xAC1D, 0xAC37,
 	0xAC39, 0xAC53,
@@ -3474,7 +3474,7 @@ hangul_syllable_lvt_ranges := []s32 {
 	0xD789, 0xD7A3,
 }
 
-indic_conjunct_break_consonant_ranges := []s32 {
+indic_conjunct_break_consonant_ranges :: [?]s32 {
 	0x0915, 0x0939,
 	0x0958, 0x095F,
 	0x0978, 0x097F,
@@ -3503,7 +3503,7 @@ indic_conjunct_break_consonant_ranges := []s32 {
 	0x0D15, 0x0D3A,
 }
 
-indic_conjunct_break_extend_ranges := []s32 {
+indic_conjunct_break_extend_ranges :: [?]s32 {
 	0x0300, 0x034E,
 	0x0350, 0x036F,
 	0x0483, 0x0487,

@@ -1183,14 +1183,30 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         token = peek_token(p);
         if (token.kind != TOKEN_RBRACKET) {
-            if (read_token(p, TOKEN_SLICE)) {
+            if (token.kind == TOKEN_SLICE) {
+                p->state.peeked = false;
                 indexable->is_dynamic = true;
+            } else if (token.kind == TOKEN_QUESTION) {
+                if (!compounds_allowed) {
+                    error_unexpected(token);
+                }
+
+                p->state.peeked = false;
+                indexable->infer_array_count = true;
             } else {
                 indexable->count = parse_expr(p, POWER_SET, false, true, NULL);
             }
         }
         expect_token(p, TOKEN_RBRACKET);
         indexable->element = parse_expr(p, POWER_REF, false, false, NULL);
+
+        if (indexable->infer_array_count) {
+            token = peek_token(p);
+            if (token.kind != TOKEN_LBRACE || token.newline) {
+                error_token(EK_ERROR, token, "Expected '{' on same line after array type with inferred count");
+                exit(1);
+            }
+        }
     } break;
 
     case TOKEN_MAP: {

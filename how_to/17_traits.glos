@@ -197,7 +197,7 @@ main :: () {
     any = 69
     any = "Hi!"
     any = true
-    any = []string {"Yee", "Haw"}
+    any = [?]string {"Yee", "Haw"}
     any = 13.37
     any = null
 

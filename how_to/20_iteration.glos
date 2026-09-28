@@ -10,7 +10,7 @@ main :: () {
     // You can iterate over arrays, dynamic arrays, slices, strings, hash tables.
     //
     // For the sake of brevity, just showing an array example here. But the other mentioned types will also work.
-    xs := []string {"foo", "bar"}
+    xs := [?]string {"foo", "bar"}
     for i, x := range xs {
         println(i, x)
     }

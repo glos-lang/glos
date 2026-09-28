@@ -37,12 +37,13 @@ main :: () {
 
     // An array literal is constructed like this:
     //
-    //     [ Optional_Count ] Type { Items }
+    //     [ Count ] Type { Items }
     //
-    println([]string {"Foo", "Bar"})
+    // If you write the count as '?', then the compiler will infer it.
+    println([?]string {"Foo", "Bar"})
 
     // Designated initializers are supported
-    println([]string {1 = "Bar", 0 = "Foo"})
+    println([?]string {1 = "Bar", 0 = "Foo"})
 
     // You can optionally pass the count as well in the literal
     println([2]s64 {69})
@@ -121,4 +122,13 @@ main :: () {
     // However modifying the slice fields 'data' or 'count' does not.
 
     // The same bounds check semantics apply for slices as in arrays, so we are not repeating all of that.
+
+    // You can also construct slice literals.
+    //
+    //     [] Type { Items }
+    //
+    // Its lifetime will be tied to the scope it is defined in.
+    slice := []string {"Foo", "Bar"}
+    println("typeof(slice) = \{typeof(slice)}")
+    println("slice         = \{slice}")
 }

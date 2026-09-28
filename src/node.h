@@ -1040,6 +1040,7 @@ typedef struct {
     Node *element;
     Node *count;
     bool  is_dynamic;
+    bool  infer_array_count;
 } Node_Indexable;
 
 struct Node_Define {

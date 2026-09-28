@@ -1,5 +1,5 @@
 main :: () {
-    xs := []s32 {69, 420, 1337}
+    xs := [?]s32 {69, 420, 1337}
 
     iota :: () -> s64 {
         println("Side effect!")

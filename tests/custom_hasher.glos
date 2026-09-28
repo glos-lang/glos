@@ -29,7 +29,7 @@ Vec3 :: struct($T: Type) {
 main :: () {
     println(map.hash(Vec2 {69, 420}))
     println(map.hash(Vec3(s32) {69, 420, 1337}))
-    println(map.hash([]Int {69, 420}))
+    println(map.hash([?]Int {69, 420}))
 }
 
 #import "hash"

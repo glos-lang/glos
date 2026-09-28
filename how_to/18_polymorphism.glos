@@ -7,7 +7,7 @@ main :: () {
 
     foo(69)
     foo("Urmom")
-    foo([]f32 {4.2, 6.9})
+    foo([?]f32 {4.2, 6.9})
     println()
 
     // Anything can be polymorphic, not just types. For example, here, the argument 'xs' is an array
@@ -21,8 +21,8 @@ main :: () {
         println()
     }
 
-    bar([]string {"Foo", "Bar"})
-    bar([]u8 {'L', 'i', 'g', 'm', 'a'})
+    bar([?]string {"Foo", "Bar"})
+    bar([?]u8 {'L', 'i', 'g', 'm', 'a'})
 
     // Now let's look at polymorphic arguments.
     baz :: ($N: s64) {
@@ -178,7 +178,7 @@ polymorphic_structures :: () {
     b.show()
 
     a.more_show(69, "Urmom")
-    b.more_show([]f64 {4.2, 6.9}, "Noice!")
+    b.more_show([?]f64 {4.2, 6.9}, "Noice!")
 
     a.s32_show()
     // b.s32_show() // This is an error, as 'b' is 'Box(string)', not 'Box(s32)'

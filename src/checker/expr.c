@@ -1599,11 +1599,24 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
     c->designated_initializers.count = designated_initializers_count_save;
 
     compound->are_children_checked = true;
-    if (n->type.kind == TYPE_SLICE) {
+    if (compound->lhs && compound->lhs->kind == NODE_INDEXABLE &&
+        ((Node_Indexable *) compound->lhs)->infer_array_count) //
+    {
+        assert(n->type.kind == TYPE_SLICE);
         Type *element = n->type.spec.slice.element;
         n->type.spec.array.element = element;
         n->type.spec.array.count = array_count;
         n->type.kind = TYPE_ARRAY;
+        compound->lhs->type = n->type;
+    }
+
+    if (n->type.kind == TYPE_SLICE) {
+        const Type array = {
+            .kind = TYPE_ARRAY,
+            .spec.array.count = array_count,
+            .spec.array.element = n->type.spec.slice.element,
+        };
+        set_auto_cast(c, n, -1, AUTO_CAST_ARRAY_TO_SLICE, array, n->type);
     }
 }
 
@@ -2223,19 +2236,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
             }
         }
         check_expr(c, indexable->element, REF_NONE);
-    } else if (indexable->is_dynamic) {
-        check_expr(c, indexable->element, REF_SLICE);
     } else {
-        // The type `[]T` gets compiled to:
-        //
-        // ```
-        // struct {
-        //     T  *data;
-        //     i64 count;
-        // }
-        // ```
-        //
-        // It is not immediately necessary to calculate the properties of T, which allows for recursive definitions.
         check_expr(c, indexable->element, REF_SLICE);
     }
     type_assert_type(c, indexable->element);

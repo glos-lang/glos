@@ -52,16 +52,16 @@ main :: () {
     println(map.equal("Urmom", "Urmoms"))
     println()
 
-    println(map.equal([]s64 {69, 420}, {69, 420}))
+    println(map.equal([?]s64 {69, 420}, {69, 420}))
     println(map.equal([3]s64 {69, 420}, {69, 420, 1337}))
-    println(map.equal([]s64 {69, 420}, {70, 420}))
-    println(map.equal([]s64 {69, 420}, {69, 421}))
+    println(map.equal([?]s64 {69, 420}, {70, 420}))
+    println(map.equal([?]s64 {69, 420}, {69, 421}))
     println()
 
-    println(map.equal([]string {"foo", "bar"}[..], {"foo", "bar"}))
-    println(map.equal([]string {"foo", "bar"}[..], {"foo", "bar", "baz"}))
-    println(map.equal([]string {"foo", "bar"}[..], {"Foo", "bar"}))
-    println(map.equal([]string {"foo", "bar"}[..], {"foo", "Bar"}))
+    println(map.equal([]string {"foo", "bar"}, {"foo", "bar"}))
+    println(map.equal([]string {"foo", "bar"}, {"foo", "bar", "baz"}))
+    println(map.equal([]string {"foo", "bar"}, {"Foo", "bar"}))
+    println(map.equal([]string {"foo", "bar"}, {"foo", "Bar"}))
     println()
 
     T :: struct { x, y:  s32; label: string }

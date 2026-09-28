@@ -16,8 +16,8 @@ main :: () {
     println(map.hash(f64(13.37)))
     println(map.hash("Urmom"))
 
-    println(map.hash([]s64 {69, 420}))
-    println(map.hash([]string {"foo", "bar"}[..]))
+    println(map.hash([?]s64 {69, 420}))
+    println(map.hash([?]string {"foo", "bar"}[..]))
 
     println(map.hash(struct {
         x, y:  s32

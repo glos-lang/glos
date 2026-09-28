@@ -1,4 +1,4 @@
 main :: () {
-    println(string([]u8 {'H', 'i', '!'}))
-    println(string([]s8 {'L', 'o', 'L'}))
+    println(string([?]u8 {'H', 'i', '!'}))
+    println(string([?]s8 {'L', 'o', 'L'}))
 }

@@ -3,7 +3,7 @@ foo :: (p: &&[]s64) {
 }
 
 main :: () {
-    xs: []s64 = {69}
+    xs := []s64 {69}
     ys := &xs
     foo(&ys)
     println(xs)
