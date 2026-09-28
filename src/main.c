@@ -24,7 +24,7 @@ static void usage(FILE *f, const char *program) {
         {"r", "             Run the program"},
         {"o", "OUTPUT       Set the output path"},
         {"O", "LEVEL        Set the optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
-        {"L", "PATH         Add a library path"},
+        {"L", "PATH         Add a library search path"},
         {"l", "NAME         Add a library"},
         {"-", "             End of compiler options. All following arguments are passed to the program if ran"},
     };

@@ -21,7 +21,7 @@ main :: () {
     println("Is s64:    \{v == s64}")
     println("Is string: \{v == string}")
 
-    // If you check the type of a union variable in an if or switch statement, the compiler
+    // If you check the type of a union variable/constant in an if or switch statement, the compiler
     // will attempt to "unwrap" it inside the branch if possible.
     if v == s64 {
         // Inside this branch, the compiler knows 'v' is a 's64', therefore it automatically narrows it.

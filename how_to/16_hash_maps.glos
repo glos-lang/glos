@@ -58,14 +58,6 @@ Vec2 :: struct {
     x, y: f32
 }
 
-// For a type to be usable as the key of a map, it must implement the '==' operator.
-operator <=> :: (this: Vec2, that: Vec2) -> Equivalence {
-    if this.x == that.x && this.y == that.y {
-        return .EQ
-    }
-    return .NE
-}
-
 custom_types_as_keys :: () {
     m: map[Vec2]string
     defer m.free()

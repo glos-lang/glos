@@ -31,11 +31,16 @@ main :: () {
     // You can check what is the underlying enum of an error value.
     println(err == Bar)
 
+    // If you check the type of an error variable/constant in an if or switch statement, the compiler
+    // will attempt to "unwrap" it inside the branch if possible.
     if err == Bar {
-        // The narrowing rules apply here too. Inside this block, the variable 'err' will have
-        // type 'Bar' instead of 'error'.
+        // Inside this branch, the compiler knows 'err' is a 'Bar', therefore it automatically narrows it.
         //
+        // Note that this type narrowing occurs at compile time, and is just syntax sugar. At runtime, no new variable is allocated.
         println(typeof(err))
+    } else {
+        // Here there is no such guarantee, therefore 'err' is of type 'error'.
+        #assert(typeof(err) == error)
     }
 
     // This also works for switch statements
@@ -50,6 +55,15 @@ main :: () {
         println("typeof(err) = \{typeof(err)}") // err is Bar here.
     }
 
+    // This will not work if you combine cases.
+    if err == {
+    case null
+        println("null")
+
+    case Foo, Bar
+        // Compiler does not know the type of 'err' here. Therefore it remains 'error'.
+        println("typeof(err) = \{typeof(err)}")
+    }
 
     // You can access the underlying type of an error value.
     //

@@ -1838,6 +1838,11 @@ void check_expr_call(Compiler *c, Node_Call *call) {
 
             // Check the arguments and the arity
             {
+                size_t args_count_max = 1;
+                if (!to_type->ref && type_kind_eq(*to_type, TYPE_SLICE)) {
+                    args_count_max = 2;
+                }
+
                 Node *excess_argument = NULL;
                 ll_foreach(it, &call->args) {
                     if (it->kind == NODE_BINARY && it->token.kind == TOKEN_SET) {
@@ -1852,14 +1857,9 @@ void check_expr_call(Compiler *c, Node_Call *call) {
 
                     check_expr(c, it, REF_NONE);
                     call->args_count += type_kind_eq(it->type, TYPE_GROUP) ? it->type.spec.group.count : 1;
-                    if (call->args_count > 1) {
+                    if (!excess_argument && call->args_count > args_count_max) {
                         excess_argument = it;
                     }
-                }
-
-                size_t args_count_max = 1;
-                if (!to_type->ref && type_kind_eq(*to_type, TYPE_SLICE)) {
-                    args_count_max = 2;
                 }
 
                 check_call_arity(
@@ -1871,7 +1871,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                     1,
                     args_count_max,
                     excess_argument,
-                    "in a cast expression");
+                    args_count_max == 1 ? "in a cast expression" : "in a pointer slice expression");
             }
 
             bool same = false;
