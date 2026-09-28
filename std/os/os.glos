@@ -1,5 +1,42 @@
 File :: distinct rawptr
 
+open :: (path: string, flags := Open_Flag.RDONLY, perm := s32(0o666)) -> File, error {
+    path := strings.to_cstring(path, temporary_allocator)?
+    defer temporary_allocator.rewind(rawptr(path))
+
+    fd := C.open(path, C.int(flags), C.int(perm))
+    if fd == -1 {
+        return null, C.get_errno()
+    }
+
+    mode: &C.char
+    if flags & .RDWR != 0 {
+        if flags & .APPEND != 0 {
+            mode = "a+"
+        } else {
+            mode = "r+"
+        }
+    } else if flags & .WRONLY != 0 {
+        if flags & .APPEND != 0 {
+            mode = "a"
+        } else {
+            mode = "w"
+        }
+    } else {
+        mode = "r"
+    }
+
+    f := File(C.fdopen(fd, mode))
+    if f == null {
+        return null, C.get_errno()
+    }
+    return f, null
+}
+
+create :: inline (path: string, perm := s32(0o666)) -> File, error {
+    return open(path, .CREAT | .TRUNC | .WRONLY, perm)
+}
+
 #if PLATFORM == {
 case .LINUX
     Open_Flag :: enum {
@@ -39,39 +76,6 @@ case .WINDOWS
         TEXT   = 16384
         BINARY = 32768
     }
-}
-
-open :: (path: string, flags: Open_Flag, perm: s32 = 0o666) -> File, error {
-    path := strings.to_cstring(path, temporary_allocator)?
-    defer temporary_allocator.rewind(rawptr(path))
-
-    fd := C.open(path, C.int(flags), C.int(perm))
-    if fd == -1 {
-        return null, C.get_errno()
-    }
-
-    mode: &C.char
-    if flags & .RDWR != 0 {
-        if flags & .APPEND != 0 {
-            mode = "a+"
-        } else {
-            mode = "r+"
-        }
-    } else if flags & .WRONLY != 0 {
-        if flags & .APPEND != 0 {
-            mode = "a"
-        } else {
-            mode = "w"
-        }
-    } else {
-        mode = "r"
-    }
-
-    f := File(C.fdopen(fd, mode))
-    if f == null {
-        return null, C.get_errno()
-    }
-    return f, null
 }
 
 read :: (this: File, bytes: []u8) -> s64, error {
@@ -114,6 +118,34 @@ close :: inline (this: &File) {
 
 rewind :: inline (this: File) {
     C.rewind(C.FILE(this))
+}
+
+read_file :: (path: string, allocator := default_allocator) -> []u8, error {
+    f := open(path)?
+    defer f.close()
+
+    offset := f.seek(0, .END)?
+    f.rewind()
+
+    data := allocator.alloc(offset + 1, zeroed = false)?
+    bytes := []u8(&u8(data), offset + 1)
+
+    n, err := f.read(bytes)
+    if err != null {
+        return bytes, err // Do not use the '?' operator here, as user might need the bytes
+    }
+
+    bytes[n] = 0
+    bytes.count = n
+    allocator.rewind(rawptr(bytes.data) + rawptr(n + 1))
+    return bytes, null
+}
+
+write_file :: (path: string, bytes: []u8, perm := s32(0o666)) -> error {
+    f := create(path, perm)?
+    defer f.close()
+    f.write(bytes)?
+    return null
 }
 
 #if PLATFORM == {

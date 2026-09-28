@@ -5,7 +5,7 @@ App :: struct {
 }
 
 init :: (this: &App) {
-    contents, _ := fs.read_entire_file(TASKS_PATH)
+    contents, _ := os.read_file(TASKS_PATH)
     contents := string(contents)
     for contents.count != 0 {
         lhs: string
@@ -153,7 +153,6 @@ main :: () {
     }
 }
 
-fs      :: #import "fs"
 os      :: #import "os"
 io      :: #import "io"
 strings :: #import "strings"
