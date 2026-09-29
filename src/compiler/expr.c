@@ -362,34 +362,32 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
             }
 
             for (size_t i = 0; i < abi.args_count; i++) {
-                const size_t direct_types_count = abi.args[i].direct_types_count;
-                if (direct_types_count) {
-                    arg_iota += direct_types_count;
-                } else {
-                    arg_iota++;
+                if (!abi.args[i].is_empty) {
+                    const size_t direct_types_count = abi.args[i].direct_types_count;
+                    if (direct_types_count) {
+                        arg_iota += direct_types_count;
+                    } else {
+                        arg_iota++;
 
 #ifdef PLATFORM_X86_64_LINUX
-                    LLVMAttributeRef byval =
-                        LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, abi.args[i].type);
-                    LLVMAddAttributeAtIndex(fn->llvm, arg_iota, byval);
+                        LLVMAttributeRef byval =
+                            LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, abi.args[i].type);
+                        LLVMAddAttributeAtIndex(fn->llvm, arg_iota, byval);
 #endif // PLATFORM_X86_64_LINUX
+                    }
                 }
             }
-            assert(arg_iota == abi.actual_args_count);
 
-            const size_t actual_args_count = LLVMCountParams(call.fn.value);
-            const size_t wrapper_args_count = LLVMCountParams(fn->llvm);
-            const size_t actual_args_emitted = c->arg_values.count - call.arg_values_start;
-
-            assert(actual_args_count >= wrapper_args_count);
-            const size_t offset = actual_args_count - wrapper_args_count;
-
-            for (size_t i = actual_args_emitted; i < actual_args_count; i++) {
+            const i64 actual_args_count = LLVMCountParams(call.fn.value);
+            const i64 wrapper_args_count = LLVMCountParams(fn->llvm);
+            const i64 actual_args_emitted = c->arg_values.count - call.arg_values_start;
+            const i64 offset = actual_args_count - wrapper_args_count;
+            for (i64 i = actual_args_emitted; i < actual_args_count; i++) {
                 da_push(&c->arg_values, LLVMGetParam(fn->llvm, i - offset));
             }
 
             LLVMValueRef result = compile_call_finalize(c, &call, true, false);
-            if (abi.return_type->kind == TYPE_VOID) {
+            if (abi.return_type->kind == TYPE_VOID || abi.return_abi.is_empty) {
                 LLVMBuildRetVoid(c->llvm_builder);
             } else if (abi.return_abi.direct_types_count == 0) {
                 LLVMBuildStore(c->llvm_builder, result, LLVMGetParam(fn->llvm, 0));

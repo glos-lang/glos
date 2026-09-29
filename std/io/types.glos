@@ -40,6 +40,12 @@ write :: (this: Multi_Writer, bytes: []u8) -> s64, error {
     return bytes.count, null
 }
 
+Discard_Writer :: struct {}
+
+write :: (this: Discard_Writer, bytes: []u8) -> s64, error {
+    return bytes.count, null
+}
+
 Seek :: enum {
     START   = 0
     CURRENT = 1
