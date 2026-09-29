@@ -1,0 +1,72 @@
+#assert(PLATFORM == .WINDOWS)
+
+MEM_COMMIT  :: 0x00001000
+MEM_RELEASE :: 0x00008000
+MEM_RESERVE :: 0x00002000
+
+PAGE_READWRITE :: 0x04
+
+STD_INPUT_HANDLE  :: DWORD(s32(-10))
+STD_OUTPUT_HANDLE :: DWORD(s32(-11))
+STD_ERROR_HANDLE  :: DWORD(s32(-12))
+
+HANDLE_FLAG_INHERIT :: 0x00000001
+
+STARTF_USESTDHANDLES :: 0x00000100
+
+INFINITE :: 0xffffffff
+
+WAIT_FAILED :: 0xFFFFFFFF
+
+extern {
+    _fileno :: (f: C.FILE) -> C.int
+    _lseeki64 :: (fd: C.int, offset: s64, whence: C.int) -> s64
+    _open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int
+    _fdopen :: (fd: C.int, mode: &C.char) -> C.FILE
+    _open_osfhandle :: (osfhandle: C.intptr_t, flags: C.int) -> C.int
+    __acrt_iob_func :: (fd: C.unsigned) -> C.FILE
+
+    VirtualAlloc :: (lpAddress: LPVOID, dwSize: SIZE_T, flAllocationType: DWORD, flProtect: DWORD) -> LPVOID
+    VirtualFree  :: (lpAddress: LPVOID, dwSize: SIZE_T, dwFreeType: DWORD) -> BOOL
+
+    CreateProcessA :: (
+        lpApplicationName: LPCSTR,
+        lpCommandLine: LPSTR,
+        lpProcessAttributes: LPSECURITY_ATTRIBUTES,
+        lpThreadAttributes: LPSECURITY_ATTRIBUTES,
+        bInheritHandles: BOOL,
+        dwCreationFlags: DWORD,
+        lpEnvironment: LPVOID,
+        lpCurrentDirectory: LPCSTR,
+        lpStartupInfo: LPSTARTUPINFOA,
+        lpProcessInformation: LPPROCESS_INFORMATION,
+    ) -> BOOL
+
+    CreatePipe :: (
+        hReadPipe: PHANDLE,
+        hWritePipe: PHANDLE,
+        lpPipeAttributes: LPSECURITY_ATTRIBUTES,
+        nSize: DWORD,
+    ) -> BOOL
+
+    CloseHandle :: (hObject: HANDLE) -> BOOL
+    TerminateProcess :: (hProcess: HANDLE, uExitCode: UINT) -> BOOL
+
+    GetStdHandle :: (nStdHandle: DWORD) -> HANDLE
+    SetHandleInformation :: (
+        hObject: HANDLE,
+        dwMask: DWORD,
+        dwFlags: DWORD
+    ) -> BOOL
+
+    WaitForSingleObject :: (hHandle: HANDLE, dwMilliseconds: DWORD) -> DWORD
+    GetExitCodeProcess :: (hProcess: HANDLE, lpExitCode: LPDWORD) -> BOOL
+
+    GetEnvironmentVariableA :: (lpName: LPCSTR, lpBuffer: LPSTR, nSize: DWORD) -> DWORD
+    SetEnvironmentVariableA :: (lpName: LPCSTR, lpValue: LPCSTR) -> BOOL
+
+    GetCurrentDirectoryA :: (nBufferLength: DWORD, lpBuffer: LPSTR) -> DWORD
+    SetCurrentDirectoryA :: (lpPathName: LPCSTR) -> BOOL
+}
+
+C :: #import "C"

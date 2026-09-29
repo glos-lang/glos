@@ -1,0 +1,52 @@
+#assert(PLATFORM != .WINDOWS)
+
+MAP_FAILED :: rawptr(-1)
+
+PROT_READ  :: 0x1
+PROT_WRITE :: 0x2
+
+MAP_PRIVATE :: 0x02
+
+#if PLATFORM == .MACOS {
+    MAP_ANONYMOUS :: 0x1000
+} else {
+    MAP_ANONYMOUS :: 0x20
+}
+
+F_SETFD    :: 2
+FD_CLOEXEC :: 1
+
+STDIN_FILENO  :: 0
+STDOUT_FILENO :: 1
+STDERR_FILENO :: 2
+
+extern {
+    fileno :: (f: C.FILE) -> C.int
+    lseek :: (fd: C.int, offset: s64, whence: C.int) -> s64
+    open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int
+    fdopen :: (fd: C.int, mode: &C.char) -> C.FILE
+
+    mmap   :: (addr: rawptr, length: C.size_t, prot: C.int, flags: C.int, fd: C.int, offset: C.long) -> rawptr
+    munmap :: (addr: rawptr, length: C.size_t) -> C.int
+
+    read  :: (fd: C.int, buf: &C.char, count: C.size_t) -> C.ssize_t
+    write :: (fd: C.int, buf: &C.char, count: C.size_t) -> C.ssize_t
+    close :: (fd: C.int) -> C.int
+    fcntl :: (fd: C.int, cmd: C.int, arg: C.int) -> C.int
+    dup2  :: (oldfd: C.int, newfd: C.int) -> C.int
+
+    fork    :: () -> C.int
+    pipe    :: (pipefd: &[2]C.int) -> C.int
+    execvp  :: (file: &C.char, argv: &&C.char) -> C.int
+    waitpid :: (pid: C.int, wstatus: &C.int, options: C.int) -> C.int
+    kill    :: (pid: C.int, sig: C.int) -> C.int
+
+    getenv :: (name: &C.char) -> &C.char
+    setenv :: (name: &C.char, value: &C.char, overwrite: C.int) -> C.int
+    unsetenv :: (name: &C.char) -> C.int
+
+    getcwd :: (buf: &C.char, size: C.size_t) -> &C.char
+    chdir :: (path: &C.char) -> C.int
+}
+
+C :: #import "C"

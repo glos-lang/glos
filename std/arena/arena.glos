@@ -11,13 +11,13 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
         }
 
         #if PLATFORM == .WINDOWS {
-            this.data = C.VirtualAlloc(null, C.SIZE_T(this.capacity), C.MEM_RESERVE | C.MEM_COMMIT, C.PAGE_READWRITE)
+            this.data = win.VirtualAlloc(null, win.SIZE_T(this.capacity), win.MEM_RESERVE | win.MEM_COMMIT, win.PAGE_READWRITE)
             if this.data == null {
                 return null, C.get_errno()
             }
         } else {
-            this.data = C.mmap(null, C.size_t(this.capacity), C.PROT_READ | C.PROT_WRITE, C.MAP_PRIVATE | C.MAP_ANONYMOUS, -1, 0)
-            if this.data == C.MAP_FAILED {
+            this.data = posix.mmap(null, C.size_t(this.capacity), posix.PROT_READ | posix.PROT_WRITE, posix.MAP_PRIVATE | posix.MAP_ANONYMOUS, -1, 0)
+            if this.data == posix.MAP_FAILED {
                 return null, C.get_errno()
             }
         }
@@ -60,12 +60,18 @@ free :: (this: &Arena) {
     }
 
     #if PLATFORM == .WINDOWS {
-        C.VirtualFree(this.data, 0, C.MEM_RELEASE)
+        win.VirtualFree(this.data, 0, win.MEM_RELEASE)
     } else {
-        C.munmap(this.data, C.size_t(this.capacity))
+        posix.munmap(this.data, C.size_t(this.capacity))
     }
 
     C.memset(rawptr(this), 0, sizeof(*this))
 }
 
 C :: #import "C"
+
+#if PLATFORM == .WINDOWS {
+    win :: #import "windows"
+} else {
+    posix :: #import "posix"
+}

@@ -102,9 +102,9 @@ Node_Fn *get_main(Compiler *c) {
 static_assert(COUNT_NODES == 34, "");
 void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
     switch (n->kind) {
-    case NODE_IMPORT: {
-        Node_Import *import = (Node_Import *) n;
+    case NODE_IMPORT:
         if (n->is_stmt) {
+            Node_Import *import = (Node_Import *) n;
             make_sure_import_is_ready(c, import);
 
             bool imported = false;
@@ -142,7 +142,7 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
                 }
             }
         }
-    } break;
+        break;
 
     case NODE_DEFINE: {
         Node_Define *define = (Node_Define *) n;

@@ -17,48 +17,48 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
     }
 
     #if PLATFORM == .WINDOWS {
-        si: C.STARTUPINFOA
+        si: win.STARTUPINFOA
         si.cb = sizeof(si)
 
-        sa: C.SECURITY_ATTRIBUTES
+        sa: win.SECURITY_ATTRIBUTES
         sa.nLength = sizeof(sa)
-        sa.bInheritHandle = C.BOOL(true)
+        sa.bInheritHandle = win.BOOL(true)
         sa.lpSecurityDescriptor = null
 
-        stdout_pipe_read, stdout_pipe_write: C.HANDLE
+        stdout_pipe_read, stdout_pipe_write: win.HANDLE
         if capture_stdout != .NOP {
-            if C.CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0) == 0 {
+            if win.CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0) == 0 {
                 C.get_errno()?
             }
-            C.SetHandleInformation(stdout_pipe_read, C.HANDLE_FLAG_INHERIT, 0)
+            win.SetHandleInformation(stdout_pipe_read, win.HANDLE_FLAG_INHERIT, 0)
         } else {
-            stdout_pipe_write = C.GetStdHandle(C.STD_OUTPUT_HANDLE)
+            stdout_pipe_write = win.GetStdHandle(win.STD_OUTPUT_HANDLE)
         }
 
-        stderr_pipe_read, stderr_pipe_write: C.HANDLE
+        stderr_pipe_read, stderr_pipe_write: win.HANDLE
         if capture_stderr != .NOP {
-            if C.CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0) == 0 {
+            if win.CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0) == 0 {
                 C.get_errno()?
             }
-            C.SetHandleInformation(stderr_pipe_read, C.HANDLE_FLAG_INHERIT, 0)
+            win.SetHandleInformation(stderr_pipe_read, win.HANDLE_FLAG_INHERIT, 0)
         } else {
-            stderr_pipe_write = C.GetStdHandle(C.STD_ERROR_HANDLE)
+            stderr_pipe_write = win.GetStdHandle(win.STD_ERROR_HANDLE)
         }
 
-        stdin_pipe_read, stdin_pipe_write: C.HANDLE
+        stdin_pipe_read, stdin_pipe_write: win.HANDLE
         if capture_stdin != .NOP {
-            if C.CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0) == 0 {
+            if win.CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0) == 0 {
                 C.get_errno()?
             }
-            C.SetHandleInformation(stdin_pipe_write, C.HANDLE_FLAG_INHERIT, 0)
+            win.SetHandleInformation(stdin_pipe_write, win.HANDLE_FLAG_INHERIT, 0)
         } else {
-            stdin_pipe_read = C.GetStdHandle(C.STD_INPUT_HANDLE)
+            stdin_pipe_read = win.GetStdHandle(win.STD_INPUT_HANDLE)
         }
 
         si.hStdOutput = stdout_pipe_write
         si.hStdError = stderr_pipe_write
         si.hStdInput = stdin_pipe_read
-        si.dwFlags |= C.STARTF_USESTDHANDLES
+        si.dwFlags |= win.STARTF_USESTDHANDLES
 
         sb: strings.Builder
         defer sb.free()
@@ -98,39 +98,39 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
 
         this.count = 0
 
-        pi: C.PROCESS_INFORMATION
-        if C.CreateProcessA(null, C.LPSTR(sb.to_cstring()?), null, null, C.BOOL(true), 0, null, null, &si, &pi) == 0 {
+        pi: win.PROCESS_INFORMATION
+        if win.CreateProcessA(null, win.LPSTR(sb.to_cstring()?), null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {
             Cmd_Error.Command_Not_Found_In_Path?
         }
-        C.CloseHandle(pi.hThread)
+        win.CloseHandle(pi.hThread)
 
         p: Process
         p.id = pi.hProcess
 
         if capture_stdin != .NOP {
-            C.CloseHandle(stdin_pipe_read)
+            win.CloseHandle(stdin_pipe_read)
             if capture_stdin == .TEXT {
-                p.stdin = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdin_pipe_write), C.int(Open_Flag.WRONLY | Open_Flag.TEXT)), "w"))
+                p.stdin = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stdin_pipe_write), C.int(Open_Flag.WRONLY | Open_Flag.TEXT)), "w"))
             } else {
-                p.stdin = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdin_pipe_write), C.int(Open_Flag.WRONLY | Open_Flag.BINARY)), "wb"))
+                p.stdin = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stdin_pipe_write), C.int(Open_Flag.WRONLY | Open_Flag.BINARY)), "wb"))
             }
         }
 
         if capture_stdout != .NOP {
-            C.CloseHandle(stdout_pipe_write)
+            win.CloseHandle(stdout_pipe_write)
             if capture_stdout == .TEXT {
-                p.stdout = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdout_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.TEXT)), "r"))
+                p.stdout = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stdout_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.TEXT)), "r"))
             } else {
-                p.stdout = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdout_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.BINARY)), "rb"))
+                p.stdout = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stdout_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.BINARY)), "rb"))
             }
         }
 
         if capture_stderr != .NOP {
-            C.CloseHandle(stderr_pipe_write)
+            win.CloseHandle(stderr_pipe_write)
             if capture_stderr == .TEXT {
-                p.stderr = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stderr_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.TEXT)), "r"))
+                p.stderr = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stderr_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.TEXT)), "r"))
             } else {
-                p.stderr = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stderr_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.BINARY)), "rb"))
+                p.stderr = Pipe(win._fdopen(win._open_osfhandle(C.intptr_t(stderr_pipe_read), C.int(Open_Flag.RDONLY | Open_Flag.BINARY)), "rb"))
             }
         }
 
@@ -141,45 +141,45 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         err:  [2]C.int
         fail: [2]C.int
 
-        if capture_stdin != .NOP && C.pipe(&in) < 0 {
+        if capture_stdin != .NOP && posix.pipe(&in) < 0 {
             C.get_errno()?
         }
 
-        if capture_stdout != .NOP && C.pipe(&out) < 0 {
+        if capture_stdout != .NOP && posix.pipe(&out) < 0 {
             C.get_errno()?
         }
 
-        if capture_stderr != .NOP && C.pipe(&err) < 0 {
+        if capture_stderr != .NOP && posix.pipe(&err) < 0 {
             C.get_errno()?
         }
 
-        if C.pipe(&fail) < 0 || C.fcntl(fail[1], C.F_SETFD, C.FD_CLOEXEC) < 0 {
+        if posix.pipe(&fail) < 0 || posix.fcntl(fail[1], posix.F_SETFD, posix.FD_CLOEXEC) < 0 {
             C.get_errno()?
         }
 
         p: Process
-        p.id = C.fork()
+        p.id = posix.fork()
         if p.id < 0 {
             C.get_errno()?
         }
 
         if p.id == 0 {
             if capture_stdin != .NOP {
-                C.close(in[1])
-                C.dup2(in[0], C.STDIN_FILENO)
-                C.close(in[0])
+                posix.close(in[1])
+                posix.dup2(in[0], posix.STDIN_FILENO)
+                posix.close(in[0])
             }
 
             if capture_stdout != .NOP {
-                C.close(out[0])
-                C.dup2(out[1], C.STDOUT_FILENO)
-                C.close(out[1])
+                posix.close(out[0])
+                posix.dup2(out[1], posix.STDOUT_FILENO)
+                posix.close(out[1])
             }
 
             if capture_stderr != .NOP {
-                C.close(err[0])
-                C.dup2(err[1], C.STDERR_FILENO)
-                C.close(err[1])
+                posix.close(err[0])
+                posix.dup2(err[1], posix.STDERR_FILENO)
+                posix.close(err[1])
             }
 
             args := mem.new_array(&C.char, this.count + 1, zeroed = false)!
@@ -188,46 +188,46 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
             }
             args[this.count] = null
 
-            C.close(fail[0])
-            C.execvp(args[0], args.data)
-            C.write(fail[1], "E", 1)
-            C.close(fail[1])
-            C.exit(127)
+            posix.close(fail[0])
+            posix.execvp(args[0], args.data)
+            posix.write(fail[1], "E", 1)
+            posix.close(fail[1])
+            exit(127)
         }
 
         if reset {
             this.count = 0
         }
 
-        C.close(fail[1])
+        posix.close(fail[1])
         buffer: [1]C.char
-        count := C.read(fail[0], buffer.data, C.size_t(buffer.count))
-        C.close(fail[0])
+        count := posix.read(fail[0], buffer.data, C.size_t(buffer.count))
+        posix.close(fail[0])
 
         if count > 0 {
-            C.waitpid(p.id, null, 0)
+            posix.waitpid(p.id, null, 0)
             Cmd_Error.Command_Not_Found_In_Path?
         }
 
         if capture_stdin != .NOP {
-            C.close(in[0])
-            p.stdin = Pipe(C.fdopen(in[1], "w"))
+            posix.close(in[0])
+            p.stdin = Pipe(posix.fdopen(in[1], "w"))
             if p.stdin == null {
                 C.get_errno()?
             }
         }
 
         if capture_stdout != .NOP {
-            C.close(out[1])
-            p.stdout = Pipe(C.fdopen(out[0], "r"))
+            posix.close(out[1])
+            p.stdout = Pipe(posix.fdopen(out[0], "r"))
             if p.stdout == null {
                 C.get_errno()?
             }
         }
 
         if capture_stderr != .NOP {
-            C.close(err[1])
-            p.stderr = Pipe(C.fdopen(err[0], "r"))
+            posix.close(err[1])
+            p.stderr = Pipe(posix.fdopen(err[0], "r"))
             if p.stderr == null {
                 C.get_errno()?
             }
@@ -243,7 +243,7 @@ run :: inline (this: &Cmd, reset := true) -> s32, error {
 
 #if PLATFORM == .WINDOWS {
     Process :: struct {
-        id:     C.HANDLE
+        id:     win.HANDLE
         stdin:  Pipe
         stdout: Pipe
         stderr: Pipe
@@ -263,16 +263,16 @@ wait :: (this: Process) -> s32, error {
     if this.stderr != null then io.copy(io.Discard_Writer {}, this.stderr)
 
     #if PLATFORM == .WINDOWS {
-        if C.WaitForSingleObject(this.id, C.INFINITE) == C.WAIT_FAILED {
+        if win.WaitForSingleObject(this.id, win.INFINITE) == win.WAIT_FAILED {
             C.get_errno()?
         }
 
-        code: C.DWORD
-        if C.GetExitCodeProcess(this.id, &code) == 0 {
+        code: win.DWORD
+        if win.GetExitCodeProcess(this.id, &code) == 0 {
             C.get_errno()?
         }
 
-        C.CloseHandle(this.id)
+        win.CloseHandle(this.id)
         return s32(code), null
     } else {
         if this.id == 0 {
@@ -280,7 +280,7 @@ wait :: (this: Process) -> s32, error {
         }
 
         status: s32
-        if C.waitpid(this.id, &status, 0) < 0 {
+        if posix.waitpid(this.id, &status, 0) < 0 {
             C.get_errno()?
         }
 
@@ -302,16 +302,16 @@ wait :: (this: Process) -> s32, error {
 
 kill :: (this: Process, force := false) -> error {
     #if PLATFORM == .WINDOWS {
-        if C.TerminateProcess(this.id, 1) == 0 {
+        if win.TerminateProcess(this.id, 1) == 0 {
             return C.get_errno()
         }
     } else {
         if force {
-            if C.kill(this.id, 9) != 0 {
+            if posix.kill(this.id, 9) != 0 {
                 return C.get_errno()
             }
         } else {
-            if C.kill(this.id, 15) != 0 {
+            if posix.kill(this.id, 15) != 0 {
                 return C.get_errno()
             }
         }

@@ -71,13 +71,9 @@ runtime_entry :: (argc: C.int, argv: &&C.char) -> C.int {
 
 runtime_init :: inline (argc: C.int, argv: &&C.char) {
     #if PLATFORM == .WINDOWS {
-        extern {
-            __acrt_iob_func :: (fd: C.unsigned) -> os.File
-        }
-
-        os.stdin  = __acrt_iob_func(0)
-        os.stdout = __acrt_iob_func(1)
-        os.stderr = __acrt_iob_func(2)
+        os.stdin  = os.File(win.__acrt_iob_func(0))
+        os.stdout = os.File(win.__acrt_iob_func(1))
+        os.stderr = os.File(win.__acrt_iob_func(2))
     }
 
     os.args = mem.new_array(string, s64(argc))!
@@ -94,6 +90,10 @@ runtime_deinit :: () {
 
 C       :: #import "C"
 os      :: #import "os"
-fmt      :: #import "fmt"
+fmt     :: #import "fmt"
 mem     :: #import "memory"
 strings :: #import "strings"
+
+#if PLATFORM == .WINDOWS {
+    win :: #import "windows"
+}

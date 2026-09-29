@@ -24,3 +24,9 @@ case .WINDOWS
 }
 
 C :: #import "C"
+
+#if PLATFORM == .WINDOWS {
+    win :: #import "windows"
+} else {
+    posix :: #import "posix"
+}

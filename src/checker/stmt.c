@@ -159,10 +159,11 @@ void check_stmt_define(Compiler *c, Node_Define *define) {
 void check_stmt_block(Compiler *c, Node_Block *block) {
     const size_t context_defines_end_save = c->context.fn->defines_end;
     const size_t context_imports_end_save = c->context.fn->imports_end;
+    const size_t methods_to_check_count_save = c->methods_to_check.count;
     for (Node *it = block->body.head; it; it = it->next) {
         define_orderless_node(c, it, context_defines_end_save);
     }
-    define_orderless_methods(c);
+    define_orderless_methods(c, methods_to_check_count_save);
 
     for (Node *it = block->body.head; it; it = it->next) {
         check_stmt(c, it);

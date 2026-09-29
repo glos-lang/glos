@@ -229,7 +229,7 @@ void check_signature_of_range_operator(Compiler *c, Node_Fn *fn, const Type_Fn *
 void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *fn_spec);
 
-void define_orderless_methods(Compiler *c);
+void define_orderless_methods(Compiler *c, size_t from);
 
 // Monomorphizer ///////////////////////////////////////////////////////////////////////////////////
 void show_current_monomorphization(Compiler *c);

@@ -720,8 +720,9 @@ void make_sure_import_is_ready(Compiler *c, Node_Import *import) {
     if (!import->module && parser_import(c->parser, import)) {
         const Context context_save = c->context;
         memset(&c->context, 0, sizeof(c->context));
+        const size_t methods_to_check_count_save = c->methods_to_check.count;
         define_orderless_nodes_of_module(c, import->module, &import->node.token);
-        define_orderless_methods(c);
+        define_orderless_methods(c, methods_to_check_count_save);
         c->context = context_save;
     }
 }

@@ -1,12 +1,12 @@
 getcwd :: (allocator := default_allocator) -> string, error {
     #if PLATFORM == .WINDOWS {
-        count := C.GetCurrentDirectoryA(0, null)
+        count := win.GetCurrentDirectoryA(0, null)
         if count == 0 {
             C.get_errno()?
         }
 
         dst := string(mem.new_array(u8, s64(count), zeroed = false, allocator = allocator)?)
-        if C.GetCurrentDirectoryA(count, C.LPSTR(dst.data)) == 0 {
+        if win.GetCurrentDirectoryA(count, win.LPSTR(dst.data)) == 0 {
             C.get_errno()?
         }
         dst.count -= 1
@@ -17,7 +17,7 @@ getcwd :: (allocator := default_allocator) -> string, error {
 
         capacity := 128
         temporary_allocator.alloc(capacity)
-        for C.getcwd(&C.char(checkpoint), C.size_t(capacity)) == null {
+        for posix.getcwd(&C.char(checkpoint), C.size_t(capacity)) == null {
             err := C.get_errno()
             if err != .ERANGE then err?
 
@@ -37,11 +37,11 @@ setcwd :: (path: string) -> error {
     defer temporary_allocator.rewind(rawptr(path))
 
     #if PLATFORM == .WINDOWS {
-        if C.SetCurrentDirectoryA(C.LPCSTR(path)) == 0 {
+        if win.SetCurrentDirectoryA(win.LPCSTR(path)) == 0 {
             return C.get_errno()
         }
     } else {
-        if C.chdir(path) != 0 {
+        if posix.chdir(path) != 0 {
             return C.get_errno()
         }
     }

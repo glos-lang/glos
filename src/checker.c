@@ -208,7 +208,7 @@ void check_nodes(Compiler *c) {
     }
 
     // Define the methods
-    define_orderless_methods(c);
+    define_orderless_methods(c, 0);
 
     // Check the nodes
     for (Module *m = c->modules->head; m; m = m->next) {

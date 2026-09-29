@@ -29,24 +29,6 @@ extern {
     strtod :: (s: &char, end: &&char) -> double
     strtoll :: (s: &char, end: &&char, base: int) -> long_long
     strtoull :: (s: &char, end: &&char, base: int) -> unsigned_long_long
-
-    #if PLATFORM == .WINDOWS {
-        #link "_fileno"
-        fileno :: (f: FILE) -> int
-        #link "_lseeki64"
-        lseeki64 :: (fd: int, offset: s64, whence: int) -> s64
-        #link "_open"
-        open :: (path: &char, flags: int, mode: int) -> int
-        #link "_fdopen"
-        fdopen :: (fd: int, mode: &char) -> FILE
-        #link "_open_osfhandle"
-        open_osfhandle :: (osfhandle: intptr_t, flags: int) -> int
-    } else {
-        fileno :: (f: FILE) -> int
-        lseek :: (fd: int, offset: s64, whence: int) -> s64
-        open :: (path: &char, flags: int, mode: int) -> int
-        fdopen :: (fd: int, mode: &char) -> FILE
-    }
 }
 
 // TODO: This needs to be organised, perhaps by the header name

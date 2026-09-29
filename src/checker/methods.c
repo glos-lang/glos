@@ -911,8 +911,8 @@ void check_signature_of_custom_hasher(Compiler *c, Node_Fn *fn, const Type_Fn *f
     return;
 }
 
-void define_orderless_methods(Compiler *c) {
-    for (size_t i = 0; i < c->methods_to_check.count; i++) {
+void define_orderless_methods(Compiler *c, size_t from) {
+    for (size_t i = from; i < c->methods_to_check.count; i++) {
         Node_Fn *fn = c->methods_to_check.data[i];
         assert(fn->args.head && fn->args.head->kind == NODE_DEFINE); // Guaranteed by the parser
 
@@ -1043,5 +1043,5 @@ void define_orderless_methods(Compiler *c) {
         ht_set(&c->methods_table, spec, fn);
     }
 
-    c->methods_to_check.count = 0;
+    c->methods_to_check.count = from;
 }
