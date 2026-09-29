@@ -31,6 +31,19 @@ Read_Write_Seeker :: trait {
     ...Seeker
 }
 
+Multi_Reader :: distinct [..]Reader
+
+read :: (this: Multi_Reader, bytes: []u8) -> s64, error {
+    n: s64
+    for _, r := range &this {
+        if *r == null then continue
+        n += r.read(bytes[n..])?
+        if n >= bytes.count then break
+        *r = {}
+    }
+    return n, null
+}
+
 Multi_Writer :: distinct [..]Writer
 
 write :: (this: Multi_Writer, bytes: []u8) -> s64, error {
