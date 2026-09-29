@@ -70,6 +70,7 @@ bool check_that_type_is_known_noexit(const Node *n);
 void check_that_type_is_known(Compiler *c, const Node *n);
 bool type_assert_noexit(Compiler *c, Node *n, Type expected);
 Type type_assert(Compiler *c, Node *n, Type expected);
+Type type_assert_without_distinct(Compiler *c, Node *n, Type expected);
 bool type_assert_grouped_noexit(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement);
 Type type_assert_grouped(Compiler *c, Node *n, i64 group_index, Type expected, Node *requirement);
 Type type_assert_node(Compiler *c, Node *a, Node *b);

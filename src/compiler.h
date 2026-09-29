@@ -21,6 +21,10 @@ typedef struct {
 typedef struct {
     uintptr_t uid;
     SV        name;
+
+    // The following does not contribute to the hash
+    Node      *receiver_node;
+    Node_Atom *distinct;
 } Method_Spec;
 
 typedef struct {

@@ -1,0 +1,19 @@
+EXIT 0
+STDOUT 137
+foo: {69}
+
+foo: {420}
+bar: {420}
+
+foo: {1337}
+bar: {1337}
+baz: {1337}
+
+lol.foo: {80085}
+bar: {80085}
+
+foo: {8008135}
+lmao.bar: {8008135}
+
+STDERR 0
+

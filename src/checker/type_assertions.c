@@ -17,8 +17,8 @@ void check_that_type_is_known(Compiler *c, const Node *n) {
     }
 }
 
-bool type_assert_noexit(Compiler *c, Node *n, Type expected) {
-    if (type_eq(n->type, expected)) {
+static bool type_assert_noexit_impl(Compiler *c, Node *n, Type expected, bool without_distinct) {
+    if ((without_distinct ? type_eq_without_distinct : type_eq)(n->type, expected)) {
         return true;
     }
 
@@ -35,8 +35,19 @@ bool type_assert_noexit(Compiler *c, Node *n, Type expected) {
     return false;
 }
 
+bool type_assert_noexit(Compiler *c, Node *n, Type expected) {
+    return type_assert_noexit_impl(c, n, expected, false);
+}
+
 Type type_assert(Compiler *c, Node *n, Type expected) {
     if (type_assert_noexit(c, n, expected)) {
+        return expected;
+    }
+    exit(c, 1);
+}
+
+Type type_assert_without_distinct(Compiler *c, Node *n, Type expected) {
+    if (type_assert_noexit_impl(c, n, expected, true)) {
         return expected;
     }
     exit(c, 1);

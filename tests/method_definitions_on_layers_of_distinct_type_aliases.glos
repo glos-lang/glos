@@ -1,0 +1,57 @@
+Foo :: struct {
+    x: s64
+}
+
+foo :: (this: Foo) {
+    println("foo: \{this}")
+}
+
+Bar :: distinct Foo
+
+bar :: (this: Bar) {
+    println("bar: \{this}")
+}
+
+Baz :: distinct Bar
+
+baz :: (this: Baz) {
+    println("baz: \{this}")
+}
+
+Lol :: distinct Bar
+
+foo :: (this: Lol) {
+    println("lol.foo: \{this}")
+}
+
+Lmao :: distinct Bar
+
+bar :: (this: Lmao) {
+    println("lmao.bar: \{this}")
+}
+
+main :: () {
+    a := Foo {69}
+    a.foo()
+    println()
+
+    b := Bar {420}
+    b.foo()
+    b.bar()
+    println()
+
+    c := Baz {1337}
+    c.foo()
+    c.bar()
+    c.baz()
+    println()
+
+    d := Lol {80085}
+    d.foo()
+    d.bar()
+    println()
+
+    e := Lmao {8008135}
+    e.foo()
+    e.bar()
+}

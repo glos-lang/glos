@@ -67,9 +67,27 @@ bool get_method_spec(
 {
     if (spec) {
         spec->name = name;
+        spec->receiver_node = receiver_node;
+        spec->distinct = NULL;
     }
 
-    if (type_kind_eq(receiver_type, TYPE_ENUM)) {
+    if (receiver_type.distinct) {
+        if (spec) {
+            spec->uid = (uintptr_t) receiver_type.distinct;
+            spec->distinct = receiver_type.distinct;
+        }
+
+        if (defining) {
+            defining->defined_as = receiver_type.distinct;
+            defining->is_named = true;
+            defining->block = receiver_type.distinct->definition_spec->defined_in_block;
+            defining->module = receiver_type.distinct->node.module;
+        } else {
+            check_that_methods_can_be_accessed(c, receiver_node);
+        }
+
+        return true;
+    } else if (type_kind_eq(receiver_type, TYPE_ENUM)) {
         Node_Enum *definition = receiver_type.spec.enumm.definition;
         if (spec) {
             spec->uid = (uintptr_t) definition;
@@ -133,21 +151,6 @@ bool get_method_spec(
         }
 
         return true;
-    } else if (receiver_type.distinct) {
-        if (spec) {
-            spec->uid = (uintptr_t) receiver_type.distinct;
-        }
-
-        if (defining) {
-            defining->defined_as = receiver_type.distinct;
-            defining->is_named = true;
-            defining->block = receiver_type.distinct->definition_spec->defined_in_block;
-            defining->module = receiver_type.distinct->node.module;
-        } else {
-            check_that_methods_can_be_accessed(c, receiver_node);
-        }
-
-        return true;
     }
 
     static const uint8_t builtin_type_kinds[COUNT_TYPES];
@@ -174,6 +177,16 @@ bool get_method_spec(
 
 Node_Fn *get_method(Compiler *c, Method_Spec spec, Module *module) {
     Node_Fn **fn = ht_get(&c->methods_table, spec);
+    while (!fn && spec.distinct) {
+        assert(spec.distinct->definition_spec->assignment_node->kind == NODE_DISTINCT);
+        Node_Distinct *distinct = (Node_Distinct *) spec.distinct->definition_spec->assignment_node;
+        assert(distinct->value->type.is_meta);
+        if (!get_method_spec(c, spec.receiver_node, type_without_meta(distinct->value->type), spec.name, &spec, NULL)) {
+            break;
+        }
+        fn = ht_get(&c->methods_table, spec);
+    }
+
     if (!fn) {
         return NULL;
     }

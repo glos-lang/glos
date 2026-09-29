@@ -490,7 +490,7 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
     // Check the argument types
     {
         if (cc->is_method) {
-            type_assert(c, cc->receiver, type_with_ref(fn_spec->args[0].type, cc->receiver->type.ref));
+            type_assert_without_distinct(c, cc->receiver, type_with_ref(fn_spec->args[0].type, cc->receiver->type.ref));
         }
 
         size_t it_index = cc->is_method || cc->is_trait;
