@@ -136,3 +136,5 @@ Page :: struct {
     count: s64
     next:  &Page
 }
+
+// TODO: Perhaps this should use mmap() and VirtualAlloc() directly.

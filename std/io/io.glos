@@ -1,0 +1,28 @@
+copy :: (w: Writer, r: Reader, buffer := []u8 {}, count := -1) -> s64, error {
+    if buffer.count == 0 {
+        #thread array: [4096]u8
+        buffer = array
+    }
+
+    n: s64
+    for {
+        l := buffer.count
+        if count > 0 && l > count - n then l = count - n
+        m := r.read(buffer[..l])?
+        w.write(buffer[..m])?
+        n += m
+        if m < buffer.count then break
+    }
+    return n, null
+}
+
+read_all :: (r: Reader, allocator := default_allocator) -> []u8, error {
+    b: strings.Builder
+    defer b.free()
+
+    copy(&b, r)?
+    s, err := b.to_string(allocator = allocator)
+    return []u8(s), err
+}
+
+strings :: #import "strings"
