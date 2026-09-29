@@ -1,0 +1,38 @@
+#if PLATFORM != .WINDOWS {
+    // API
+    MAP_FAILED :: rawptr(-1)
+
+    PROT_READ  :: 0x1
+    PROT_WRITE :: 0x2
+
+    MAP_PRIVATE :: 0x02
+
+    #if PLATFORM == .MACOS {
+        MAP_ANONYMOUS :: 0x1000
+    } else {
+        MAP_ANONYMOUS :: 0x20
+    }
+
+    F_SETFD    :: 2
+    FD_CLOEXEC :: 1
+
+    STDIN_FILENO  :: 0
+    STDOUT_FILENO :: 1
+    STDERR_FILENO :: 2
+
+    extern {
+        mmap   :: (addr: rawptr, length: size_t, prot: int, flags: int, fd: int, offset: long) -> rawptr
+        munmap :: (addr: rawptr, length: size_t) -> int
+
+        read  :: (fd: int, buf: &char, count: size_t) -> ssize_t
+        write :: (fd: int, buf: &char, count: size_t) -> ssize_t
+        close :: (fd: int) -> int
+        fcntl :: (fd: int, cmd: int, arg: int) -> int
+        dup2  :: (oldfd: int, newfd: int) -> int
+
+        fork    :: () -> int
+        pipe    :: (pipefd: &[2]int) -> int
+        execvp  :: (file: &char, argv: &&char) -> int
+        waitpid :: (pid: int, wstatus: &int, options: int) -> int
+    }
+}

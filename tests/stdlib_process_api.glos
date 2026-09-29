@@ -1,0 +1,30 @@
+main :: () {
+    cmd: os.Cmd
+
+    // Just spawn the process
+    println("$ ./glos -h"); os.stdout.flush()
+    cmd.push("./glos", "-h")
+    code := cmd.run()!
+    println("[\{code}]")
+
+    // Capture stdout
+    println("$ ./glos -h >"); os.stdout.flush()
+    cmd.push("./glos", "-h")
+    proc   := cmd.start(capture_stdout = .TEXT)!
+    stdout := io.read_all(proc.stdout)!
+    code   := proc.wait()!
+    println("Stdout:", stdout)
+    println("[\{code}]")
+
+    // Capture stderr
+    println("$ ./glos -foo 2>"); os.stdout.flush()
+    cmd.push("./glos", "-foo")
+    proc   := cmd.start(capture_stderr = .TEXT)!
+    stderr := io.read_all(proc.stderr)!
+    code   := proc.wait()!
+    println("Stderr:", stderr)
+    println("[\{code}]")
+}
+
+io :: #import "io"
+os :: #import "os"

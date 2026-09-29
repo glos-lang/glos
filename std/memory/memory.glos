@@ -2,6 +2,10 @@ new :: inline ($T: Type, n := 1, allocator := default_allocator, zeroed := true)
     return &T(allocator.alloc(n * sizeof(T), zeroed = zeroed)?), null
 }
 
+new_array :: inline ($T: Type, n := 1, allocator := default_allocator, zeroed := true) -> []T, error {
+    return []T(&T(allocator.alloc(n * sizeof(T), zeroed = zeroed)?), n), null
+}
+
 free :: inline (p: &$T, allocator := default_allocator) -> error {
     allocator.alloc(0, old = rawptr(p))?
     return null

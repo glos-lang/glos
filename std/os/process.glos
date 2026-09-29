@@ -1,0 +1,300 @@
+Cmd :: distinct [..]string
+
+Cmd_Error :: enum error {
+    No_Command "No command"
+    Command_Not_Found_In_Path "Command not found in PATH"
+}
+
+Cmd_Capture :: enum {
+    NOP
+    TEXT
+    BINARY
+}
+
+start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Capture.NOP, capture_stderr := Cmd_Capture.NOP, reset := true) -> Process, error {
+    if this.count == 0 {
+        Cmd_Error.No_Command?
+    }
+
+    #if PLATFORM == .WINDOWS {
+        si: C.STARTUPINFOA
+        si.cb = sizeof(si)
+
+        sa: C.SECURITY_ATTRIBUTES
+        sa.nLength = sizeof(sa)
+        sa.bInheritHandle = C.BOOL(true)
+        sa.lpSecurityDescriptor = null
+
+        stdout_pipe_read, stdout_pipe_write: C.HANDLE
+        if capture_stdout != .NOP {
+            if C.CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0) == 0 {
+                C.get_errno()?
+            }
+            C.SetHandleInformation(stdout_pipe_read, C.HANDLE_FLAG_INHERIT, 0)
+        } else {
+            stdout_pipe_write = C.GetStdHandle(C.STD_OUTPUT_HANDLE)
+        }
+
+        stderr_pipe_read, stderr_pipe_write: C.HANDLE
+        if capture_stderr != .NOP {
+            if C.CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0) == 0 {
+                C.get_errno()?
+            }
+            C.SetHandleInformation(stderr_pipe_read, C.HANDLE_FLAG_INHERIT, 0)
+        } else {
+            stderr_pipe_write = C.GetStdHandle(C.STD_ERROR_HANDLE)
+        }
+
+        stdin_pipe_read, stdin_pipe_write: C.HANDLE
+        if capture_stdin != .NOP {
+            if C.CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0) == 0 {
+                C.get_errno()?
+            }
+            C.SetHandleInformation(stdin_pipe_write, C.HANDLE_FLAG_INHERIT, 0)
+        } else {
+            stdin_pipe_read = C.GetStdHandle(C.STD_INPUT_HANDLE)
+        }
+
+        si.hStdOutput = stdout_pipe_write
+        si.hStdError = stderr_pipe_write
+        si.hStdInput = stdin_pipe_read
+        si.dwFlags |= C.STARTF_USESTDHANDLES
+
+        sb: strings.Builder
+        defer sb.free()
+
+        for i, it := range *this {
+            if i != 0 {
+                sb.write([]u8(" "))
+            }
+
+            quote := it == "" || strings.contains(it, '\t') || strings.contains(it, '\v') || strings.contains(it, ' ')
+            if quote {
+                sb.write([]u8("\""))
+            }
+
+            for j, ch := range it {
+                if ch ==  {
+                case '\\'
+                    if j + 1 < it.count && it[j + 1] == '"' {
+                        sb.write([]u8("\\"))
+                    }
+
+                case '"'
+                    sb.write([]u8("\\"))
+                }
+
+                if i == 0 && ch == '/' {
+                    sb.write([]u8("\\"))
+                } else {
+                    sb.write([]u8(&it[j], 1))
+                }
+            }
+
+            if quote {
+                sb.write([]u8("\""))
+            }
+        }
+
+        this.count = 0
+
+        pi: C.PROCESS_INFORMATION
+        if C.CreateProcessA(null, C.LPSTR(sb.to_cstring()?), null, null, C.BOOL(true), 0, null, null, &si, &pi) == 0 {
+            Cmd_Error.Command_Not_Found_In_Path?
+        }
+        C.CloseHandle(pi.hThread)
+
+        p: Process
+        p.id = pi.hProcess
+
+        if capture_stdin != .NOP {
+            C.CloseHandle(stdin_pipe_read)
+            p.stdin = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdin_pipe_write), C.int(Open_Flag.WRONLY)), cmd_capture_mode_string(capture_stdin, false)))
+        }
+
+        if capture_stdout != .NOP {
+            C.CloseHandle(stdout_pipe_write)
+            p.stdout = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stdout_pipe_read), C.int(Open_Flag.RDONLY)), cmd_capture_mode_string(capture_stdout, true)))
+        }
+
+        if capture_stderr != .NOP {
+            C.CloseHandle(stderr_pipe_write)
+            p.stderr = Pipe(C.fdopen(C.open_osfhandle(C.intptr_t(stderr_pipe_read), C.int(Open_Flag.RDONLY)), cmd_capture_mode_string(capture_stderr, true)))
+        }
+
+        return p, null
+    } else {
+        in:   [2]C.int
+        out:  [2]C.int
+        err:  [2]C.int
+        fail: [2]C.int
+
+        if capture_stdin != .NOP && C.pipe(&in) < 0 {
+            C.get_errno()?
+        }
+
+        if capture_stdout != .NOP && C.pipe(&out) < 0 {
+            C.get_errno()?
+        }
+
+        if capture_stderr != .NOP && C.pipe(&err) < 0 {
+            C.get_errno()?
+        }
+
+        if C.pipe(&fail) < 0 || C.fcntl(fail[1], C.F_SETFD, C.FD_CLOEXEC) < 0 {
+            C.get_errno()?
+        }
+
+        p: Process
+        p.id = C.fork()
+        if p.id < 0 {
+            C.get_errno()?
+        }
+
+        if p.id == 0 {
+            if capture_stdin != .NOP {
+                C.close(in[1])
+                C.dup2(in[0], C.STDIN_FILENO)
+                C.close(in[0])
+            }
+
+            if capture_stdout != .NOP {
+                C.close(out[0])
+                C.dup2(out[1], C.STDOUT_FILENO)
+                C.close(out[1])
+            }
+
+            if capture_stderr != .NOP {
+                C.close(err[0])
+                C.dup2(err[1], C.STDERR_FILENO)
+                C.close(err[1])
+            }
+
+            args := mem.new_array(&C.char, this.count + 1, zeroed = false)!
+            for i, it := range *this {
+                args[i] = strings.to_cstring(it)!
+            }
+            args[this.count] = null
+
+            C.close(fail[0])
+            C.execvp(args[0], args.data)
+            C.write(fail[1], "E", 1)
+            C.close(fail[1])
+            C.exit(127)
+        }
+
+        if reset {
+            this.count = 0
+        }
+
+        C.close(fail[1])
+        buffer: [1]C.char
+        count := C.read(fail[0], buffer.data, C.size_t(buffer.count))
+        C.close(fail[0])
+
+        if count > 0 {
+            C.waitpid(p.id, null, 0)
+            Cmd_Error.Command_Not_Found_In_Path?
+        }
+
+        if capture_stdin != .NOP {
+            C.close(in[0])
+            p.stdin = Pipe(C.fdopen(in[1], cmd_capture_mode_string(capture_stdin, false)))
+            if p.stdin == null {
+                C.get_errno()?
+            }
+        }
+
+        if capture_stdout != .NOP {
+            C.close(out[1])
+            p.stdout = Pipe(C.fdopen(out[0], cmd_capture_mode_string(capture_stdout, true)))
+            if p.stdout == null {
+                C.get_errno()?
+            }
+        }
+
+        if capture_stderr != .NOP {
+            C.close(err[1])
+            p.stderr = Pipe(C.fdopen(err[0], cmd_capture_mode_string(capture_stderr, true)))
+            if p.stderr == null {
+                C.get_errno()?
+            }
+        }
+
+        return p, null
+    }
+
+    cmd_capture_mode_string :: (cc: Cmd_Capture, read: bool) -> &C.char {
+        if cc == {
+        case .NOP;    unreachable()
+        case .TEXT;   if read then return "r"  else return "w"
+        case .BINARY; if read then return "rb" else return "wb"
+        }
+    }
+}
+
+run :: inline (this: &Cmd, reset := true) -> s32, error {
+    p := this.start(reset = reset)?
+    return p.wait()
+}
+
+#if PLATFORM == .WINDOWS {
+    Process :: struct {
+        id:     C.HANDLE
+        stdin:  Pipe
+        stdout: Pipe
+        stderr: Pipe
+    }
+} else {
+    Process :: struct {
+        id:     C.int
+        stdin:  Pipe
+        stdout: Pipe
+        stderr: Pipe
+    }
+}
+
+wait :: (this: &Process) -> s32, error {
+    // Clear out the pipes, otherwise it deadlocks on windows
+    if this.stdout != null then io.copy(io.Discard_Writer {}, this.stdout)
+    if this.stderr != null then io.copy(io.Discard_Writer {}, this.stderr)
+
+    #if PLATFORM == .WINDOWS {
+        if C.WaitForSingleObject(this.id, C.INFINITE) == C.WAIT_FAILED {
+            C.get_errno()?
+        }
+
+        code: C.DWORD
+        if C.GetExitCodeProcess(this.id, &code) == 0 {
+            C.get_errno()?
+        }
+
+        C.CloseHandle(this.id)
+        return s32(code), null
+    } else {
+        if this.id == 0 {
+            C.Errno.EINVAL?
+        }
+
+        status: s32
+        if C.waitpid(this.id, &status, 0) < 0 {
+            C.get_errno()?
+        }
+
+        #if PLATFORM == .MACOS {
+            if (status & 0o177) != 0o177 && (status & 0o177) != 0 {
+                return 128 + status1
+            }
+
+            return (status >> 8) & 0x000000FF
+        } else {
+            if (((status & 0x7F) + 1) >> 1) > 0 {
+                return 128 + (status & 0x7F), null
+            }
+
+            return (status & 0xFF00) >> 8, null
+        }
+    }
+}
+
+mem :: #import "memory"

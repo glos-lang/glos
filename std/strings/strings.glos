@@ -63,6 +63,11 @@ find :: (s: string, p: Predicate, reverse := false) -> s64, bool {
     return 0, false
 }
 
+contains :: inline (s: string, p: Predicate, reverse := false) -> bool {
+    _, found := find(s, p, reverse)
+    return found
+}
+
 split :: (s: string, p: Predicate = unicode.is_space, reverse := false) -> string, string, bool {
     n, found := find(s, p, reverse)
     if !found {

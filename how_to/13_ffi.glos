@@ -6,12 +6,6 @@ main :: () {
     // Check out the file "std/C/types.glos" to see the definitions.
     C :: #import "C"
 
-    // There also exist platform specific modules like "windows" and "posix". See the "std/" folder
-    // to get the available modules.
-    #if PLATFORM == .WINDOWS {
-        win :: #import "windows"
-    }
-
     // You can define external variables and functions inside 'extern' blocks.
     extern {
         stdout: rawptr
@@ -47,15 +41,15 @@ main :: () {
             _NSGetExecutablePath :: (buffer: &C.char, size: &u32) -> C.int
 
         case .WINDOWS
-            MessageBoxA :: (hWnd: win.HWND, lpText: win.LPCSTR, lpCaption: win.LPCSTR, uType: win.UINT) -> C.int
+            MessageBoxA :: (hWnd: C.HWND, lpText: C.LPCSTR, lpCaption: C.LPCSTR, uType: C.UINT) -> C.int
             #library "user32"
         }
     }
 
     printf("Hello, %zd\n", 69)
 
-    // Importing the modules "C", "windows", "posix", etc is not mandatory per say. They just provide a bit
-    // of convenience so you don't have to think about mapping the C types to the fixed width types of Glos.
+    // Importing the module "C" is not mandatory per say. It justs provide a bit of convenience so you
+    // don't have to think about mapping the C types to the fixed width types of Glos.
     //
     // This is especially useful considering that Windows has some differences from Unix when it comes to
     // the builtin C types. For example: a 'long' is 32 bits, a 'BOOL' is 32 bits, etc.

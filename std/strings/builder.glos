@@ -118,6 +118,11 @@ to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := def
     panic("Builder does not contain the address \{from}", location = location)
 }
 
+to_cstring :: inline (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> &C.char, error {
+    this.write([]u8("\0"))?
+    return &C.char(this.to_string(from = from, rewind = rewind, allocator = default_allocator, location = location)?.data), null
+}
+
 @format :: (this: &Builder, w: io.Writer, nested := false) -> s64, error {
     n := 0
     for p := this.page_first; p != null; p = p.next {

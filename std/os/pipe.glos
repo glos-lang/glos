@@ -1,0 +1,32 @@
+Pipe :: distinct rawptr
+
+read :: (this: Pipe, bytes: []u8) -> s64, error {
+    if this == null {
+        C.Errno.EINVAL?
+    }
+
+    n := C.fread(rawptr(bytes.data), 1, C.size_t(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
+        return s64(n), C.get_errno()
+    }
+    return s64(n), null
+}
+
+write :: (this: Pipe, bytes: []u8) -> s64, error {
+    if this == null {
+        C.Errno.EINVAL?
+    }
+
+    n := C.fwrite(rawptr(bytes.data), sizeof(u8), C.size_t(bytes.count), C.FILE(this))
+    if C.ferror(C.FILE(this)) != 0 {
+        return s64(n), C.get_errno()
+    }
+    return s64(n), null
+}
+
+close :: inline (this: &Pipe) {
+    if *this != null {
+        C.fclose(C.FILE(*this))
+        *this = null
+    }
+}

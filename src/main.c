@@ -6,9 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void usage(FILE *f, const char *program) {
+static void usage(FILE *f) {
     afprintf(f, ANSI_COLOR_CYAN | ANSI_BOLD, "Usage:\n");
-    afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    %s", program);
+    afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    glos");
     fprintf(
         f,
         " [FLAGS...] [FILE|DIRECTORY]\n"
@@ -35,10 +35,10 @@ static void usage(FILE *f, const char *program) {
     }
 }
 
-static const char *shift(int *argc, char ***argv, const char *program, const char *expected) {
+static const char *shift(int *argc, char ***argv, const char *expected) {
     if (*argc <= 0) {
         error_standalone(EK_ERROR, "%s not provided\n", expected);
-        usage(stderr, program);
+        usage(stderr);
         exit(1);
     }
 
@@ -206,7 +206,7 @@ static Module *import_std_module(Compiler *c, SV name) {
 int main(int argc, char **argv) {
     basic_init();
     atexit(warnings_flush);
-    const char *program = shift(&argc, &argv, NULL, NULL);
+    shift(&argc, &argv, NULL); // The program
 
     int result = 0;
     Cmd cmd = {0};
@@ -219,21 +219,21 @@ int main(int argc, char **argv) {
 
     static Compiler compiler = {0};
     while (argc) {
-        const char *arg = shift(&argc, &argv, program, "Input path");
+        const char *arg = shift(&argc, &argv, "Input path");
         if (*arg == '-') {
             if (!strcmp(arg, "-h")) {
-                usage(stdout, program);
+                usage(stdout);
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
                 run = true;
             } else if (!strcmp(arg, "-o")) {
-                output_path = shift(&argc, &argv, program, "Output path");
+                output_path = shift(&argc, &argv, "Output path");
             } else if (!strcmp(arg, "--")) {
                 break;
             } else if (arg[1] == 'O') {
                 const char *level = &arg[2];
                 if (*level == '\0') {
-                    level = shift(&argc, &argv, program, "Optimization Level");
+                    level = shift(&argc, &argv, "Optimization Level");
                 }
 
                 if (!strcmp(level, "0")) {
@@ -246,26 +246,26 @@ int main(int argc, char **argv) {
                     compiler.optimization_level = O3;
                 } else {
                     error_standalone(EK_ERROR, "Invalid optimization level '%s'\n", level);
-                    usage(stderr, program);
+                    usage(stderr);
                     exit(1);
                 }
             } else if (arg[1] == 'L') {
                 const char *libpath = &arg[2];
                 if (*libpath == '\0') {
-                    libpath = shift(&argc, &argv, program, "Library path");
+                    libpath = shift(&argc, &argv, "Library path");
                 }
 
                 link_flags_add_libpath(&link_flags, sv_from_cstr(libpath));
             } else if (arg[1] == 'l') {
                 const char *libname = &arg[2];
                 if (*libname == '\0') {
-                    libname = shift(&argc, &argv, program, "Library name");
+                    libname = shift(&argc, &argv, "Library name");
                 }
 
                 link_flags_add_libname(&link_flags, sv_from_cstr(libname));
             } else {
                 error_standalone(EK_ERROR, "Invalid flag '%s'\n", arg);
-                usage(stderr, program);
+                usage(stderr);
                 exit(1);
             }
         } else {
