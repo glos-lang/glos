@@ -423,7 +423,9 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
                 }
 
                 if (add_to_final_args) {
-                    nodes_push(&final_args, arg);
+                    if (final_args.tail != arg) {
+                        nodes_push(&final_args, arg);
+                    }
                     final_args_count++;
                 }
             }
