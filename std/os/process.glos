@@ -300,4 +300,24 @@ wait :: (this: Process) -> s32, error {
     }
 }
 
+kill :: (this: Process, force := false) -> error {
+    #if PLATFORM == .WINDOWS {
+        if C.TerminateProcess(this.id, 1) == 0 {
+            return C.get_errno()
+        }
+    } else {
+        if force {
+            if C.kill(this.id, 9) != 0 {
+                return C.get_errno()
+            }
+        } else {
+            if C.kill(this.id, 15) != 0 {
+                return C.get_errno()
+            }
+        }
+    }
+
+    return null
+}
+
 mem :: #import "memory"

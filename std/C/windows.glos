@@ -146,6 +146,8 @@
         ) -> BOOL
 
         CloseHandle :: (hObject: HANDLE) -> BOOL
+        TerminateProcess :: (hProcess: HANDLE, uExitCode: UINT) -> BOOL
+
         GetStdHandle :: (nStdHandle: DWORD) -> HANDLE
         SetHandleInformation :: (
             hObject: HANDLE,
