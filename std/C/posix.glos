@@ -35,5 +35,9 @@
         execvp  :: (file: &char, argv: &&char) -> int
         waitpid :: (pid: int, wstatus: &int, options: int) -> int
         kill    :: (pid: int, sig: int) -> int
+
+        getenv :: (name: &char) -> &char
+        setenv :: (name: &char, value: &char, overwrite: int) -> int
+        unsetenv :: (name: &char) -> int
     }
 }

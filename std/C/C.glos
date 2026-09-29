@@ -20,7 +20,6 @@ extern {
     memchr :: (s: rawptr, ch: int, count: size_t) -> rawptr
     strlen :: (s: &char) -> size_t
     atexit :: (function: ()) -> int
-    getenv :: (name: &char) -> &char
     fopen :: (path: &char, mode: &char) -> FILE
     fclose :: (f: FILE) -> int
     fseek :: (f: FILE, offset: int, whence: int) -> int

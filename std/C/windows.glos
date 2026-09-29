@@ -157,5 +157,8 @@
 
         WaitForSingleObject :: (hHandle: HANDLE, dwMilliseconds: DWORD) -> DWORD
         GetExitCodeProcess :: (hProcess: HANDLE, lpExitCode: LPDWORD) -> BOOL
+
+        GetEnvironmentVariableA :: (lpName: LPCSTR, lpBuffer: LPSTR, nSize: DWORD) -> DWORD
+        SetEnvironmentVariableA :: (lpName: LPCSTR, lpValue: LPCSTR) -> BOOL
     }
 }
