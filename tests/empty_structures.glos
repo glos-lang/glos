@@ -1,0 +1,10 @@
+main :: () {
+    Empty :: struct {}
+
+    foo :: (e: Empty, message: string) -> Empty {
+        println(e, message)
+        return e
+    }
+
+    println(foo(Empty {}, "Hi!"))
+}

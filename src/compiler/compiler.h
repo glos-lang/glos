@@ -17,6 +17,8 @@ typedef struct {
 
     LLVMTypeRef direct_types[ABI_DIRECT_TYPES_MAX];
     size_t      direct_types_count;
+
+    bool is_empty;
 } ABI_Info;
 
 typedef struct {

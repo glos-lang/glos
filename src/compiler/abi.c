@@ -226,6 +226,7 @@ ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     static_assert(COUNT_TYPES == 32, "");
     switch (type->kind) {
     case TYPE_VOID:
+        info.is_empty = true;
         info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
         return info;
 
@@ -236,6 +237,16 @@ ABI_Info get_abi_info_for_type(Compiler *c, Type *type, bool is_arg) {
     default:
         // Pass
         break;
+    }
+
+    if (size == 0 && type->kind != TYPE_FN) {
+#ifdef PLATFORM_X86_64_WINDOWS
+        info.direct_types[info.direct_types_count++] = LLVMInt32TypeInContext(c->llvm_context);
+#else
+        info.is_empty = true;
+        info.direct_types[info.direct_types_count++] = LLVMVoidTypeInContext(c->llvm_context);
+#endif // PLATFORM_X86_64_WINDOWS
+        return info;
     }
 
     QWords words = {0};
@@ -347,7 +358,7 @@ void abi_set_return_type(Compiler *c, ABI *abi, Type *type) {
     assert(abi->actual_args_count == 0);
     abi->return_abi = get_abi_info_for_type(c, type, false);
     abi->return_type = type;
-    if (!abi->return_abi.direct_types_count) {
+    if (!abi->return_abi.is_empty && !abi->return_abi.direct_types_count) {
         abi->actual_args_count++;
     }
 }
@@ -356,10 +367,12 @@ void abi_set_argument_type(Compiler *c, ABI *abi, size_t index, Type *type) {
     assert(index < abi->args_count);
     ABI_Info *it = &abi->args[index];
     *it = get_abi_info_for_type(c, type, true);
-    if (it->direct_types_count) {
-        abi->actual_args_count += it->direct_types_count;
-    } else {
-        abi->actual_args_count++;
+    if (!it->is_empty) {
+        if (it->direct_types_count) {
+            abi->actual_args_count += it->direct_types_count;
+        } else {
+            abi->actual_args_count++;
+        }
     }
 }
 
@@ -377,12 +390,14 @@ LLVMTypeRef abi_finalize(Compiler *c, ABI *abi) {
 
     for (size_t i = 0; i < abi->args_count; i++) {
         const ABI_Info it_abi = abi->args[i];
-        if (it_abi.direct_types_count) {
-            for (size_t j = 0; j < it_abi.direct_types_count; j++) {
-                abi->actual_args[args_iota++] = it_abi.direct_types[j];
+        if (!it_abi.is_empty) {
+            if (it_abi.direct_types_count) {
+                for (size_t j = 0; j < it_abi.direct_types_count; j++) {
+                    abi->actual_args[args_iota++] = it_abi.direct_types[j];
+                }
+            } else {
+                abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
             }
-        } else {
-            abi->actual_args[args_iota++] = LLVMPointerTypeInContext(c->llvm_context, 0);
         }
     }
 
@@ -458,48 +473,50 @@ void compile_call_arg(Compiler *c, Call_Compiler *call, size_t arg_index, Typed_
         da_push(&c->arg_values, expr);
     } break;
 
-    case 1: {
-        if (type_is_compound(*arg->type)) {
-            LLVMTypeRef  abi_type = arg_info.direct_types[0];
-            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
-            LLVMTypeRef  expr_type = LLVMTypeOf(expr);
-            const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, expr_type);
+    case 1:
+        if (!arg_info.is_empty) {
+            if (type_is_compound(*arg->type)) {
+                LLVMTypeRef  abi_type = arg_info.direct_types[0];
+                const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+                LLVMTypeRef  expr_type = LLVMTypeOf(expr);
+                const size_t expr_size = LLVMABISizeOfType(c->llvm_target_data, expr_type);
 
-            expr = undo_load(expr);
-            if (abi_size > expr_size) {
-                if (abi_size > 8) {
-                    LLVMValueRef memory = compile_alloca(c, abi_type);
-                    LLVMBuildMemCpy(
-                        c->llvm_builder,
-                        memory,
-                        LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
-                        expr,
-                        LLVMABIAlignmentOfType(c->llvm_target_data, expr_type),
-                        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), expr_size, true));
-                    expr = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
+                expr = undo_load(expr);
+                if (abi_size > expr_size) {
+                    if (abi_size > 8) {
+                        LLVMValueRef memory = compile_alloca(c, abi_type);
+                        LLVMBuildMemCpy(
+                            c->llvm_builder,
+                            memory,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                            expr,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, expr_type),
+                            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), expr_size, true));
+                        expr = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
+                    } else {
+                        expr = LLVMBuildLoad2(
+                            c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
+                        expr = LLVMBuildZExt(c->llvm_builder, expr, abi_type, "");
+                    }
                 } else {
-                    expr =
-                        LLVMBuildLoad2(c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, expr_size * 8), expr, "");
-                    expr = LLVMBuildZExt(c->llvm_builder, expr, abi_type, "");
+                    expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
                 }
             } else {
-                expr = LLVMBuildLoad2(c->llvm_builder, abi_type, expr, "");
-            }
-        } else {
-            if (call->fn_spec->variadics_kind == VARIADICS_UNTYPED) {
-                const size_t size = compile_sizeof(c, arg->type);
-                if (size < 4) {
-                    // Promote values smaller than i32 into i32
-                    const bool is_signed = type_is_signed(*arg->type);
-                    expr = compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), is_signed, is_signed);
-                } else if (type_eq_without_distinct(*arg->type, (Type) {.kind = TYPE_F32})) {
-                    // Promote f32 into f64
-                    expr = LLVMBuildFPExt(c->llvm_builder, expr, LLVMDoubleTypeInContext(c->llvm_context), "");
+                if (call->fn_spec->variadics_kind == VARIADICS_UNTYPED) {
+                    const size_t size = compile_sizeof(c, arg->type);
+                    if (size < 4) {
+                        // Promote values smaller than i32 into i32
+                        const bool is_signed = type_is_signed(*arg->type);
+                        expr = compile_cast(c, expr, LLVMInt32TypeInContext(c->llvm_context), is_signed, is_signed);
+                    } else if (type_eq_without_distinct(*arg->type, (Type) {.kind = TYPE_F32})) {
+                        // Promote f32 into f64
+                        expr = LLVMBuildFPExt(c->llvm_builder, expr, LLVMDoubleTypeInContext(c->llvm_context), "");
+                    }
                 }
             }
+            da_push(&c->arg_values, expr);
         }
-        da_push(&c->arg_values, expr);
-    } break;
+        break;
 
     case 2: {
         // First half
@@ -542,7 +559,7 @@ LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, b
         } break;
 
         case 1:
-            if (!raw) {
+            if (!raw && !call->return_info.is_empty) {
                 memory = compile_alloca(c, call->fn_spec->return_type->llvm);
 
                 LLVMTypeRef  abi_type = call->return_info.direct_types[0];
@@ -590,16 +607,18 @@ LLVMValueRef compile_call_finalize(Compiler *c, Call_Compiler *call, bool raw, b
 #ifdef PLATFORM_X86_64_LINUX
     for (size_t i = 0; i < call->args_count; i++) {
         const ABI_Info it_abi = call->args_info[i];
-        if (it_abi.direct_types_count) {
-            args_iota += it_abi.direct_types_count;
-        } else {
-            args_iota++;
+        if (!it_abi.is_empty) {
+            if (it_abi.direct_types_count) {
+                args_iota += it_abi.direct_types_count;
+            } else {
+                args_iota++;
 
-            LLVMTypeRef it_type = it_abi.type;
-            assert(it_type);
+                LLVMTypeRef it_type = it_abi.type;
+                assert(it_type);
 
-            LLVMAttributeRef byval = LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, it_type);
-            LLVMAddCallSiteAttribute(result, args_iota, byval);
+                LLVMAttributeRef byval = LLVMCreateTypeAttribute(c->llvm_context, c->llvm_attribute_byval, it_type);
+                LLVMAddCallSiteAttribute(result, args_iota, byval);
+            }
         }
     }
     assert(args_iota == c->arg_values.count - call->arg_values_start);
@@ -653,37 +672,43 @@ void compile_return(Compiler *c, Node *n, LLVMValueRef value, const size_t group
             LLVMBuildRetVoid(c->llvm_builder);
             break;
 
-        case 1: {
-            LLVMTypeRef  abi_type = abi.direct_types[0];
-            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
-
-            LLVMTypeRef  value_type = LLVMTypeOf(value);
-            const size_t value_size = LLVMABISizeOfType(c->llvm_target_data, value_type);
-
-            value = undo_load(value);
-            if (abi_size > value_size) {
-                if (abi_size > 8) {
-                    LLVMValueRef memory = compile_alloca(c, abi_type);
-                    LLVMBuildMemCpy(
-                        c->llvm_builder,
-                        memory,
-                        LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
-                        value,
-                        LLVMABIAlignmentOfType(c->llvm_target_data, value_type),
-                        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value_size, true));
-                    value = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
-                } else {
-                    value = LLVMBuildLoad2(
-                        c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, value_size * 8), value, "");
-                    value = LLVMBuildZExt(c->llvm_builder, value, abi_type, "");
-                }
+        case 1:
+            if (abi.is_empty) {
+                compile_defers(c, c->defers_start, false);
+                set_debug_pos(c, n->token.pos);
+                LLVMBuildRetVoid(c->llvm_builder);
             } else {
-                value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+                LLVMTypeRef  abi_type = abi.direct_types[0];
+                const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+
+                LLVMTypeRef  value_type = LLVMTypeOf(value);
+                const size_t value_size = LLVMABISizeOfType(c->llvm_target_data, value_type);
+
+                value = undo_load(value);
+                if (abi_size > value_size) {
+                    if (abi_size > 8) {
+                        LLVMValueRef memory = compile_alloca(c, abi_type);
+                        LLVMBuildMemCpy(
+                            c->llvm_builder,
+                            memory,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                            value,
+                            LLVMABIAlignmentOfType(c->llvm_target_data, value_type),
+                            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value_size, true));
+                        value = LLVMBuildLoad2(c->llvm_builder, abi_type, memory, "");
+                    } else {
+                        value = LLVMBuildLoad2(
+                            c->llvm_builder, LLVMIntTypeInContext(c->llvm_context, value_size * 8), value, "");
+                        value = LLVMBuildZExt(c->llvm_builder, value, abi_type, "");
+                    }
+                } else {
+                    value = LLVMBuildLoad2(c->llvm_builder, abi_type, value, "");
+                }
+                compile_defers(c, c->defers_start, false);
+                set_debug_pos(c, n->token.pos);
+                LLVMBuildRet(c->llvm_builder, value);
             }
-            compile_defers(c, c->defers_start, false);
-            set_debug_pos(c, n->token.pos);
-            LLVMBuildRet(c->llvm_builder, value);
-        } break;
+            break;
 
         case 2: {
             LLVMTypeRef type =

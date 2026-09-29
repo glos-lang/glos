@@ -33,8 +33,14 @@ compile_cast_to_trait(Compiler *c, Type *type, Type_Trait_Impl *impl, LLVMValueR
 {
     compile_trait_impl(c, impl);
 
-    LLVMValueRef value_memory = compile_alloca(c, LLVMTypeOf(value));
-    LLVMBuildStore(c->llvm_builder, value, value_memory);
+    LLVMTypeRef  value_type = LLVMTypeOf(value);
+    LLVMValueRef value_memory = NULL;
+    if (LLVMTypeIsSized(value_type)) {
+        value_memory = compile_alloca(c, value_type);
+        LLVMBuildStore(c->llvm_builder, value, value_memory);
+    } else {
+        value_memory = LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
+    }
 
     LLVMValueRef trait_memory = compile_alloca(c, c->llvm_trait_type);
     LLVMBuildStore(c->llvm_builder, compile_type_info(c, type), trait_memory);
@@ -56,7 +62,9 @@ compile_cast_to_union(Compiler *c, LLVMTypeRef union_type, size_t union_index, L
     LLVMBuildStore(c->llvm_builder, LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), union_index, true), memory);
 
     LLVMValueRef payload = LLVMBuildStructGEP2(c->llvm_builder, union_type, memory, 1, "");
-    LLVMBuildStore(c->llvm_builder, from, payload);
+    if (LLVMTypeIsSized(LLVMTypeOf(from))) {
+        LLVMBuildStore(c->llvm_builder, from, payload);
+    }
 
     if (ref) {
         return memory;
@@ -424,41 +432,43 @@ LLVMValueRef compile_fn(Compiler *c, Node_Fn *fn) {
 
                 case 1:
                     if (it_is_underscore) {
-                        arg_iota++;
+                        if (!it_abi.is_empty) arg_iota++;
                     } else {
                         bool stored = false;
                         compile_var_def(c, it);
 
-                        LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
-                        if (type_is_compound(it->node.type)) {
-                            LLVMTypeRef  var_type = it->node.type.llvm;
-                            const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, var_type);
-                            LLVMTypeRef  abi_type = LLVMTypeOf(value);
-                            const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
-                            if (abi_size > var_size) {
-                                if (abi_size > 8) {
-                                    LLVMValueRef memory = compile_alloca(c, abi_type);
-                                    LLVMBuildStore(c->llvm_builder, value, memory);
-                                    LLVMBuildMemCpy(
-                                        c->llvm_builder,
-                                        it->definition_spec->llvm,
-                                        LLVMABIAlignmentOfType(c->llvm_target_data, var_type),
-                                        memory,
-                                        LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
-                                        LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), var_size, true));
-                                    stored = true;
-                                } else {
-                                    value = LLVMBuildTrunc(
-                                        c->llvm_builder,
-                                        value,
-                                        LLVMIntTypeInContext(c->llvm_context, var_size * 8),
-                                        "");
+                        if (!it_abi.is_empty) {
+                            LLVMValueRef value = LLVMGetParam(c->llvm_fn, arg_iota++);
+                            if (type_is_compound(it->node.type)) {
+                                LLVMTypeRef  var_type = it->node.type.llvm;
+                                const size_t var_size = LLVMABISizeOfType(c->llvm_target_data, var_type);
+                                LLVMTypeRef  abi_type = LLVMTypeOf(value);
+                                const size_t abi_size = LLVMABISizeOfType(c->llvm_target_data, abi_type);
+                                if (abi_size > var_size) {
+                                    if (abi_size > 8) {
+                                        LLVMValueRef memory = compile_alloca(c, abi_type);
+                                        LLVMBuildStore(c->llvm_builder, value, memory);
+                                        LLVMBuildMemCpy(
+                                            c->llvm_builder,
+                                            it->definition_spec->llvm,
+                                            LLVMABIAlignmentOfType(c->llvm_target_data, var_type),
+                                            memory,
+                                            LLVMABIAlignmentOfType(c->llvm_target_data, abi_type),
+                                            LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), var_size, true));
+                                        stored = true;
+                                    } else {
+                                        value = LLVMBuildTrunc(
+                                            c->llvm_builder,
+                                            value,
+                                            LLVMIntTypeInContext(c->llvm_context, var_size * 8),
+                                            "");
+                                    }
                                 }
                             }
-                        }
 
-                        if (!stored) {
-                            LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+                            if (!stored) {
+                                LLVMBuildStore(c->llvm_builder, value, it->definition_spec->llvm);
+                            }
                         }
                     }
                     break;
@@ -826,9 +836,13 @@ static LLVMValueRef get_or_put_backing_memory(Compiler *c, LLVMValueRef value) {
         return undo_load(value);
     }
 
-    LLVMValueRef memory = compile_alloca(c, LLVMTypeOf(value));
-    LLVMBuildStore(c->llvm_builder, value, memory);
-    return memory;
+    LLVMTypeRef type = LLVMTypeOf(value);
+    if (LLVMTypeIsSized(type)) {
+        LLVMValueRef memory = compile_alloca(c, type);
+        LLVMBuildStore(c->llvm_builder, value, memory);
+        return memory;
+    }
+    return LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0));
 }
 
 static void compile_map_hash(Compiler *c, Pos pos, LLVMValueRef hasher, Type *value_type, LLVMValueRef value_ptr);
