@@ -283,10 +283,10 @@ wait :: (this: &Process) -> s32, error {
 
         #if PLATFORM == .MACOS {
             if (status & 0o177) != 0o177 && (status & 0o177) != 0 {
-                return 128 + (status & 0o177)
+                return 128 + (status & 0o177), null
             }
 
-            return (status >> 8) & 0x000000FF
+            return (status >> 8) & 0x000000FF, null
         } else {
             if (((status & 0x7F) + 1) >> 1) > 0 {
                 return 128 + (status & 0x7F), null
