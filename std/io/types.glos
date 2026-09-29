@@ -31,6 +31,15 @@ Read_Write_Seeker :: trait {
     ...Seeker
 }
 
+Multi_Writer :: distinct [..]Writer
+
+write :: (this: Multi_Writer, bytes: []u8) -> s64, error {
+    for _, w := range this {
+        w.write(bytes)?
+    }
+    return bytes.count, null
+}
+
 Seek :: enum {
     START   = 0
     CURRENT = 1
