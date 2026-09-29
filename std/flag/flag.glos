@@ -1,5 +1,29 @@
-add :: (v: Var, name: string, description: string, location := #caller_location) {
-    if parsed {
+add :: inline (v: Var, name: string, description: string, location := #caller_location) {
+    flags.add(v, name, description, location)
+}
+
+parse :: inline (location := #caller_location) {
+    flags.parse(os.args[1..], location)
+    flags.defs.free()
+}
+
+usage :: inline (w: io.Writer, location := #caller_location) {
+    flags.usage(w, location)
+}
+
+args :: inline (location := #caller_location) -> []string {
+    return flags.args(location)
+}
+
+Flags :: struct {
+    defs: map[string]Flag
+    argn: s64
+    read: bool
+    left: []string
+}
+
+add :: (this: &Flags, v: Var, name: string, description: string, location := #caller_location) {
+    if this.read {
         panic("Cannot call this function after parsing flags", location = location)
     }
 
@@ -11,9 +35,9 @@ add :: (v: Var, name: string, description: string, location := #caller_location)
         panic("Invalid flag name \{Quote {name}}: Cannot start with '-'", location = location)
     }
 
-    if flags.contains(name) {
+    if this.defs.contains(name) {
         eprintln("\{location} Redefinition of flag \{Quote {name}}")
-        panic("Here is the first definition", location = flags[name].location)
+        panic("Here is the first definition", location = this.defs[name].location)
     }
 
     flag: Flag
@@ -30,126 +54,121 @@ add :: (v: Var, name: string, description: string, location := #caller_location)
     case
     }
 
-    flags[name] = flag
+    this.defs[name] = flag
 }
 
-args :: (location := #caller_location) -> []string {
-    if !parsed {
-        panic("Cannot call this function before parsing flags", location = location)
-    }
-    return os.args[argn..]
-}
-
-parse :: (location := #caller_location) {
-    if parsed {
+parse :: (this: &Flags, args: []string, location := #caller_location) {
+    if this.read {
         panic("Cannot call this function after parsing flags", location = location)
     }
-    parsed = true
 
-    argn = 1
-    for argn < os.args.count {
-        arg := os.args[argn]
+    this.argn = 0
+    this.read = true
+    this.left = args
+    for this.argn < args.count {
+        arg := args[this.argn]
         if !strings.begins_with(arg, "-") then break
-        argn += 1
+        this.argn += 1
 
         flag := arg[1..]
         if strings.begins_with(flag, "-") then flag = flag[1..]
         if flag == ""            then break
 
-        if flags.contains(flag) {
-            var := flags[flag].var
+        if this.defs.contains(flag) {
+            var := this.defs[flag].var
             if var == {
             case &bool;       *var = true
-            case &s64;        *var = get_s64(arg)
-            case &u64;        *var = get_u64(arg)
-            case &f64;        *var = get_f64(arg)
-            case &string;     *var = get_string(arg)
-            case &[..]s64;    var.push(get_s64(arg))
-            case &[..]u64;    var.push(get_u64(arg))
-            case &[..]f64;    var.push(get_f64(arg))
-            case &[..]string; var.push(get_string(arg))
+            case &s64;        *var = get_s64(this, args, arg)
+            case &u64;        *var = get_u64(this, args, arg)
+            case &f64;        *var = get_f64(this, args, arg)
+            case &string;     *var = get_string(this, args, arg)
+            case &[..]s64;    var.push(get_s64(this, args, arg))
+            case &[..]u64;    var.push(get_u64(this, args, arg))
+            case &[..]f64;    var.push(get_f64(this, args, arg))
+            case &[..]string; var.push(get_string(this, args, arg))
             case null;        unreachable()
             }
             continue
 
-            get_s64 :: (arg: string) -> s64 {
-                value  := get_string(arg)
+            get_s64 :: (f: &Flags, args: []string, arg: string) -> s64 {
+                value  := get_string(f, args, arg)
                 n, err := strings.to_s64(value)
                 if err != null {
                     eprintln("Error: Invalid int \{Quote {value}}")
                     eprintln()
-                    usage(os.stderr)
+                    f.usage(os.stderr)
                     os.exit(1)
                 }
                 return n
             }
 
-            get_u64 :: (arg: string) -> u64 {
-                value  := get_string(arg)
+            get_u64 :: (f: &Flags, args: []string, arg: string) -> u64 {
+                value  := get_string(f, args, arg)
                 n, err := strings.to_u64(value)
                 if err != null {
                     eprintln("Error: Invalid uint \{Quote {value}}")
                     eprintln()
-                    usage(os.stderr)
+                    f.usage(os.stderr)
                     os.exit(1)
                 }
                 return n
             }
 
-            get_f64 :: (arg: string) -> f64 {
-                value  := get_string(arg)
+            get_f64 :: (f: &Flags, args: []string, arg: string) -> f64 {
+                value  := get_string(f, args, arg)
                 n, err := strings.to_f64(value)
                 if err != null {
                     eprintln("Error: Invalid float \{Quote {value}}")
-                    usage(os.stderr)
+                    f.usage(os.stderr)
                     os.exit(1)
                 }
                 return n
             }
 
-            get_string :: (arg: string) -> string {
-                if argn >= os.args.count {
+            get_string :: (f: &Flags, args: []string, arg: string) -> string {
+                if f.argn >= args.count {
                     eprintln("Error: Value not provided for \{Quote {arg}}")
                     eprintln()
-                    usage(os.stderr)
+                    f.usage(os.stderr)
                     os.exit(1)
                 }
 
-                argn += 1
-                return os.args[argn - 1]
+                f.argn += 1
+                return args[f.argn - 1]
             }
         }
 
         if flag == {
         case "h", "help"
-            usage(os.stdout)
+            this.usage(os.stdout)
             os.exit(0)
         }
 
         eprintln("Error: Invalid flag \{Quote {arg}}")
         eprintln()
-        usage(os.stderr)
+        this.usage(os.stderr)
         os.exit(1)
     }
 
-    flags.free()
+    this.left = args[this.argn..]
 }
 
-usage :: (w: io.Writer, location := #caller_location) {
-    if !parsed {
+usage :: (this: &Flags, w: io.Writer, location := #caller_location) {
+    if !this.read {
         panic("Cannot call this function before parsing flags", location = location)
     }
 
-    wprintln(w, "Usage:")
-    wprintln(w, "    \{os.args[0]} [FLAGS...]")
-    wprintln(w)
-    wprintln(w, "Flags:")
-
-    if !flags.contains("help") {
-        show(w, "help", "Show this help message and exit")
+    if this == &flags {
+        wprintln(w, "Usage of \{os.args[0]}:")
+    } else {
+        wprintln(w, "Usage:")
     }
 
-    for name, flag := range flags {
+    if !this.defs.contains("help") {
+        show(w, "help", "Show this message")
+    }
+
+    for name, flag := range this.defs {
         arg: string
         if flag.var == {
         case &bool
@@ -163,7 +182,7 @@ usage :: (w: io.Writer, location := #caller_location) {
     }
 
     show :: (w: io.Writer, name: string, desc: string, arg := "", default := Default {}) {
-        #static first := true
+        #thread first := true
         if first {
             first = false
         } else {
@@ -207,11 +226,20 @@ usage :: (w: io.Writer, location := #caller_location) {
     }
 }
 
-#private...
+args :: (this: Flags, location := #caller_location) -> []string {
+    if !this.read {
+        panic("Cannot call this function before parsing flags", location = location)
+    }
+    return this.left
+}
 
-argn:   s64
-flags:  map[string]Flag
-parsed: bool
+free :: inline (this: &Flags) {
+    this.defs.free()
+    mem.zero(this)
+}
+
+#private...
+flags: Flags
 
 Flag :: struct {
     var:      Var
@@ -257,4 +285,5 @@ Quote :: struct {
 io      :: #import "io"
 os      :: #import "os"
 fmt     :: #import "fmt"
+mem     :: #import "memory"
 strings :: #import "strings"
