@@ -1,0 +1,50 @@
+getcwd :: (allocator := default_allocator) -> string, error {
+    #if PLATFORM == .WINDOWS {
+        count := C.GetCurrentDirectoryA(0, null)
+        if count == 0 {
+            C.get_errno()?
+        }
+
+        dst := string(mem.new_array(u8, s64(count), zeroed = false, allocator = allocator)?)
+        if C.GetCurrentDirectoryA(count, C.LPSTR(dst.data)) == 0 {
+            C.get_errno()?
+        }
+        dst.count -= 1
+        return dst, null
+    } else {
+        checkpoint := temporary_allocator.alloc(0)?
+        defer temporary_allocator.rewind(checkpoint)
+
+        capacity := 128
+        temporary_allocator.alloc(capacity)
+        for C.getcwd(&C.char(checkpoint), C.size_t(capacity)) == null {
+            err := C.get_errno()
+            if err != .ERANGE then err?
+
+            temporary_allocator.alloc(capacity)?
+            capacity *= 2
+        }
+
+        src := strings.from_cstring(&C.char(checkpoint))
+        dst := string(mem.new_array(u8, src.count, zeroed = false, allocator = allocator)?)
+        mem.copy(dst.data, src.data, src.count)
+        return dst, null
+    }
+}
+
+setcwd :: (path: string) -> error {
+    path := strings.to_cstring(path, temporary_allocator)?
+    defer temporary_allocator.rewind(rawptr(path))
+
+    #if PLATFORM == .WINDOWS {
+        if C.SetCurrentDirectoryA(C.LPCSTR(path)) == 0 {
+            return C.get_errno()
+        }
+    } else {
+        if C.chdir(path) != 0 {
+            return C.get_errno()
+        }
+    }
+
+    return null
+}

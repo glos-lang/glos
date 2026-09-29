@@ -160,5 +160,8 @@
 
         GetEnvironmentVariableA :: (lpName: LPCSTR, lpBuffer: LPSTR, nSize: DWORD) -> DWORD
         SetEnvironmentVariableA :: (lpName: LPCSTR, lpValue: LPCSTR) -> BOOL
+
+        GetCurrentDirectoryA :: (nBufferLength: DWORD, lpBuffer: LPSTR) -> DWORD
+        SetCurrentDirectoryA :: (lpPathName: LPCSTR) -> BOOL
     }
 }

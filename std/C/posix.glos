@@ -39,5 +39,8 @@
         getenv :: (name: &char) -> &char
         setenv :: (name: &char, value: &char, overwrite: int) -> int
         unsetenv :: (name: &char) -> int
+
+        getcwd :: (buf: &char, size: size_t) -> &char
+        chdir :: (path: &char) -> int
     }
 }
