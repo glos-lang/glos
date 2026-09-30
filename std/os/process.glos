@@ -17,7 +17,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
     }
 
     #if PLATFORM == .WINDOWS {
-        si: win.STARTUPINFOA
+        si: win.STARTUPINFOW
         si.cb = sizeof(si)
 
         sa: win.SECURITY_ATTRIBUTES
@@ -60,46 +60,66 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         si.hStdInput = stdin_pipe_read
         si.dwFlags |= win.STARTF_USESTDHANDLES
 
-        sb: strings.Builder
-        defer sb.free()
+        cmdline: [..]win.WCHAR
+        defer cmdline.free()
 
-        for i, it := range *this {
-            if i != 0 {
-                sb.write([]u8(" "))
-            }
+        for i, s := range *this {
+            if i > 0 then push_rune(&cmdline, ' ')
+            if needs_quotes(s) {
+                push_rune(&cmdline, '"')
 
-            quote := it == "" || strings.contains(it, '\t') || strings.contains(it, '\v') || strings.contains(it, ' ')
-            if quote {
-                sb.write([]u8("\""))
-            }
-
-            for j, ch := range it {
-                if ch ==  {
-                case '\\'
-                    if j + 1 < it.count && it[j + 1] == '"' {
-                        sb.write([]u8("\\"))
+                backslashes := 0
+                for _, r := range s {
+                    if r == '\\' {
+                        backslashes += 1
+                    } else {
+                        if r == '"' {
+                            for range 1 + backslashes {
+                                push_rune(&cmdline, '\\')
+                            }
+                        }
+                        backslashes = 0
                     }
-
-                case '"'
-                    sb.write([]u8("\\"))
+                    push_rune(&cmdline, r)
                 }
 
-                if i == 0 && ch == '/' {
-                    sb.write([]u8("\\"))
-                } else {
-                    sb.write([]u8(&it[j], 1))
+                for range backslashes {
+                    push_rune(&cmdline, '\\')
+                }
+
+                push_rune(&cmdline, '"')
+            } else {
+                for _, r := range s {
+                    push_rune(&cmdline, r)
                 }
             }
 
-            if quote {
-                sb.write([]u8("\""))
+            push_rune :: (cmdline: &[..]win.WCHAR, r: rune) {
+                buffer: [2]u16
+                n, _  := utf16.encode(r, buffer)
+                cmdline.push(...buffer[..n])
+            }
+
+            needs_quotes :: (s: string) -> bool {
+                if s == "" {
+                    return true
+                }
+
+                for _, r := range s {
+                    if r == ' ' || r == '\t' || r == '\n' || r == '\v' || r == '"' {
+                        return true
+                    }
+                }
+
+                return false
             }
         }
 
+        cmdline.push(0)
         this.count = 0
 
         pi: win.PROCESS_INFORMATION
-        if win.CreateProcessA(null, win.LPSTR(sb.to_cstring()?), null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {
+        if win.CreateProcessW(null, cmdline.data, null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {
             Cmd_Error.Command_Not_Found_In_Path?
         }
         win.CloseHandle(pi.hThread)

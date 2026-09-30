@@ -26,7 +26,8 @@ case .WINDOWS
 C :: #import "C"
 
 #if PLATFORM == .WINDOWS {
-    win :: #import "windows"
+    win   :: #import "windows"
+    utf16 :: #import "unicode/utf16"
 } else {
     posix :: #import "posix"
 }

@@ -48,6 +48,10 @@ typedef struct {
 } Range;
 
 static void range_apply_token(Range *r, Token t) {
+    if (!t.pos.path) {
+        return;
+    }
+
     if (!r->started) {
         r->started = true;
         r->begin = t;

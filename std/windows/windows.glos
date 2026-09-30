@@ -29,16 +29,16 @@ extern {
     VirtualAlloc :: (lpAddress: LPVOID, dwSize: SIZE_T, flAllocationType: DWORD, flProtect: DWORD) -> LPVOID
     VirtualFree  :: (lpAddress: LPVOID, dwSize: SIZE_T, dwFreeType: DWORD) -> BOOL
 
-    CreateProcessA :: (
-        lpApplicationName: LPCSTR,
-        lpCommandLine: LPSTR,
+    CreateProcessW :: (
+        lpApplicationName: LPCWSTR,
+        lpCommandLine: LPWSTR,
         lpProcessAttributes: LPSECURITY_ATTRIBUTES,
         lpThreadAttributes: LPSECURITY_ATTRIBUTES,
         bInheritHandles: BOOL,
         dwCreationFlags: DWORD,
         lpEnvironment: LPVOID,
-        lpCurrentDirectory: LPCSTR,
-        lpStartupInfo: LPSTARTUPINFOA,
+        lpCurrentDirectory: LPCWSTR,
+        lpStartupInfo: LPSTARTUPINFOW,
         lpProcessInformation: LPPROCESS_INFORMATION,
     ) -> BOOL
 
@@ -62,11 +62,11 @@ extern {
     WaitForSingleObject :: (hHandle: HANDLE, dwMilliseconds: DWORD) -> DWORD
     GetExitCodeProcess :: (hProcess: HANDLE, lpExitCode: LPDWORD) -> BOOL
 
-    GetEnvironmentVariableA :: (lpName: LPCSTR, lpBuffer: LPSTR, nSize: DWORD) -> DWORD
-    SetEnvironmentVariableA :: (lpName: LPCSTR, lpValue: LPCSTR) -> BOOL
+    GetEnvironmentVariableW :: (lpName: LPCWSTR, lpBuffer: LPWSTR, nSize: DWORD) -> DWORD
+    SetEnvironmentVariableW :: (lpName: LPCWSTR, lpValue: LPCWSTR) -> BOOL
 
-    GetCurrentDirectoryA :: (nBufferLength: DWORD, lpBuffer: LPSTR) -> DWORD
-    SetCurrentDirectoryA :: (lpPathName: LPCSTR) -> BOOL
+    GetCurrentDirectoryW :: (nBufferLength: DWORD, lpBuffer: LPWSTR) -> DWORD
+    SetCurrentDirectoryW :: (lpPathName: LPCWSTR) -> BOOL
 }
 
 C :: #import "C"

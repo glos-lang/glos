@@ -1,5 +1,36 @@
+decode :: (s: []u16) -> rune, s64, bool {
+    cp := u32(s[0])
+    if cp >= 0xD800 && cp <= 0xDBFF && s.count > 1 && s[1] >= 0xDC00 && s[1] <= 0xDFFF {
+        // Surrogate pair
+        cp = 0x10000 + ((cp - 0xD800) << 10) + u32(s[1] - 0xDC00)
+        return rune(cp), 2, true
+    }
+    return rune(cp), 1, true
+}
+
+encode :: (r: rune, buffer: []u16) -> s64, bool {
+    cp := u32(r)
+    ok := true
+
+    // Treat anything invalid/out-of-range/surrogate as U+FFFD.
+    if r < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+        cp = u32(unicode.REPLACEMENT_CHAR)
+        ok = false
+    }
+
+    if cp < 0x10000 {
+        buffer[0] = u16(cp)
+        return 1, ok
+    }
+
+    cp -= 0x10000
+    buffer[0] = u16(0xD800 + (cp >> 10))
+    buffer[1] = u16(0xDC00 + (cp & 0x3FF))
+    return 2, ok
+}
+
 from_string :: (s: string, allocator := default_allocator) -> []u16, error {
-    n := 0
+    n := 1
     for _, c := range s {
         if c < 0 then C.Errno.EILSEQ?
         if u32(c) < 0x10000 {
@@ -11,17 +42,12 @@ from_string :: (s: string, allocator := default_allocator) -> []u16, error {
 
     result := mem.new_array(u16, n, allocator = allocator, zeroed = false)?
     iota   := 0
-    for _, c := range s {
-        cp := u32(c)
-        if cp < 0x10000 {
-            result[iota] = u16(cp); iota += 1
-        } else {
-            cp -= 0x10000
-            result[iota] = u16(0xD800 + (cp >> 10));   iota += 1
-            result[iota] = u16(0xDC00 + (cp & 0x3FF)); iota += 1
-        }
+    for _, r := range s {
+        n, _ := encode(r, result[iota..])
+        iota += n
     }
 
+    result[iota] = 0
     return result, null
 }
 
@@ -41,17 +67,14 @@ to_cstring :: (u: []u16, allocator := default_allocator) -> &C.char, error {
     return b.to_cstring(allocator = allocator)?, null
 }
 
-to_builder :: (u: []u16, b: &strings.Builder) -> error {
+to_builder :: (s: []u16, b: &strings.Builder) -> error {
     i := 0
-    for i < u.count {
-        cp := u32(u[i]); i += 1
-        if cp >= 0xD800 && cp <= 0xDBFF && i < u.count && u[i] >= 0xDC00 && u[i] <= 0xDFFF {
-            // Surrogate pair
-            cp = 0x10000 + ((cp - 0xD800) << 10) + u32(u[i] - 0xDC00); i += 1
-        }
+    for i < s.count {
+        r, n, _ := decode(s[i..])
+        i += n
 
         tmp: [4]u8
-        n, _ := unicode.encode(rune(cp), tmp)
+        n, _ = unicode.encode(r, tmp)
         b.write(tmp[..n])?
     }
 
