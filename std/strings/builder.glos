@@ -1,145 +1,29 @@
-Builder :: struct {
-    cursor:    &u8
-    count:     s64
-    allocator: Allocator
+Builder :: distinct [..]u8
 
-    page_first: &Page
-    page_last:  &Page
+write :: inline (this: &Builder, bytes: []u8) -> s64, error {
+    this.push(...bytes)
+    return bytes.count, null
 }
 
-free :: (this: &Builder) {
-    p := this.page_first
-    for p != null {
-        n := p.next
-        mem.free(p, allocator = this.allocator)
-        p = n
+to_string :: (this: &Builder, from := 0, rewind := true, allocator := default_allocator, location := #caller_location) -> string, error {
+    if from > this.count {
+        panic("Bounds Check Failed: Index \{from} is invalid since length is \{this.count}", location = location)
     }
+
+    s := string(mem.clone_array(this[from..])?)
+    if rewind {
+        this.count = from
+    }
+    return s, null
 }
 
-write :: (this: &Builder, bytes: []u8) -> s64, error {
-    if this.page_last == null {
-        if this.allocator == null then this.allocator = default_allocator
-        this.page_first = mem.new(Page, allocator = this.allocator, zeroed = false)?
-        this.page_last = this.page_first
-        this.page_last.count = 0
-        this.page_last.next  = null
-    }
-
-    n := bytes.count
-    for bytes.count != 0 {
-        page      := this.page_last
-        available := page.bytes.count - page.count
-
-        if bytes.count <= available {
-            if bytes.count != 0 {
-                mem.copy(page.bytes.data + &u8(page.count), bytes.data, bytes.count)
-            }
-
-            page.count += bytes.count
-            this.count += bytes.count
-            this.cursor = page.bytes.data + &u8(page.count)
-            return n, null
-        }
-
-        if available != 0 {
-            mem.copy(&page.bytes[page.count], bytes.data, available)
-        }
-
-        page.count += available
-        this.count += available
-        this.cursor = page.bytes.data + &u8(page.count)
-        bytes = bytes[available..]
-
-        page.next = mem.new(Page, allocator = this.allocator, zeroed = false)?
-        this.page_last = page.next
-        this.page_last.count = 0
-        this.page_last.next  = null
-    }
-
-    return n, null
-}
-
-rewind :: (this: &Builder, from: &u8 = null, location := #caller_location) {
-    if this.page_first == null then return
-    if from == null            then from = this.page_first.bytes.data
-
-    for p := this.page_first; p != null; p = p.next {
-        begin := p.bytes.data
-        end   := begin + &u8(p.count)
-        if from >= begin && from <= end {
-            for a := s64(from - begin); p != null; p = p.next {
-                p.count = a
-                a = 0
-            }
-            return
-        }
-    }
-
-    panic("Builder does not contain the address \{from}", location = location)
-}
-
-to_string :: (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> string, error {
-    if this.page_first == null then return "", null
-    if from == null            then from = this.page_first.bytes.data
-
-    head := 0
-    for p := this.page_first; p != null; p = p.next {
-        begin := p.bytes.data
-        end   := begin + &u8(p.count)
-        if from >= begin && from <= end {
-            a     := s64(from - begin)
-            count := this.count - (head + a)
-            bytes := mem.new(u8, count, allocator = allocator, zeroed = false)?
-
-            head := 0
-            left := count
-            for p != null {
-                available := p.count - a
-                if available >= left {
-                    available = left
-                }
-
-                if available != 0 {
-                    mem.copy(bytes + &u8(head), p.bytes.data + &u8(a), available, overlaps = false)
-                }
-
-                head += available
-                left -= available
-
-                if rewind then p.count = a
-                a = 0
-                p = p.next
-            }
-            return string([]u8(bytes, count)), null
-        }
-        head += p.count
-    }
-
-    panic("Builder does not contain the address \{from}", location = location)
-}
-
-to_cstring :: inline (this: &Builder, from: &u8 = null, rewind := true, allocator := default_allocator, location := #caller_location) -> &C.char, error {
+to_cstring :: inline (this: &Builder, from := 0, rewind := true, allocator := default_allocator, location := #caller_location) -> &C.char, error {
     this.write([]u8("\0"))?
     return &C.char(this.to_string(from = from, rewind = rewind, allocator = default_allocator, location = location)?.data), null
 }
 
 @format :: (this: &Builder, w: io.Writer, nested := false) -> s64, error {
-    n := 0
-    for p := this.page_first; p != null; p = p.next {
-        if p.count != 0 {
-            n += w.write(p.bytes[..p.count])?
-        }
-    }
-    return n, null
+    return w.write(this[..])
 }
 
 io :: #import "io"
-
-#private
-Page :: struct {
-    bytes: [4096]u8
-    count: s64
-    next:  &Page
-}
-
-// TODO: Perhaps this should use mmap() and VirtualAlloc() directly.

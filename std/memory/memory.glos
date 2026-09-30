@@ -35,4 +35,17 @@ clone :: inline (v: $T, allocator := default_allocator) -> &T, error {
     return &T(C.memcpy(allocator.alloc(sizeof(T), zeroed = false)?, rawptr(&v), sizeof(v))), null
 }
 
+clone_array :: inline (v: []$T, allocator := default_allocator) -> []T, error {
+    return []T(
+        &T(
+            C.memcpy(
+                allocator.alloc(v.count * sizeof(T), zeroed = false)?,
+                rawptr(v.data),
+                C.size_t(v.count) * sizeof(T)
+            )
+        ),
+        v.count
+    ), null
+}
+
 C :: #import "C"
