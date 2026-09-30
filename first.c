@@ -292,18 +292,18 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     const void *save = arena_alloc(&temp_arena, 0);
     Procs       procs = {.nprocs = nprocs};
 
-    size_t headers_time_latest = 0;
+    u64 headers_time_latest = 0;
     for (size_t i = 0; i < len(headers); i++) {
-        const size_t time = get_modified_time(headers[i]);
+        const u64 time = get_modified_time(headers[i]);
         headers_time_latest = max(headers_time_latest, time);
     }
 
     bool need_linking = get_modified_time("glos" EXE_FILE_EXTENSION) == 0;
     for (size_t i = 0; i < len(sources); i++) {
-        const char  *src = sources[i];
-        const char  *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
-        const size_t src_time = get_modified_time(src);
-        const size_t obj_time = get_modified_time(obj);
+        const char *src = sources[i];
+        const char *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
+        const u64   src_time = get_modified_time(src);
+        const u64   obj_time = get_modified_time(obj);
         if (obj_time >= src_time && obj_time >= headers_time_latest) {
             continue;
         }

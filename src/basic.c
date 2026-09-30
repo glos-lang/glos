@@ -962,7 +962,7 @@ bool directory_exists(const char *path) {
     return (info.st_mode & S_IFDIR) != 0;
 }
 
-size_t get_modified_time(const char *path) {
+u64 get_modified_time(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     WIN32_FILE_ATTRIBUTE_DATA data;
     if (!GetFileAttributesExA(path, GetFileExInfoStandard, &data)) {
@@ -972,8 +972,12 @@ size_t get_modified_time(const char *path) {
     ULARGE_INTEGER ft;
     ft.LowPart = data.ftLastWriteTime.dwLowDateTime;
     ft.HighPart = data.ftLastWriteTime.dwHighDateTime;
-    return ft.QuadPart;
 
+    const ULONGLONG secs = ft.QuadPart / 10000000ULL;
+    if (secs < 11644473600ULL) {
+        return 0;
+    }
+    return (u64) (secs - 11644473600ULL);
 #else
     struct stat st;
     if (stat(path, &st) != 0) {

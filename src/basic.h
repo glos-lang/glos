@@ -381,7 +381,7 @@ bool create_directory(const char *path);
 bool file_exists(const char *path);
 bool directory_exists(const char *path);
 
-size_t get_modified_time(const char *path);
+u64 get_modified_time(const char *path);
 
 bool is_cmd_available_in_path(const char *cmd);
 bool is_lld_available_in_path(void);
