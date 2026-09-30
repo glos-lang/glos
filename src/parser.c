@@ -2062,6 +2062,7 @@ static Node *parse_stmt(Parser *p) {
         p->state.in_extern = true;
         while (!read_token(p, TOKEN_RBRACE)) {
             nodes_push(&externn->nodes, parse_stmt(p));
+            expect_stmt_terminator(p);
         }
         p->state.in_extern = false;
 

@@ -2157,8 +2157,10 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
             }
 
             n->type = type_without_ref(index->lhs->type);
-            if (type_kind_eq(n->type, TYPE_ARRAY) || type_kind_eq(n->type, TYPE_DYNAMIC_ARRAY)) {
-                n->type.kind = TYPE_SLICE;
+            if (type_kind_eq(n->type, TYPE_ARRAY)) {
+                n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = n->type.spec.array.element};
+            } else if (type_kind_eq(n->type, TYPE_DYNAMIC_ARRAY)) {
+                n->type = (Type) {.kind = TYPE_SLICE, .spec.slice.element = n->type.spec.dynamic_array.element};
             }
         } else {
             index->overload = get_operator_overload(c, OPERATOR_SLICE, index->lhs, n, n->module);
