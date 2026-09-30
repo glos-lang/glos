@@ -161,7 +161,9 @@ void compiler_build(Compiler *c, const char *output_path) {
             c, LLVMPointerTypeInContext(c->llvm_context, 0), enums, c->error_enums_list.count);
 
         arena_reset(&default_arena, enums);
-        compile_var_def(c, c->error_enums_var);
+        if (!c->error_enums_var->definition_spec->llvm) {
+            compile_var_def(c, c->error_enums_var);
+        }
         LLVMSetInitializer(c->error_enums_var->definition_spec->llvm, slice);
     }
 

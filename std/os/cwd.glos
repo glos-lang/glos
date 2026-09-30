@@ -5,12 +5,12 @@ getcwd :: (allocator := default_allocator) -> string, error {
     #if PLATFORM == .WINDOWS {
         count := win.GetCurrentDirectoryW(0, null)
         if count == 0 {
-            C.get_errno()?
+            win.get_error()?
         }
 
         tmp := mem.new_array(u16, s64(count), zeroed = false, allocator = temporary_allocator)?
         if win.GetCurrentDirectoryW(count, tmp.data) == 0 {
-            C.get_errno()?
+            win.get_error()?
         }
 
         tmp.count -= 1
@@ -39,7 +39,7 @@ setcwd :: (path: string) -> error {
         defer temporary_allocator.rewind(rawptr(path))
 
         if win.SetCurrentDirectoryW(path) == 0 {
-            return C.get_errno()
+            return win.get_error()
         }
     } else {
         path := strings.to_cstring(path, temporary_allocator)?

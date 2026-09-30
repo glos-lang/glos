@@ -67,6 +67,17 @@ extern {
 
     GetCurrentDirectoryW :: (nBufferLength: DWORD, lpBuffer: LPWSTR) -> DWORD
     SetCurrentDirectoryW :: (lpPathName: LPCWSTR) -> BOOL
+
+    GetLastError :: () -> DWORD
+    FormatMessageW :: (
+        dwFlags: DWORD,
+        lpSource: LPCVOID,
+        dwMessageId: DWORD,
+        dwLanguageId: DWORD,
+        lpBuffer: LPWSTR,
+        nSize: DWORD,
+        arguments: rawptr
+    ) -> DWORD
 }
 
 C :: #import "C"

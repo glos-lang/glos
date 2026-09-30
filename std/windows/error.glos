@@ -1,0 +1,46 @@
+Error :: enum error {
+    // There are too many windows error codes, so using this hack.
+    BLANK = 0
+}
+
+get_error :: () -> Error {
+    err := GetLastError()
+    if err == 0 {
+        return null
+    }
+    return Error.BLANK + Error(err)
+}
+
+@format :: (this: &Error, w: io.Writer, nested: bool) -> s64, error {
+    #static buffer: [4096]WCHAR
+
+    FORMAT_MESSAGE_FROM_SYSTEM    :: 0x00001000
+    FORMAT_MESSAGE_IGNORE_INSERTS :: 0x00000200
+    LANG_USER_DEFAULT             :: 0x00000400
+    ERROR_MR_MID_NOT_FOUND        :: 0x0000013D
+
+    err   := u32(*this)
+    count := FormatMessageW(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        null,
+        err,
+        LANG_USER_DEFAULT,
+        buffer.data,
+        DWORD(buffer.count),
+        null)
+
+    if count != 0 {
+        s, err := utf16.to_string(buffer[..count], allocator = temporary_allocator)
+        defer temporary_allocator.rewind(rawptr(s.data))
+
+        if err == null {
+            return wprint(w, strings.trim_right(strings.trim_right(s), '.'))
+        }
+    }
+
+    return wprint(w, "E\{err}")
+}
+
+io      :: #import "io"
+utf16   :: #import "unicode/utf16"
+strings :: #import "strings"

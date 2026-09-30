@@ -430,6 +430,11 @@ value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
         if index != 0 {
             index -= 1
             if s64(index) < error_enums.count {
+                fmt := error_enums[index].format
+                if fmt != null {
+                    return fmt(f.data, w, nested)
+                }
+
                 v := error_enums[index].variant.(Type_Info_Enumeration)
                 for i := 0; i < v.values.count; i += 1 {
                     if v.values[i] == s64(err) {

@@ -331,13 +331,12 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
         check_that_methods_can_be_accessed(c, n);
     }
 
-    const Type receiver_without_ref = type_without_ref(receiver);
     ll_foreach(it, &trait->impls) {
         if (!trait->methods_count) {
             return_defer(it);
         }
 
-        if (type_eq(it->type, receiver_without_ref)) {
+        if (type_eq(it->type, receiver)) {
             return_defer(it);
         }
     }
@@ -345,7 +344,7 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
     const Type expected = {.kind = TYPE_TRAIT, .spec.trait = trait};
 
     Type_Trait_Impl impl = {0};
-    impl.type = receiver_without_ref;
+    impl.type = receiver;
 
     if (trait->methods_count) {
         impl.methods = arena_alloc(&default_arena, trait->methods_count * sizeof(*impl.methods));

@@ -2,7 +2,6 @@ Cmd :: distinct [..]string
 
 Cmd_Error :: enum error {
     No_Command "No command"
-    Command_Not_Found_In_Path "Command not found in PATH"
 }
 
 Cmd_Capture :: enum {
@@ -28,7 +27,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         stdout_pipe_read, stdout_pipe_write: win.HANDLE
         if capture_stdout != .NOP {
             if win.CreatePipe(&stdout_pipe_read, &stdout_pipe_write, &sa, 0) == 0 {
-                C.get_errno()?
+                win.get_error()?
             }
             win.SetHandleInformation(stdout_pipe_read, win.HANDLE_FLAG_INHERIT, 0)
         } else {
@@ -38,7 +37,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         stderr_pipe_read, stderr_pipe_write: win.HANDLE
         if capture_stderr != .NOP {
             if win.CreatePipe(&stderr_pipe_read, &stderr_pipe_write, &sa, 0) == 0 {
-                C.get_errno()?
+                win.get_error()?
             }
             win.SetHandleInformation(stderr_pipe_read, win.HANDLE_FLAG_INHERIT, 0)
         } else {
@@ -48,7 +47,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         stdin_pipe_read, stdin_pipe_write: win.HANDLE
         if capture_stdin != .NOP {
             if win.CreatePipe(&stdin_pipe_read, &stdin_pipe_write, &sa, 0) == 0 {
-                C.get_errno()?
+                win.get_error()?
             }
             win.SetHandleInformation(stdin_pipe_write, win.HANDLE_FLAG_INHERIT, 0)
         } else {
@@ -120,7 +119,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
 
         pi: win.PROCESS_INFORMATION
         if win.CreateProcessW(null, cmdline.data, null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {
-            Cmd_Error.Command_Not_Found_In_Path?
+            win.get_error()?
         }
         win.CloseHandle(pi.hThread)
 
@@ -226,7 +225,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
 
         if count > 0 {
             posix.waitpid(p.id, null, 0)
-            Cmd_Error.Command_Not_Found_In_Path?
+            C.Errno.ENOENT?
         }
 
         if capture_stdin != .NOP {
@@ -284,12 +283,12 @@ wait :: (this: Process) -> s32, error {
 
     #if PLATFORM == .WINDOWS {
         if win.WaitForSingleObject(this.id, win.INFINITE) == win.WAIT_FAILED {
-            C.get_errno()?
+            win.get_error()?
         }
 
         code: win.DWORD
         if win.GetExitCodeProcess(this.id, &code) == 0 {
-            C.get_errno()?
+            win.get_error()?
         }
 
         win.CloseHandle(this.id)
@@ -323,7 +322,7 @@ wait :: (this: Process) -> s32, error {
 kill :: (this: Process, force := false) -> error {
     #if PLATFORM == .WINDOWS {
         if win.TerminateProcess(this.id, 1) == 0 {
-            return C.get_errno()
+            return win.get_error()
         }
     } else {
         if force {

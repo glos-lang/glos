@@ -209,7 +209,7 @@ My_Type :: struct {
     x: string
 }
 
-a :: (this: My_Type) -> string {
+a :: (this: &My_Type) -> string {
     return this.x
 }
 
@@ -223,7 +223,7 @@ polymorphic_parameter_constraints :: () {
         println("foo: \{x.a()}")
     }
 
-    foo(My_Type {"Hello"})
+    foo(&My_Type {"Hello"})
     println()
     // foo(69) // This line is an error since 's64' does not implement 'Trait_A'
 

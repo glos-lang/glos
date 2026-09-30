@@ -6,6 +6,13 @@ main :: () {
     // Check out the file "std/C/types.glos" to see the definitions.
     C :: #import "C"
 
+    // And the windows specific module to get some more type aliases.
+    //
+    // See the folders in "std" to get an idea of the modules available.
+    #if PLATFORM == .WINDOWS {
+        win :: #import "windows"
+    }
+
     // You can define external variables and functions inside 'extern' blocks.
     extern {
         stdout: rawptr
@@ -41,7 +48,7 @@ main :: () {
             _NSGetExecutablePath :: (buffer: &C.char, size: &u32) -> C.int
 
         case .WINDOWS
-            MessageBoxA :: (hWnd: C.HWND, lpText: C.LPCSTR, lpCaption: C.LPCSTR, uType: C.UINT) -> C.int
+            MessageBoxA :: (hWnd: win.HWND, lpText: win.LPCWSTR, lpCaption: win.LPCWSTR, uType: win.UINT) -> C.int
             #library "user32"
         }
     }
