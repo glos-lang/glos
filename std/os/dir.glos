@@ -145,7 +145,7 @@ Dir_Entry :: struct {
             }
 
             mem.zero(&this.entry)
-            this.entry.path = string(this.sb[this.stack.data.path_count..])
+            this.entry.path = strings.trim_left(string(this.sb[..]), "./")
             this.entry.name = name
             return &this.entry, null, true
         }
@@ -197,7 +197,7 @@ Dir_Entry :: struct {
             this.path.push('\0')
 
             mem.zero(&this.entry)
-            this.entry.path = string(this.path[this.stack.data.path_count + 1..this.path.count - 1])
+            this.entry.path = strings.trim_left(string(this.path[..this.path.count - 1]), "./")
             this.entry.name = name
             return &this.entry, null, true
         }

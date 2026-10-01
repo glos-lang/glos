@@ -1,11 +1,11 @@
 EXIT 0
-STDOUT 58
-bar
-foo
-foo/another.md
-foo/foo.txt
-foo/noice.py
-main.glos
+STDOUT 280
+tests/stdlib_directory_iteration_api/bar
+tests/stdlib_directory_iteration_api/foo
+tests/stdlib_directory_iteration_api/foo/another.md
+tests/stdlib_directory_iteration_api/foo/foo.txt
+tests/stdlib_directory_iteration_api/foo/noice.py
+tests/stdlib_directory_iteration_api/main.glos
 
 STDERR 0
 
