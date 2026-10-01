@@ -1,10 +1,10 @@
-#assert(PLATFORM == .WINDOWS)
-
 MEM_COMMIT  :: 0x00001000
 MEM_RELEASE :: 0x00008000
 MEM_RESERVE :: 0x00002000
 
 PAGE_READWRITE :: 0x04
+
+INVALID_HANDLE_VALUE :: HANDLE(-1)
 
 STD_INPUT_HANDLE  :: DWORD(s32(-10))
 STD_OUTPUT_HANDLE :: DWORD(s32(-11))
@@ -14,11 +14,14 @@ HANDLE_FLAG_INHERIT :: 0x00000001
 
 STARTF_USESTDHANDLES :: 0x00000100
 
+FILE_ATTRIBUTE_DIRECTORY :: 0x00000010
+
 INFINITE :: 0xffffffff
 
 WAIT_FAILED :: 0xFFFFFFFF
 
 extern {
+    wcslen :: (str: &WCHAR) -> C.size_t
     _fileno :: (f: C.FILE) -> C.int
     _lseeki64 :: (fd: C.int, offset: s64, whence: C.int) -> s64
     _open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int
@@ -78,6 +81,10 @@ extern {
         nSize: DWORD,
         arguments: rawptr
     ) -> DWORD
+
+    FindFirstFileW :: (lpFileName: LPCWSTR, lpFindFileData: LPWIN32_FIND_DATAW) -> HANDLE
+    FindNextFileW :: (hFindFile: HANDLE, lpFindFileData: LPWIN32_FIND_DATAW) -> BOOL
+    FindClose :: (hFindFile: HANDLE) -> BOOL
 }
 
 C :: #import "C"

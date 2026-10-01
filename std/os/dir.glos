@@ -1,0 +1,205 @@
+#if PLATFORM == .WINDOWS {
+    Dir_Iter :: struct {
+        stack:     [..]Dir_Iter_Frame
+        path:      [..]win.WCHAR
+        sb:        strings.Builder
+        entry:     Dir_Entry
+        recursive: bool
+    }
+
+    #private
+    Dir_Iter_Frame :: struct {
+        dir:        win.HANDLE
+        ent:        win.WIN32_FIND_DATAW
+        path_count: s64
+        first_used: bool
+    }
+} else {
+    Dir_Iter :: struct {
+        stack:     [..]Dir_Iter_Frame
+        path:      [..]C.char // Make this a strings.Builder
+        entry:     Dir_Entry
+        recursive: bool
+    }
+
+    #private
+    Dir_Iter_Frame :: struct {
+        dir:        posix.DIR
+        ent:        &posix.dirent
+        path_count: s64
+    }
+}
+
+dir_iter :: (path: string, recursive := false) -> Dir_Iter, error {
+    di: Dir_Iter
+
+    #if PLATFORM == .WINDOWS {
+        for _, r := range path {
+            utf16.encode_into_dynamic_array(r, &di.path)
+        }
+
+        utf16.encode_into_dynamic_array('/', &di.path)
+        utf16.encode_into_dynamic_array('*', &di.path)
+        di.path.push(0)
+
+        frame: Dir_Iter_Frame
+        frame.dir = win.FindFirstFileW(di.path.data, &frame.ent);
+        if frame.dir == win.INVALID_HANDLE_VALUE {
+            err := win.get_error()
+            di.free()
+            return di, err
+        }
+        frame.path_count = di.path.count - 2
+    } else {
+        di.path.push(...[]C.char(path))
+        di.path.push('\0')
+
+        frame: Dir_Iter_Frame
+        frame.dir = posix.opendir(di.path.data)
+        if frame.dir == null {
+            err := C.get_errno()
+            di.free()
+            return di, err
+        }
+        frame.path_count = di.path.count - 1
+    }
+
+    di.stack.push(frame)
+    di.recursive = recursive
+    return di, null
+}
+
+free :: (this: &Dir_Iter) {
+    #if PLATFORM == .WINDOWS {
+        for _, it := range this.stack {
+            win.FindClose(it.dir)
+        }
+
+        this.sb.free()
+    } else {
+        for _, it := range this.stack {
+            posix.closedir(it.dir)
+        }
+    }
+
+    this.path.free()
+    this.stack.free()
+}
+
+Dir_Entry :: struct {
+    path: string
+    name: string
+    skip: bool
+}
+
+#if PLATFORM == .WINDOWS {
+    range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
+        for {
+            if this.stack.count == 0 {
+                this.free()
+                return null, null, false
+            }
+
+            it := &this.stack[this.stack.count - 1]
+            if it.first_used {
+                if this.recursive && (it.ent.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0 && !this.entry.skip {
+                    utf16.encode_into_dynamic_array('/', &this.path)
+                    utf16.encode_into_dynamic_array('*', &this.path)
+                    this.path.push(0)
+
+                    frame: Dir_Iter_Frame
+                    frame.dir = win.FindFirstFileW(this.path.data, &frame.ent);
+                    if frame.dir == win.INVALID_HANDLE_VALUE {
+                        return null, win.get_error(), true
+                    }
+                    frame.path_count = this.path.count - 2
+
+                    it.ent.dwFileAttributes = 0
+                    this.stack.push(frame)
+                    continue
+                }
+
+                if win.FindNextFileW(it.dir, &it.ent) == 0 {
+                    win.FindClose(it.dir)
+                    this.stack.count -= 1
+                    continue
+                }
+
+                if it.dir == win.INVALID_HANDLE_VALUE {
+                    return null, win.get_error(), true
+                }
+            } else {
+                it.first_used = true
+            }
+
+            count := s64(win.wcslen(it.ent.cFileName.data))
+            this.path.count = it.path_count
+            this.path.push(...[]u16(it.ent.cFileName.data, count))
+            this.sb.count = 0
+            utf16.to_builder(this.path, &this.sb)
+
+            name := string(this.sb[this.sb.count - count..])
+            if name == "." || name == ".." {
+                it.ent.dwFileAttributes = 0
+                continue
+            }
+
+            mem.zero(&this.entry)
+            this.entry.path = string(this.sb[this.stack.data.path_count..])
+            this.entry.name = name
+            return &this.entry, null, true
+        }
+    }
+} else {
+    range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
+        for {
+            if this.stack.count == 0 {
+                this.free()
+                return null, null, false
+            }
+
+            it := &this.stack[this.stack.count - 1]
+            if this.recursive && it.ent != null && it.ent.type == posix.DT_DIR && !this.entry.skip {
+                frame: Dir_Iter_Frame
+                frame.dir = posix.opendir(this.path.data)
+                if frame.dir == null {
+                    return null, C.get_errno(), true
+                }
+                frame.path_count = this.path.count - 1
+
+                it.ent = null
+                this.stack.push(frame)
+                continue
+            }
+
+            C.set_errno(null)
+            it.ent = posix.readdir(it.dir)
+            if it.ent == null {
+                err := C.get_errno()
+                if err != null {
+                    return null, err, true
+                }
+
+                posix.closedir(it.dir)
+                this.stack.count -= 1
+                continue
+            }
+
+            name := strings.from_cstring(&C.char(it.ent.name.data))
+            if name == "." || name == ".." {
+                it.ent = null
+                continue
+            }
+
+            this.path.count = it.path_count
+            this.path.push('/')
+            this.path.push(...[]C.char(name))
+            this.path.push('\0')
+
+            mem.zero(&this.entry)
+            this.entry.path = string(this.path[this.stack.data.path_count + 1..this.path.count - 1])
+            this.entry.name = name
+            return &this.entry, null, true
+        }
+    }
+}

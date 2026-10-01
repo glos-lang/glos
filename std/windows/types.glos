@@ -79,7 +79,7 @@ STARTUPINFOW :: struct {
     hStdError: HANDLE
 }
 
-LPSTARTUPINFOW :: &STARTUPINFOW;
+LPSTARTUPINFOW :: &STARTUPINFOW
 
 SECURITY_ATTRIBUTES :: struct {
     nLength: DWORD
@@ -99,3 +99,27 @@ PROCESS_INFORMATION :: struct {
 
 PPROCESS_INFORMATION :: &PROCESS_INFORMATION
 LPPROCESS_INFORMATION :: &PROCESS_INFORMATION
+
+FILETIME :: struct {
+    dwLowDateTime: DWORD
+    dwHighDateTime: DWORD
+}
+
+PFILETIME :: &FILETIME
+LPFILETIME :: &FILETIME
+
+WIN32_FIND_DATAW :: struct {
+    dwFileAttributes: DWORD
+    ftCreationTime: FILETIME
+    ftLastAccessTime: FILETIME
+    ftLastWriteTime: FILETIME
+    nFileSizeHigh: DWORD
+    nFileSizeLow: DWORD
+    dwReserved0: DWORD
+    dwReserved1: DWORD
+    cFileName: [260]WCHAR
+    cAlternateFileName: [14]WCHAR
+}
+
+PWIN32_FIND_DATAW :: &WIN32_FIND_DATAW
+LPWIN32_FIND_DATAW :: &WIN32_FIND_DATAW

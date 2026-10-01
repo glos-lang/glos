@@ -1,0 +1,99 @@
+sort :: (s: []$T, $compare := ((lhs: T, rhs: T) -> bool)(null)) {
+    Arg :: struct {
+        compare: (lhs: T, rhs: T) -> bool
+    }
+
+    arg: Arg
+    #if compare == null {
+        arg.compare = (lhs: T, rhs: T) -> bool {
+            return lhs < rhs
+        }
+    } else {
+        arg.compare = compare
+    }
+
+    #if PLATFORM == {
+    case .LINUX
+        qsort_r(rawptr(s.data), C.size_t(s.count), sizeof(T), (lhs: rawptr, rhs: rawptr, arg: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs)) {
+                return -1
+            } else {
+                return 1
+            }
+        }, rawptr(&arg))
+
+    case .MACOS
+        qsort_r(rawptr(s.data), C.size_t(s.count), sizeof(T), rawptr(&arg), (arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs)) {
+                return -1
+            } else {
+                return 1
+            }
+        })
+
+    case .WINDOWS
+        qsort_s(rawptr(s.data), C.size_t(s.count), sizeof(T), (arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs)) {
+                return -1
+            } else {
+                return 1
+            }
+        }, rawptr(&arg))
+    }
+}
+
+sort_with_context :: (s: []$T, context: $E, compare: (lhs: T, rhs: T, context: E) -> bool) {
+    Arg :: struct {
+        compare: (lhs: T, rhs: T, context: E) -> bool
+        context: E
+    }
+
+    arg: Arg
+    arg.context = context
+    arg.compare = compare
+
+    #if PLATFORM == {
+    case .LINUX
+        qsort_r(rawptr(s.data), C.size_t(s.count), sizeof(T), (lhs: rawptr, rhs: rawptr, arg: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs), (&Arg)(arg).context) {
+                return -1
+            } else {
+                return 1
+            }
+        }, rawptr(&arg))
+
+    case .MACOS
+        qsort_r(rawptr(s.data), C.size_t(s.count), sizeof(T), rawptr(&arg), (arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs), (&Arg)(arg).context) {
+                return -1
+            } else {
+                return 1
+            }
+        })
+
+    case .WINDOWS
+        qsort_s(rawptr(s.data), C.size_t(s.count), sizeof(T), (arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int {
+            if (&Arg)(arg).compare(*(&T)(lhs), *(&T)(rhs), (&Arg)(arg).context) {
+                return -1
+            } else {
+                return 1
+            }
+        }, rawptr(&arg))
+    }
+}
+
+#private...
+extern {
+    #if PLATFORM == {
+    case .LINUX
+        qsort_r :: (base: rawptr, nmemb: C.size_t, size: C.size_t, compar: ((lhs: rawptr, rhs: rawptr, arg: rawptr) -> C.int), arg: rawptr)
+
+    case .MACOS
+        qsort_r :: (base: rawptr, nmemb: C.size_t, size: C.size_t, arg: rawptr, compar: ((arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int))
+
+    case .WINDOWS
+        qsort_s :: (base: rawptr, nmemb: C.size_t, size: C.size_t, compar: ((arg: rawptr, lhs: rawptr, rhs: rawptr) -> C.int), arg: rawptr)
+    }
+}
+
+C :: #import "C"

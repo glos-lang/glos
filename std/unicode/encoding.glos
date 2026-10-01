@@ -58,7 +58,7 @@ encode :: (r: rune, buffer: []u8) -> s64, bool {
         ok = false
     }
 
-    n:  s64
+    n: s64
     if cp <= 0x7F {
         buffer[0] = u8(cp)
         n = 1
@@ -79,5 +79,13 @@ encode :: (r: rune, buffer: []u8) -> s64, bool {
         n = 4
     }
 
+    return n, ok
+}
+
+encode_into_dynamic_array :: (r: rune, buffer: &[..]u8) -> s64, bool {
+    buffer.count += 4
+    buffer.reserve(buffer.count)
+    n, ok := encode(r, buffer[buffer.count - 4..])
+    buffer.count += n - 4
     return n, ok
 }

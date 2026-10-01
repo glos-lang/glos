@@ -1,0 +1,11 @@
+EXIT 0
+STDOUT 58
+bar
+foo
+foo/another.md
+foo/foo.txt
+foo/noice.py
+main.glos
+
+STDERR 0
+

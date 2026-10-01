@@ -12,7 +12,7 @@ get_error :: () -> Error {
 }
 
 @format :: (this: &Error, w: io.Writer, nested: bool) -> s64, error {
-    #static buffer: [4096]WCHAR
+    #thread buffer: [4096]WCHAR
 
     FORMAT_MESSAGE_FROM_SYSTEM    :: 0x00001000
     FORMAT_MESSAGE_IGNORE_INSERTS :: 0x00000200

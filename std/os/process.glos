@@ -63,9 +63,20 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         defer cmdline.free()
 
         for i, s := range *this {
-            if i > 0 then push_rune(&cmdline, ' ')
-            if needs_quotes(s) {
-                push_rune(&cmdline, '"')
+            if i > 0 {
+                utf16.encode_into_dynamic_array(' ', &cmdline)
+            }
+
+            needs_quotes := (s == "")
+            for _, r := range s {
+                if r == ' ' || r == '\t' || r == '\n' || r == '\v' || r == '"' {
+                    needs_quotes = true
+                    break
+                }
+            }
+
+            if needs_quotes {
+                utf16.encode_into_dynamic_array('"', &cmdline)
 
                 backslashes := 0
                 for _, r := range s {
@@ -74,43 +85,23 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
                     } else {
                         if r == '"' {
                             for range 1 + backslashes {
-                                push_rune(&cmdline, '\\')
+                                utf16.encode_into_dynamic_array('\\', &cmdline)
                             }
                         }
                         backslashes = 0
                     }
-                    push_rune(&cmdline, r)
+                    utf16.encode_into_dynamic_array(r, &cmdline)
                 }
 
                 for range backslashes {
-                    push_rune(&cmdline, '\\')
+                    utf16.encode_into_dynamic_array('\\', &cmdline)
                 }
 
-                push_rune(&cmdline, '"')
+                utf16.encode_into_dynamic_array('"', &cmdline)
             } else {
                 for _, r := range s {
-                    push_rune(&cmdline, r)
+                    utf16.encode_into_dynamic_array(r, &cmdline)
                 }
-            }
-
-            push_rune :: (cmdline: &[..]win.WCHAR, r: rune) {
-                buffer: [2]u16
-                n, _  := utf16.encode(r, buffer)
-                cmdline.push(...buffer[..n])
-            }
-
-            needs_quotes :: (s: string) -> bool {
-                if s == "" {
-                    return true
-                }
-
-                for _, r := range s {
-                    if r == ' ' || r == '\t' || r == '\n' || r == '\v' || r == '"' {
-                        return true
-                    }
-                }
-
-                return false
             }
         }
 

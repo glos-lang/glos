@@ -1,0 +1,20 @@
+main :: () {
+    items: [..]string
+
+    dir := os.dir_iter("tests/stdlib_directory_iteration_api", recursive = true)!
+    for it, err := range &dir {
+        items.push(strings.clone(it.path)!)
+        if it.path == "bar" {
+            it.skip = true
+        }
+    }
+
+    slices.sort(items)
+    for _, it := range items {
+        println(it)
+    }
+}
+
+os      :: #import "os"
+slices  :: #import "slices"
+strings :: #import "strings"

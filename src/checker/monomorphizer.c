@@ -326,6 +326,10 @@ void infer_monomorph_parameters(Compiler *c, const Type *actual, const Type *exp
                 element = actual->spec.array.element;
             }
 
+            if (type_kind_eq(*actual, TYPE_DYNAMIC_ARRAY)) {
+                element = actual->spec.dynamic_array.element;
+            }
+
             if (element) {
                 infer_monomorph_parameters(c, element, expected->spec.slice.element, n, group_index);
             }

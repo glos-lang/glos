@@ -1,0 +1,40 @@
+DIR :: distinct rawptr
+
+#if PLATFORM == {
+case .LINUX
+    dirent :: struct {
+        ino:    u64
+        off:    u64
+        reclen: u16
+        type:   u8
+        name:   [256]C.char
+    }
+
+case .MACOS
+    dirent :: struct {
+        ino:    u64
+        off:    u64
+        reclen: u16
+        namlen: u16
+        type:   u8
+        name:   [1024]C.char
+    }
+
+case .WINDOWS
+}
+
+DT_UNKNOWN :: 0
+DT_FIFO    :: 1
+DT_CHR     :: 2
+DT_DIR     :: 4
+DT_BLK     :: 6
+DT_REG     :: 8
+DT_LNK     :: 10
+DT_SOCK    :: 12
+DT_WHT     :: 14
+
+extern {
+    opendir  :: (name: &C.char) -> DIR
+    readdir  :: (dirp: DIR) -> &dirent
+    closedir :: (dirp: DIR) -> C.int
+}

@@ -171,3 +171,7 @@ ends_with :: (s: string, p: string) -> bool {
     }
     return s.count >= p.count && C.memcmp(rawptr(&s[s.count - p.count]), rawptr(p.data), u64(p.count)) == 0
 }
+
+clone :: inline (s: string, allocator := default_allocator) -> string, error {
+    return string(mem.clone_array([]u8(s))?), null
+}

@@ -29,6 +29,14 @@ encode :: (r: rune, buffer: []u16) -> s64, bool {
     return 2, ok
 }
 
+encode_into_dynamic_array :: (r: rune, buffer: &[..]u16) -> s64, bool {
+    buffer.count += 2
+    buffer.reserve(buffer.count)
+    n, ok := encode(r, buffer[buffer.count - 2..])
+    buffer.count += n - 2
+    return n, ok
+}
+
 from_string :: (s: string, allocator := default_allocator) -> []u16, error {
     n := 1
     for _, c := range s {
@@ -48,6 +56,7 @@ from_string :: (s: string, allocator := default_allocator) -> []u16, error {
     }
 
     result[iota] = 0
+    result.count -= 1
     return result, null
 }
 
@@ -55,7 +64,7 @@ to_string :: (u: []u16, allocator := default_allocator) -> string, error {
     b: strings.Builder
     defer b.free()
 
-    to_builder(u, &b)?
+    to_builder(u, &b)
     return b.to_string(allocator = allocator)?, null
 }
 
@@ -63,22 +72,17 @@ to_cstring :: (u: []u16, allocator := default_allocator) -> &C.char, error {
     b: strings.Builder
     defer b.free()
 
-    to_builder(u, &b)?
+    to_builder(u, &b)
     return b.to_cstring(allocator = allocator)?, null
 }
 
-to_builder :: (s: []u16, b: &strings.Builder) -> error {
+to_builder :: (s: []u16, b: &strings.Builder) {
     i := 0
     for i < s.count {
         r, n, _ := decode(s[i..])
         i += n
-
-        tmp: [4]u8
-        n, _ = unicode.encode(r, tmp)
-        b.write(tmp[..n])?
+        unicode.encode_into_dynamic_array(r, &[..]u8(b))
     }
-
-    return null
 }
 
 C       :: #import "C"
