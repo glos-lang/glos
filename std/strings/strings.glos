@@ -15,6 +15,25 @@ find :: (s: string, p: Predicate, reverse := false) -> s64, bool {
             }
         }
 
+    case []rune
+        if reverse {
+            for i, c := range Reverse(s) {
+                for _, p := range p {
+                    if c == p {
+                        return i, true
+                    }
+                }
+            }
+        } else {
+            for i, c := range s {
+                for _, p := range p {
+                    if c == p {
+                        return i, true
+                    }
+                }
+            }
+        }
+
     case string
         if p == "" {
             return 0, true
@@ -95,6 +114,15 @@ trim_left :: (s: string, p: Predicate = unicode.is_space) -> string {
             }
         }
 
+    case []rune
+        for i, c := range s {
+            for _, p := range p {
+                if c != p {
+                    return s[i..]
+                }
+            }
+        }
+
     case string
         if p == "" {
             return s
@@ -130,6 +158,15 @@ trim_right :: (s: string, p: Predicate = unicode.is_space) -> string {
         for i, c := range Reverse(s) {
             if c != p {
                 return s[..i + 1]
+            }
+        }
+
+    case []rune
+        for i, c := range Reverse(s) {
+            for _, p := range p {
+                if c != p {
+                    return s[..i + 1]
+                }
             }
         }
 

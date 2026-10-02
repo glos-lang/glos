@@ -125,6 +125,7 @@ extern {
     GetFileInformationByHandle :: (hFile: HANDLE, lpFileInformation: LPBY_HANDLE_FILE_INFORMATION) -> BOOL
 
     RemoveDirectoryW :: (lpPathName: LPCWSTR) -> BOOL
+    CreateDirectoryW :: (lpPathName: LPCWSTR, lpSecurityAttributes: LPSECURITY_ATTRIBUTES) -> BOOL
 }
 
 C :: #import "C"

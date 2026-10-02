@@ -49,6 +49,7 @@ range :: (this: Reverse, state: &s64) -> s64, rune, bool {
 
 Predicate :: union {
     rune
+    []rune
     string
     (c: rune) -> bool
 }

@@ -1,7 +1,7 @@
 main :: () {
     items: [..]string
 
-    dir := os.dir_iter("tests/stdlib_directory_iteration_api", recursive = true)!
+    dir := os.iter_dir("tests/stdlib_directory_iteration_api", recursive = true)!
     for it, err := range &dir {
         items.push(strings.clone(it.path)!)
         if it.name == "bar" {

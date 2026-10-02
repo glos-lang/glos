@@ -1,3 +1,97 @@
+create_dir :: (path: string) -> error {
+    #if PLATFORM == .WINDOWS {
+        wstr := utf16.from_string(path, temporary_allocator)?.data
+        defer temporary_allocator.rewind(rawptr(wstr))
+        return mkdir(path, wstr)
+
+        mkdir :: (p: string, wstr: &win.WCHAR) -> win.Error {
+            if win.CreateDirectoryW(wstr, null) != 0 {
+                return null
+            }
+
+            err := win.get_error()
+            if u32(err) == ERROR_ALREADY_EXISTS {
+                return null
+            }
+
+            if u32(err) != ERROR_PATH_NOT_FOUND {
+                return err
+            }
+
+            pred := []rune{'/', '\\'}
+            i, _ := strings.find(p, pred, reverse = true)
+            np   := strings.trim_right(p[..i], pred)
+            assert(np != "")
+
+            cp := mem.offset(wstr, np.count)
+            *cp = u16(u8('\0'))
+            err = mkdir(np, wstr)
+            *cp = u16(u8('/'))
+
+            if err != null && u32(err) != ERROR_ALREADY_EXISTS {
+                return err
+            }
+
+            if win.CreateDirectoryW(wstr, null) != 0 {
+                return null
+            }
+
+            err = win.get_error()
+            if u32(err) == ERROR_ALREADY_EXISTS {
+                return null
+            } else {
+                return err
+            }
+
+            ERROR_PATH_NOT_FOUND :: 3
+            ERROR_ALREADY_EXISTS :: 183
+        }
+    } else {
+        cstr := strings.to_cstring(path, temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(cstr))
+        return mkdir(path, cstr)
+
+        mkdir :: (p: string, cstr: &C.char) -> C.Errno {
+            if posix.mkdir(cstr, 0o777) == 0 {
+                return null
+            }
+
+            err := C.get_errno()
+            if err == .EEXIST {
+                return null
+            }
+
+            if err != .ENOENT {
+                return err
+            }
+
+            i, _ := strings.find(p, '/', reverse = true)
+            np   := strings.trim_right(p[..i], '/')
+            assert(np != "")
+
+            cp := mem.offset(cstr, np.count)
+            *cp = '\0'
+            err = mkdir(np, cstr)
+            *cp = '/'
+
+            if err != null && err != .EEXIST {
+                return err
+            }
+
+            if posix.mkdir(cstr, 0o777) == 0 {
+                return null
+            }
+
+            err = C.get_errno()
+            if err == .EEXIST {
+                return null
+            } else {
+                return err
+            }
+        }
+    }
+}
+
 #if PLATFORM == .WINDOWS {
     Dir_Iter :: struct {
         stack:     [..]Dir_Iter_Frame
@@ -30,7 +124,7 @@
     }
 }
 
-dir_iter :: (path: string, recursive := false) -> Dir_Iter, error {
+iter_dir :: (path: string, recursive := false) -> Dir_Iter, error {
     di: Dir_Iter
 
     #if PLATFORM == .WINDOWS {
