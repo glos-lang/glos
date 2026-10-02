@@ -173,5 +173,5 @@ ends_with :: (s: string, p: string) -> bool {
 }
 
 clone :: inline (s: string, allocator := default_allocator) -> string, error {
-    return string(mem.clone_array([]u8(s))?), null
+    return string(mem.clone_array([]u8(s), allocator = allocator)?), null
 }

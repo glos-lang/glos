@@ -30,6 +30,7 @@ extern {
     strtoll :: (s: &char, end: &&char, base: int) -> long_long
     strtoull :: (s: &char, end: &&char, base: int) -> unsigned_long_long
     rename :: (oldpath: &char, newpath: &char) -> int
+    remove :: (pathname: &char) -> int
 }
 
 // TODO: This needs to be organised, perhaps by the header name

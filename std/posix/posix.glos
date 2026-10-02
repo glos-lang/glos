@@ -19,6 +19,7 @@ STDOUT_FILENO :: 1
 STDERR_FILENO :: 2
 
 extern {
+    rmdir :: (pathname: &C.char) -> C.int
     fileno :: (f: C.FILE) -> C.int
     lseek :: (fd: C.int, offset: s64, whence: C.int) -> s64
     open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int

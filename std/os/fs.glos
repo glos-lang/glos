@@ -18,6 +18,28 @@ File_Info :: struct {
     modify_time: Time            // Last modification time
 }
 
+File_Type :: enum {
+    UNKNOWN
+    REGULAR
+    DIRECTORY
+    BLOCK_DEVICE
+    CHAR_DEVICE
+    FIFO
+    SOCKET
+}
+
+type :: (this: &File_Info) -> File_Type {
+    if this.mode & FILE_MODE_TYPE_MASK == {
+    case FILE_MODE_REG;  return .REGULAR
+    case FILE_MODE_DIR;  return .DIRECTORY
+    case FILE_MODE_BLK;  return .BLOCK_DEVICE
+    case FILE_MODE_CHR;  return .CHAR_DEVICE
+    case FILE_MODE_FIFO; return .FIFO
+    case FILE_MODE_SOCK; return .SOCKET
+    case;                return .UNKNOWN
+    }
+}
+
 stat :: (path: string) -> File_Info, error {
     #if PLATFORM == {
     case .LINUX
@@ -84,7 +106,64 @@ move :: (old: string, new: string) -> error {
     return null
 }
 
+// Common Alias
 rename :: move
+
+remove :: (path: string) -> error {
+    checkpoint := temporary_allocator.alloc(0)?
+    defer temporary_allocator.rewind(checkpoint)
+
+    stat := stat(path)?
+    if stat.type() != .DIRECTORY {
+        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        if C.remove(path) != 0 {
+            return C.get_errno()
+        }
+        return null
+    }
+
+    di := dir_iter(path, recursive = true)?
+    defer di.free()
+
+    dirs: [..]string
+    defer dirs.free()
+
+    for it, err := range &di {
+        err?
+        if it.isdir {
+            dirs.push(strings.clone(it.path, allocator = temporary_allocator)?)
+        } else {
+            // Better to cleanup as soon as possible inside a loop
+            path := strings.to_cstring(it.path, allocator = temporary_allocator)?
+            defer temporary_allocator.rewind(rawptr(path))
+
+            if C.remove(path) != 0 {
+                return C.get_errno()
+            }
+        }
+    }
+
+    for i := range dirs.count - 1..>=0 {
+        dir := strings.to_cstring(dirs[i], allocator = temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(dir))
+
+        if rmdir(dir) != 0 {
+            return C.get_errno()
+        }
+    }
+
+    path := strings.to_cstring(path, allocator = temporary_allocator)?
+    if rmdir(path) != 0 {
+        return C.get_errno()
+    }
+    return null
+
+    #if PLATFORM == .WINDOWS {
+        rmdir :: win._rmdir
+    } else {
+        rmdir :: posix.rmdir
+    }
+}
 
 #private...
 #if PLATFORM == {
@@ -197,16 +276,6 @@ case .WINDOWS
         return info, null
 
         // Unix translation layer
-        FILE_MODE_TYPE_MASK :: 0o170000
-        FILE_MODE_SOCK      :: 0o140000
-        FILE_MODE_LNK       :: 0o120000
-        FILE_MODE_REG       :: 0o100000
-        FILE_MODE_BLK       :: 0o060000
-        FILE_MODE_DIR       :: 0o040000
-        FILE_MODE_CHR       :: 0o020000
-        FILE_MODE_FIFO      :: 0o010000
-        FILE_MODE_PERM_MASK :: 0o7777 // setuid/setgid/sticky + rwxrwxrwx
-
         load_le64 :: (p: &win.BYTE) -> u64 {
             v: u64
             for i := range 7..>=0 {
@@ -229,3 +298,13 @@ case .WINDOWS
         }
     }
 }
+
+FILE_MODE_TYPE_MASK :: 0o170000
+FILE_MODE_SOCK      :: 0o140000
+FILE_MODE_LNK       :: 0o120000
+FILE_MODE_REG       :: 0o100000
+FILE_MODE_BLK       :: 0o060000
+FILE_MODE_DIR       :: 0o040000
+FILE_MODE_CHR       :: 0o020000
+FILE_MODE_FIFO      :: 0o010000
+FILE_MODE_PERM_MASK :: 0o7777 // setuid/setgid/sticky + rwxrwxrwx

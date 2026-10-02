@@ -87,9 +87,10 @@ free :: (this: &Dir_Iter) {
 }
 
 Dir_Entry :: struct {
-    path: string
-    name: string
-    skip: bool
+    path:  string
+    name:  string
+    isdir: bool
+    skip:  bool
 }
 
 #if PLATFORM == .WINDOWS {
@@ -147,6 +148,7 @@ Dir_Entry :: struct {
             mem.zero(&this.entry)
             this.entry.path = strings.trim_left(string(this.sb[..]), "./")
             this.entry.name = name
+            this.entry.isdir = (it.ent.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0
             return &this.entry, null, true
         }
     }
@@ -199,6 +201,7 @@ Dir_Entry :: struct {
             mem.zero(&this.entry)
             this.entry.path = strings.trim_left(string(this.path[..this.path.count - 1]), "./")
             this.entry.name = name
+            this.entry.isdir = (it.ent.type == posix.DT_DIR)
             return &this.entry, null, true
         }
     }
