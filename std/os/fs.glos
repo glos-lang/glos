@@ -59,7 +59,7 @@ stat :: (path: string) -> File_Info, error {
         info.uid = u32(stat.st_uid)
         info.gid = u32(stat.st_gid)
         info.size = s64(stat.st_size)
-        info.create_time = {s64(stat.st_btime.tv_sec), s64(stat.st_btime.tv_nsec)}
+        info.create_time = {s64(stat.st_birthtime.tv_sec), s64(stat.st_birthtime.tv_nsec)}
         info.access_time = {s64(stat.st_atime.tv_sec), s64(stat.st_atime.tv_nsec)}
         info.modify_time = {s64(stat.st_mtime.tv_sec), s64(stat.st_mtime.tv_nsec)}
         return info, null
