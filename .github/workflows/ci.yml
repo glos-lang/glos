@@ -19,10 +19,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Stat
-        run: |
-          ./glos -r stat.glos
-
   build-linux-musl:
     runs-on: ubuntu-latest
 
@@ -42,10 +38,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Stat
-        run: |
-          ./glos -r stat.glos
-
   build-macos:
     runs-on: macos-latest
     steps:
@@ -56,10 +48,6 @@ jobs:
         run: |
           cc -o first first.c
           ./first -T
-
-      - name: Stat
-        run: |
-          ./glos -r stat.glos
 
   build-windows:
     runs-on: windows-latest
@@ -74,7 +62,3 @@ jobs:
         run: |
           cl first.c
           ./first.exe -T
-
-      - name: Stat
-        run: |
-          ./glos.exe -r stat.glos

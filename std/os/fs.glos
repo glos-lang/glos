@@ -72,6 +72,20 @@ exists :: (path: string) -> bool {
     return true
 }
 
+move :: (old: string, new: string) -> error {
+    old := strings.to_cstring(old, allocator = temporary_allocator)?
+    defer temporary_allocator.rewind(rawptr(old))
+
+    new := strings.to_cstring(new, allocator = temporary_allocator)?
+    if C.rename(old, new) != 0 {
+        return C.get_errno()
+    }
+
+    return null
+}
+
+rename :: move
+
 #private...
 #if PLATFORM == {
 case .LINUX
