@@ -28,7 +28,40 @@ stat :: (path: string) -> File_Info, error {
         if posix.statx(posix.AT_FDCWD, path, 0, posix.STATX_BASIC_STATS | posix.STATX_BTIME, &stat) != 0 {
             return {}, C.get_errno()
         }
+        return file_info_from_raw(stat)
 
+    case .MACOS
+        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(path))
+
+        stat: posix.Stat
+        if posix.stat(path, &stat) != 0 {
+            return {}, C.get_errno()
+        }
+        return file_info_from_raw(stat)
+
+    case .WINDOWS
+        path := utf16.from_string(path, allocator = temporary_allocator)?.data
+        defer temporary_allocator.rewind(rawptr(path))
+
+        return file_info_from_raw(
+            win.CreateFileW(
+                path,
+                win.FILE_READ_ATTRIBUTES,
+                win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
+                null,
+                win.OPEN_EXISTING,
+                win.FILE_FLAG_BACKUP_SEMANTICS,
+                null
+            )
+        )
+    }
+}
+
+#private...
+#if PLATFORM == {
+case .LINUX
+    file_info_from_raw :: (stat: posix.Statx) -> File_Info, error {
         info: File_Info
         info.dev = (u64(stat.stx_dev_major) << 32) | u64(stat.stx_dev_minor)
         info.ino = u64(stat.stx_ino)
@@ -41,16 +74,10 @@ stat :: (path: string) -> File_Info, error {
         info.access_time = {s64(stat.stx_atime.tv_sec), s64(stat.stx_atime.tv_nsec)}
         info.modify_time = {s64(stat.stx_mtime.tv_sec), s64(stat.stx_mtime.tv_nsec)}
         return info, null
+    }
 
-    case .MACOS
-        path := strings.to_cstring(path, allocator = temporary_allocator)?
-        defer temporary_allocator.rewind(rawptr(path))
-
-        stat: posix.Stat
-        if posix.stat(path, &stat) != 0 {
-            return {}, C.get_errno()
-        }
-
+case .MACOS
+    file_info_from_raw :: (stat: posix.Stat) -> File_Info, error {
         info: File_Info
         info.dev = u64(stat.st_dev)
         info.ino = u64(stat.st_ino)
@@ -63,21 +90,10 @@ stat :: (path: string) -> File_Info, error {
         info.access_time = {s64(stat.st_atime.tv_sec), s64(stat.st_atime.tv_nsec)}
         info.modify_time = {s64(stat.st_mtime.tv_sec), s64(stat.st_mtime.tv_nsec)}
         return info, null
+    }
 
-    case .WINDOWS
-        path := utf16.from_string(path, allocator = temporary_allocator)?.data
-        defer temporary_allocator.rewind(rawptr(path))
-
-        h := win.CreateFileW(
-            path,
-            win.FILE_READ_ATTRIBUTES,
-            win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
-            null,
-            win.OPEN_EXISTING,
-            win.FILE_FLAG_BACKUP_SEMANTICS,
-            null
-        )
-
+case .WINDOWS
+    file_info_from_raw :: (h: HANDLE) -> File_Info, error {
         info: File_Info
         if h == win.INVALID_HANDLE_VALUE {
             return info, win.get_error()
