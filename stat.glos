@@ -1,5 +1,7 @@
 main :: () {
-    println(os.stat("README.md"))
+    PATH :: "stat-test.txt"
+    os.write_file(PATH, []u8("Hello, world!\n"))!
+    println(os.stat(PATH)!)
 }
 
 os :: #import "os"
