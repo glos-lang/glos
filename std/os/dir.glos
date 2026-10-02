@@ -17,7 +17,7 @@
 } else {
     Dir_Iter :: struct {
         stack:     [..]Dir_Iter_Frame
-        path:      [..]C.char // Make this a strings.Builder
+        path:      [..]C.char
         entry:     Dir_Entry
         recursive: bool
     }

@@ -10,7 +10,7 @@ to_string :: (this: &Builder, from := 0, rewind := true, allocator := default_al
         panic("Bounds Check Failed: Index \{from} is invalid since length is \{this.count}", location = location)
     }
 
-    s := string(mem.clone_array(this[from..])?)
+    s := string(mem.clone_array(this[from..], allocator = allocator)?)
     if rewind {
         this.count = from
     }

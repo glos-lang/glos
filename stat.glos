@@ -1,0 +1,5 @@
+main :: () {
+    println(os.stat("README.md"))
+}
+
+os :: #import "os"

@@ -1,0 +1,84 @@
+#if PLATFORM == {
+case .LINUX
+    AT_FDCWD :: -100
+
+    STATX_BASIC_STATS :: 2047
+    STATX_BTIME       :: 2048
+
+    extern {
+        statx :: (dirfd: C.int, path: &C.char, flags: C.int, mask: C.unsigned_int, stat: &Statx) -> C.int
+    }
+
+    Statx :: struct {
+        stx_mask:             u32          // Mask of bits indicating filled fields
+        stx_blksize:          u32          // Block size for filesystem I/O
+        stx_attributes:       u64          // Extra file attribute indicators
+        stx_nlink:            u32          // Number of hard links
+        stx_uid:              u32          // User ID of owner
+        stx_gid:              u32          // Group ID of owner
+        stx_mode:             u16          // File type and mode
+        _:                    u16          // Padding
+        stx_ino:              u64          // Inode number
+        stx_size:             u64          // Total size in bytes
+        stx_blocks:           u64          // Number of 512B blocks allocated
+        stx_attributes_mask:  u64          // Mask to show what's supported in stx_attributes
+        stx_atime:            Statx_Time   // Last access
+        stx_btime:            Statx_Time   // Creation
+        stx_ctime:            Statx_Time   // Last status change
+        stx_mtime:            Statx_Time   // Last modification
+        stx_rdev_major:       u32          // Major ID
+        stx_rdev_minor:       u32          // Minor ID
+        stx_dev_major:        u32          // Major ID
+        stx_dev_minor:        u32          // Minor ID
+        stx_mnt_id:           u64          // Mount ID
+        stx_dio_mem_align:    u32
+        stx_dio_offset_align: u32
+        stx_subvol: u64                    // Subvolume identifier
+        stx_atomic_write_unit_min: u32     // Min atomic write unit in bytes
+        stx_atomic_write_unit_max: u32     // Max atomic write unit in bytes
+        stx_atomic_write_segments_max: u32 // Max atomic write segment count
+        _: [1]u32
+        _: [9]u64
+    }
+
+    Statx_Time :: struct {
+        tv_sec:  s64
+        tv_nsec: u32
+        _:       s32
+    }
+
+case .MACOS
+    extern {
+        stat  :: (path: &C.char, stat: &Stat) -> C.int
+        fstat :: (fd: C.int, stat: &Stat) -> C.int
+    }
+
+    Stat :: struct {
+        st_dev:       s32       // ID of device containing file
+        st_mode:      u16       // Mode of the file
+        st_nlink:     u16       // Number of hard links
+        st_ino:       u64       // File serial number
+        st_uid:       u32       // User ID of the file's owner
+        st_gid:       u32       // Group ID of the file's group
+        st_rdev:      s32       // Device ID, if device
+        _:            s32       // Padding
+        st_atime:     Stat_Time // Time of last access
+        st_mtime:     Stat_Time // Time of last modification
+        st_ctime:     Stat_Time // Time of last status change
+        st_birthtime: Stat_Time // Time of creation
+        st_size:      s64       // Size of the file, in bytes
+        st_blocks:    s64       // Number of blocks allocated for the file
+        st_blksize:   s32       // Optimal blocksize for I/O
+        st_flags:     u32       // User-defined flags for the file
+        st_gen:       u32       // File generation number
+        _:            s32       // Reserved
+        _:            [2]s64    // Reserved
+    }
+
+    Stat_Time :: struct {
+        tv_sec:  s64
+        tv_nsec: s64
+    }
+
+case .WINDOWS
+}

@@ -123,3 +123,85 @@ WIN32_FIND_DATAW :: struct {
 
 PWIN32_FIND_DATAW :: &WIN32_FIND_DATAW
 LPWIN32_FIND_DATAW :: &WIN32_FIND_DATAW
+
+FILE_BASIC_INFO :: struct {
+    CreationTime: LARGE_INTEGER
+    LastAccessTime: LARGE_INTEGER
+    LastWriteTime: LARGE_INTEGER
+    ChangeTime: LARGE_INTEGER
+    FileAttributes: DWORD
+}
+
+PFILE_BASIC_INFO :: &FILE_BASIC_INFO
+
+FILE_STANDARD_INFO :: struct {
+    AllocationSize: LARGE_INTEGER
+    EndOfFile: LARGE_INTEGER
+    NumberOfLinks: DWORD
+    DeletePending: BOOLEAN
+    Directory: BOOLEAN
+}
+
+PFILE_STANDARD_INFO :: &FILE_STANDARD_INFO
+
+LARGE_INTEGER :: LONGLONG
+
+FILE_INFO_BY_HANDLE_CLASS :: enum {
+    FileBasicInfo
+    FileStandardInfo
+    FileNameInfo
+    FileRenameInfo
+    FileDispositionInfo
+    FileAllocationInfo
+    FileEndOfFileInfo
+    FileStreamInfo
+    FileCompressionInfo
+    FileAttributeTagInfo
+    FileIdBothDirectoryInfo
+    FileIdBothDirectoryRestartInfo
+    FileIoPriorityHintInfo
+    FileRemoteProtocolInfo
+    FileFullDirectoryInfo
+    FileFullDirectoryRestartInfo
+    FileStorageInfo
+    FileAlignmentInfo
+    FileIdInfo
+    FileIdExtdDirectoryInfo
+    FileIdExtdDirectoryRestartInfo
+    FileDispositionInfoEx
+    FileRenameInfoEx
+    FileCaseSensitiveInfo
+    FileNormalizedNameInfo
+    MaximumFileInfoByHandleClass
+}
+
+PFILE_INFO_BY_HANDLE_CLASS :: &FILE_INFO_BY_HANDLE_CLASS
+
+FILE_ID_INFO :: struct {
+    VolumeSerialNumber: ULONGLONG
+    FileId: FILE_ID_128
+}
+
+PFILE_ID_INFO :: &FILE_ID_INFO
+
+FILE_ID_128 :: struct {
+    Identifier: [16]BYTE
+}
+
+PFILE_ID_128 :: &FILE_ID_128
+
+BY_HANDLE_FILE_INFORMATION :: struct {
+    dwFileAttributes: DWORD
+    ftCreationTime: FILETIME
+    ftLastAccessTime: FILETIME
+    ftLastWriteTime: FILETIME
+    dwVolumeSerialNumber: DWORD
+    nFileSizeHigh: DWORD
+    nFileSizeLow: DWORD
+    nNumberOfLinks: DWORD
+    nFileIndexHigh: DWORD
+    nFileIndexLow: DWORD
+}
+
+PBY_HANDLE_FILE_INFORMATION :: &BY_HANDLE_FILE_INFORMATION
+LPBY_HANDLE_FILE_INFORMATION :: &BY_HANDLE_FILE_INFORMATION

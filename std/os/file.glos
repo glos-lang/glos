@@ -1,6 +1,6 @@
 File :: distinct rawptr
 
-open :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
+open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
     path := strings.to_cstring(path, temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
@@ -41,8 +41,8 @@ open :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := s32(0
     return f, null
 }
 
-create :: inline (path: string, flags := Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
-    return open(path, flags | .CREAT | .TRUNC | .WRONLY, perm)
+create_file :: inline (path: string, flags := Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
+    return open_file(path, flags | .CREAT | .TRUNC | .WRONLY, perm)
 }
 
 #if PLATFORM == {
@@ -149,7 +149,7 @@ close :: (this: &File) {
 }
 
 read_file :: (path: string, allocator := default_allocator) -> []u8, error {
-    f := open(path)?
+    f := open_file(path)?
     defer f.close()
 
     offset := f.seek(0, .END)?
@@ -170,7 +170,7 @@ read_file :: (path: string, allocator := default_allocator) -> []u8, error {
 }
 
 write_file :: (path: string, bytes: []u8, flags := Open_Flag.TEXT, perm := s32(0o666)) -> error {
-    f := create(path, flags, perm)?
+    f := create_file(path, flags, perm)?
     defer f.close()
     f.write(bytes)?
     return null

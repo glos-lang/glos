@@ -1,0 +1,187 @@
+// TODO: Should be part of its own time module
+Time :: struct {
+    seconds:     s64
+    nanoseconds: s64
+}
+
+File_Info :: struct {
+    dev:         u64             // ID of device containing file
+    ino:         u64             // File ID
+    ino_high:    u64             // File ID is 128-bit on Windows
+    mode:        u32             // Mode
+    nlink:       u64             // Number of hard links
+    uid:         u32             // UID of the file's owner
+    gid:         u32             // GID of the file's owner
+    size:        s64             // Size of the file, in bytes
+    create_time: Time            // Creation time
+    access_time: Time            // Last access time
+    modify_time: Time            // Last modification time
+}
+
+stat :: (path: string) -> File_Info, error {
+    #if PLATFORM == {
+    case .LINUX
+        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(path))
+
+        stat: posix.Statx
+        if posix.statx(posix.AT_FDCWD, path, 0, posix.STATX_BASIC_STATS | posix.STATX_BTIME, &stat) != 0 {
+            return {}, C.get_errno()
+        }
+
+        info: File_Info
+        info.dev = (u64(stat.stx_dev_major) << 32) | u64(stat.stx_dev_minor)
+        info.ino = u64(stat.stx_ino)
+        info.mode = u32(stat.stx_mode)
+        info.nlink = u64(stat.stx_nlink)
+        info.uid = u32(stat.stx_uid)
+        info.gid = u32(stat.stx_gid)
+        info.size = s64(stat.stx_size)
+        info.create_time = {s64(stat.stx_btime.tv_sec), s64(stat.stx_btime.tv_nsec)}
+        info.access_time = {s64(stat.stx_atime.tv_sec), s64(stat.stx_atime.tv_nsec)}
+        info.modify_time = {s64(stat.stx_mtime.tv_sec), s64(stat.stx_mtime.tv_nsec)}
+        return info, null
+
+    case .MACOS
+        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(path))
+
+        stat: posix.Stat
+        if posix.stat(path, &stat) != 0 {
+            return {}, C.get_errno()
+        }
+
+        info: File_Info
+        info.dev = u64(stat.st_dev)
+        info.ino = u64(stat.st_ino)
+        info.mode = u32(stat.st_mode)
+        info.nlink = u64(stat.st_nlink)
+        info.uid = u32(stat.st_uid)
+        info.gid = u32(stat.st_gid)
+        info.size = s64(stat.st_size)
+        info.create_time = {s64(stat.st_btime.tv_sec), s64(stat.st_btime.tv_nsec)}
+        info.access_time = {s64(stat.st_atime.tv_sec), s64(stat.st_atime.tv_nsec)}
+        info.modify_time = {s64(stat.st_mtime.tv_sec), s64(stat.st_mtime.tv_nsec)}
+        return info, null
+
+    case .WINDOWS
+        path := utf16.from_string(path, allocator = temporary_allocator)?.data
+        defer temporary_allocator.rewind(rawptr(path))
+
+        h := win.CreateFileW(
+            path,
+            win.FILE_READ_ATTRIBUTES,
+            win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
+            null,
+            win.OPEN_EXISTING,
+            win.FILE_FLAG_BACKUP_SEMANTICS,
+            null
+        )
+
+        info: File_Info
+        if h == win.INVALID_HANDLE_VALUE {
+            return info, win.get_error()
+        }
+
+        ftype := win.GetFileType(h)
+        if ftype == win.FILE_TYPE_CHAR || ftype == win.FILE_TYPE_PIPE {
+            if ftype == win.FILE_TYPE_PIPE {
+                info.mode = FILE_MODE_FIFO | 0o666
+            } else {
+                info.mode = FILE_MODE_CHR | 0o666
+            }
+
+            info.nlink = 1
+            info.uid = 0
+            info.gid = 0
+            win.CloseHandle(h)
+            return info, null
+        }
+
+        basic: win.FILE_BASIC_INFO
+        standard: win.FILE_STANDARD_INFO
+        if (
+            win.GetFileInformationByHandleEx(h, win.FILE_INFO_BY_HANDLE_CLASS.FileBasicInfo, rawptr(&basic), sizeof(basic)) == 0 ||
+            win.GetFileInformationByHandleEx(h, win.FILE_INFO_BY_HANDLE_CLASS.FileStandardInfo, rawptr(&standard), sizeof(standard)) == 0
+        ) {
+            err := win.get_error()
+            win.CloseHandle(h)
+            return info, err
+        }
+
+        // Device + file id: 128-bit FileIdInfo, else the 64-bit index
+        id: win.FILE_ID_INFO
+        if win.GetFileInformationByHandleEx(h, win.FILE_INFO_BY_HANDLE_CLASS.FileIdInfo, rawptr(&id), sizeof(id)) != 0 {
+            info.dev = id.VolumeSerialNumber
+            info.ino = load_le64(id.FileId.Identifier.data)
+            info.ino_high = load_le64(id.FileId.Identifier.data + &win.BYTE(8))
+        } else {
+            bh: win.BY_HANDLE_FILE_INFORMATION
+            if win.GetFileInformationByHandle(h, &bh) != 0 {
+                info.dev = u64(bh.dwVolumeSerialNumber)
+                info.ino = (u64(bh.nFileIndexHigh) << 32) | u64(bh.nFileIndexLow)
+            }
+        }
+        win.CloseHandle(h)
+
+        type: u32
+        if (basic.FileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+            type = FILE_MODE_DIR
+        } else {
+            type = FILE_MODE_REG
+        }
+
+        perm: u32
+        if type == FILE_MODE_REG {
+            if (basic.FileAttributes & win.FILE_ATTRIBUTE_READONLY) != 0 {
+                perm = 0o444
+            } else {
+                perm = 0o666
+            }
+        } else {
+            perm = 0o777
+        }
+
+        info.mode = type | perm
+        info.nlink = u64(standard.NumberOfLinks)
+        info.size = standard.EndOfFile
+        info.access_time = win_time(basic.LastAccessTime)
+        info.modify_time = win_time(basic.LastWriteTime)
+        info.create_time = win_time(basic.CreationTime)
+        info.uid = 0
+        info.gid = 0
+        return info, null
+
+        // Unix translation layer
+        FILE_MODE_TYPE_MASK :: 0o170000
+        FILE_MODE_SOCK      :: 0o140000
+        FILE_MODE_LNK       :: 0o120000
+        FILE_MODE_REG       :: 0o100000
+        FILE_MODE_BLK       :: 0o060000
+        FILE_MODE_DIR       :: 0o040000
+        FILE_MODE_CHR       :: 0o020000
+        FILE_MODE_FIFO      :: 0o010000
+        FILE_MODE_PERM_MASK :: 0o7777 // setuid/setgid/sticky + rwxrwxrwx
+
+        load_le64 :: (p: &win.BYTE) -> u64 {
+            v: u64
+            for i := range 7..>=0 {
+                v = (v << 8) | u64(*(p + &win.BYTE(i)))
+            }
+            return v
+        }
+
+        win_time :: (ticks: win.LARGE_INTEGER) -> Time {
+            s := ticks / TICKS_PER_SECOND
+            r := ticks % TICKS_PER_SECOND
+            if r < 0 {
+                r += TICKS_PER_SECOND
+                s -= 1
+            }
+            return {s - SECS_FROM_1601_TO_1970, r * 100}
+
+            TICKS_PER_SECOND       :: 10000000
+            SECS_FROM_1601_TO_1970 :: 11644473600
+        }
+    }
+}

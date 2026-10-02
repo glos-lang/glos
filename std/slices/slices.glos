@@ -1,4 +1,4 @@
-sort :: (s: []$T, $compare := ((lhs: T, rhs: T) -> bool)(null)) {
+sort :: (s: []$T, $compare := ((lhs: T, rhs: T) -> bool)(null)) -> []T {
     Arg :: struct {
         compare: (lhs: T, rhs: T) -> bool
     }
@@ -40,9 +40,11 @@ sort :: (s: []$T, $compare := ((lhs: T, rhs: T) -> bool)(null)) {
             }
         }, rawptr(&arg))
     }
+
+    return s
 }
 
-sort_with_context :: (s: []$T, context: $E, compare: (lhs: T, rhs: T, context: E) -> bool) {
+sort_with_context :: (s: []$T, context: $E, compare: (lhs: T, rhs: T, context: E) -> bool) -> []T {
     Arg :: struct {
         compare: (lhs: T, rhs: T, context: E) -> bool
         context: E
@@ -80,6 +82,8 @@ sort_with_context :: (s: []$T, context: $E, compare: (lhs: T, rhs: T, context: E
             }
         }, rawptr(&arg))
     }
+
+    return s
 }
 
 #private...
