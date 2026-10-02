@@ -40,7 +40,6 @@ extern {
     wcslen :: (str: &WCHAR) -> C.size_t
     _fileno :: (f: C.FILE) -> C.int
     _lseeki64 :: (fd: C.int, offset: s64, whence: C.int) -> s64
-    _rmdir :: (pathname: &C.char) -> C.int
     _open :: (path: &C.char, flags: C.int, mode: C.unsigned_int) -> C.int
     _fdopen :: (fd: C.int, mode: &C.char) -> C.FILE
     _get_osfhandle :: (fd: C.int) -> HANDLE
@@ -124,6 +123,8 @@ extern {
     ) -> BOOL
 
     GetFileInformationByHandle :: (hFile: HANDLE, lpFileInformation: LPBY_HANDLE_FILE_INFORMATION) -> BOOL
+
+    RemoveDirectoryW :: (lpPathName: LPCWSTR) -> BOOL
 }
 
 C :: #import "C"

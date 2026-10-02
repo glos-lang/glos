@@ -144,24 +144,29 @@ remove :: (path: string) -> error {
     }
 
     for i := range dirs.count - 1..>=0 {
-        dir := strings.to_cstring(dirs[i], allocator = temporary_allocator)?
-        defer temporary_allocator.rewind(rawptr(dir))
+        rmdir(dirs[i])?
+    }
 
-        if rmdir(dir) != 0 {
-            return C.get_errno()
+    return rmdir(path)
+
+    rmdir :: (path: string) -> error {
+        #if PLATFORM == .WINDOWS {
+            path := utf16.from_string(path, allocator = temporary_allocator)?.data
+            defer temporary_allocator.rewind(rawptr(path))
+
+            if win.RemoveDirectoryW(path) != 0 {
+                return C.get_errno()
+            }
+        } else {
+            path := strings.to_cstring(path, allocator = temporary_allocator)?
+            defer temporary_allocator.rewind(rawptr(path))
+
+            if posix.rmdir(path) != 0 {
+                return C.get_errno()
+            }
         }
-    }
 
-    path := strings.to_cstring(path, allocator = temporary_allocator)?
-    if rmdir(path) != 0 {
-        return C.get_errno()
-    }
-    return null
-
-    #if PLATFORM == .WINDOWS {
-        rmdir :: win._rmdir
-    } else {
-        rmdir :: posix.rmdir
+        return null
     }
 }
 
