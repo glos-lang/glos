@@ -58,6 +58,20 @@ stat :: (path: string) -> File_Info, error {
     }
 }
 
+exists :: (path: string) -> bool {
+    _, err := stat(path)
+    #if PLATFORM == .WINDOWS {
+        if err == win.Error {
+            return u32(err) != 2
+        }
+    } else {
+        if err == C.Errno {
+            return err != .ENOENT
+        }
+    }
+    return true
+}
+
 #private...
 #if PLATFORM == {
 case .LINUX
