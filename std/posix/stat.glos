@@ -1,6 +1,7 @@
 #if PLATFORM == {
 case .LINUX
-    AT_FDCWD :: -100
+    AT_FDCWD      :: -100
+    AT_EMPTY_PATH :: 0x1000
 
     STATX_BASIC_STATS :: 2047
     STATX_BTIME       :: 2048

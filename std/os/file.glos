@@ -148,6 +148,31 @@ close :: (this: &File) {
     }
 }
 
+stat :: (this: File) -> File_Info, error {
+    if this == null {
+        C.Errno.EINVAL?
+    }
+
+    #if PLATFORM == {
+    case .LINUX
+        stat: posix.Statx
+        if posix.statx(posix.fileno(C.FILE(this)), null, posix.AT_EMPTY_PATH, posix.STATX_BASIC_STATS | posix.STATX_BTIME, &stat) != 0 {
+            return {}, C.get_errno()
+        }
+        return file_info_from_raw(stat)
+
+    case .MACOS
+        stat: posix.Stat
+        if posix.fstat(posix.fileno(C.FILE(this)), &stat) != 0 {
+            return {}, C.get_errno()
+        }
+        return file_info_from_raw(stat)
+
+    case .WINDOWS
+        return file_info_from_raw(win._get_osfhandle(win._fileno(C.FILE(this))))
+    }
+}
+
 read_file :: (path: string, allocator := default_allocator) -> []u8, error {
     f := open_file(path)?
     defer f.close()

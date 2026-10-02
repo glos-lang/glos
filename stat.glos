@@ -1,7 +1,10 @@
 main :: () {
     PATH :: "stat-test.txt"
     os.write_file(PATH, []u8("Hello, world!\n"))!
-    println(os.stat(PATH)!)
+
+    f := os.open_file(PATH)!
+    defer f.close()
+    println(f.stat()!)
 }
 
 os :: #import "os"
