@@ -20,13 +20,8 @@ main :: () {
     if 69 == {
         case 420; println("Let's go!")
     }
-}
 
-
-println :: (s: string) {
-    extern { putchar :: (c: s32) -> s32 }
-    for i := 0; i < s.count; i += 1 {
-        putchar(s32(s[i]))
+    if x := 69; x == {
+    case 69; println("Que miras bobo?")
     }
-    putchar(s32('\n'))
 }

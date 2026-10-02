@@ -1074,6 +1074,7 @@ struct Node_Block {
 
 typedef struct {
     Node  node;
+    Node *init;
     Node *condition;
     Node *consequence;
     Node *antecedence;
@@ -1106,6 +1107,7 @@ typedef struct {
 
 typedef struct {
     Node  node;
+    Node *init;
     Node *expr;
     Nodes cases;
     Node *fallback;

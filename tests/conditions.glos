@@ -26,4 +26,8 @@ main :: () {
     } else {
         println(8008135)
     }
+
+    if x := 8008135; x != 69 {
+        println(x)
+    }
 }

@@ -196,10 +196,38 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
     }
 
     bool  should_be_switch = false;
-    Node *expr = parse_expr(p, POWER_SET, false, false, &should_be_switch);
+    Node *init = NULL;
+    Node *expr = NULL;
+    if (its == ITS_YES) {
+        expr = parse_expr(p, POWER_SET, false, false, NULL);
+    } else {
+        expr = parse_expr(p, POWER_NIL, false, false, &should_be_switch);
+        if (!should_be_switch) {
+            const bool was_init =                                                                  //
+                expr->kind == NODE_DEFINE ||                                                       //
+                (expr->kind == NODE_BINARY && token_kind_to_power(expr->token.kind) == POWER_SET); //
+
+            if (was_init && !is_compile_time) {
+                expect_stmt_terminator(p);
+            }
+
+            if (was_init || read_eol_or_rbrace(p)) {
+                if (is_compile_time) {
+                    error_node(EK_ERROR, expr, "Compile time conditional constructs cannot have init statements");
+                    exit(1);
+                }
+
+                its = ITS_NO;
+                init = expr;
+                expr = parse_expr(p, POWER_SET, false, false, &should_be_switch);
+            }
+        }
+    }
+
     if (should_be_switch) {
         Node_Switch *sw = (Node_Switch *) node_alloc(p->module_current, NODE_SWITCH, token);
         sw->is_compile_time = is_compile_time;
+        sw->init = init;
         sw->expr = expr;
 
         expect_token(p, TOKEN_LBRACE);
@@ -252,6 +280,7 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
         node = (Node *) sw;
     } else {
         Node_If *iff = (Node_If *) node_alloc(p->module_current, NODE_IF, token);
+        iff->init = init;
         iff->condition = expr;
         iff->is_compile_time = is_compile_time;
 

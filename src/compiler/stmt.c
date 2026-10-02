@@ -248,6 +248,7 @@ void compile_stmt_if(Compiler *c, Node_If *iff) {
         }
         return;
     }
+    compile_stmt(c, iff->init);
 
     LLVMBasicBlockRef consequence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
     LLVMBasicBlockRef antecedence = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
@@ -608,6 +609,7 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
         }
         return;
     }
+    compile_stmt(c, sw->init);
 
     LLVMTypeRef  i64_type = LLVMInt64TypeInContext(c->llvm_context);
     LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);

@@ -189,6 +189,7 @@ void check_stmt_if(Compiler *c, Node_If *iff) {
             c->context.replace = context_replace_save;
         }
     } else {
+        check_stmt(c, iff->init);
         check_expr(c, iff->condition, REF_NONE);
         type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
@@ -223,6 +224,7 @@ void check_stmt_for(Compiler *c, Node_For *forr) {
 }
 
 void check_stmt_switch(Compiler *c, Node_Switch *sw) {
+    check_stmt(c, sw->init);
     check_switch_expr_and_alloc_preds(c, sw);
     if (sw->is_compile_time) {
         if (sw->compile_time_real) {
