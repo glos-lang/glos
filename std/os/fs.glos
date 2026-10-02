@@ -93,7 +93,7 @@ case .MACOS
     }
 
 case .WINDOWS
-    file_info_from_raw :: (h: HANDLE) -> File_Info, error {
+    file_info_from_raw :: (h: win.HANDLE) -> File_Info, error {
         info: File_Info
         if h == win.INVALID_HANDLE_VALUE {
             return info, win.get_error()
