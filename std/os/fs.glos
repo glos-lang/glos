@@ -66,17 +66,18 @@ stat :: (path: string) -> File_Info, error {
         path := utf16.from_string(path, allocator = temporary_allocator)?.data
         defer temporary_allocator.rewind(rawptr(path))
 
-        return file_info_from_raw(
-            win.CreateFileW(
-                path,
-                win.FILE_READ_ATTRIBUTES,
-                win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
-                null,
-                win.OPEN_EXISTING,
-                win.FILE_FLAG_BACKUP_SEMANTICS,
-                null
-            )
+        handle := win.CreateFileW(
+            path,
+            win.FILE_READ_ATTRIBUTES,
+            win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE,
+            null,
+            win.OPEN_EXISTING,
+            win.FILE_FLAG_BACKUP_SEMANTICS,
+            null
         )
+
+        defer win.CloseHandle(handle)
+        return file_info_from_raw(handle)
     }
 }
 
@@ -170,6 +171,47 @@ remove :: (path: string) -> error {
     }
 }
 
+copy :: (old: string, new: string) -> error {
+    stat := stat(old)?
+    if stat.type() != .DIRECTORY {
+        return copy_file(old, new)
+    }
+
+    di := iter_dir(old, recursive = true)?
+    defer di.free()
+
+    sb: strings.Builder
+    defer sb.free()
+
+    create_dir(new)?
+    for it, err := range &di {
+        err?
+
+        sb.count = 0
+        wprint(&sb, "\{new}/\{it.path[old.count..]}")
+        path := string(sb[..])
+
+        if it.isdir {
+            create_dir(path)?
+        } else {
+            copy_file(it.path, path)?
+        }
+    }
+
+    return null
+
+    copy_file :: (old: string, new: string) -> error {
+        old := open_file(old, .BINARY)?
+        defer old.close()
+
+        new := create_file(new, .BINARY, old.stat()?.mode & 0o777)?
+        defer new.close()
+
+        io.copy(new, old)?
+        return null
+    }
+}
+
 #private...
 #if PLATFORM == {
 case .LINUX
@@ -222,7 +264,6 @@ case .WINDOWS
             info.nlink = 1
             info.uid = 0
             info.gid = 0
-            win.CloseHandle(h)
             return info, null
         }
 
@@ -233,7 +274,6 @@ case .WINDOWS
             win.GetFileInformationByHandleEx(h, win.FILE_INFO_BY_HANDLE_CLASS.FileStandardInfo, rawptr(&standard), sizeof(standard)) == 0
         ) {
             err := win.get_error()
-            win.CloseHandle(h)
             return info, err
         }
 
@@ -250,7 +290,6 @@ case .WINDOWS
                 info.ino = (u64(bh.nFileIndexHigh) << 32) | u64(bh.nFileIndexLow)
             }
         }
-        win.CloseHandle(h)
 
         type: u32
         if (basic.FileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0 {
