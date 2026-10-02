@@ -41,7 +41,7 @@ extern {
     _fileno :: (f: C.FILE) -> C.int
     _lseeki64 :: (fd: C.int, offset: s64, whence: C.int) -> s64
     _rmdir :: (pathname: &C.char) -> C.int
-    _open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int
+    _open :: (path: &C.char, flags: C.int, mode: C.unsigned_int) -> C.int
     _fdopen :: (fd: C.int, mode: &C.char) -> C.FILE
     _get_osfhandle :: (fd: C.int) -> HANDLE
     _open_osfhandle :: (osfhandle: C.intptr_t, flags: C.int) -> C.int

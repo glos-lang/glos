@@ -1,10 +1,10 @@
 File :: distinct rawptr
 
-open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
+open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := u32(0o666)) -> File, error {
     path := strings.to_cstring(path, temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
-    fd := open(path, C.int(flags), C.int(perm))
+    fd := open(path, C.int(flags), C.unsigned_int(perm))
     if fd == -1 {
         return null, C.get_errno()
     }
@@ -41,7 +41,7 @@ open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := 
     return f, null
 }
 
-create_file :: inline (path: string, flags := Open_Flag.TEXT, perm := s32(0o666)) -> File, error {
+create_file :: inline (path: string, flags := Open_Flag.TEXT, perm := u32(0o666)) -> File, error {
     return open_file(path, flags | .CREAT | .TRUNC | .WRONLY, perm)
 }
 
@@ -194,7 +194,7 @@ read_file :: (path: string, allocator := default_allocator) -> []u8, error {
     return bytes, null
 }
 
-write_file :: (path: string, bytes: []u8, flags := Open_Flag.TEXT, perm := s32(0o666)) -> error {
+write_file :: (path: string, bytes: []u8, flags := Open_Flag.TEXT, perm := u32(0o666)) -> error {
     f := create_file(path, flags, perm)?
     defer f.close()
     f.write(bytes)?

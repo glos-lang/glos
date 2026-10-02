@@ -22,7 +22,7 @@ extern {
     rmdir :: (pathname: &C.char) -> C.int
     fileno :: (f: C.FILE) -> C.int
     lseek :: (fd: C.int, offset: s64, whence: C.int) -> s64
-    open :: (path: &C.char, flags: C.int, mode: C.int) -> C.int
+    open :: (path: &C.char, flags: C.int, mode: C.unsigned_int) -> C.int
     fdopen :: (fd: C.int, mode: &C.char) -> C.FILE
 
     mmap   :: (addr: rawptr, length: C.size_t, prot: C.int, flags: C.int, fd: C.int, offset: C.long) -> rawptr
