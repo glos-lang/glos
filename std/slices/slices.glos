@@ -1,3 +1,109 @@
+apply :: (s: []$T, f: ((x: T) -> $E), into := []E {}, allocator := default_allocator) -> []E {
+    if s.count == 0 {
+        into.count = 0
+        return into
+    }
+
+    if into.count == 0 {
+        into = mem.new_array(E, s.count, allocator = allocator)!
+    } else {
+        assert(into.count >= s.count, "Destination slice of slices.apply() cannot have a smaller count than the source slice")
+    }
+
+    for i, x := range s {
+        into[i] = f(x)
+    }
+    into.count = s.count
+    return into
+}
+
+filter :: (s: []$T, f: ((x: T) -> bool), into := []T {}, allocator := default_allocator) -> []T {
+    if s.count == 0 {
+        into.count = 0
+        return into
+    }
+
+    if into.count == 0 {
+        ys: [..]T
+        defer ys.free()
+
+        for _, x := range s {
+            if f(x) {
+                ys.push(x)
+            }
+        }
+        into = mem.clone_array(ys[..], allocator = allocator)!
+    } else {
+        assert(into.count >= s.count, "Destination slice of slices.filter() cannot have a smaller count than the source slice")
+        i := 0
+        for _, x := range s {
+            if f(x) {
+                into[i] = x
+                i += 1
+            }
+        }
+        into.count = i
+    }
+
+    return into
+}
+
+reduce :: (s: []$T, f: ((acc: T, x: T) -> T), acc: T) -> T {
+    for _, x := range s {
+        acc = f(acc, x)
+    }
+    return acc
+}
+
+find :: (s: []$T, x: T, reverse := false) -> s64, bool {
+    if reverse {
+        for i := range s.count - 1..>=0 {
+            if s[i] == x {
+                return i, true
+            }
+        }
+    } else {
+        for i, it := range s {
+            if it == x {
+                return i, true
+            }
+        }
+    }
+
+    return 0, false
+}
+
+reverse :: (s: []$T, into := []T {}, allocator := default_allocator) -> []T {
+    if s.count == 0 {
+        into.count = 0
+        return into
+    }
+
+    if into.count == 0 {
+        into = mem.new_array(T, s.count, allocator = allocator)!
+    } else {
+        assert(into.count >= s.count, "Destination slice of slices.reverse() cannot have a smaller count than the source slice")
+    }
+
+    for i := range 0..s.count / 2 {
+        into[s.count - i - 1], into[i] = s[i], s[s.count - i - 1]
+    }
+
+    if s.count % 2 != 0 {
+        into[s.count / 2] = s[s.count / 2]
+    }
+
+    into.count = s.count
+    return into
+}
+
+fill :: (s: []$T, with: T) -> []T {
+    for _, v := range &s  {
+        *v = with
+    }
+    return s
+}
+
 sort :: (s: []$T, $compare := ((lhs: T, rhs: T) -> bool)(null)) -> []T {
     Arg :: struct {
         compare: (lhs: T, rhs: T) -> bool
@@ -100,4 +206,5 @@ extern {
     }
 }
 
-C :: #import "C"
+C   :: #import "C"
+mem :: #import "memory"
