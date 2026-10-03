@@ -27,6 +27,11 @@ if_statements :: () {
 
     // In the shorthand, you are not allowed to have blocks.
     // if true then {} // This is an error
+
+    // You can have an init statement.
+    if x := 69; x == 69 {
+        println("Yay!")
+    }
 }
 
 compile_time_if_statements :: () {
@@ -55,6 +60,9 @@ compile_time_if_statements :: () {
     println(A)
     println(B)
     println(C)
+
+    // You CANNOT have an init statement in a compile time 'if'. The following is an error.
+    // #if x := 69; true {}
 }
 
 // You can have '#if' statements at the toplevel
@@ -130,6 +138,12 @@ switch_statements :: () {
 
     // In fact, any type that implements the '==' operator can be switched. This will be described
     // in detail later along with operator overloading.
+
+    // You can have an init statement.
+    if x := 420; x == {
+    case 69;  println("First")
+    case 420; println("Second")
+    }
 }
 
 #if 6.9 == {
@@ -153,6 +167,9 @@ case 6.9
         println("================================================================================")
     }
 }
+
+// As before, you CANNOT have an init statement in a compile time 'switch'. The following is an error.
+// #if x := 69; x == { case 69 }
 
 // You can defer statements to execute at the end of the current scope
 defer_statements :: () {
@@ -193,7 +210,7 @@ defer_real_world_example :: () {
     // Import the "os" module from the standard library. Modules will be described later.
     os :: #import "os"
 
-    f, err := os.open(PATH)
+    f, err := os.open_file(PATH)
     defer f.close() // Just like that, we don't have to worry about this file handle anymore.
 
     if err != null {

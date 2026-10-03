@@ -21,7 +21,7 @@ free :: (this: &App) {
 }
 
 save :: (this: &App) {
-    f, err := os.open(TASKS_PATH, .CREAT | .TRUNC | .WRONLY)
+    f, err := os.create_file(TASKS_PATH)
     if err != null {
         eprintln("Error: Could not save tasks to '\{TASKS_PATH}': \{err}")
         os.exit(1)
