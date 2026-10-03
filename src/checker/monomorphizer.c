@@ -676,6 +676,13 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         // Therefore there is no need to check 'call->fn'
     } break;
 
+    case NODE_RANGE: {
+        Node_Range *range = (Node_Range *) n;
+        monomorphize_node(c, &range->a, first);
+        monomorphize_node(c, &range->b, first);
+        monomorphize_node(c, (Node **) &range->overload, first);
+    } break;
+
     case NODE_INDEX: {
         Node_Index *index = (Node_Index *) n;
         monomorphize_node(c, &index->lhs, first);
@@ -708,6 +715,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
+        monomorphize_node(c, &iff->init, first);
         monomorphize_node(c, &iff->condition, first);
         monomorphize_node(c, &iff->consequence, first);
         monomorphize_node(c, &iff->antecedence, first);
@@ -718,6 +726,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         monomorphize_node(c, &forr->init, first);
         monomorphize_node(c, &forr->condition, first);
         monomorphize_node(c, &forr->update, first);
+        monomorphize_node(c, (Node **) &forr->range, first);
         monomorphize_node(c, &forr->body, first);
     } break;
 
@@ -729,6 +738,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
 
     case NODE_SWITCH: {
         Node_Switch *sw = (Node_Switch *) n;
+        monomorphize_node(c, &sw->init, first);
         monomorphize_node(c, &sw->expr, first);
         monomorphize_nodes(c, &sw->cases, first);
 

@@ -30,7 +30,23 @@ contains :: (this: &map[$K]$V, key: K) -> bool {
     return src != null && src.state == .OCCUPIED
 }
 
-// TODO: A safe version of []
+// Safe version of operator '[]'
+get :: (this: &map[$K]$V, key: K) -> &V {
+    KV  :: Map_Entry(K, V)
+    src := map_entry_find(&KV(this.data), this.capacity, key)
+    if src == null {
+        return null
+    }
+    return &src.value
+}
+
+extend :: (this: &map[$K]$V, that: map[K]V, overwrite := true) {
+    for k, v := range that {
+        if !this.contains(k) || overwrite {
+            this[k] = v
+        }
+    }
+}
 
 operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_location) -> &V {
     KV :: Map_Entry(K, V)
