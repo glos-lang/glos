@@ -63,10 +63,10 @@ case .MACOS
         st_gid:       u32       // Group ID of the file's group
         st_rdev:      s32       // Device ID, if device
         _:            s32       // Padding
-        st_atime:     Stat_Time // Time of last access
-        st_mtime:     Stat_Time // Time of last modification
-        st_ctime:     Stat_Time // Time of last status change
-        st_birthtime: Stat_Time // Time of creation
+        st_atime:     timespec  // Time of last access
+        st_mtime:     timespec  // Time of last modification
+        st_ctime:     timespec  // Time of last status change
+        st_birthtime: timespec  // Time of creation
         st_size:      s64       // Size of the file, in bytes
         st_blocks:    s64       // Number of blocks allocated for the file
         st_blksize:   s32       // Optimal blocksize for I/O
@@ -74,11 +74,6 @@ case .MACOS
         st_gen:       u32       // File generation number
         _:            s32       // Reserved
         _:            [2]s64    // Reserved
-    }
-
-    Stat_Time :: struct {
-        tv_sec:  s64
-        tv_nsec: s64
     }
 
 case .WINDOWS

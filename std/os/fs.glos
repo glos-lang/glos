@@ -1,21 +1,15 @@
-// TODO: Should be part of its own time module
-Time :: struct {
-    seconds:     s64
-    nanoseconds: s64
-}
-
 File_Info :: struct {
-    dev:         u64             // ID of device containing file
-    ino:         u64             // File ID
-    ino_high:    u64             // File ID is 128-bit on Windows
-    mode:        u32             // Mode
-    nlink:       u64             // Number of hard links
-    uid:         u32             // UID of the file's owner
-    gid:         u32             // GID of the file's owner
-    size:        s64             // Size of the file, in bytes
-    create_time: Time            // Creation time
-    access_time: Time            // Last access time
-    modify_time: Time            // Last modification time
+    dev:         u64       // ID of device containing file
+    ino:         u64       // File ID
+    ino_high:    u64       // File ID is 128-bit on Windows
+    mode:        u32       // Mode
+    nlink:       u64       // Number of hard links
+    uid:         u32       // UID of the file's owner
+    gid:         u32       // GID of the file's owner
+    size:        s64       // Size of the file, in bytes
+    create_time: time.Time // Creation time
+    access_time: time.Time // Last access time
+    modify_time: time.Time // Last modification time
 }
 
 File_Type :: enum {
@@ -212,6 +206,8 @@ copy :: (old: string, new: string) -> error {
     }
 }
 
+time :: #import "time"
+
 #private...
 #if PLATFORM == {
 case .LINUX
@@ -224,9 +220,9 @@ case .LINUX
         info.uid = u32(stat.stx_uid)
         info.gid = u32(stat.stx_gid)
         info.size = s64(stat.stx_size)
-        info.create_time = {s64(stat.stx_btime.tv_sec), s64(stat.stx_btime.tv_nsec)}
-        info.access_time = {s64(stat.stx_atime.tv_sec), s64(stat.stx_atime.tv_nsec)}
-        info.modify_time = {s64(stat.stx_mtime.tv_sec), s64(stat.stx_mtime.tv_nsec)}
+        info.create_time = time.from_timespec({s64(stat.stx_btime.tv_sec), s64(stat.stx_btime.tv_nsec)})
+        info.access_time = time.from_timespec({s64(stat.stx_atime.tv_sec), s64(stat.stx_atime.tv_nsec)})
+        info.modify_time = time.from_timespec({s64(stat.stx_mtime.tv_sec), s64(stat.stx_mtime.tv_nsec)})
         return info, null
     }
 
@@ -240,9 +236,9 @@ case .MACOS
         info.uid = u32(stat.st_uid)
         info.gid = u32(stat.st_gid)
         info.size = s64(stat.st_size)
-        info.create_time = {s64(stat.st_birthtime.tv_sec), s64(stat.st_birthtime.tv_nsec)}
-        info.access_time = {s64(stat.st_atime.tv_sec), s64(stat.st_atime.tv_nsec)}
-        info.modify_time = {s64(stat.st_mtime.tv_sec), s64(stat.st_mtime.tv_nsec)}
+        info.create_time = time.from_timespec(stat.st_birthtime)
+        info.access_time = time.from_timespec(stat.st_atime)
+        info.modify_time = time.from_timespec(stat.st_mtime)
         return info, null
     }
 
@@ -312,9 +308,9 @@ case .WINDOWS
         info.mode = type | perm
         info.nlink = u64(standard.NumberOfLinks)
         info.size = standard.EndOfFile
-        info.access_time = win_time(basic.LastAccessTime)
-        info.modify_time = win_time(basic.LastWriteTime)
-        info.create_time = win_time(basic.CreationTime)
+        info.access_time = time.from_filetime(*(&win.FILETIME)(&basic.LastAccessTime))
+        info.modify_time = time.from_filetime(*(&win.FILETIME)(&basic.LastWriteTime))
+        info.create_time = time.from_filetime(*(&win.FILETIME)(&basic.CreationTime))
         info.uid = 0
         info.gid = 0
         return info, null
@@ -326,19 +322,6 @@ case .WINDOWS
                 v = (v << 8) | u64(*(p + &win.BYTE(i)))
             }
             return v
-        }
-
-        win_time :: (ticks: win.LARGE_INTEGER) -> Time {
-            s := ticks / TICKS_PER_SECOND
-            r := ticks % TICKS_PER_SECOND
-            if r < 0 {
-                r += TICKS_PER_SECOND
-                s -= 1
-            }
-            return {s - SECS_FROM_1601_TO_1970, r * 100}
-
-            TICKS_PER_SECOND       :: 10000000
-            SECS_FROM_1601_TO_1970 :: 11644473600
         }
     }
 }
