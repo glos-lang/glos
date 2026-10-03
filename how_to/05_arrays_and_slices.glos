@@ -45,7 +45,7 @@ main :: () {
     // Designated initializers are supported
     println([?]string {1 = "Bar", 0 = "Foo"})
 
-    // You can optionally pass the count as well in the literal
+    // You can manually pass the count as well in the literal
     println([2]s64 {69})
 
     // In places where the type of the array can be inferred, you can skip the '[N]Type' prefix.
@@ -82,7 +82,7 @@ main :: () {
     //
     //     struct {
     //         data:  &Element_Type
-    //         count: i64
+    //         count: s64
     //     }
     //
     // Unlike arrays, the fields 'data' and 'count' have real existence at runtime for slices.

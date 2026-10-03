@@ -65,7 +65,7 @@ main :: () {
         // And it constructs an array based on those arguments.
         return [N]T {}
 
-        // I mean you also just do this:
+        // I mean you can also just do this:
         //
         //     return {}
         //
@@ -183,7 +183,7 @@ polymorphic_structures :: () {
     a.s32_show()
     // b.s32_show() // This is an error, as 'b' is 'Box(string)', not 'Box(s32)'
 
-    // Needless to say, you can defined polymorphic functions over polymorphic structures
+    // Needless to say, you can define polymorphic functions over polymorphic structures
     box_set :: (b: &Box($T), v: T) {
         b.v = v
     }

@@ -15,7 +15,7 @@ main :: () {
     println(*T)
 
     // You can see the pointer to the RTTI structure by casting to '&Type_Info'.
-    // The then standard library printing functions will not format the type.
+    // Then the standard library printing functions will not format the type.
     println(&Type_Info(T))
 
     // The first field of trait values is a 'Type'. It is an RTTI pointer.
@@ -33,5 +33,5 @@ main :: () {
 // That is all there is to say about this. As mentioned before, see the definition
 // in "std/builtin/contract.glos" to get the specific implementation details.
 //
-// Also see "std/builtin/fmt.glos" for the 'write_type()' function that formats
+// Also see "std/fmt/fmt.glos" for the 'type()' function that formats
 // a 'Type' value. It will serve an example of the usage of RTTI.

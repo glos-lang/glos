@@ -38,7 +38,7 @@ main :: () {
         }
 
         operator <=> :: (this: Int, that: Int) -> Equivalence {
-            println("Custom equality operator for 'Foo'")
+            println("Custom equality operator for 'Int'")
             if this.x == that.x then return .EQ else return .NE
         }
 

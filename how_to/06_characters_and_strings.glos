@@ -27,7 +27,7 @@ main :: () {
     //
     //     struct {
     //         data:  &u8
-    //         count: i64
+    //         count: s64
     //     }
     //
 

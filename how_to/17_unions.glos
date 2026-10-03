@@ -144,7 +144,7 @@ string_interpolation_explanation :: () {
     any = 13.37
     any = null
 
-    // As the name suggests, you can put a value of any type into 'Any'.
+    // You can put a value of any type into 'Format'.
     //
     // You can probably now understand how string interpolation works for the most part.
 
@@ -152,7 +152,7 @@ string_interpolation_explanation :: () {
     auto := "\{70 - 1} beers on the wall. Isn't that \{420 == 500 - 80}"
     // ... should get compiled to something like this.
     //
-    //     []Any {70 - 1, " beers on the wall. Isn't that ", 420 == 500 - 80}
+    //     []Format {70 - 1, " beers on the wall. Isn't that ", 420 == 500 - 80}
     //
 
     // Let us check.

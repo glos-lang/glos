@@ -62,7 +62,7 @@ main :: () {
     // 'inline' is a hint to the optimizer that the function is preferable to be inlined.
     //
     // Of course, it will only get inlined if it is possible to be inlined. If the function is
-    // recursive, then this attributes will do nothing
+    // recursive, then this attribute will do nothing.
     //
     // It is important to note that the LLVM backend of the Glos compiler might decide to
     // not inline a function even though you marked it as inline and it is not recursive.
@@ -72,7 +72,7 @@ main :: () {
 
     // The 'noreturn' marks the function to never return
     //
-    // For example, this function enters an infinite loop can be safely said to never return
+    // For example, this function enters an infinite loop and can be safely said to never return
     infinite :: noreturn () {
         for {} // Infinite loop
     }
