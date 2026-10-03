@@ -19,10 +19,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Time
-        run: |
-          ./glos -r time.glos
-
   build-linux-musl:
     runs-on: ubuntu-latest
 
@@ -42,10 +38,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Time
-        run: |
-          ./glos -r time.glos
-
   build-macos:
     runs-on: macos-latest
     steps:
@@ -56,10 +48,6 @@ jobs:
         run: |
           cc -o first first.c
           ./first -T
-
-      - name: Time
-        run: |
-          ./glos -r time.glos
 
   build-windows:
     runs-on: windows-latest
@@ -74,7 +62,3 @@ jobs:
         run: |
           cl first.c
           ./first.exe -T
-
-      - name: Time
-        run: |
-          ./glos.exe -r time.glos

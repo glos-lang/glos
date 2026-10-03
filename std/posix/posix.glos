@@ -116,6 +116,8 @@ extern {
 
     mktime :: (tm: &tm) -> time_t
     timegm :: (tm: &tm) -> time_t
+
+    nanosleep :: (duration: &timespec, rem: &timespec) -> C.int
 }
 
 C :: #import "C"

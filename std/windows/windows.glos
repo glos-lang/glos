@@ -36,6 +36,10 @@ INFINITE :: 0xffffffff
 
 WAIT_FAILED :: 0xFFFFFFFF
 
+CREATE_WAITABLE_TIMER_HIGH_RESOLUTION :: 0x00000002
+TIMER_ALL_ACCESS :: 0x001F0003
+PTIMERAPCROUTINE :: (lpArgToCompletionRoutine: LPVOID, dwTimerLowValue: DWORD, dwTimerHighValue: DWORD)
+
 extern {
     wcslen :: (str: &WCHAR) -> C.size_t
     _fileno :: (f: C.FILE) -> C.int
@@ -137,6 +141,22 @@ extern {
 
     SystemTimeToFileTime :: (lpSystemTime: &SYSTEMTIME, lpFileTime: LPFILETIME) -> BOOL
     LocalFileTimeToFileTime :: (lpLocalFileTime: &FILETIME, lpFileTime: LPFILETIME) -> BOOL
+
+    CreateWaitableTimerExW :: (
+        lpTimerAttributes: LPSECURITY_ATTRIBUTES,
+        lpTimerName: LPCWSTR,
+        dwFlags: DWORD,
+        dwDesiredAccess: DWORD
+    ) -> HANDLE
+
+    SetWaitableTimer :: (
+        hTimer: HANDLE,
+        lpDueTime: &LARGE_INTEGER,
+        lPeriod: LONG,
+        pfnCompletionRoutine: PTIMERAPCROUTINE,
+        lpArgToCompletionRoutine: LPVOID,
+        fResume: BOOL
+    ) -> BOOL
 }
 
 C :: #import "C"

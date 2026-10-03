@@ -296,6 +296,57 @@ to_calendar :: (this: Time, time_zone := Time_Zone.LOCAL) -> Calendar_Time, erro
     }
 }
 
+sleep :: (duration: Time) -> error {
+    if duration < Time(s128(0)) {
+        return C.Errno.EINVAL
+    }
+
+    #if PLATFORM == .WINDOWS {
+        intervals := S128(duration) / s128(100_000_000)
+        if intervals > s128(math.S64_MAX) {
+            return C.Errno.ERANGE
+        }
+        intervals := s64(intervals.low)
+
+        timer := win.CreateWaitableTimerExW(
+            null,
+            null,
+            win.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+            win.TIMER_ALL_ACCESS
+        )
+
+        if timer == null {
+            return win.get_error()
+        }
+        defer win.CloseHandle(timer)
+
+        due := win.LARGE_INTEGER(-intervals)
+        if win.SetWaitableTimer(timer, &due, 0, null, null, 0) == 0 {
+            return win.get_error()
+        }
+
+        if win.WaitForSingleObject(timer, win.INFINITE) == win.WAIT_FAILED {
+            return win.get_error()
+        }
+    } else {
+        req, ok := (duration + UNIX_EPOCH).to_timespec()
+        if !ok {
+            return C.Errno.ERANGE
+        }
+
+        rem: posix.timespec
+        for posix.nanosleep(&req, &rem) != 0 {
+            err := C.get_errno()
+            if err != .EINTR {
+                return err
+            }
+            req = rem
+        }
+    }
+
+    return null
+}
+
 UNIX_EPOCH :: Time {low = 0xDBD87F0EDB7C8000, high = 0x300}
 
 @format :: (this: &Time, w: io.Writer, _: bool) -> s64, error {
