@@ -1,0 +1,331 @@
+Time :: distinct S128
+
+Time_Zone :: enum {
+    UTC
+    LOCAL
+}
+
+// Everything is zero indexed
+Calendar_Time :: struct {
+    year:         s32
+    month:        s8
+    day_of_month: s8
+    day_of_week:  s8
+    hour:         s8
+    minute:       s8
+    second:       s8
+    millisecond:  s16
+    time_zone:    Time_Zone
+}
+
+#if PLATFORM == .WINDOWS {
+    get_wall :: () -> Time, error {
+        ft: win.FILETIME
+        win.GetSystemTimePreciseAsFileTime(&ft)
+        return from_filetime(ft), null
+    }
+
+    get_monotonic :: () -> Time, error {
+        pc, freq: win.LARGE_INTEGER
+        if win.QueryPerformanceCounter(&pc) == 0 || win.QueryPerformanceFrequency(&freq) == 0 {
+            return {}, win.get_error()
+        }
+
+        t: Time
+        t.low = *(&u64)(&pc)
+        t *= Time(s128(1_000_000_000_000_000))
+        t /= Time(s128(freq))
+        return t, null
+    }
+
+    from_filetime :: (ft: win.FILETIME) -> Time {
+        t: Time
+        t.low = *(&u64)(&ft)
+        t *= Time(u128(100_000_000))
+        t += {12544592398102855680, u64(s64(-630480))}
+        return t
+    }
+
+    to_filetime :: (this: Time) -> win.FILETIME, bool {
+        r  := S128(this) / s128(100_000_000)
+        ok := true
+        if r > s128(math.S64_MAX) {
+            ok = false
+        }
+
+        r  += s128(0x19D_30E0_99A4_7380)
+        return *(&win.FILETIME)(&r), ok
+    }
+
+    win :: #import "windows"
+} else {
+    get_wall :: () -> Time, error {
+        ts: posix.timespec
+        if posix.clock_gettime(.REALTIME, &ts) != 0 {
+            return {}, C.get_errno()
+        }
+        return from_timespec(ts), null
+    }
+
+    get_monotonic :: () -> Time, error {
+        ts: posix.timespec
+        if posix.clock_gettime(.MONOTONIC, &ts) != 0 {
+            return {}, C.get_errno()
+        }
+        return from_timespec(ts), null
+    }
+
+    from_timespec :: (ts: posix.timespec) -> Time {
+        return from_seconds(ts.tv_sec) + from_nanoseconds(ts.tv_nsec) + UNIX_EPOCH
+    }
+
+    to_timespec :: (this: Time) -> posix.timespec, bool {
+        this -= UNIX_EPOCH
+
+        seconds: s64
+        divided := this / Time(s128(1_000_000_000_000_000))
+        if divided.high == 0 {
+            if (divided.low & 0x8000_0000_0000_0000) != 0 {
+                return {}, false
+            }
+
+            seconds = s64(divided.low)
+        } else if divided.high == u64(s64(-1)) {
+            seconds = s64(divided.low)
+        } else {
+            return {}, false
+        }
+
+        a_seconds      := from_seconds(seconds)
+        a_femtoseconds := this - a_seconds
+        assert(a_femtoseconds.high == 0)
+
+        nanoseconds := (s64(a_femtoseconds.low) + 500_000) / 1_000_000
+        ts: posix.timespec
+        ts.tv_sec  = seconds
+        ts.tv_nsec = nanoseconds
+
+        if seconds < 0 {
+            return ts, false
+        }
+        return ts, true
+    }
+
+    posix :: #import "posix"
+}
+
+from_seconds :: inline (m: s64) -> Time {
+    return Time(s128(m) * s128(1_000_000_000_000_000))
+}
+
+from_milliseconds :: inline (m: s64) -> Time {
+    return Time(s128(m) * s128(1_000_000_000_000))
+}
+
+from_microseconds :: inline (m: s64) -> Time {
+    return Time(s128(m) * s128(1_000_000_000))
+}
+
+from_nanoseconds :: inline (m: s64) -> Time {
+    return Time(s128(m) * s128(1_000_000))
+}
+
+from_calendar :: (ct: Calendar_Time) -> Time, error {
+    #if PLATFORM == .WINDOWS {
+        result: Time
+
+        st: win.SYSTEMTIME
+        st.wYear         = u16(ct.year)
+        st.wMonth        = u16(ct.month + 1)
+        st.wDay          = u16(ct.day_of_month + 1)
+        st.wDayOfWeek    = u16(ct.day_of_week)
+        st.wHour         = u16(ct.hour)
+        st.wMinute       = u16(ct.minute)
+        st.wSecond       = u16(ct.second)
+        st.wMilliseconds = u16(ct.millisecond)
+
+        ft: win.FILETIME
+        if win.SystemTimeToFileTime(&st, &ft) == 0 {
+            return {}, win.get_error()
+        }
+
+        if ct.time_zone == .LOCAL {
+            ft_local: win.FILETIME
+            if win.LocalFileTimeToFileTime(&ft, &ft_local) == 0 {
+                return {}, win.get_error()
+            }
+            ft = ft_local
+        }
+
+        t: Time
+        t.low = *(&u64)(&ft)
+        t *= Time(u128(100_000_000))
+        t += {12544592398102855680, u64(s64(-630480))}
+        return t, null
+    } else {
+        tm: posix.tm
+        tm.tm_year = ct.year - 1900
+        tm.tm_mon  = s32(ct.month)
+        tm.tm_mday = s32(ct.day_of_month + 1)
+        tm.tm_hour = s32(ct.hour)
+        tm.tm_min  = s32(ct.minute)
+        tm.tm_sec  = s32(ct.second)
+        tm.tm_isdst = -1
+
+        ts: posix.time_t
+        if ct.time_zone == {
+        case .LOCAL; ts = posix.timelocal(&tm)
+        case .UTC;   ts = posix.timegm(&tm)
+        }
+
+        if ts == -1	{
+            return {}, C.get_errno()
+        }
+
+        return from_seconds(ts) + from_milliseconds(s64(ct.millisecond)) + UNIX_EPOCH, null
+    }
+}
+
+to_seconds :: inline (this: Time) -> s64, bool {
+    r := S128(this) / s128(1_000_000_000_000_000)
+    if r > s128(math.S64_MAX) {
+        return 0, false
+    }
+    return s64(r.low), true
+}
+
+to_milliseconds :: inline (this: Time) -> s64, bool {
+    r := S128(this) / s128(1_000_000_000_000)
+    if r > s128(math.S64_MAX) {
+        return 0, false
+    }
+    return s64(r.low), true
+}
+
+to_microseconds :: inline (this: Time) -> s64, bool {
+    r := S128(this) / s128(1_000_000_000)
+    if r > s128(math.S64_MAX) {
+        return 0, false
+    }
+    return s64(r.low), true
+}
+
+to_nanoseconds :: inline (this: Time) -> s64, bool {
+    r := S128(this) / s128(1_000_000)
+    if r > s128(math.S64_MAX) {
+        return 0, false
+    }
+    return s64(r.low), true
+}
+
+to_calendar :: (this: Time, time_zone := Time_Zone.LOCAL) -> Calendar_Time, error {
+    #if PLATFORM == .WINDOWS {
+        ft, ok := this.to_filetime()
+        if !ok {
+            return {}, C.Errno.ERANGE
+        }
+
+        if time_zone == .LOCAL {
+            ft_local: win.FILETIME
+            if win.FileTimeToLocalFileTime(&ft, &ft_local) == 0 {
+                return {}, win.get_error()
+            }
+            ft = ft_local
+        }
+
+        st: win.SYSTEMTIME
+        if win.FileTimeToSystemTime(&ft, &st) == 0 {
+            return {}, win.get_error()
+        }
+
+        ct: Calendar_Time
+        ct.year = s32(st.wYear)
+        if st.wMonth > 1 {
+            ct.month = s8(st.wMonth - 1)
+        }
+        if st.wDay > 1 {
+            ct.day_of_month = s8(st.wDay - 1)
+        }
+        ct.day_of_week = s8(st.wDayOfWeek)
+        ct.hour        = s8(st.wHour)
+        ct.minute      = s8(st.wMinute)
+        ct.second      = s8(st.wSecond)
+        ct.millisecond = s16(st.wMilliseconds)
+        ct.time_zone   = time_zone
+        return ct, null
+    } else {
+        ts, ok := this.to_timespec()
+        if !ok {
+            return {}, C.Errno.ERANGE
+        }
+
+        NANO_TO_MILLI_FACTOR :: 1_000_000
+        milliseconds := s16((ts.tv_nsec + NANO_TO_MILLI_FACTOR / 2) / NANO_TO_MILLI_FACTOR)
+        if milliseconds >= 1000 {
+            assert(milliseconds == 1000)
+            milliseconds = 0
+            ts.tv_sec += 1
+        }
+
+        tm: posix.tm
+        if time_zone == {
+        case .LOCAL
+            if posix.localtime_r(&ts.tv_sec, &tm) == null {
+                return {}, C.get_errno()
+            }
+
+        case .UTC
+            if posix.gmtime_r(&ts.tv_sec, &tm) == null {
+                return {}, C.get_errno()
+            }
+        }
+
+        ct: Calendar_Time
+        ct.year  = tm.tm_year + 1900
+        ct.month = s8(tm.tm_mon)
+        if tm.tm_mday > 1 {
+            ct.day_of_month = s8(tm.tm_mday - 1)
+        }
+        ct.day_of_week = s8(tm.tm_wday)
+        ct.hour        = s8(tm.tm_hour)
+        ct.minute      = s8(tm.tm_min)
+        ct.second      = s8(tm.tm_sec)
+        ct.millisecond = milliseconds
+        ct.time_zone   = time_zone
+        return ct, null
+    }
+}
+
+UNIX_EPOCH :: Time {low = 0xDBD87F0EDB7C8000, high = 0x300}
+
+@format :: (this: &Time, w: io.Writer, _: bool) -> s64, error {
+    return wprint(w, S128(*this))
+}
+
+@format :: (this: &Calendar_Time, w: io.Writer, _: bool) -> s64, error {
+    time_zone_name := &C.char("")
+    if this.time_zone == .UTC {
+        time_zone_name = "Z"
+    }
+
+    buffer: [64]u8
+    n := C.snprintf(
+        &C.char(buffer.data),
+        C.size_t(buffer.count),
+        "%02d-%02d-%02dT%02d:%02d:%02d.%03d%s",
+        this.year,
+        this.month,
+        this.day_of_month,
+        this.hour,
+        this.minute,
+        this.second,
+        this.millisecond,
+        time_zone_name
+    )
+
+    return w.write(buffer[..n])
+}
+
+C    :: #import "C"
+io   :: #import "io"
+math :: #import "math"

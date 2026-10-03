@@ -1,5 +1,6 @@
 #include "../error.h"
 #include "compiler.h"
+#include <stddef.h>
 
 void compile_var_def(Compiler *c, Node_Atom *it) {
     if (sv_match(it->node.token.sv, "_")) {
@@ -758,13 +759,15 @@ void compile_stmt_switch(Compiler *c, Node_Switch *sw) {
         compile_stmt(c, ((Node_Case *) sw->fallback)->body);
     } else if (sw->enumeration) {
         if (c->optimization_level != O3) {
+            LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+            const bool  is_signed = type_is_signed(sw->expr->type);
             set_debug_pos(c, n->token.pos);
             compile_panic(
                 c,
                 n->token.pos,
                 CONTRACT_PANIC_UNREACHABLE_INVALID_ENUM_VALUE,
-                expr,
-                LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), type_is_signed(sw->expr->type), true),
+                compile_cast(c, expr, i64, is_signed, is_signed),
+                LLVMConstInt(i64, is_signed, true),
                 NULL);
             jump_to_end = false;
         }

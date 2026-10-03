@@ -7,8 +7,62 @@ MAP_PRIVATE :: 0x02
 
 #if PLATFORM == .MACOS {
     MAP_ANONYMOUS :: 0x1000
+
+    tm :: struct {
+        tm_sec:    s32
+        tm_min:    s32
+        tm_hour:   s32
+        tm_mday:   s32
+        tm_mon:    s32
+        tm_year:   s32
+        tm_wday:   s32
+        tm_yday:   s32
+        tm_isdst:  s32
+        tm_gmtoff: s64
+        tm_zone:   &u8
+    }
+
+    clockid_t :: enum u32 {
+        REALTIME             = 0
+        MONOTONIC            = 6
+        MONOTONIC_RAW        = 4
+        MONOTONIC_RAW_APPROX = 5
+        UPTIME_RAW           = 8
+        UPTIME_RAW_APPROX    = 9
+        PROCESS_CPUTIME_ID   = 12
+        THREAD_CPUTIME_ID    = 16
+    }
 } else {
     MAP_ANONYMOUS :: 0x20
+
+    tm :: struct {
+        tm_sec:    s32
+        tm_min:    s32
+        tm_hour:   s32
+        tm_mday:   s32
+        tm_mon:    s32
+        tm_year:   s32
+        tm_wday:   s32
+        tm_yday:   s32
+        tm_isdst:  s32
+
+        tm_gmtoff: s64
+        tm_zone:   &u8
+    }
+
+    clockid_t :: enum u32 {
+        REALTIME           = 0
+        MONOTONIC          = 1
+        PROCESS_CPUTIME_ID = 2
+        THREAD_CPUTIME_ID  = 3
+        MONOTONIC_RAW      = 4
+        REALTIME_COARSE    = 5
+        MONOTONIC_COARSE   = 6
+        BOOTTIME           = 7
+        REALTIME_ALARM     = 8
+        BOOTTIME_ALARM     = 9
+        TAI                = 11
+    }
 }
 
 F_SETFD    :: 2
@@ -17,6 +71,13 @@ FD_CLOEXEC :: 1
 STDIN_FILENO  :: 0
 STDOUT_FILENO :: 1
 STDERR_FILENO :: 2
+
+timespec :: struct {
+    tv_sec:  s64
+    tv_nsec: s64
+}
+
+time_t :: s64
 
 extern {
     mkdir :: (pathname: &C.char, mode: C.unsigned_int) -> C.int
@@ -47,6 +108,14 @@ extern {
 
     getcwd :: (buf: &C.char, size: C.size_t) -> &C.char
     chdir :: (path: &C.char) -> C.int
+
+    clock_gettime :: (clockid: clockid_t, tp: &timespec) -> C.int
+
+    gmtime_r :: (timep: &time_t, result: &tm) -> &tm
+    localtime_r :: (timep: &time_t, result: &tm) -> &tm
+
+    timelocal :: (tm: &tm) -> time_t
+    timegm :: (tm: &tm) -> time_t
 }
 
 C :: #import "C"

@@ -126,6 +126,17 @@ extern {
 
     RemoveDirectoryW :: (lpPathName: LPCWSTR) -> BOOL
     CreateDirectoryW :: (lpPathName: LPCWSTR, lpSecurityAttributes: LPSECURITY_ATTRIBUTES) -> BOOL
+
+    GetSystemTimePreciseAsFileTime :: (lpSystemTimeAsFileTime: LPFILETIME)
+
+    QueryPerformanceCounter :: (lpPerformanceCount: &LARGE_INTEGER) -> BOOL
+    QueryPerformanceFrequency :: (lpFrequency: &LARGE_INTEGER) -> BOOL
+
+    FileTimeToLocalFileTime :: (lpFileTime: &FILETIME, lpLocalFileTime: LPFILETIME) -> BOOL
+    FileTimeToSystemTime :: (lpFileTime: &FILETIME, lpSystemTime: LPSYSTEMTIME) -> BOOL
+
+    SystemTimeToFileTime :: (lpSystemTime: &SYSTEMTIME, lpFileTime: LPFILETIME) -> BOOL
+    LocalFileTimeToFileTime :: (lpLocalFileTime: &FILETIME, lpFileTime: LPFILETIME) -> BOOL
 }
 
 C :: #import "C"
