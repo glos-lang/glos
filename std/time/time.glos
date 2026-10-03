@@ -174,7 +174,7 @@ from_calendar :: (ct: Calendar_Time) -> Time, error {
 
         ts: posix.time_t
         if ct.time_zone == {
-        case .LOCAL; ts = posix.timelocal(&tm)
+        case .LOCAL; ts = posix.mktime(&tm)
         case .UTC;   ts = posix.timegm(&tm)
         }
 
@@ -314,8 +314,8 @@ UNIX_EPOCH :: Time {low = 0xDBD87F0EDB7C8000, high = 0x300}
         C.size_t(buffer.count),
         "%02d-%02d-%02dT%02d:%02d:%02d.%03d%s",
         this.year,
-        this.month,
-        this.day_of_month,
+        this.month + 1,
+        this.day_of_month + 1,
         this.hour,
         this.minute,
         this.second,

@@ -114,7 +114,7 @@ extern {
     gmtime_r :: (timep: &time_t, result: &tm) -> &tm
     localtime_r :: (timep: &time_t, result: &tm) -> &tm
 
-    timelocal :: (tm: &tm) -> time_t
+    mktime :: (tm: &tm) -> time_t
     timegm :: (tm: &tm) -> time_t
 }
 
