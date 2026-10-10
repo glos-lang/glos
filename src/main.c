@@ -94,41 +94,40 @@ static const char *get_temp_file_path(void) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-static const char *get_std_dir_path(Arena *a) {
-    const void *checkpoint = arena_alloc(&temp_arena, 0);
-    const char *result = NULL;
+static SV get_self_path(Arena *a) {
+    SV          result = {0};
+    const void *checkpoint = arena_alloc(a, 0);
 
 #ifdef PLATFORM_X86_64_LINUX
     i64   count = 0;
     char *data = NULL;
 
     for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = arena_alloc(&temp_arena, capacity);
+        data = arena_alloc(a, capacity);
         count = readlink("/proc/self/exe", data, capacity);
 
         if (count == -1) {
-            return_defer(NULL);
+            return_defer((SV) {0});
         }
 
         if ((size_t) count < capacity) {
             break;
         }
 
-        arena_reset(&temp_arena, checkpoint);
+        arena_reset(a, checkpoint);
     }
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
     uint32_t count = DA_INIT_CAP;
-    char    *data = arena_alloc(&temp_arena, count);
+    char    *data = arena_alloc(a, count);
 
     if (_NSGetExecutablePath(data, &count) == -1) {
-        arena_reset(&temp_arena, data);
-        data = arena_alloc(&temp_arena, count);
+        arena_reset(a, data);
+        data = arena_alloc(a, count);
 
         if (_NSGetExecutablePath(data, &count) == -1) {
-            arena_reset(&temp_arena, data);
-            return NULL;
+            return_defer((SV) {0});
         }
     }
 
@@ -137,14 +136,14 @@ static const char *get_std_dir_path(Arena *a) {
 
 #ifdef PLATFORM_X86_64_WINDOWS
     i64   count = 0;
-    char *data = arena_alloc(&temp_arena, 0);
+    char *data = arena_alloc(a, 0);
 
     for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = arena_alloc(&temp_arena, capacity);
+        data = arena_alloc(a, capacity);
         count = GetModuleFileNameA(NULL, data, capacity);
 
         if (count == 0) {
-            return_defer(NULL);
+            return_defer((SV) {0});
         }
 
         if (count < capacity - 1) {
@@ -155,7 +154,17 @@ static const char *get_std_dir_path(Arena *a) {
     unixify_path_separators_inplace(data, count);
 #endif // PLATFORM_X86_64_WINDOWS
 
-    SV sv = {.data = data, .count = count};
+    result.data = data;
+    result.count = count;
+
+defer:
+    if (!result.data) {
+        arena_reset(a, checkpoint);
+    }
+    return result;
+}
+
+static const char *get_std_path(Arena *a, SV sv) {
     for (size_t i = sv.count; i; i--) {
         if (sv.data[i - 1] == '/') {
             sv.count = i;
@@ -163,11 +172,7 @@ static const char *get_std_dir_path(Arena *a) {
         }
     }
 
-    return_defer(arena_sprintf(a, SV_Fmt "std", SV_Arg(sv)));
-
-defer:
-    arena_reset(&temp_arena, checkpoint);
-    return result;
+    return arena_sprintf(a, SV_Fmt "std", SV_Arg(sv));
 }
 
 static Module *import_std_module(Compiler *c, SV name) {
@@ -214,7 +219,8 @@ int main(int argc, char **argv) {
     int result = 0;
     Cmd cmd = {0};
 
-    const char *cwd = get_cwd(&default_arena);
+    const SV    self = get_self_path(&default_arena);
+    const SV    cwd = sv_from_cstr(get_cwd(&default_arena));
     const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
@@ -286,7 +292,7 @@ int main(int argc, char **argv) {
     if (!input_path) {
         input_path = ".";
     }
-    input_path = get_absolute_path(sv_from_cstr(cwd), sv_from_cstr(input_path), &default_arena);
+    input_path = get_absolute_path(cwd, sv_from_cstr(input_path), &default_arena);
 
     if (!output_path) {
         if (directory_exists(input_path)) {
@@ -309,17 +315,33 @@ int main(int argc, char **argv) {
         }
     }
 
+#ifdef PLATFORM_X86_64_WINDOWS
+    if (!sv_has_suffix(sv_from_cstr(output_path), sv_from_cstr(".exe"))) {
+        output_path = arena_sprintf(&temp_arena, "%s.exe", output_path);
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
     if (directory_exists(output_path)) {
-        error_standalone(EK_ERROR, "The output path '%s' exists and is a directory", output_path);
+        error_standalone(EK_ERROR, "The output path '%s' is a directory", output_path);
         exit(1);
+    }
+
+    // Do not overwrite the compiler itself
+    {
+        const char *output_path_full = get_absolute_path(cwd, sv_from_cstr(output_path), &temp_arena);
+        if (sv_match(self, output_path_full)) {
+            error_standalone(EK_ERROR, "The output path '%s' is the compiler itself", output_path);
+            exit(1);
+        }
+        arena_reset(&temp_arena, output_path_full);
     }
 
     Modules       modules = {0};
     Embed_Interns embed_interns = {0};
 
     Parser parser = {
-        .cwd = sv_from_cstr(cwd),
-        .std = sv_from_cstr(get_std_dir_path(&default_arena)),
+        .cwd = cwd,
+        .std = sv_from_cstr(get_std_path(&default_arena, self)),
         .modules = &modules,
         .embed_interns = &embed_interns,
     };
@@ -393,12 +415,6 @@ int main(int argc, char **argv) {
     }
 
     perf_end("main module");
-
-#ifdef PLATFORM_X86_64_WINDOWS
-    if (!sv_has_suffix(sv_from_cstr(output_path), sv_from_cstr(".exe"))) {
-        output_path = arena_sprintf(&temp_arena, "%s.exe", output_path);
-    }
-#endif // PLATFORM_X86_64_WINDOWS
 
     if (compiler.run) {
         temporary_files_push(output_path);
