@@ -8,6 +8,7 @@ extern {
     fwrite :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
     fflush :: (f: FILE) -> int
     exit :: noreturn (code: int)
+    _exit :: noreturn (code: int)
     abort :: noreturn ()
     memcmp :: (a: rawptr, b: rawptr, n: size_t) -> int
     free :: (ptr: rawptr)

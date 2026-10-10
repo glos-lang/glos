@@ -146,6 +146,26 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
+#ifdef PLATFORM_X86_64_WINDOWS
+    {
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(c->llvm_context);
+
+        LLVMAddModuleFlag(
+            c->llvm_module, LLVMModuleFlagBehaviorWarning, "CodeView", 8, LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0)));
+
+        LLVMAddModuleFlag(
+            c->llvm_module,
+            LLVMModuleFlagBehaviorWarning,
+            "Debug Info Version",
+            18,
+            LLVMValueAsMetadata(LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0)));
+
+        if (c->run) {
+            temporary_files_push(temp_replace_suffix(output_path, EXE_FILE_EXTENSION, ".pdb"));
+        }
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
     compile_type(c, &c->hasher_type);
     compile_type(c, &c->format_type);
     compile_type(c, &c->type_info_type);
@@ -224,6 +244,7 @@ void compiler_build(Compiler *c, const char *output_path) {
             cmd_push(c->cmd, "link", "/nologo");
         }
 
+        cmd_push(c->cmd, "/debug");
         cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
         cmd_push(c->cmd, "/defaultlib:libcmt");
 #else
@@ -239,7 +260,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 
 #ifndef PLATFORM_X86_64_WINDOWS
         // The '%' operator needs the math library to operate on floats in unoptimized builds.
-        cmd_push(c->cmd, "-lm");
+        cmd_push(c->cmd, "-lm", "-rdynamic");
 #endif // PLATFORM_X86_64_WINDOWS
 
         const char *proc_name = c->cmd->data[0];

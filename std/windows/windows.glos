@@ -1,3 +1,6 @@
+TRUE  :: 1
+FALSE :: 0
+
 MEM_COMMIT  :: 0x00001000
 MEM_RELEASE :: 0x00008000
 MEM_RESERVE :: 0x00002000
@@ -39,6 +42,19 @@ WAIT_FAILED :: 0xFFFFFFFF
 CREATE_WAITABLE_TIMER_HIGH_RESOLUTION :: 0x00000002
 TIMER_ALL_ACCESS :: 0x001F0003
 PTIMERAPCROUTINE :: (lpArgToCompletionRoutine: LPVOID, dwTimerLowValue: DWORD, dwTimerHighValue: DWORD)
+
+SYMOPT_LOAD_LINES     :: 0x00000010
+SYMOPT_UNDNAME        :: 0x00000002
+SYMOPT_DEFERRED_LOADS :: 0x00000004
+
+_WRITE_ABORT_MSG  :: 0x1
+_CALL_REPORTFAULT :: 0x2
+
+EXCEPTION_EXECUTE_HANDLER :: 0x1
+
+SIGABRT :: 22
+
+IMAGE_FILE_MACHINE_AMD64 :: 0x8664
 
 extern {
     wcslen :: (str: &WCHAR) -> C.size_t
@@ -156,6 +172,36 @@ extern {
         pfnCompletionRoutine: PTIMERAPCROUTINE,
         lpArgToCompletionRoutine: LPVOID,
         fResume: BOOL
+    ) -> BOOL
+
+    GetCurrentThread  :: () -> HANDLE
+    GetCurrentProcess :: () -> HANDLE
+
+    SymSetOptions            :: (SymOptions: DWORD) -> DWORD
+    SymInitialize            :: (hProcess: HANDLE, UserSearchPath: PCSTR, fInvadeProcess: BOOL) -> BOOL
+    SymFromAddr              :: (hProcess: HANDLE, Address: DWORD64, Displacement: PDWORD64, Symbol: PSYMBOL_INFO) -> BOOL
+    SymFunctionTableAccess64 :: (hProcess: HANDLE, AddrBase: DWORD64) -> PVOID
+    SymGetModuleBase64       :: (hProcess: HANDLE, qwAddr: DWORD64) -> DWORD64
+    SymGetLineFromAddr64     :: (hProcess: HANDLE, qwAddr: DWORD64, pdwDisplacement: PDWORD, Line64: PIMAGEHLP_LINE64) -> BOOL
+
+    SetThreadStackGuarantee :: (StackSizeInBytes: PULONG) -> BOOL
+    SetUnhandledExceptionFilter :: (lpTopLevelExceptionFilter: LPTOP_LEVEL_EXCEPTION_FILTER) -> LPTOP_LEVEL_EXCEPTION_FILTER
+
+    signal :: (_Signal: C.int, _Function: _crt_signal_t) -> _crt_signal_t
+    _set_abort_behavior :: (_Flags: C.unsigned_int, _Mask: C.unsigned_int) -> C.unsigned_int
+
+    RtlCaptureContext :: (ContextRecord: PCONTEXT)
+
+    StackWalk64 :: (
+        MachineType: DWORD,
+        hProcess: HANDLE,
+        hThread: HANDLE,
+        StackFrame: LPSTACKFRAME64,
+        ContextRecord: PVOID,
+        ReadMemoryRoutine: PREAD_PROCESS_MEMORY_ROUTINE64,
+        FunctionTableAccessRoutine: PFUNCTION_TABLE_ACCESS_ROUTINE64,
+        GetModuleBaseRoutine: PGET_MODULE_BASE_ROUTINE64,
+        TranslateAddress: PTRANSLATE_ADDRESS_ROUTINE64,
     ) -> BOOL
 }
 

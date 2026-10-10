@@ -215,7 +215,6 @@ int main(int argc, char **argv) {
     int result = 0;
     Cmd cmd = {0};
 
-    bool        run = false;
     const char *cwd = get_cwd(&default_arena);
     const char *input_path = NULL;
     const char *output_path = NULL;
@@ -229,7 +228,7 @@ int main(int argc, char **argv) {
                 usage(stdout);
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
-                run = true;
+                compiler.run = true;
             } else if (!strcmp(arg, "-o")) {
                 output_path = shift(&argc, &argv, "Output path");
             } else if (!strcmp(arg, "--")) {
@@ -277,7 +276,7 @@ int main(int argc, char **argv) {
         } else {
             if (input_path) {
                 error_standalone(EK_ERROR, "Multiple input paths provided");
-                if (run) {
+                if (compiler.run) {
                     error_standalone(EK_NOTE, "When using '-r', pass program arguments after '--'");
                 }
                 exit(1);
@@ -304,7 +303,7 @@ int main(int argc, char **argv) {
                 arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
         }
 
-        if (run) {
+        if (compiler.run) {
             const char *temp_path = get_temp_file_path();
             if (temp_path) {
                 temporary_files_push(temp_path);
@@ -404,7 +403,7 @@ int main(int argc, char **argv) {
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-    if (run) {
+    if (compiler.run) {
         temporary_files_push(output_path);
     }
 
@@ -428,7 +427,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Compiled %zu line(s) of code\n", total_lines_processed);
 #endif // PROFILING
 
-    if (run) {
+    if (compiler.run) {
         const char *child_name = output_path;
 
 #ifndef PLATFORM_X86_64_WINDOWS

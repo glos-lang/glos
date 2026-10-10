@@ -70,6 +70,133 @@ runtime_entry :: (argc: C.int, argv: &&C.char) -> C.int {
 }
 
 runtime_init :: inline (argc: C.int, argv: &&C.char) {
+    #if BACKTRACE {
+        #if PLATFORM == {
+        case .LINUX, .MACOS
+            dummy: rawptr
+            posix.backtrace(&dummy, 1)
+
+            #static alt_stack: [64 * 1024]u8
+            ss := posix.stack_t {ss_sp = rawptr(alt_stack.data), ss_size = u64(alt_stack.count), ss_flags = 0}
+            posix.sigaltstack(&ss, null)
+
+            sa: posix.sigaction_t
+            sa.sa_sigaction = crash_handler
+            sa.sa_flags = posix.SA_SIGINFO | posix.SA_ONSTACK | posix.SA_RESETHAND | posix.SA_NODEFER
+            posix.sigemptyset(&sa.sa_mask)
+
+            posix.sigaction(posix.SIGSEGV, &sa, null)
+            posix.sigaction(posix.SIGBUS, &sa, null)
+            posix.sigaction(posix.SIGFPE, &sa, null)
+            posix.sigaction(posix.SIGILL, &sa, null)
+            posix.sigaction(posix.SIGABRT, &sa, null)
+
+            crash_handler :: (sig: C.int, info: &posix.siginfo_t, p: rawptr) {
+                name := "signal"
+                if sig == {
+                case posix.SIGSEGV; name = "SIGSEGV (Segmentation Fault)"
+                case posix.SIGBUS;  name = "SIGBUS (Bus Error)"
+                case posix.SIGFPE;  name = "SIGFPE (Arithmetic Error)"
+                case posix.SIGILL;  name = "SIGILL (Illegal Instruction)"
+                case posix.SIGABRT; name = "SIGABRT (Abort)"
+                }
+
+                C.fflush(C.FILE(os.stdout))
+                eprintln("\n*** Program Exception: \{name} ***")
+                frames: [128]rawptr
+                n     := posix.backtrace(frames.data, C.int(frames.count))
+                posix.backtrace_symbols_fd(frames.data, n, posix.STDERR_FILENO)
+                C.fflush(C.FILE(os.stderr))
+            }
+
+        case .WINDOWS
+            win.SymSetOptions(win.SYMOPT_LOAD_LINES | win.SYMOPT_UNDNAME | win.SYMOPT_DEFERRED_LOADS)
+            win.SymInitialize(win.GetCurrentProcess(), null, win.TRUE)
+
+            guarantee := win.ULONG(64 * 1024)
+            win.SetThreadStackGuarantee(&guarantee)
+
+            win.SetUnhandledExceptionFilter(crash_handler)
+            win.signal(win.SIGABRT, abort_handler)
+            win._set_abort_behavior(0, win._WRITE_ABORT_MSG | win._CALL_REPORTFAULT)
+
+            crash_handler :: (ep: &win.EXCEPTION_POINTERS) -> win.LONG {
+                C.fflush(C.FILE(os.stdout))
+                C.fprintf(
+                    C.FILE(os.stderr),
+                    "\n*** Program Exception: 0x%08lX at %p ***\n",
+                    ep.ExceptionRecord.ExceptionCode,
+                    ep.ExceptionRecord.ExceptionAddress
+                )
+
+                ctx := *ep.ContextRecord
+                print_stack(&ctx)
+                return win.EXCEPTION_EXECUTE_HANDLER
+            }
+
+            abort_handler :: (sig: C.int) {
+                C.fflush(C.FILE(os.stdout))
+                eprintln("\n*** Program Exception: SIGABRT (Abort) ***")
+                ctx: win.CONTEXT
+                win.RtlCaptureContext(&ctx)
+                print_stack(&ctx)
+                C._exit(134)
+            }
+
+            print_stack :: (ctx: &win.CONTEXT) {
+                process := win.GetCurrentProcess()
+                thread  := win.GetCurrentThread()
+
+                frame:   win.STACKFRAME64
+                machine: win.DWORD
+
+                machine = win.IMAGE_FILE_MACHINE_AMD64
+                frame.AddrPC.Offset = ctx.Rip
+                frame.AddrFrame.Offset = ctx.Rbp
+                frame.AddrStack.Offset = ctx.Rsp
+                frame.AddrPC.Mode = .AddrModeFlat
+                frame.AddrFrame.Mode = .AddrModeFlat
+                frame.AddrStack.Mode = .AddrModeFlat
+
+                for i := range 64 {
+                    if win.StackWalk64(machine, process, thread, &frame, rawptr(ctx), null, win.SymFunctionTableAccess64, win.SymGetModuleBase64, null) == win.FALSE {
+                        break
+                    }
+
+                    pc := frame.AddrPC.Offset
+                    if pc == 0 {
+                        break
+                    }
+
+                    sym_buf: [sizeof(win.SYMBOL_INFO) + 256]C.char
+                    sym    := (&win.SYMBOL_INFO)(sym_buf.data)
+                    sym.SizeOfStruct = sizeof(win.SYMBOL_INFO)
+                    sym.MaxNameLen = 255
+
+                    sym_disp := win.DWORD64(0)
+                    name     : &C.char
+                    if win.SymFromAddr(process, pc, &sym_disp, sym) != win.FALSE {
+                        name = &C.char(sym.Name.data)
+                    } else {
+                        name = "???"
+                    }
+
+                    line      := win.IMAGEHLP_LINE64 {SizeOfStruct = sizeof(win.IMAGEHLP_LINE64)}
+                    line_disp := win.DWORD(0)
+                    if win.SymGetLineFromAddr64(process, pc, &line_disp, &line) != win.FALSE {
+                        C.fprintf(C.FILE(os.stderr), "  #%-2d %s  (%s:%lu)\n", i, name, line.FileName, line.LineNumber)
+                    } else {
+                        C.fprintf(C.FILE(os.stderr), "  #%-2d %s  [0x%llx]\n", i, name, win.ULONGLONG(pc))
+                    }
+                }
+
+                C.fflush(C.FILE(os.stderr))
+            }
+
+            #library "dbghelp"
+        }
+    }
+
     #if PLATFORM == .WINDOWS {
         os.stdin  = os.File(win.__acrt_iob_func(0))
         os.stdout = os.File(win.__acrt_iob_func(1))
@@ -96,4 +223,6 @@ strings :: #import "strings"
 
 #if PLATFORM == .WINDOWS {
     win :: #import "windows"
+} else {
+    posix :: #import "posix"
 }
