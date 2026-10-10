@@ -30,6 +30,7 @@ static void usage(FILE *f) {
         {"O", "LEVEL        Set the optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
         {"L", "PATH         Add a library search path"},
         {"l", "NAME         Add a library"},
+        {"B", "             Disable backtracing on crash"},
         {"-", "             End of compiler options. All following arguments are passed to the program if ran"},
     };
 
@@ -266,6 +267,8 @@ int main(int argc, char **argv) {
                 }
 
                 link_flags_add_libname(&link_flags, sv_from_cstr(libname));
+            } else if (!strcmp(arg, "-B")) {
+                compiler.no_backtrace = true;
             } else {
                 error_standalone(EK_ERROR, "Invalid flag '%s'\n", arg);
                 usage(stderr);

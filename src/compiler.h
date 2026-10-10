@@ -190,6 +190,8 @@ typedef struct {
 
     HT(Type, Type_Info) type_info_cache;
 
+    bool no_backtrace;
+
     // Slice :: struct {
     //     data:  rawptr
     //     count: s64
