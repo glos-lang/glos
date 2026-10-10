@@ -12,6 +12,10 @@
 #define EXE_FILE_EXTENSION ""
 #endif // PLATFORM_X86_64_WINDOWS
 
+#ifdef PLATFORM_ARM64_MACOS
+#include <sys/sysctl.h>
+#endif // PLATFORM_ARM64_MACOS
+
 // 64MB
 #define COMPILER_STACK_SIZE (64 * 1024 * 1024)
 
@@ -66,6 +70,31 @@ static void error_at(const char *path, size_t row, size_t col, const char *fmt, 
     fprintf(stderr, "\n");
 }
 
+static size_t get_processor_count(void) {
+#ifdef PLATFORM_X86_64_LINUX
+    long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
+    if (nprocs < 1) {
+        return 1;
+    }
+    return nprocs;
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    return sysinfo.dwNumberOfProcessors;
+#endif // PLATFORM_X86_64_WINDOWS
+
+#ifdef PLATFORM_ARM64_MACOS
+    int    nprocs;
+    size_t len = sizeof(nprocs);
+    if (sysctlbyname("hw.ncpu", &nprocs, &len, NULL, 0) != 0) {
+        return 1;
+    }
+    return nprocs;
+#endif // PLATFORM_ARM64_MACOS
+}
+
 static void usage(FILE *f, const char *program) {
     afprintf(f, ANSI_COLOR_CYAN | ANSI_BOLD, "Usage:\n");
     afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    %s", program);
@@ -85,7 +114,6 @@ static void usage(FILE *f, const char *program) {
         {"t", "             Run tests"},
         {"T", "             Run tests in non-interactive mode"},
         {"O", "LEVEL        Run tests with this optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
-        {"j", "NPROCS       Set the maximum number of parallel processes. Default is 5"},
     };
     // clang-format on
 
@@ -93,6 +121,13 @@ static void usage(FILE *f, const char *program) {
         afprintf(f, ANSI_COLOR_MAGENTA, "    -%s", flags[i].flag);
         afprintf(f, ANSI_COLOR_DEFAULT, " %s\n", flags[i].desc);
     }
+
+    afprintf(f, ANSI_COLOR_MAGENTA, "    -j");
+    afprintf(
+        f,
+        ANSI_COLOR_DEFAULT,
+        " NPROCS       Set the maximum number of parallel processes. Default is %zu\n",
+        get_processor_count());
 }
 
 static const char *shift(int *argc, char ***argv, const char *program, const char *expected) {
@@ -862,8 +897,9 @@ int main(int argc, char **argv) {
 
     bool        tests = false;
     bool        interactive = true;
-    size_t      nprocs = 5;
+    size_t      nprocs = get_processor_count();
     const char *optimization_level = NULL;
+
     while (argc) {
         const char *arg = shift(&argc, &argv, program, "Input path");
         if (!strcmp(arg, "-h")) {

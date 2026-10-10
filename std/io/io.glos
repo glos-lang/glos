@@ -1,4 +1,8 @@
 copy :: (w: Writer, r: Reader, buffer := []u8 {}, count := -1) -> s64, error {
+    if count == 0 {
+        return 0, null
+    }
+
     if buffer.count == 0 {
         #thread array: [4096]u8
         buffer = array

@@ -1,5 +1,6 @@
 Arena :: struct {
     data:     rawptr
+    last:     rawptr
     head:     s64
     capacity: s64
 }
@@ -23,9 +24,13 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
         }
     }
 
-    ptr := this.data + rawptr(this.head)
+    if old != null && old == this.last {
+        this.head = s64(this.last - this.data)
+    }
+
+    this.last = this.data + rawptr(this.head)
     if size == 0 {
-        return ptr, null
+        return this.last, null
     }
 
     if align {
@@ -37,10 +42,10 @@ alloc :: (this: &Arena, size: s64, old := null, align := true, zeroed := true, l
     }
     this.head += size
 
-    if zeroed {
-        C.memset(ptr, 0, u64(size))
+    if old != null && zeroed {
+        C.memset(this.last, 0, C.size_t(size))
     }
-    return ptr, null
+    return this.last, null
 }
 
 rewind :: (this: &Arena, ptr: rawptr, align := true, location := #caller_location) {

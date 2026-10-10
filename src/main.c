@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef PLATFORM_ARM64_MACOS
+#include <mach-o/dyld.h>
+#endif // PLATFORM_ARM64_MACOS
+
 static void usage(FILE *f) {
     afprintf(f, ANSI_COLOR_CYAN | ANSI_BOLD, "Usage:\n");
     afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    glos");
@@ -118,7 +122,6 @@ static const char *get_std_dir_path(Arena *a) {
     uint32_t count = DA_INIT_CAP;
     char    *data = arena_alloc(&temp_arena, count);
 
-    int _NSGetExecutablePath(char *buffer, uint32_t *size);
     if (_NSGetExecutablePath(data, &count) == -1) {
         arena_reset(&temp_arena, data);
         data = arena_alloc(&temp_arena, count);
