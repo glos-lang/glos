@@ -355,7 +355,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 96, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -781,6 +781,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_MAIN;
         } else if (sv_match(token.sv, "#platform")) {
             token.kind = TOKEN_DIRECTIVE_PLATFORM;
+        } else if (sv_match(token.sv, "#backtrace")) {
+            token.kind = TOKEN_DIRECTIVE_BACKTRACE;
         } else {
             error_parts(EK_ERROR, token.sv, token.pos, "Invalid compile time directive '" SV_Fmt "'", SV_Arg(token.sv));
             exit(1);

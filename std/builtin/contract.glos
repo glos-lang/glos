@@ -14,7 +14,8 @@ Platform :: enum {
     WINDOWS
 }
 
-PLATFORM :: #platform
+PLATFORM  :: #platform
+BACKTRACE :: #backtrace
 
 // RTTI
 Type :: distinct &Type_Info

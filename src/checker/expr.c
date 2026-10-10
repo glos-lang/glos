@@ -19,7 +19,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 96, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     if (op != TOKEN_SET && n->kind == NODE_INDEX) {
@@ -127,7 +127,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -181,6 +181,10 @@ void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_va
 
     case TOKEN_DIRECTIVE_PLATFORM:
         get_platform(c, &n->type);
+        break;
+
+    case TOKEN_DIRECTIVE_BACKTRACE:
+        n->type = (Type) {.kind = TYPE_BOOL};
         break;
 
     default:
@@ -423,7 +427,7 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type, 
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -534,7 +538,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 95, "");
+    static_assert(COUNT_TOKENS == 96, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:

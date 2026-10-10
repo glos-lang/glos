@@ -872,7 +872,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 96, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -896,6 +896,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DIRECTIVE_MAIN:
     case TOKEN_DIRECTIVE_PLATFORM:
+    case TOKEN_DIRECTIVE_BACKTRACE:
         node = node_alloc(p->module_current, NODE_ATOM, token);
         break;
 

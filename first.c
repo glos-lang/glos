@@ -643,8 +643,9 @@ typedef DA(Test) Tests;
 
 static void test_prepare_cmd(Test test, Cmd *cmd, const char *optimization_level) {
     cmd_push(cmd, "./glos" EXE_FILE_EXTENSION);
-    cmd_push(cmd, "-r", "-B");
+    cmd_push(cmd, "-r");
     cmd_push(cmd, test.name);
+    cmd_push(cmd, "-B");
     if (optimization_level) {
         cmd_push(cmd, optimization_level);
     }
