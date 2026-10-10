@@ -146,6 +146,26 @@ void compiler_build(Compiler *c, const char *output_path) {
         "",
         0);
 
+#ifdef PLATFORM_X86_64_WINDOWS
+    {
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(c->llvm_context);
+
+        LLVMAddModuleFlag(
+            c->llvm_module, LLVMModuleFlagBehaviorWarning, "CodeView", 8, LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0)));
+
+        LLVMAddModuleFlag(
+            c->llvm_module,
+            LLVMModuleFlagBehaviorWarning,
+            "Debug Info Version",
+            18,
+            LLVMValueAsMetadata(LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0)));
+
+        if (c->run) {
+            temporary_files_push(temp_replace_suffix(output_path, EXE_FILE_EXTENSION, ".pdb"));
+        }
+    }
+#endif // PLATFORM_X86_64_WINDOWS
+
     compile_type(c, &c->hasher_type);
     compile_type(c, &c->format_type);
     compile_type(c, &c->type_info_type);
@@ -225,13 +245,14 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
 
         cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
-        cmd_push(c->cmd, "/defaultlib:libcmt");
+        cmd_push(c->cmd, "/debug", "/defaultlib:libcmt");
 #else
         cmd_push(c->cmd, "cc");
         if (is_lld_available_in_path()) {
             cmd_push(c->cmd, "-fuse-ld=lld");
         }
         cmd_push(c->cmd, "-o", output_path);
+        cmd_push(c->cmd, "-g");
 #endif // PLATFORM_X86_64_WINDOWS
 
         cmd_push(c->cmd, object_path);

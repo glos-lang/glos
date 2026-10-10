@@ -80,6 +80,7 @@ typedef enum {
 
 typedef struct {
     // Provided by the driver
+    bool               run;
     Optimization_Level optimization_level;
 
     Type main_fn_type;
