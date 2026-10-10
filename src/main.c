@@ -94,76 +94,6 @@ static const char *get_temp_file_path(void) {
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
-static SV get_self_path(Arena *a) {
-    SV          result = {0};
-    const void *checkpoint = arena_alloc(a, 0);
-
-#ifdef PLATFORM_X86_64_LINUX
-    i64   count = 0;
-    char *data = NULL;
-
-    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = arena_alloc(a, capacity);
-        count = readlink("/proc/self/exe", data, capacity);
-
-        if (count == -1) {
-            return_defer((SV) {0});
-        }
-
-        if ((size_t) count < capacity) {
-            break;
-        }
-
-        arena_reset(a, checkpoint);
-    }
-#endif // PLATFORM_X86_64_LINUX
-
-#ifdef PLATFORM_ARM64_MACOS
-    uint32_t count = DA_INIT_CAP;
-    char    *data = arena_alloc(a, count);
-
-    if (_NSGetExecutablePath(data, &count) == -1) {
-        arena_reset(a, data);
-        data = arena_alloc(a, count);
-
-        if (_NSGetExecutablePath(data, &count) == -1) {
-            return_defer((SV) {0});
-        }
-    }
-
-    count = strlen(data);
-#endif // PLATFORM_ARM64_MACOS
-
-#ifdef PLATFORM_X86_64_WINDOWS
-    i64   count = 0;
-    char *data = arena_alloc(a, 0);
-
-    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
-        data = arena_alloc(a, capacity);
-        count = GetModuleFileNameA(NULL, data, capacity);
-
-        if (count == 0) {
-            return_defer((SV) {0});
-        }
-
-        if (count < capacity - 1) {
-            break;
-        }
-    }
-
-    unixify_path_separators_inplace(data, count);
-#endif // PLATFORM_X86_64_WINDOWS
-
-    result.data = data;
-    result.count = count;
-
-defer:
-    if (!result.data) {
-        arena_reset(a, checkpoint);
-    }
-    return result;
-}
-
 static const char *get_std_path(Arena *a, SV sv) {
     for (size_t i = sv.count; i; i--) {
         if (sv.data[i - 1] == '/') {
@@ -219,8 +149,18 @@ int main(int argc, char **argv) {
     int result = 0;
     Cmd cmd = {0};
 
-    const SV    self = get_self_path(&default_arena);
-    const SV    cwd = sv_from_cstr(get_cwd(&default_arena));
+    const SV self = get_self_path(&default_arena);
+    if (!self.data) {
+        error_standalone(EK_ERROR, "Could not get the path of the compiler");
+        exit(1);
+    }
+
+    const SV cwd = get_cwd(&default_arena);
+    if (!cwd.data) {
+        error_standalone(EK_ERROR, "Could not get the path of the current working directory");
+        exit(1);
+    }
+
     const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};

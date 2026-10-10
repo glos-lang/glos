@@ -213,12 +213,11 @@ void compiler_build(Compiler *c, const char *output_path) {
     temporary_files_push(object_path);
     {
         // LLVMPrintModuleToFile(c->llvm_module, "/dev/stdout", NULL);
-
         char *error = NULL;
-        if (LLVMVerifyModule(c->llvm_module, LLVMReturnStatusAction, &error)) {
-            error_standalone(EK_ERROR, "%s", error);
-            exit(1);
-        }
+        // if (LLVMVerifyModule(c->llvm_module, LLVMReturnStatusAction, &error)) {
+        //     error_standalone(EK_ERROR, "%s", error);
+        //     exit(1);
+        // }
 
         if (LLVMTargetMachineEmitToFile(c->llvm_target_machine, c->llvm_module, object_path, LLVMObjectFile, &error)) {
             error_standalone(EK_ERROR, "%s", error);

@@ -928,6 +928,14 @@ defer:
     return result;
 }
 
+bool rename_path(const char *old, const char *new) {
+#ifdef PLATFORM_X86_64_WINDOWS
+    return MoveFileEx(old, new, MOVEFILE_REPLACE_EXISTING) != 0;
+#else
+    return rename(old, new) == 0;
+#endif // PLATFORM_X86_64_WINDOWS
+}
+
 bool delete_file(const char *path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     return DeleteFileA(path);
@@ -1060,19 +1068,19 @@ static bool path_is_rooted(SV path) {
     return path.count >= 1 && path.data[0] == '/';
 }
 
-const char *get_cwd(Arena *a) {
-    const char  *result = NULL;
+SV get_cwd(Arena *a) {
+    SV           result = {0};
     const size_t start = default_sb.count;
 
 #ifdef PLATFORM_X86_64_WINDOWS
     const DWORD count = GetCurrentDirectory(0, NULL);
     if (!count) {
-        return_defer(NULL);
+        return_defer((SV) {0});
     }
 
     sb_grow(&default_sb, default_sb.count + count);
     if (!GetCurrentDirectory(count, default_sb.data + start)) {
-        return_defer(NULL);
+        return_defer((SV) {0});
     }
 
     unixify_path_separators_inplace(default_sb.data + start, count);
@@ -1080,7 +1088,7 @@ const char *get_cwd(Arena *a) {
     sb_grow(&default_sb, default_sb.count + DA_INIT_CAP);
     while (!getcwd(default_sb.data + start, default_sb.capacity)) {
         if (errno != ERANGE) {
-            return_defer(NULL);
+            return_defer((SV) {0});
         }
 
         default_sb.count = default_sb.capacity;
@@ -1088,7 +1096,7 @@ const char *get_cwd(Arena *a) {
     }
 #endif // PLATFORM_X86_64_WINDOWS
 
-    return_defer(arena_sprintf(a, "%s", default_sb.data + start));
+    return_defer(sv_from_cstr(arena_sprintf(a, "%s", default_sb.data + start)));
 
 defer:
     default_sb.count = start;
@@ -1234,6 +1242,76 @@ const char *get_parent_dir_path(const char *path, Arena *a) {
     }
 
     return arena_sv_to_cstr(a, sv);
+}
+
+SV get_self_path(Arena *a) {
+    SV          result = {0};
+    const void *checkpoint = arena_alloc(a, 0);
+
+#ifdef PLATFORM_X86_64_LINUX
+    i64   count = 0;
+    char *data = NULL;
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = arena_alloc(a, capacity);
+        count = readlink("/proc/self/exe", data, capacity);
+
+        if (count == -1) {
+            return_defer((SV) {0});
+        }
+
+        if ((size_t) count < capacity) {
+            break;
+        }
+
+        arena_reset(a, checkpoint);
+    }
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    uint32_t count = DA_INIT_CAP;
+    char    *data = arena_alloc(a, count);
+
+    if (_NSGetExecutablePath(data, &count) == -1) {
+        arena_reset(a, data);
+        data = arena_alloc(a, count);
+
+        if (_NSGetExecutablePath(data, &count) == -1) {
+            return_defer((SV) {0});
+        }
+    }
+
+    count = strlen(data);
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    i64   count = 0;
+    char *data = arena_alloc(a, 0);
+
+    for (size_t capacity = DA_INIT_CAP; true; capacity *= 2) {
+        data = arena_alloc(a, capacity);
+        count = GetModuleFileNameA(NULL, data, capacity);
+
+        if (count == 0) {
+            return_defer((SV) {0});
+        }
+
+        if (count < capacity - 1) {
+            break;
+        }
+    }
+
+    unixify_path_separators_inplace(data, count);
+#endif // PLATFORM_X86_64_WINDOWS
+
+    result.data = data;
+    result.count = count;
+
+defer:
+    if (!result.data) {
+        arena_reset(a, checkpoint);
+    }
+    return result;
 }
 
 #ifdef PLATFORM_X86_64_WINDOWS

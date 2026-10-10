@@ -8,6 +8,9 @@ $ cl first.c          # On Windows
 $ ./first
 ```
 
+> [!NOTE]
+> You don't need to recompile `first.c` after modifying it. You can just run `./first`, and it will recompile itself if needed.
+
 ## Hello, world!
 ```
 // sample.glos

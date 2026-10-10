@@ -94,7 +94,7 @@ move :: (old: string, new: string) -> error {
     defer temporary_allocator.rewind(rawptr(old))
 
     new := strings.to_cstring(new, allocator = temporary_allocator)?
-    if C.rename(old, new) != 0 {
+    if C.rename(old, new) != 0 { // TODO: Cannot overwrite on windows
         return C.get_errno()
     }
 

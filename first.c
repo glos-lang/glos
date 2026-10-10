@@ -895,6 +895,66 @@ int main(int argc, char **argv) {
     basic_init();
     const char *program = shift(&argc, &argv, NULL, NULL);
 
+    Cmd cmd = {0};
+    {
+        SV root = get_self_path(&temp_arena);
+        for (size_t i = root.count; i; i--) {
+            if (root.data[i - 1] == '/') {
+                root.count = i;
+                break;
+            }
+        }
+
+        const char *bin = root.data;
+        const char *old = arena_sprintf(&temp_arena, "%s.old", bin);
+        const char *src = arena_sprintf(&temp_arena, SV_Fmt "first.c", SV_Arg(root));
+        if (get_modified_time(bin) < get_modified_time(src)) {
+            fprintf(stderr, "Building 'first.c'\n");
+            if (!rename_path(bin, old)) {
+                error("Could not rename '%s' to '%s'", bin, old);
+                exit(1);
+            }
+
+            Cmd_Stdio stdio = {0};
+
+#ifdef PLATFORM_X86_64_WINDOWS
+            FILE *filter = NULL;
+            stdio.out = &filter;
+            cmd_push(&cmd, "cl", "/nologo", arena_sprintf(&temp_arena, "/Fe:%s", bin), src);
+#else
+            cmd_push(&cmd, "cc", "-o", bin, src);
+#endif // PLATFORM_X86_64_WINDOWS
+
+            const char *name = cmd.data[0];
+            const Proc  proc = cmd_run_async(&cmd, stdio);
+            if (proc.id == PROC_INVALID) {
+                error("Could not execute command '%s'", name);
+                exit(1);
+            }
+
+#ifdef PLATFORM_X86_64_WINDOWS
+            filter_cl_exe_output(proc);
+#endif // PLATFORM_X86_64_WINDOWS
+
+            int code = cmd_wait(proc);
+            if (code) {
+                if (!rename_path(old, bin)) {
+                    error("Could not rename '%s' to '%s'", old, bin);
+                }
+                exit(code);
+            }
+
+            cmd_push(&cmd, bin);
+            cmd_push_many(&cmd, argv, argc);
+            code = cmd_run_sync(&cmd, (Cmd_Stdio) {0});
+            da_free(&cmd);
+            exit(code);
+        }
+
+        delete_file(old);
+        arena_reset(&temp_arena, bin);
+    }
+
     bool        tests = false;
     bool        interactive = true;
     size_t      nprocs = get_processor_count();
@@ -958,7 +1018,6 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    Cmd cmd = {0};
     build_glos(&cmd, nprocs);
 
     if (tests) {

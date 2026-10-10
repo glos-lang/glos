@@ -375,6 +375,7 @@ extern Arena default_arena;
 bool read_fp(FILE *f, SV *out, Arena *a, bool convert_windows_line_endings_to_unix); // This appends a NULL at the end
 bool read_file(const char *path, SV *out, Arena *a, bool convert_windows_line_endings_to_unix);
 
+bool rename_path(const char *old, const char *new);
 bool delete_file(const char *path);
 bool create_directory(const char *path);
 
@@ -392,10 +393,12 @@ void temporary_files_push(const char *path);
 void temporary_files_cleanup(void);
 
 // Paths
-const char *get_cwd(Arena *a);
 const char *get_absolute_path(SV cwd, SV path, Arena *a);    // `cwd` must be absolute
 const char *get_relative_path(SV cwd, SV path, Arena *a);    // `cwd` and `path` must be absolute
 const char *get_parent_dir_path(const char *path, Arena *a); // `path` must be absolute
+
+SV get_cwd(Arena *a);
+SV get_self_path(Arena *a); // Get the absolute path of the executable itself
 
 #ifdef PLATFORM_X86_64_WINDOWS
 void unixify_path_separators_inplace(char *data, size_t count);
