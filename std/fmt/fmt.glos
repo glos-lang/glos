@@ -181,37 +181,11 @@ quote :: (w: io.Writer, r: rune, quote: u8) -> s64, error {
 }
 
 value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
-    if f.type != null && f.type.format != null {
-        return f.type.format(f.data, w, nested)
-    }
-
-    if f.type == Type {
-        return type(w, *(&Type)(f.data))
+    if f.type != null && f.type.fmt != null {
+        return f.type.fmt(f.data, w, nested)
     }
 
     n := 0
-    if f.type == Interpolation && !nested {
-        interpolation := *(&Interpolation)(f.data)
-        if interpolation == {
-        case []Format
-            for _, f := range interpolation {
-                n += value(w, f, false)?
-            }
-
-        case string
-            n += value(w, interpolation, false)?
-
-        case
-            unreachable()
-        }
-        return n, null
-    }
-
-    if f.type == Source_Code_Location {
-        l := *(&Source_Code_Location)(f.data)
-        return wprint(w, "\{l.path}:\{l.row}:\{l.col}:")
-    }
-
     v := f.type.variant
     if v == {
     case Type_Info_Boolean
@@ -430,7 +404,7 @@ value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
         if index != 0 {
             index -= 1
             if s64(index) < error_enums.count {
-                fmt := error_enums[index].format
+                fmt := error_enums[index].fmt
                 if fmt != null {
                     return fmt(f.data, w, nested)
                 }
@@ -466,17 +440,17 @@ value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
 }
 
 values :: (w: io.Writer, fs: []Format) -> s64, error {
-    n := 0
-    interpolating := 0
+    n  := 0
+    ip := 0
     for i, f := range fs {
-        if interpolating != 0 {
-            interpolating -= 1
+        if ip != 0 {
+            ip -= 1
         } else if i != 0 {
             n += w.write([]u8(" "))?
         }
 
         if f.type == Interpolation_Marker {
-            interpolating = s64(f.data)
+            ip = s64(f.data)
             continue
         }
 
@@ -487,6 +461,33 @@ values :: (w: io.Writer, fs: []Format) -> s64, error {
         }
     }
     return n, null
+}
+
+@format :: (this: &Interpolation, w: io.Writer, nested: bool) -> s64, error {
+    if ip := *this; ip == {
+    case []Format
+        n := 0
+        if nested {
+            n += w.write([]u8("{"))?
+        }
+
+        for i, f := range ip {
+            if nested && i != 0 {
+                n += w.write([]u8(", "))?
+            }
+            n += value(w, f, nested)?
+        }
+
+        if nested {
+            n += w.write([]u8("}"))?
+        }
+        return n, null
+
+    case string
+        return value(w, ip, nested)
+
+    case; unreachable()
+    }
 }
 
 C       :: #import "C"

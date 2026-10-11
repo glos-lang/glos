@@ -201,9 +201,10 @@ static Node *parse_if(Parser *p, Token token, bool is_compile_time, If_Then_Stat
     if (its == ITS_YES) {
         expr = parse_expr(p, POWER_SET, false, false, NULL);
     } else {
-        expr = parse_expr(p, POWER_NIL, false, false, &should_be_switch);
+        expr = parse_expr(p, POWER_NIL, true, false, &should_be_switch);
         if (!should_be_switch) {
             const bool was_init =                                                                  //
+                expr->kind == NODE_GROUP ||                                                        //
                 expr->kind == NODE_DEFINE ||                                                       //
                 (expr->kind == NODE_BINARY && token_kind_to_power(expr->token.kind) == POWER_SET); //
 
@@ -826,12 +827,13 @@ static Node *parse_define(
 static Node *parse_compound(Parser *p, Node *lhs, Token token) {
     Node_Compound *compound = (Node_Compound *) node_alloc(p->module_current, NODE_COMPOUND, token);
     compound->lhs = lhs;
-    compound->is_designated = false;
+
+    bool has_designated = false;
     while (!read_token(p, TOKEN_RBRACE)) {
         Node *child = parse_expr(p, POWER_SET, false, true, NULL);
 
         bool child_is_designated = false;
-        if (read_token(p, TOKEN_SET)) {
+        if (read_token_in_current_line(p, TOKEN_SET)) {
             assert(p->state.ahead.kind == TOKEN_SET);
             Node_Binary *binary = (Node_Binary *) node_alloc(p->module_current, NODE_BINARY, p->state.ahead);
             binary->lhs = child;
@@ -840,13 +842,11 @@ static Node *parse_compound(Parser *p, Node *lhs, Token token) {
             child_is_designated = true;
         }
 
-        if (compound->children.head) {
-            if (compound->is_designated != child_is_designated) {
-                error_node(EK_ERROR, child, "Cannot mix ordered and designated initializers");
-                exit(1);
-            }
-        } else {
-            compound->is_designated = child_is_designated;
+        if (child_is_designated) {
+            has_designated = true;
+        } else if (has_designated) {
+            error_node(EK_ERROR, child, "Cannot have positional initializers after designated ones");
+            exit(1);
         }
 
         nodes_push(&compound->children, child);

@@ -2027,16 +2027,13 @@ LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool re
     size_t ordered_iota = 0;
     for (Node *iter = compound->children.head; iter; iter = iter->next) {
         size_t it_iota = 0;
-        if (!compound->is_designated) {
-            it_iota = ordered_iota++;
-        }
-
-        Node *it = iter;
-        if (compound->is_designated) {
-            assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
+        Node  *it = iter;
+        if (it->kind == NODE_BINARY && it->token.kind == TOKEN_SET) {
             Node_Binary *it_binary = (Node_Binary *) it;
             it_iota = it->token.as.integer;
             it = it_binary->rhs;
+        } else {
+            it_iota = ordered_iota++;
         }
 
         LLVMValueRef ptr = NULL;

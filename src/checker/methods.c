@@ -838,6 +838,7 @@ void check_signature_of_custom_formatter(Compiler *c, Node_Fn *fn, const Type_Fn
         c->type_info_cache.hasheq = ht_hasheq_type;
     }
 
+    receiver = fn_spec->args[0].type;
     type_change_ref(&receiver, -1);
     ht_set(&c->type_info_cache, receiver, (Type_Info) {.format = fn});
     return;

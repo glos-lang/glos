@@ -1,0 +1,89 @@
+Int :: struct {
+    value: Format
+    base:  enum {
+        DECIMAL
+        BINARY
+        OCTAL
+        HEXL
+        HEXU
+    }
+
+    padding_char:   u8
+    padding_right:  bool
+    minimum_digits: s64
+}
+
+@format :: (this: &Int, w: io.Writer, nested: bool) -> s64, error {
+    f := *this
+    if f.base         == 0 then f.base         = .DECIMAL
+    if f.padding_char == 0 then f.padding_char = ' '
+
+    digits: s64
+    buffer: [64]u8
+    if f.value.type.variant.(Type_Info_Integer).signed && f.base == .DECIMAL {
+        v: s64
+        if f.value.type.size == {
+        case 1; v = s64(*(&s8)(f.value.data))
+        case 2; v = s64(*(&s16)(f.value.data))
+        case 4; v = s64(*(&s32)(f.value.data))
+        case 8; v = s64(*(&s64)(f.value.data))
+        }
+
+        digits = s64(C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zd", v))
+    } else {
+        v: u64
+        if f.value.type.size == {
+        case 1; v = u64(*(&u8)(f.value.data))
+        case 2; v = u64(*(&u16)(f.value.data))
+        case 4; v = u64(*(&u32)(f.value.data))
+        case 8; v = u64(*(&u64)(f.value.data))
+        }
+
+        if f.base == {
+        case .DECIMAL; digits = s64(C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zu", v))
+        case .OCTAL;   digits = s64(C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zo", v))
+        case .HEXL;    digits = s64(C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zx", v))
+        case .HEXU;    digits = s64(C.snprintf(&C.char(buffer.data), C.size_t(buffer.count), "%zX", v))
+        case .BINARY
+            if v == 0 {
+                buffer[digits] = '0'
+                digits += 1
+            } else {
+                started := false
+                for i := range f.value.type.size * 8 - 1..>=0 {
+                    b := (v >> u64(i)) & 1
+                    if b == 0 {
+                        if !started {
+                            continue
+                        }
+
+                        buffer[digits] = '0'
+                    } else {
+                        buffer[digits] = '1'
+                    }
+
+                    digits += 1
+                    started = true
+                }
+            }
+        }
+    }
+
+    n := 0
+    if !f.padding_right && digits != f.minimum_digits {
+        padding := []u8(&f.padding_char, 1)
+        for range digits..f.minimum_digits {
+            n += w.write(padding)?
+        }
+    }
+
+    n += w.write(buffer[..digits])?
+    if f.padding_right && digits != f.minimum_digits {
+        padding := []u8(&f.padding_char, 1)
+        for range digits..f.minimum_digits {
+            n += w.write(padding)?
+        }
+    }
+
+    return n, null
+}

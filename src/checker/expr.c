@@ -1484,20 +1484,14 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
     const size_t designated_initializers_count_save = c->designated_initializers.count;
     for (Node *iter = compound->children.head; iter; iter = iter->next) {
         size_t it_iota = 0;
-        if (!compound->is_designated) {
-            it_iota = ordered_iota++;
-        }
-
-        Node *it = iter;
-        if (compound->is_designated) {
+        Node  *it = iter;
+        if (it->kind == NODE_BINARY && it->token.kind == TOKEN_SET) {
             if (compound->is_not_compound) {
                 error_node(EK_ERROR, it, "Cannot have designated_initializers for %s", type_to_cstr(n->type));
                 exit(c, 1);
             }
 
-            assert(it->kind == NODE_BINARY && it->token.kind == TOKEN_SET);
             Node_Binary *it_binary = (Node_Binary *) it;
-
             if (n->type.kind == TYPE_STRUCT) {
                 if (it_binary->lhs->kind != NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
                     error_node(EK_ERROR, it_binary->lhs, "Expected designated initializer to be field name");
@@ -1572,14 +1566,15 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
             it_iota = it->token.as.integer;
             it = it_binary->rhs;
         } else {
+            it_iota = ordered_iota++;
             if (compound->is_not_compound) {
                 if (it_iota) {
-                    error_node(EK_ERROR, it, "Too many ordered initializers for %s", type_to_cstr(n->type));
+                    error_node(EK_ERROR, it, "Too many positional initializers for %s", type_to_cstr(n->type));
                     exit(c, 1);
                 }
             } else if (n->type.kind == TYPE_STRUCT) {
                 if (it_iota >= struct_spec->fields_count) {
-                    error_node(EK_ERROR, it, "Too many ordered initializers");
+                    error_node(EK_ERROR, it, "Too many positional initializers");
                     error_node(EK_NOTE, (Node *) struct_spec->definition, "Structure defined here");
                     exit(c, 1);
                 }

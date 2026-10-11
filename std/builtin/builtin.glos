@@ -1,3 +1,11 @@
+@format :: (this: &Type, w: io.Writer, nested: bool) -> s64, error {
+    return fmt.type(w, *this)
+}
+
+@format :: (this: &Source_Code_Location, w: io.Writer, nested: bool) -> s64, error {
+    return wprint(w, "\{this.path}:\{this.row}:\{this.col}:")
+}
+
 panic :: noreturn (message: ...fmt.Format, location := #caller_location, label := "") {
     C.fflush(C.FILE(os.stdout))
 

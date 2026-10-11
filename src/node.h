@@ -952,15 +952,6 @@ typedef struct {
 
     Token end;
 
-    // For designated initializers, each node of children is as follows:
-    //
-    // Node_Binary('=') {
-    //     token.as.integer = <index>
-    //     lhs = <key>
-    //     lhs = <value>
-    // }
-    bool is_designated;
-
     // Untyped compound literals are type checked in two phases. This notes that the first phase is complete, ie, the
     // individual child nodes are checked.
     bool are_children_checked;
