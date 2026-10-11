@@ -910,7 +910,6 @@ Node *monomorphize(Compiler *c, Node *n, Node *site) {
 
             n = *into;
             if (ref != n->type.ref) {
-                // TODO: I am not sure yet how valid this fix is.
                 assert(is_struct);
                 n = arena_clone(&default_arena, n, sizeof(Node_Struct));
             }

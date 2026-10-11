@@ -21,6 +21,7 @@ seed :: (this: &Rand, seed: u64) {
 }
 
 get_u64 :: (this: &Rand, min := u64(U64_MIN), max := u64(U64_MAX)) -> u64 {
+    assert(min <= max)
     span := max - min
     if span == U64_MAX {
         return this.next()
@@ -29,6 +30,7 @@ get_u64 :: (this: &Rand, min := u64(U64_MIN), max := u64(U64_MAX)) -> u64 {
 }
 
 get_s64 :: (this: &Rand, min := S64_MIN, max := S64_MAX) -> s64 {
+    assert(min <= max)
     min := u64(min)
     max := u64(max)
     span := max - min
@@ -40,6 +42,7 @@ get_s64 :: (this: &Rand, min := S64_MIN, max := S64_MAX) -> s64 {
 }
 
 get_f64 :: (this: &Rand, min := 0.0, max := 1.0) -> f64 {
+    assert(min <= max)
     v := this.next()
     return min + (max - min) * f64(v >> 11) * (1.0 / 9007199254740992.0)
 }
@@ -59,7 +62,6 @@ read :: (this: &Rand, bytes: []u8) -> s64, error {
         mem.copy(data, &u8(&v), count)
     }
     return bytes.count, null
-
 }
 
 #private...

@@ -106,7 +106,10 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         }
 
         cmdline.push(0)
-        this.count = 0
+
+        if reset {
+            this.count = 0
+        }
 
         pi: win.PROCESS_INFORMATION
         if win.CreateProcessW(null, cmdline.data, null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {

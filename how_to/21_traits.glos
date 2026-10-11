@@ -234,3 +234,20 @@ default_trait_methods :: () {
 // In this example, the whole trait is implementation using the default method. That is not
 // a strict requirement. For traits with multiple methods, you can choose to provide defaults
 // for only the methods you want, and leave others as needing explicit implementation.
+
+// You can combine traits like this:
+Trait_A :: trait {
+    a: () -> s64
+}
+
+Trait_B :: trait {
+    b: () -> string
+}
+
+Trait_AB :: trait {
+    ...Trait_A
+    ...Trait_B
+}
+
+// As you can imagine, 'Trait_AB' will require the methods of 'Trait_A' and 'Trait_B' both for
+// satisfaction.

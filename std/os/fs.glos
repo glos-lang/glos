@@ -90,12 +90,22 @@ exists :: (path: string) -> bool {
 }
 
 move :: (old: string, new: string) -> error {
-    old := strings.to_cstring(old, allocator = temporary_allocator)?
-    defer temporary_allocator.rewind(rawptr(old))
+    #if PLATFORM == .WINDOWS {
+        old := utf16.from_string(old, allocator = temporary_allocator)?.data
+        defer temporary_allocator.rewind(rawptr(old))
 
-    new := strings.to_cstring(new, allocator = temporary_allocator)?
-    if C.rename(old, new) != 0 { // TODO: Cannot overwrite on windows
-        return C.get_errno()
+        new := utf16.from_string(new, allocator = temporary_allocator)?.data
+        if win.MoveFileExW(old, new, win.MOVEFILE_REPLACE_EXISTING) == win.FALSE {
+            return win.get_error()
+        }
+    } else {
+        old := strings.to_cstring(old, allocator = temporary_allocator)?
+        defer temporary_allocator.rewind(rawptr(old))
+
+        new := strings.to_cstring(new, allocator = temporary_allocator)?
+        if C.rename(old, new) != 0 {
+            return C.get_errno()
+        }
     }
 
     return null
