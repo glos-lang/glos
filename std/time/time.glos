@@ -359,11 +359,7 @@ UNIX_EPOCH :: Time {low = 0xDBD87F0EDB7C8000, high = 0x300}
         time_zone_name = "Z"
     }
 
-    return wprint(w, "\{pad(this.year)}-\{pad(this.month + 1)}-\{pad(this.day_of_month + 1)}T\{pad(this.hour)}:\{pad(this.minute)}:\{pad(this.second)}.\{pad(this.millisecond, 3)}\{time_zone_name}")
-
-    pad :: inline (f: fmt.Format, n := 2) -> fmt.Int {
-        return {f, padding_char = '0', minimum_digits = n}
-    }
+    return wprint(w, "\{fmt.pad(this.year, 2, '0')}-\{fmt.pad(this.month + 1, 2, '0')}-\{fmt.pad(this.day_of_month + 1, 2, '0')}T\{fmt.pad(this.hour, 2, '0')}:\{fmt.pad(this.minute, 2, '0')}:\{fmt.pad(this.second, 2, '0')}.\{fmt.pad(this.millisecond, 3, '0')}\{time_zone_name}")
 }
 
 C    :: #import "C"

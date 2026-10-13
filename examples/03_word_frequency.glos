@@ -1,0 +1,63 @@
+// Description:
+//
+//     Frequencies of words in a file
+//
+// Usage:
+//
+//     $ glos 03_word_frequency.glos
+//     $ ./03_word_frequency 03_word_frequency.glos
+//
+// Demonstrate:
+//
+//     - Command line arguments
+//     - Hash maps
+//     - Strings
+//
+
+main :: () {
+    if os.args.count <= 1 {
+        eprintln("Error: Input file not provided")
+        eprintln("Usage: \{os.args[0]} <File>")
+        os.exit(1)
+    }
+    path := os.args[1]
+
+    contents, err := os.read_file(path)
+    if err != null {
+        eprintln("Error: Could not read file '\{path}': \{err}")
+        os.exit(1)
+    }
+    defer mem.free(contents.data)
+
+    words: map[string]s64
+    defer words.free()
+
+    iter := strings.Split {
+        string(contents),
+        (r: rune) -> bool {
+            return !unicode.is_alpha(r)
+        }
+    }
+
+    for _, word := range iter {
+        if word == "" {
+            continue
+        }
+
+        count := words.get(word)
+        if count != null {
+            *count += 1
+        } else {
+            words[word] = 1
+        }
+    }
+
+    for w, c := range words {
+        println("\{w} => \{c}")
+    }
+}
+
+os      :: #import "os"
+mem     :: #import "memory"
+strings :: #import "strings"
+unicode :: #import "unicode"

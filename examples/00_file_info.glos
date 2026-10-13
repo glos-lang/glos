@@ -1,0 +1,45 @@
+// Description:
+//
+//     Get the information of a file.
+//
+// Usage:
+//
+//     $ glos 00_file_info.glos
+//     $ ./00_file_info 00_file_info.glos
+//     $ ./00_file_info .
+//
+// Demonstrate:
+//
+//     - Command line arguments
+//     - Obtaining file information
+//     - Special integer formatter
+//     - Time
+//
+
+main :: () {
+    if os.args.count < 2 {
+        eprintln("Error: File path not provided")
+        eprintln("Usage: \{os.args[0]} <File>")
+        os.exit(1)
+    }
+    path := os.args[1]
+
+    info, err := os.stat(path)
+    if err != null {
+        eprintln("Error: Could not obtain info for file '\{path}': \{err}")
+        os.exit(1)
+    }
+
+    println("Information for '\{path}':")
+    println("  Type:          \{info.type()}")
+    println("  Mode:          \{fmt.octal(info.mode & 0o777)}")
+    println("  UID:           \{info.uid}")
+    println("  GID:           \{info.gid}")
+    println("  Size:          \{info.size}")
+    println("  Created:       \{info.create_time.to_calendar()!}")
+    println("  Last Accessed: \{info.access_time.to_calendar()!}")
+    println("  Last Modified: \{info.modify_time.to_calendar()!}")
+}
+
+os  :: #import "os"
+fmt :: #import "fmt"

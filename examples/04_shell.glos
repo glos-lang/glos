@@ -1,0 +1,103 @@
+// Description:
+//
+//     A simple shell.
+//
+// Usage:
+//
+//     Like any other repl...
+//
+// Notes:
+//
+//     - The lexer is very basic and splits by whitespace only.
+//     - There are no builtin intrinsics of this shell. All commands must be provided in PATH.
+//
+// Demonstrate:
+//
+//     - Process spawing
+//     - Process IO
+//     - String Builder
+//
+
+main :: () {
+    shell: Shell
+    for !os.stdin.eof() {
+        if err := shell.eval(); err != null {
+            eprintln("Error: \{err}")
+            shell.wait()
+        }
+    }
+    shell.free()
+
+    println()
+}
+
+Shell :: struct {
+    sb:   strings.Builder
+    cmd:  os.Cmd
+    pipe: [..]os.Process
+
+}
+
+free :: (this: &Shell) {
+    this.sb.free()
+    this.cmd.free()
+    this.pipe.free()
+    mem.zero(this)
+}
+
+eval :: (this: &Shell) -> error {
+    print("> ")
+    os.stdout.flush()
+
+    this.sb.count = 0
+    for !os.stdin.eof() {
+        ch := os.stdin.getchar()?
+        if ch == '\n' || os.stdin.eof() then break
+        this.sb.push(ch)
+    }
+
+    for _, it := range (strings.Split {string(this.sb[..])}) {
+        if it == "" then continue
+        if it == "|" {
+            if this.pipe.count == 0 {
+                this.pipe.push(this.cmd.start(capture_stdin = .NOP, capture_stdout = .BINARY)?)
+            } else {
+                this.pipe.push(this.cmd.start(capture_stdin = .BINARY, capture_stdout = .BINARY)?)
+            }
+        } else {
+            this.cmd.push(it)
+        }
+    }
+
+    if this.pipe.count != 0 {
+        if this.cmd.count == 0 {
+            os.Cmd_Error.No_Command?
+        }
+
+        this.pipe.push(this.cmd.start(capture_stdin = .BINARY)?)
+        for i := range this.pipe.count - 1 {
+            dst := this.pipe[i + 1].stdin
+            io.copy(dst, this.pipe[i].stdout)?
+            dst.close()
+        }
+        this.wait()
+    } else {
+        if this.cmd.count != 0 {
+            this.cmd.run()?
+        }
+    }
+
+    return null
+}
+
+wait :: (this: &Shell) {
+    for _, p := range &this.pipe {
+        p.wait()
+    }
+    this.pipe.count = 0
+}
+
+io      :: #import "io"
+os      :: #import "os"
+mem     :: #import "memory"
+strings :: #import "strings"

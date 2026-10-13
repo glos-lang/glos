@@ -187,6 +187,10 @@ Dir_Entry :: struct {
     skip:  bool
 }
 
+stat :: inline (this: Dir_Entry) -> File_Info, error {
+    return stat(this.path)
+}
+
 #if PLATFORM == .WINDOWS {
     range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
         for {

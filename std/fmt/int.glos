@@ -87,3 +87,23 @@ Int :: struct {
 
     return n, null
 }
+
+binary :: inline (n: Format, padding_char := u8(' '), padding_right := false, minimum_digits := 0) -> Int {
+    return {value = n, base = .BINARY, padding_char = padding_char, padding_right = padding_right, minimum_digits = minimum_digits}
+}
+
+octal :: inline (n: Format, padding_char := u8(' '), padding_right := false, minimum_digits := 0) -> Int {
+    return {value = n, base = .OCTAL, padding_char = padding_char, padding_right = padding_right, minimum_digits = minimum_digits}
+}
+
+hex :: inline (n: Format, upper := false, padding_char := u8(' '), padding_right := false, minimum_digits := 0) -> Int {
+    if upper {
+        return {value = n, base = .HEXU, padding_char = padding_char, padding_right = padding_right, minimum_digits = minimum_digits}
+    } else {
+        return {value = n, base = .HEXL, padding_char = padding_char, padding_right = padding_right, minimum_digits = minimum_digits}
+    }
+}
+
+pad :: inline (n: Format, digits: s64, char := u8(' '), right := false) -> Int {
+    return {value = n, padding_char = char, padding_right = right, minimum_digits = digits}
+}

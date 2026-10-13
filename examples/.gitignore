@@ -1,2 +1,5 @@
-/rule110
-/tasks
+/00_file_info
+/01_find_files
+/02_bundler
+/03_word_frequency
+/04_shell

@@ -1,6 +1,7 @@
 FILE :: distinct rawptr
 
 extern {
+    fgetc :: (f: FILE) -> int
     puts :: (s: &char) -> int
     printf :: (fmt: &char, ...) -> int
     fprintf :: (f: FILE, fmt: &char, ...) -> int

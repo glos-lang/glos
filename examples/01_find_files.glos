@@ -1,0 +1,65 @@
+// Description:
+//
+//     Find the files in a directory recursively.
+//
+// Usage:
+//
+//     $ glos 01_find_files.glos
+//     $ ./01_find_files -help
+//     $ ./01_find_files
+//     $ ./01_find_files -path .. -skip .git -skip tests -skip how_to
+//     $ ./01_find_files -path .. -skip .git -skip tests -skip how_to -maxdepth 2
+//
+// Demonstrate:
+//
+//     - Command line flags abstraction
+//     - Directory walking
+//
+
+main :: () {
+    path := "."
+    flag.add(&path, "path", "Walk inside this directory")
+
+    skips: [..]string
+    defer skips.free()
+    flag.add(&skips, "skip", "Do not go inside this directory")
+
+    maxdepth: s64
+    flag.add(&maxdepth, "maxdepth", "Do not go beyond this depth")
+    flag.parse()
+
+    di, err := os.iter_dir(path, recursive = true)
+    if err != null {
+        eprintln("Error: Could not read directory '\{path}': \{err}")
+        os.exit(1)
+    }
+
+    // This is only necessary if the directory iteration loop breaks. In this
+    // example, it can be omitted. But still it is kept here to demonstrate
+    // good practices. (Calling this method multiple times is not an error)
+    defer di.free()
+
+    for it, err := range &di {
+        if err != null {
+            eprintln("Error: While walking through directory '\{path}': \{err}")
+            os.exit(1)
+        }
+
+        println(it.path)
+        if it.isdir {
+            if maxdepth != 0 && di.stack.count >= maxdepth {
+                it.skip = true
+            } else {
+                for _, skip := range skips {
+                    if skip == it.name {
+                        it.skip = true
+                        break
+                    }
+                }
+            }
+        }
+    }
+}
+
+os   :: #import "os"
+flag :: #import "flag"

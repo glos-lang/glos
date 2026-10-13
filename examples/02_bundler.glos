@@ -1,0 +1,193 @@
+// Description:
+//
+//     A simple bundler tool.
+//
+// Usage:
+//
+//     $ glos 02_bundler.glos
+//     $ ./02_bundler -help
+//     $ ./02_bundler -bundle . -output archive
+//     $ ./02_bundler -extract archive -output dump
+//
+// Demonstrate:
+//
+//     - Command line flags abstraction
+//     - Directory walking
+//     - IO
+//     - String Builder
+//
+
+main :: () {
+    bundle: string
+    flag.add(&bundle, "bundle", "Bundle this folder")
+
+    extract: string
+    flag.add(&extract, "extract", "Extract this archive")
+
+    output: string
+    flag.add(&output, "output", "The output path")
+    flag.parse()
+
+    if bundle == "" && extract == "" {
+        println("Nothing to do.")
+        return
+    }
+
+    if bundle != "" && extract != "" {
+        eprintln("Error: Cannot both bundle and extract at the same time")
+        flag.usage(os.stderr)
+        os.exit(1)
+    }
+
+    if output == "" {
+        eprintln("Error: Output not provided")
+        flag.usage(os.stderr)
+        os.exit(1)
+    }
+
+    if bundle != "" {
+        create_bundle(bundle, output)
+        return
+    }
+
+    if extract != "" {
+        extract_bundle(extract, output)
+        return
+    }
+}
+
+// The bundle format is a series of file chunks. Each file chunk is as follows:
+//
+//     path_size:     s64
+//     path:          [path_size]u8
+//     perm:          s64
+//     contents_size: s64
+//     contents:      [contents_size]u8
+//
+
+create_bundle :: (input: string, output: string) {
+    di, err := os.iter_dir(input)
+    if err != null {
+        eprintln("Error: Could not read directory '\{input}': \{err}")
+        os.exit(1)
+    }
+    defer di.free()
+
+    dst, err := os.create_file(output, .BINARY)
+    if err != null {
+        eprintln("Error: Could not create file '\{output}': \{err}")
+        os.exit(1)
+    }
+    defer dst.close()
+
+    for it, err := range &di {
+        if err != null {
+            eprintln("Error: While walking through directory '\{input}': \{err}")
+            os.exit(1)
+        }
+
+        if it.isdir || it.path == output {
+            continue
+        }
+
+        write_int(dst, it.path.count)
+        dst.write([]u8(it.path))
+
+        stat, err := it.stat()
+        if err != null {
+            eprintln("Error: Could not obtain info for file '\{it.path}': \{err}")
+            os.exit(1)
+        }
+
+        write_int(dst, s64(stat.mode & 0o777))
+        write_int(dst, stat.size)
+
+        src, err := os.open_file(it.path, .BINARY)
+        if err != null {
+            eprintln("Error: Could not read file '\{it.path}': \{err}")
+            os.exit(1)
+        }
+        defer src.close()
+
+        _, err = io.copy(dst, src)
+        if err != null {
+            eprintln("Error: While bundling '\{it.path}': \{err}")
+            os.exit(1)
+        }
+
+        write_int :: inline (f: os.File, n: s64) -> s64, error {
+            return f.write([]u8(&u8(&n), sizeof(n)))
+        }
+    }
+
+    println("Bundled '\{input}' into '\{output}'")
+}
+
+extract_bundle :: (input: string, output: string) {
+    src, err := os.open_file(input, .BINARY)
+    if err != null {
+        eprintln("Error: Could not read file '\{input}': \{err}")
+        os.exit(1)
+    }
+    defer src.close()
+
+    sb: strings.Builder
+    defer sb.free()
+
+    wprint(&sb, "\{output}/")
+    sb_save := sb.count
+    for !src.eof() {
+        path, err := read_int(src)
+        if err != null {
+            eprintln("Error: While extracting '\{input}': \{err}")
+            os.exit(1)
+        }
+
+        if src.eof() {
+            break
+        }
+
+        sb.count = sb_save
+        _, err = io.copy(&sb, src, count = path)
+        if err != null {
+            eprintln("Error: While extracting '\{input}': \{err}")
+            os.exit(1)
+        }
+
+        perm, err := read_int(src)
+        if err != null {
+            eprintln("Error: While extracting '\{input}': \{err}")
+            os.exit(1)
+        }
+
+        size, err := read_int(src)
+        if err != null {
+            eprintln("Error: While extracting '\{input}': \{err}")
+            os.exit(1)
+        }
+
+        dst, err := os.create_file(string(sb[..]), .BINARY, u32(perm), create_parent = true)
+        if err != null {
+            eprintln("Error: Could not write file '\{sb}': \{err}")
+            os.exit(1)
+        }
+        defer dst.close()
+
+        _, err = io.copy(dst, src, count = size)
+        if err != null {
+            eprintln("Error: Could not write file '\{sb}': \{err}")
+            os.exit(1)
+        }
+
+        read_int :: inline (f: os.File) -> s64, error {
+            buffer: [8]u8
+            _, err := f.read(buffer)
+            return *(&s64)(buffer.data), err
+        }
+    }
+}
+
+io      :: #import "io"
+os      :: #import "os"
+flag    :: #import "flag"
+strings :: #import "strings"
