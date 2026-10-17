@@ -6,10 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef PLATFORM_ARM64_MACOS
-#include <mach-o/dyld.h>
-#endif // PLATFORM_ARM64_MACOS
-
 static void usage(FILE *f) {
     afprintf(f, ANSI_COLOR_CYAN | ANSI_BOLD, "Usage:\n");
     afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    glos");
