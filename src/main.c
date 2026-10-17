@@ -218,10 +218,15 @@ int main(int argc, char **argv) {
             }
         } else {
             if (input_path) {
-                error_standalone(EK_ERROR, "Multiple input paths provided");
                 if (compiler.run) {
-                    error_standalone(EK_NOTE, "When using '-r', pass program arguments after '--'");
+                    error_standalone(
+                        EK_ERROR,
+                        "Multiple input paths provided. When using '-r', pass program arguments after '--'\n");
+                } else {
+                    error_standalone(EK_ERROR, "Multiple input paths provided\n");
                 }
+
+                usage(stderr);
                 exit(1);
             }
 
@@ -230,7 +235,9 @@ int main(int argc, char **argv) {
     }
 
     if (!input_path) {
-        input_path = ".";
+        error_standalone(EK_ERROR, "Input path not provided\n");
+        usage(stderr);
+        exit(1);
     }
     input_path = get_absolute_path(cwd, sv_from_cstr(input_path), &default_arena);
 
