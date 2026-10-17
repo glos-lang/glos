@@ -409,9 +409,11 @@ Node_Fn *get_operator_overload_ex(
     }
 
     error_finalize();
-    ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
-    fprintf(stderr, "    Implement this:\n\n");
-    pretty_print_oms(spec.name, oms, &receiver, partial_comparison_acceptable);
+    if (!receiver.is_meta) {
+        ansi_set(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD);
+        fprintf(stderr, "    Implement this:\n\n");
+        pretty_print_oms(spec.name, oms, &receiver, partial_comparison_acceptable);
+    }
     exit(c, 1);
 }
 

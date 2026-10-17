@@ -3,6 +3,9 @@
 }
 
 @format :: (this: &Source_Code_Location, w: io.Writer, nested: bool) -> s64, error {
+    if nested {
+        return wprint(w, "{\{this.path}, \{this.row}, \{this.col}}")
+    }
     return wprint(w, "\{this.path}:\{this.row}:\{this.col}:")
 }
 

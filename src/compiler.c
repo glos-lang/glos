@@ -12,10 +12,21 @@ void link_flags_add_libpath(Link_Flags *ls, SV path) {
 }
 
 void link_flags_add_libname(Link_Flags *ls, SV name) {
+#ifdef PLATFORM_X86_64_LINUX
+    da_push(ls, arena_sprintf(&default_arena, "-l" SV_Fmt, SV_Arg(name)));
+#endif //  PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+    if (sv_has_suffix(name, SV_Lit(".framework"))) {
+        da_push(ls, "-framework");
+        da_push(ls, arena_sv_to_cstr(&default_arena, sv_strip_suffix(name, SV_Lit(".framework"))));
+    } else {
+        da_push(ls, arena_sprintf(&default_arena, "-l" SV_Fmt, SV_Arg(name)));
+    }
+#endif // PLATFORM_ARM64_MACOS
+
 #ifdef PLATFORM_X86_64_WINDOWS
     da_push(ls, arena_sprintf(&default_arena, SV_Fmt ".lib", SV_Arg(name)));
-#else
-    da_push(ls, arena_sprintf(&default_arena, "-l" SV_Fmt, SV_Arg(name)));
 #endif // PLATFORM_X86_64_WINDOWS
 }
 
