@@ -414,8 +414,13 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-z,stack-size=%u", COMPILER_STACK_SIZE));
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
-        cmd_push(cmd, "-llldCommon", "-llldELF");
 #endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+        cmd_push(cmd, "g++");
+        cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
+        cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
+#endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
         if (is_lld_available_in_path()) {
@@ -427,15 +432,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, arena_sprintf(&temp_arena, "/stack:%u", COMPILER_STACK_SIZE));
         cmd_push(cmd, "/debug");
         cmd_push(cmd, "/out:glos.exe");
-        cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
 #endif // PLATFORM_X86_64_WINDOWS
-
-#ifdef PLATFORM_ARM64_MACOS
-        cmd_push(cmd, "g++");
-        cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
-        cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
-        cmd_push(cmd, "-llldCommon", "-llldMachO");
-#endif // PLATFORM_ARM64_MACOS
 
         for (size_t i = 0; i < len(sources); i++) {
             const char *src = sources[i];
@@ -456,6 +453,18 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             cmd_push(cmd, arena_sv_to_cstr(&temp_arena, arg));
         }
         arena_reset(&default_arena, sv.data);
+
+#ifdef PLATFORM_X86_64_LINUX
+        cmd_push(cmd, "-llldCommon", "-llldELF");
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+        cmd_push(cmd, "-llldCommon", "-llldMachO");
+#endif // PLATFORM_ARM64_MACOS
+
+#ifdef PLATFORM_X86_64_WINDOWS
+        cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
+#endif // PLATFORM_X86_64_WINDOWS
 
         const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
