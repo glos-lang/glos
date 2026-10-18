@@ -320,10 +320,11 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
 
         cmd_push(c->cmd, "ld64.lld");
+        cmd_push(c->cmd, "-arch", "arm64");
+        cmd_push(c->cmd, "-platform_version", "macos", "14.0", "14.0");
         cmd_push(c->cmd, "-o", output_path);
         cmd_push(c->cmd, object_path);
 
-        cmd_push(c->cmd, "-arch", "arm64");
         cmd_push(c->cmd, "-syslibroot", arena_sv_to_cstr(&temp_arena, sdk_path));
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
         cmd_push(c->cmd, "-lSystem", "-lm");
