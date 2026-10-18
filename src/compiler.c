@@ -249,7 +249,13 @@ void compiler_build(Compiler *c, const char *output_path) {
     {
 #ifdef PLATFORM_X86_64_LINUX
         cmd_push(c->cmd, "ld.lld");
-        cmd_push(c->cmd, "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2");
+
+        if (file_exists("/lib/ld-musl-x86_64.so.1")) {
+            cmd_push(c->cmd, "-dynamic-linker", "/lib/ld-musl-x86_64.so.1");
+        } else {
+            cmd_push(c->cmd, "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2");
+        }
+
         cmd_push(c->cmd, "-o", output_path);
         cmd_push(c->cmd, object_path);
 
@@ -257,7 +263,9 @@ void compiler_build(Compiler *c, const char *output_path) {
             "/usr/lib/x86_64-linux-gnu",
             "/lib/x86_64-linux-gnu",
             "/usr/lib64",
+            "/usr/lib",
             "/lib64",
+            "/lib",
         };
 
         const char *libc_dir = NULL;

@@ -189,7 +189,7 @@ static void filter_cl_exe_output(Proc proc) {
 #endif // PLATFORM_X86_64_WINDOWS
 
 static void ensure_llvm(Cmd *cmd) {
-#define URL_COMMON "https://github.com/glos-lang/llvm/releases/download/22.1.0"
+#define URL_COMMON "https://github.com/glos-lang/llvm/releases/download/22.1.4"
 
 #ifdef PLATFORM_X86_64_LINUX
 #ifdef MUSL
@@ -424,6 +424,10 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
+        arena_reset_noalign(&default_arena, sv.data + sv.count);
+        cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
+        sv.count += run_cmd_and_read_stdout(cmd).count;
+
         cmd_push(cmd, "c++");
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);

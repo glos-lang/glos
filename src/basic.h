@@ -358,6 +358,7 @@ typedef struct {
 
 void arena_free(Arena *a);
 void arena_reset(Arena *a, const void *ptr);
+void arena_reset_noalign(Arena *a, const void *ptr);
 
 void *arena_alloc(Arena *a, size_t size);
 void *arena_clone(Arena *a, const void *data, size_t size);
