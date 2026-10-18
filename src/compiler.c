@@ -287,7 +287,7 @@ void compiler_build(Compiler *c, const char *output_path) {
         }
 
         if (!libc_dir) {
-            error_standalone(EK_ERROR, "Could not find the C runtime objects");
+            error_standalone(EK_ERROR, "Could not find the C runtime objects. Make sure a C SDK is setup properly.");
             exit(1);
         }
 
