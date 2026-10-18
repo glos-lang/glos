@@ -191,18 +191,18 @@ static void filter_cl_exe_output(Proc proc) {
 static void ensure_llvm(Cmd *cmd) {
 #ifdef PLATFORM_X86_64_LINUX
 #ifdef MUSL
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-musl-x86_64.tar.xz";
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-linux-musl-x86_64.tar.xz";
 #else
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-linux-glibc-x86_64.tar.xz";
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-linux-glibc-x86_64.tar.xz";
 #endif // MUSL
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-macos-arm64.tar.xz";
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-macos-arm64.tar.xz";
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.4/llvm-windows-x86_64.tar.xz";
+    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-windows-x86_64.tar.xz";
 #endif // PLATFORM_X86_64_WINDOWS
 
     if (directory_exists("llvm")) {
@@ -417,9 +417,9 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #endif // PLATFORM_X86_64_WINDOWS
 
 #ifdef PLATFORM_ARM64_MACOS
-        arena_reset_noalign(&default_arena, sv.data + sv.count);
-        cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
-        sv.count += run_cmd_and_read_stdout(cmd).count;
+        // arena_reset_noalign(&default_arena, sv.data + sv.count);
+        // cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
+        // sv.count += run_cmd_and_read_stdout(cmd).count;
 
         cmd_push(cmd, "g++");
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
