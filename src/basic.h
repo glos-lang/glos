@@ -358,7 +358,6 @@ typedef struct {
 
 void arena_free(Arena *a);
 void arena_reset(Arena *a, const void *ptr);
-void arena_reset_noalign(Arena *a, const void *ptr);
 
 void *arena_alloc(Arena *a, size_t size);
 void *arena_clone(Arena *a, const void *data, size_t size);
@@ -375,7 +374,7 @@ extern Arena default_arena;
 bool read_fp(FILE *f, SV *out, Arena *a, bool convert_windows_line_endings_to_unix); // This appends a NULL at the end
 bool read_file(const char *path, SV *out, Arena *a, bool convert_windows_line_endings_to_unix);
 
-bool rename_path(const char *old, const char *new);
+bool rename_path(const char *old_, const char *new_);
 bool delete_file(const char *path);
 bool create_directory(const char *path);
 
@@ -387,7 +386,7 @@ u64 get_modified_time(const char *path);
 bool is_cmd_available_in_path(const char *cmd);
 bool is_lld_available_in_path(void);
 
-const char *temp_replace_suffix(const char *path, const char *old, const char *new);
+const char *temp_replace_suffix(const char *path, const char *old_, const char *new_);
 
 void temporary_files_push(const char *path);
 void temporary_files_cleanup(void);

@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "checker.h"
 #include "error.h"
+#include "lld.h"
 
 void link_flags_add_libpath(Link_Flags *ls, SV path) {
 #ifdef PLATFORM_X86_64_WINDOWS
@@ -246,45 +247,142 @@ void compiler_build(Compiler *c, const char *output_path) {
 
     perf_begin();
     {
+#ifdef PLATFORM_X86_64_LINUX
+        cmd_push(c->cmd, "ld.lld");
+        cmd_push(c->cmd, "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2");
+        cmd_push(c->cmd, "-o", output_path);
+        cmd_push(c->cmd, object_path);
+
+        static const char *libc_dirs[] = {
+            "/usr/lib/x86_64-linux-gnu",
+            "/lib/x86_64-linux-gnu",
+            "/usr/lib64",
+            "/lib64",
+        };
+
+        const char *libc_dir = NULL;
+        const char *libc_crt1_path = NULL;
+        const char *libc_crti_path = NULL;
+        const char *libc_crtn_path = NULL;
+        for (size_t i = 0; i < len(libc_dirs); i++) {
+            const char *it = libc_dirs[i];
+
+            libc_crt1_path = arena_sprintf(&temp_arena, "%s/crt1.o", libc_dirs[i]);
+            if (file_exists(libc_crt1_path)) {
+                libc_dir = it;
+                libc_crti_path = arena_sprintf(&temp_arena, "%s/crti.o", libc_dirs[i]);
+                libc_crtn_path = arena_sprintf(&temp_arena, "%s/crtn.o", libc_dirs[i]);
+                break;
+            }
+
+            arena_reset(&temp_arena, libc_crt1_path);
+        }
+
+        if (!libc_dir) {
+            error_standalone(EK_ERROR, "Could not find the C runtime objects");
+            exit(1);
+        }
+
+        cmd_push(c->cmd, "-L", libc_dir);
+        cmd_push(c->cmd, libc_crt1_path, libc_crti_path, libc_crtn_path);
+
+        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
+        cmd_push(c->cmd, "-lc", "-lm");
+#endif // PLATFORM_X86_64_LINUX
+
+#ifdef PLATFORM_ARM64_MACOS
+        SV sdk_path = {0};
+        {
+            cmd_push(c->cmd, "xcrun", "--show-sdk-path");
+            FILE *f = NULL;
+            Proc  proc = cmd_run_async(c->cmd, (Cmd_Stdio) {.out = &f});
+            if (proc.id == PROC_INVALID) {
+                error_standalone(EK_ERROR, "Could not execute 'xcrun'. Make sure a C SDK is setup properly.");
+                exit(1);
+            }
+
+            if (!read_fp(f, &sdk_path, &temp_arena, true)) {
+                error_standalone(EK_ERROR, "Could not read standard output of 'xcrun'");
+                exit(1);
+            }
+
+            const int code = cmd_wait(proc);
+            if (code) {
+                error_standalone(EK_ERROR, "Process 'xcrun' exited abnormally with code %d", code);
+                exit(1);
+            }
+
+            sdk_path = sv_strip_suffix(sdk_path, SV_Lit("\n"));
+        }
+
+        if (!sdk_path.count) {
+            sdk_path = SV_Lit("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
+        }
+
+        cmd_push(c->cmd, "ld64.lld");
+        cmd_push(c->cmd, "-o", output_path);
+        cmd_push(c->cmd, object_path);
+
+        cmd_push(c->cmd, "-syslibroot", arena_sv_to_cstr(&temp_arena, sdk_path));
+        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
+        cmd_push(c->cmd, "-lSystem", "-lm");
+#endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-        if (is_lld_available_in_path()) {
-            cmd_push(c->cmd, "lld-link");
-        } else {
-            cmd_push(c->cmd, "link", "/nologo");
-        }
-
+        cmd_push(c->cmd, "lld-link");
         cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
-        cmd_push(c->cmd, "/debug", "/defaultlib:libcmt");
-#else
-        cmd_push(c->cmd, "cc");
-        if (is_lld_available_in_path()) {
-            cmd_push(c->cmd, "-fuse-ld=lld");
-        }
-        cmd_push(c->cmd, "-o", output_path);
-        cmd_push(c->cmd, "-g");
-#endif // PLATFORM_X86_64_WINDOWS
-
         cmd_push(c->cmd, object_path);
-        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 
-#ifndef PLATFORM_X86_64_WINDOWS
-        // The '%' operator needs the math library to operate on floats in unoptimized builds.
-        cmd_push(c->cmd, "-lm");
+        cmd_push(c->cmd, "/debug", "/defaultlib:libcmt");
+        cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
 #endif // PLATFORM_X86_64_WINDOWS
 
-        const char *proc_name = c->cmd->data[0];
-        Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
-        if (proc.id == PROC_INVALID) {
-            error_standalone(EK_ERROR, "Could not execute '%s'. Make sure a C SDK is setup properly", proc_name);
+        const int code = run_lld(c->cmd->data, c->cmd->count);
+        if (code != 0) {
+            error_standalone(EK_ERROR, "Linker exited abnormally with code %d", code);
             exit(1);
         }
 
-        const int proc_code = cmd_wait(proc);
-        if (proc_code != 0) {
-            error_standalone(EK_ERROR, "Process '%s' exited abnormally with code %d", proc_name, proc_code);
-            exit(1);
-        }
+        c->cmd->count = 0;
+
+        // #ifdef PLATFORM_X86_64_WINDOWS
+        //         if (is_lld_available_in_path()) {
+        //             cmd_push(c->cmd, "lld-link");
+        //         } else {
+        //             cmd_push(c->cmd, "link", "/nologo");
+        //         }
+
+        //         cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
+        //         cmd_push(c->cmd, "/debug", "/defaultlib:libcmt");
+        // #else
+        //         cmd_push(c->cmd, "cc");
+        //         if (is_lld_available_in_path()) {
+        //             cmd_push(c->cmd, "-fuse-ld=lld");
+        //         }
+        //         cmd_push(c->cmd, "-o", output_path);
+        //         cmd_push(c->cmd, "-g");
+        // #endif // PLATFORM_X86_64_WINDOWS
+
+        //         cmd_push(c->cmd, object_path);
+        //         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
+
+        // #ifndef PLATFORM_X86_64_WINDOWS
+        //         // The '%' operator needs the math library to operate on floats in unoptimized builds.
+        //         cmd_push(c->cmd, "-lm");
+        // #endif // PLATFORM_X86_64_WINDOWS
+
+        //         const char *proc_name = c->cmd->data[0];
+        //         Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
+        //         if (proc.id == PROC_INVALID) {
+        //             error_standalone(EK_ERROR, "Could not execute '%s'. Make sure a C SDK is setup properly",
+        //             proc_name); exit(1);
+        //         }
+
+        //         const int proc_code = cmd_wait(proc);
+        //         if (proc_code != 0) {
+        //             error_standalone(EK_ERROR, "Process '%s' exited abnormally with code %d", proc_name, proc_code);
+        //             exit(1);
+        //         }
     }
     perf_end("Linking object files");
 

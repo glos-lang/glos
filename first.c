@@ -189,20 +189,22 @@ static void filter_cl_exe_output(Proc proc) {
 #endif // PLATFORM_X86_64_WINDOWS
 
 static void ensure_llvm(Cmd *cmd) {
+#define URL_COMMON "https://github.com/glos-lang/llvm/releases/download/22.1.0"
+
 #ifdef PLATFORM_X86_64_LINUX
 #ifdef MUSL
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-linux-musl-x86_64.tar.xz";
+    const char *url = URL_COMMON "/llvm-linux-musl-x86_64.tar.xz";
 #else
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-linux-glibc-x86_64.tar.xz";
+    const char *url = URL_COMMON "/llvm-linux-glibc-x86_64.tar.xz";
 #endif // MUSL
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-macos-arm64.tar.xz";
+    const char *url = URL_COMMON "/llvm-macos-arm64.tar.xz";
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-    const char *url = "https://github.com/glos-lang/llvm/releases/download/22.1.0/llvm-windows-x86_64.tar.xz";
+    const char *url = URL_COMMON "/llvm-windows-x86_64.tar.xz";
 #endif // PLATFORM_X86_64_WINDOWS
 
     if (directory_exists("llvm")) {
@@ -287,6 +289,8 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/contract.h",
         "src/compiler.h",
         "src/compiler/compiler.h",
+
+        "src/lld.h",
     };
 
     static const char *sources[] = {
@@ -321,6 +325,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         "src/compiler/stmt.c",
         "src/compiler.c",
 
+        "src/lld.cpp",
         "src/main.c",
     };
 
@@ -336,9 +341,16 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     bool need_linking = get_modified_time("glos" EXE_FILE_EXTENSION) == 0;
     for (size_t i = 0; i < len(sources); i++) {
         const char *src = sources[i];
-        const char *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
-        const u64   src_time = get_modified_time(src);
-        const u64   obj_time = get_modified_time(obj);
+        const char *obj = NULL;
+
+        if (sv_has_suffix(sv_from_cstr(src), SV_Lit(".c"))) {
+            obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
+        } else {
+            obj = temp_replace_suffix(src, ".cpp", OBJ_FILE_EXTENSION);
+        }
+
+        const u64 src_time = get_modified_time(src);
+        const u64 obj_time = get_modified_time(obj);
         if (obj_time >= src_time && obj_time >= headers_time_latest) {
             continue;
         }
@@ -352,7 +364,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         proc_stdio.out = (FILE **) arena_alloc(&temp_arena, sizeof(FILE *));
         procs.callback_before_wait = filter_cl_exe_output;
 
-        cmd_push(cmd, "cl", "/Z7", "/nologo", "/c");
+        cmd_push(cmd, "cl", "/Z7", "/nologo", "/std:c++17", "/c");
         cmd_push(cmd, "/I", "./llvm/include");
         cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", obj));
 #else
@@ -402,6 +414,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-z,stack-size=%u", COMPILER_STACK_SIZE));
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
+        cmd_push(cmd, "-llldCommon", "-llldELF");
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_X86_64_WINDOWS
@@ -414,20 +427,25 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, arena_sprintf(&temp_arena, "/stack:%u", COMPILER_STACK_SIZE));
         cmd_push(cmd, "/debug");
         cmd_push(cmd, "/out:glos.exe");
+        cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
 #endif // PLATFORM_X86_64_WINDOWS
 
 #ifdef PLATFORM_ARM64_MACOS
-        // arena_reset_noalign(&default_arena, sv.data + sv.count);
-        // cmd_push(cmd, "pkg-config", "--libs-only-L", "zlib", "libzstd");
-        // sv.count += run_cmd_and_read_stdout(cmd).count;
-
         cmd_push(cmd, "g++");
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
+        cmd_push(cmd, "-llldCommon", "-llldMachO");
 #endif // PLATFORM_ARM64_MACOS
 
         for (size_t i = 0; i < len(sources); i++) {
-            cmd_push(cmd, temp_replace_suffix(sources[i], ".c", OBJ_FILE_EXTENSION));
+            const char *src = sources[i];
+            const char *obj = NULL;
+            if (sv_has_suffix(sv_from_cstr(src), SV_Lit(".c"))) {
+                obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
+            } else {
+                obj = temp_replace_suffix(src, ".cpp", OBJ_FILE_EXTENSION);
+            }
+            cmd_push(cmd, obj);
         }
 
         while (sv.count) {
