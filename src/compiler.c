@@ -313,10 +313,15 @@ void compiler_build(Compiler *c, const char *output_path) {
                 exit(1);
             }
 
-            sdk_path = arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv, SV_Lit("\n")));
+            sv = sv_strip_suffix(sv, SV_Lit("\n"));
+            if (sv.count) {
+                sdk_path = arena_sv_to_cstr(&temp_arena, sv);
+            } else {
+                sdk_path = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
+            }
         }
 
-        const char *sdk_version = "14.0";
+        const char *sdk_version = NULL;
         {
             cmd_push(c->cmd, "xcrun", "--show-sdk-version");
             FILE *f = NULL;
@@ -338,11 +343,12 @@ void compiler_build(Compiler *c, const char *output_path) {
                 exit(1);
             }
 
-            sdk_version = arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv, SV_Lit("\n")));
-        }
-
-        if (!sdk_path.count) {
-            sdk_path = SV_Lit("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
+            sv = sv_strip_suffix(sv, SV_Lit("\n"));
+            if (sv.count) {
+                sdk_version = arena_sv_to_cstr(&temp_arena, sv);
+            } else {
+                sdk_version = "14.0";
+            }
         }
 
         cmd_push(c->cmd, "ld64.lld");
