@@ -445,15 +445,6 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             cmd_push(cmd, obj);
         }
 
-        while (sv.count) {
-            const SV arg = sv_split_by_mut(&sv, is_space);
-            if (arg.count == 0) {
-                continue;
-            }
-            cmd_push(cmd, arena_sv_to_cstr(&temp_arena, arg));
-        }
-        arena_reset(&default_arena, sv.data);
-
 #ifdef PLATFORM_X86_64_LINUX
         cmd_push(cmd, "-llldCommon", "-llldELF");
 #endif // PLATFORM_X86_64_LINUX
@@ -465,6 +456,15 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #ifdef PLATFORM_X86_64_WINDOWS
         cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
 #endif // PLATFORM_X86_64_WINDOWS
+
+        while (sv.count) {
+            const SV arg = sv_split_by_mut(&sv, is_space);
+            if (arg.count == 0) {
+                continue;
+            }
+            cmd_push(cmd, arena_sv_to_cstr(&temp_arena, arg));
+        }
+        arena_reset(&default_arena, sv.data);
 
         // cmd_show(*cmd, stderr);
         {
