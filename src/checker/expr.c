@@ -2230,7 +2230,12 @@ void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref
 }
 
 void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, bool *is_ref_valid) {
-    Node  *n = (Node *) indexable;
+    Node *n = (Node *) indexable;
+    if (indexable->infer_array_count && !indexable->is_compound_constructed) {
+        error_node(EK_ERROR, n, "The '[?]T' construct must be part of a compound literal");
+        exit(c, 1);
+    }
+
     bool   has_count = true;
     size_t array_count = 0;
     if (indexable->count) {
@@ -2409,6 +2414,10 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     case NODE_COMPOUND: {
         Node_Compound *compound = (Node_Compound *) n;
         if (compound->lhs) {
+            if (compound->lhs->kind == NODE_INDEXABLE) {
+                ((Node_Indexable *) compound->lhs)->is_compound_constructed = true;
+            }
+
             check_expr(c, compound->lhs, REF_NONE);
             type_assert_type(c, compound->lhs);
             n->type = type_without_meta(compound->lhs->type);
