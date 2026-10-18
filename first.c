@@ -343,10 +343,11 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         const char *src = sources[i];
         const char *obj = NULL;
 
-        if (sv_has_suffix(sv_from_cstr(src), SV_Lit(".c"))) {
-            obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
-        } else {
+        const bool is_cpp = sv_has_suffix(sv_from_cstr(src), SV_Lit(".cpp"));
+        if (is_cpp) {
             obj = temp_replace_suffix(src, ".cpp", OBJ_FILE_EXTENSION);
+        } else {
+            obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
         }
 
         const u64 src_time = get_modified_time(src);
@@ -368,7 +369,13 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, "/I", "./llvm/include");
         cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", obj));
 #else
-        cmd_push(cmd, "cc", "-c");
+        if (is_cpp) {
+            cmd_push(cmd, "c++", "-std=c++17");
+        } else {
+            cmd_push(cmd, "cc");
+        }
+
+        cmd_push(cmd, "-c");
         cmd_push(cmd, "-Wall", "-Wextra", "-Werror");
         cmd_push(cmd, "-ggdb");
         cmd_push(cmd, "-I./llvm/include");
@@ -403,7 +410,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         sv = run_cmd_and_read_stdout(cmd);
 
 #ifdef PLATFORM_X86_64_LINUX
-        cmd_push(cmd, "g++");
+        cmd_push(cmd, "c++");
         if (is_lld_available_in_path()) {
             cmd_push(cmd, "-fuse-ld=lld");
         }
@@ -417,7 +424,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-        cmd_push(cmd, "g++");
+        cmd_push(cmd, "c++");
         cmd_push(cmd, arena_sprintf(&temp_arena, "-Wl,-stack_size,0x%x", COMPILER_STACK_SIZE));
         cmd_push(cmd, "-o", "glos" EXE_FILE_EXTENSION);
 #endif // PLATFORM_ARM64_MACOS
