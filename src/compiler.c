@@ -384,47 +384,7 @@ void compiler_build(Compiler *c, const char *output_path) {
             error_standalone(EK_ERROR, "Linker exited abnormally with code %d", code);
             exit(1);
         }
-
         c->cmd->count = 0;
-
-        // #ifdef PLATFORM_X86_64_WINDOWS
-        //         if (is_lld_available_in_path()) {
-        //             cmd_push(c->cmd, "lld-link");
-        //         } else {
-        //             cmd_push(c->cmd, "link", "/nologo");
-        //         }
-
-        //         cmd_push(c->cmd, arena_sprintf(&temp_arena, "/out:%s", output_path));
-        //         cmd_push(c->cmd, "/debug", "/defaultlib:libcmt");
-        // #else
-        //         cmd_push(c->cmd, "cc");
-        //         if (is_lld_available_in_path()) {
-        //             cmd_push(c->cmd, "-fuse-ld=lld");
-        //         }
-        //         cmd_push(c->cmd, "-o", output_path);
-        //         cmd_push(c->cmd, "-g");
-        // #endif // PLATFORM_X86_64_WINDOWS
-
-        //         cmd_push(c->cmd, object_path);
-        //         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
-
-        // #ifndef PLATFORM_X86_64_WINDOWS
-        //         // The '%' operator needs the math library to operate on floats in unoptimized builds.
-        //         cmd_push(c->cmd, "-lm");
-        // #endif // PLATFORM_X86_64_WINDOWS
-
-        //         const char *proc_name = c->cmd->data[0];
-        //         Proc        proc = cmd_run_async(c->cmd, (Cmd_Stdio) {0});
-        //         if (proc.id == PROC_INVALID) {
-        //             error_standalone(EK_ERROR, "Could not execute '%s'. Make sure a C SDK is setup properly",
-        //             proc_name); exit(1);
-        //         }
-
-        //         const int proc_code = cmd_wait(proc);
-        //         if (proc_code != 0) {
-        //             error_standalone(EK_ERROR, "Process '%s' exited abnormally with code %d", proc_name, proc_code);
-        //             exit(1);
-        //         }
     }
     perf_end("Linking object files");
 
