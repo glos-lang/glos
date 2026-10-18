@@ -291,7 +291,7 @@ void compiler_build(Compiler *c, const char *output_path) {
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-        SV sdk_path = {0};
+        const char *sdk_path = NULL;
         {
             cmd_push(c->cmd, "xcrun", "--show-sdk-path");
             FILE *f = NULL;
@@ -301,7 +301,8 @@ void compiler_build(Compiler *c, const char *output_path) {
                 exit(1);
             }
 
-            if (!read_fp(f, &sdk_path, &temp_arena, true)) {
+            SV sv = {0};
+            if (!read_fp(f, &sv, &temp_arena, true)) {
                 error_standalone(EK_ERROR, "Could not read standard output of 'xcrun'");
                 exit(1);
             }
@@ -312,7 +313,32 @@ void compiler_build(Compiler *c, const char *output_path) {
                 exit(1);
             }
 
-            sdk_path = sv_strip_suffix(sdk_path, SV_Lit("\n"));
+            sdk_path = arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv, SV_Lit("\n")));
+        }
+
+        const char *sdk_version = "14.0";
+        {
+            cmd_push(c->cmd, "xcrun", "--show-sdk-version");
+            FILE *f = NULL;
+            Proc  proc = cmd_run_async(c->cmd, (Cmd_Stdio) {.out = &f});
+            if (proc.id == PROC_INVALID) {
+                error_standalone(EK_ERROR, "Could not execute 'xcrun'. Make sure a C SDK is setup properly.");
+                exit(1);
+            }
+
+            SV sv = {0};
+            if (!read_fp(f, &sv, &temp_arena, true)) {
+                error_standalone(EK_ERROR, "Could not read standard output of 'xcrun'");
+                exit(1);
+            }
+
+            const int code = cmd_wait(proc);
+            if (code) {
+                error_standalone(EK_ERROR, "Process 'xcrun' exited abnormally with code %d", code);
+                exit(1);
+            }
+
+            sdk_version = arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv, SV_Lit("\n")));
         }
 
         if (!sdk_path.count) {
@@ -321,11 +347,11 @@ void compiler_build(Compiler *c, const char *output_path) {
 
         cmd_push(c->cmd, "ld64.lld");
         cmd_push(c->cmd, "-arch", "arm64");
-        cmd_push(c->cmd, "-platform_version", "macos", "14.0", "14.0");
+        cmd_push(c->cmd, "-platform_version", "macos", sdk_version, sdk_version);
         cmd_push(c->cmd, "-o", output_path);
         cmd_push(c->cmd, object_path);
 
-        cmd_push(c->cmd, "-syslibroot", arena_sv_to_cstr(&temp_arena, sdk_path));
+        cmd_push(c->cmd, "-syslibroot", sdk_path);
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
         cmd_push(c->cmd, "-lSystem", "-lm");
 #endif // PLATFORM_ARM64_MACOS
