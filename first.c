@@ -446,15 +446,15 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         }
 
 #ifdef PLATFORM_X86_64_LINUX
-        cmd_push(cmd, "-llldCommon", "-llldELF");
+        cmd_push(cmd, "-llldELF", "-llldCommon");
 #endif // PLATFORM_X86_64_LINUX
 
 #ifdef PLATFORM_ARM64_MACOS
-        cmd_push(cmd, "-llldCommon", "-llldMachO");
+        cmd_push(cmd, "-llldMachO", "-llldCommon");
 #endif // PLATFORM_ARM64_MACOS
 
 #ifdef PLATFORM_X86_64_WINDOWS
-        cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
+        cmd_push(cmd, "lldCOFF.lib", "lldCommon.lib");
 #endif // PLATFORM_X86_64_WINDOWS
 
         while (sv.count) {
@@ -465,14 +465,6 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
             cmd_push(cmd, arena_sv_to_cstr(&temp_arena, arg));
         }
         arena_reset(&default_arena, sv.data);
-
-        // cmd_show(*cmd, stderr);
-        {
-            fprintf(stderr, "Link command:\n");
-            for (size_t i = 0; i < cmd->count; i++) {
-                fprintf(stderr, "  %s\n", cmd->data[i]);
-            }
-        }
 
         const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
