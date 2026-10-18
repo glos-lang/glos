@@ -466,7 +466,13 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
         cmd_push(cmd, "lldCommon.lib", "lldCOFF.lib");
 #endif // PLATFORM_X86_64_WINDOWS
 
-        cmd_show(*cmd, stderr);
+        // cmd_show(*cmd, stderr);
+        {
+            fprintf(stderr, "Link command:\n");
+            for (size_t i = 0; i < cmd->count; i++) {
+                fprintf(stderr, "  %s\n", cmd->data[i]);
+            }
+        }
 
         const char *name = cmd->data[0];
         if (cmd_run_sync(cmd, (Cmd_Stdio) {0})) {
