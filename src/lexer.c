@@ -355,7 +355,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 94, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -502,8 +502,6 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_TYPEOF;
         } else if (sv_match(token.sv, "inline")) {
             token.kind = TOKEN_INLINE;
-        } else if (sv_match(token.sv, "noreturn")) {
-            token.kind = TOKEN_NORETURN;
         } else if (sv_match(token.sv, "distinct")) {
             token.kind = TOKEN_DISTINCT;
         } else if (sv_match(token.sv, "operator")) {

@@ -2,6 +2,12 @@ extern {
     #link "fabsf" abs :: (this: f32) -> f32
     #link "fabs"  abs :: (this: f64) -> f64
 
+    #link "fminf" min :: (this: f32, that: f32) -> f32
+    #link "fmin"  min :: (this: f64, that: f64) -> f64
+
+    #link "fmaxf" max :: (this: f32, that: f32) -> f32
+    #link "fmax"  max :: (this: f64, that: f64) -> f64
+
     #link "sqrtf" sqrt :: (this: f32) -> f32
     #link "sqrt"  sqrt :: (this: f64) -> f64
 
@@ -41,8 +47,8 @@ extern {
     #link "atanf" atan :: (this: f32) -> f32
     #link "atan"  atan :: (this: f64) -> f64
 
-    #link "atan2f" atan2 :: (this: f32) -> f32
-    #link "atan2"  atan2 :: (this: f64) -> f64
+    #link "atan2f" atan2 :: (this: f32, that: f32) -> f32
+    #link "atan2"  atan2 :: (this: f64, that: f64) -> f64
 
     #link "floorf" floor :: (this: f32) -> f32
     #link "floor"  floor :: (this: f64) -> f64

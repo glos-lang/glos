@@ -8,8 +8,8 @@ extern {
     snprintf :: (out: &char, size: size_t, fmt: &char, ...) -> int
     fwrite :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
     fflush :: (f: FILE) -> int
-    exit :: noreturn (code: int)
-    abort :: noreturn ()
+    exit :: (code: int) -> !
+    abort :: () -> !
     memcmp :: (a: rawptr, b: rawptr, n: size_t) -> int
     free :: (ptr: rawptr)
     malloc :: (size: size_t) -> rawptr

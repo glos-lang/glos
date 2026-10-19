@@ -9,7 +9,7 @@
     return wprint(w, "\{this.path}:\{this.row}:\{this.col}:")
 }
 
-panic :: noreturn (message: ...fmt.Format, location := #caller_location, label := "") {
+panic :: (message: ...fmt.Format, location := #caller_location, label := "") -> ! {
     C.fflush(C.FILE(os.stdout))
 
     eprint(location, label)
@@ -38,10 +38,10 @@ assert :: inline (cond: bool, message: ...fmt.Format, location := #caller_locati
     }
 }
 
-todo :: inline noreturn (message: ...fmt.Format, location := #caller_location) {
+todo :: inline (message: ...fmt.Format, location := #caller_location) -> ! {
     panic(message = message, location = location, label = "TODO")
 }
 
-unreachable :: inline noreturn (message: ...fmt.Format, location := #caller_location) {
+unreachable :: inline (message: ...fmt.Format, location := #caller_location) -> ! {
     panic(message = message, location = location, label = "Unreachable")
 }

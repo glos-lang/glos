@@ -94,6 +94,7 @@ static void compile_type_info_fn(Compiler *c, Type_Info_Compiler *tic, bool skip
     fn_fields[fn_fields_iota++] =
         create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), returns, spec->returns_count);
 
+    fn_fields[fn_fields_iota++] = LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), spec->is_noreturn, true);
     fn_fields[fn_fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), spec->variadics_kind, true);
 
     tic->tiv_fields[tic->tiv_fields_iota++] =

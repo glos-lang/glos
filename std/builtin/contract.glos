@@ -62,6 +62,7 @@ Type_Info_Pointer :: struct {
 Type_Info_Function :: struct {
     args:      []Type
     returns:   []Type
+    noreturn:  bool
     variadics: enum {
         NONE
         TYPED

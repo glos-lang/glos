@@ -178,10 +178,6 @@ void sb_push_type(SB *sb, Type type) {
 
     case TYPE_FN: {
         const Type_Fn *spec = type.spec.fn;
-        if (spec->is_noreturn) {
-            sb_push_cstr(sb, "noreturn ");
-        }
-
         sb_push(sb, '(');
         for (size_t i = 0; i < spec->args_count; i++) {
             Type_Fn_Arg it = spec->args[i];
@@ -211,6 +207,10 @@ void sb_push_type(SB *sb, Type type) {
         if (spec->returns_count) {
             sb_push_cstr(sb, " -> ");
             sb_push_type(sb, *spec->return_type);
+        }
+
+        if (spec->is_noreturn) {
+            sb_push_cstr(sb, " -> !");
         }
     } break;
 

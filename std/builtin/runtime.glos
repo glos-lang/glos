@@ -1,6 +1,6 @@
 #private...
 
-runtime_panic :: noreturn (p: Panic, a: s64, b: s64, c: s64, location: &Source_Code_Location) {
+runtime_panic :: (p: Panic, a: s64, b: s64, c: s64, location: &Source_Code_Location) -> ! {
     if p == {
     case .INDEX_OUT_OF_BOUNDS
         panic("Bounds Check Failed: Index \{a} is invalid since length is \{b}", location = *location)

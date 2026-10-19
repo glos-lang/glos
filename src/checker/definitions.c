@@ -77,7 +77,7 @@ Node_Fn *get_main(Compiler *c) {
     c->main_fn = (Node_Fn *) main->definition_spec->assignment_node;
     if (c->main_fn->is_noreturn) {
         c->main_fn->body = NULL;
-        error_node(EK_ERROR, (Node *) c->main_fn, "Function 'main' cannot be marked as 'noreturn'");
+        error_node(EK_ERROR, (Node *) c->main_fn, "Function 'main' must return");
         exit(c, 1);
     }
 

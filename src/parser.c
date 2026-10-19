@@ -872,7 +872,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 95, "");
+static_assert(COUNT_TOKENS == 94, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -1156,22 +1156,42 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
             if (read_token(p, TOKEN_ARROW)) {
                 do {
                     token = peek_token(p);
-                    if (token.kind == TOKEN_DIRECTIVE_REFERENCE) {
-                        if (!fn->is_method) {
-                            error_token(
-                                EK_ERROR,
-                                token,
-                                "The directive %s can only be applied to return values of an iterator overload",
-                                token_kind_to_cstr(token.kind));
-                            exit(1);
+
+                    Node *n = NULL;
+                    if (token.kind == TOKEN_LNOT && !fn->returns_count) {
+                        p->state.peeked = false;
+
+                        const Token ahead = peek_token(p);
+                        if (ahead.newline || ahead.kind == TOKEN_LBRACE) {
+                            p->state.peeked = true;
+                            fn->is_noreturn = true;
+                            fn->noreturn_token = token;
+                            break;
                         }
 
-                        p->state.peeked = false;
-                        token.as.integer = fn->returns_count;
-                        nodes_push(&fn->reference_directives, node_alloc(p->module_current, NODE_ATOM, token));
+                        n = node_alloc(p->module_current, NODE_UNARY, token);
+                        Node_Unary *unary = (Node_Unary *) n;
+                        unary->value = parse_expr(p, POWER_PRE, false, false, NULL);
+                    } else {
+                        if (token.kind == TOKEN_DIRECTIVE_REFERENCE) {
+                            if (!fn->is_method) {
+                                error_token(
+                                    EK_ERROR,
+                                    token,
+                                    "The directive %s can only be applied to return values of an iterator overload",
+                                    token_kind_to_cstr(token.kind));
+                                exit(1);
+                            }
+
+                            p->state.peeked = false;
+                            token.as.integer = fn->returns_count;
+                            nodes_push(&fn->reference_directives, node_alloc(p->module_current, NODE_ATOM, token));
+                        }
+
+                        n = parse_expr(p, POWER_PRE, false, false, NULL);
                     }
 
-                    nodes_push(&fn->returns, parse_expr(p, POWER_PRE, false, false, NULL));
+                    nodes_push(&fn->returns, n);
                     fn->returns_count++;
                 } while (read_token(p, TOKEN_COMMA));
             }
@@ -1556,28 +1576,6 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         fn->is_inline = true;
         fn->inline_token = token;
-    } break;
-
-    case TOKEN_NORETURN: {
-        node = parse_expr(p, POWER_DOT, false, compounds_allowed, NULL);
-        if (node->kind != NODE_FN) {
-            error_node(EK_ERROR, node, "Expected function literal after %s", token_kind_to_cstr(token.kind));
-            exit(1);
-        }
-
-        Node_Fn *fn = (Node_Fn *) node;
-        if (fn->returns.head) {
-            error_node_range(
-                EK_ERROR,
-                fn->returns.head,
-                fn->returns.tail,
-                "The %s keyword can only be applied to a function that returns nothing",
-                token_kind_to_cstr(token.kind));
-            exit(1);
-        }
-
-        fn->is_noreturn = true;
-        fn->noreturn_token = token;
     } break;
 
     default:
@@ -2048,6 +2046,15 @@ static Node *parse_stmt(Parser *p) {
     case TOKEN_RETURN: {
         not_in_extern_assert(p, token);
         local_assert(p, true, token, NULL);
+        if (p->state.fn_current->is_noreturn) {
+            error_token(
+                EK_ERROR,
+                token,
+                "Cannot use %s inside a function that does not return",
+                token_kind_to_cstr(token.kind));
+            exit(1);
+        }
+
         if (p->state.in_defer) {
             error_token(EK_ERROR, token, "Cannot use %s inside 'defer' statement", token_kind_to_cstr(token.kind));
             exit(1);

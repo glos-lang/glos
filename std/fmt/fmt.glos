@@ -74,6 +74,10 @@ type :: (w: io.Writer, t: Type) -> s64, error {
             }
         }
 
+        if v.noreturn {
+            n += w.write([]u8(" -> !"))?
+        }
+
     case Type_Info_Enumeration
         n += w.write([]u8("enum "))?
         n += type(w, v.underlying)?

@@ -1,4 +1,4 @@
-foo :: noreturn () {
+foo :: () -> ! {
     C.abort()
     C :: #import "C"
 }

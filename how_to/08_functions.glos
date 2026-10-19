@@ -53,13 +53,8 @@ main :: () {
     // A call to a function that returns nothing cannot be used as a value.
     // a = hello_world() // Uncomment this and see what happens.
 
-    // Right now, two function attributes exist:
-    //
-    //     inline
-    //     noreturn
-    //
-
-    // 'inline' is a hint to the optimizer that the function is preferable to be inlined.
+    // The function attribute 'inline' is a hint to the optimizer that the function is
+    // preferable to be inlined.
     //
     // Of course, it will only get inlined if it is possible to be inlined. If the function is
     // recursive, then this attribute will do nothing.
@@ -70,10 +65,10 @@ main :: () {
     foo :: inline () {}
     foo()
 
-    // The 'noreturn' marks the function to never return
+    // The return expression '!' marks the function to never return
     //
     // For example, this function enters an infinite loop and can be safely said to never return
-    infinite :: noreturn () {
+    infinite :: () -> ! {
         for {} // Infinite loop
     }
 
