@@ -488,6 +488,59 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     arena_reset(&temp_arena, save);
 }
 
+static void build_stdlib_c_files(Cmd *cmd, size_t nprocs) {
+    const void *save = arena_alloc(&temp_arena, 0);
+    Procs       procs = {.nprocs = nprocs};
+
+    static const char *sources[] = {
+        "std/vendor/raylib/raygui.c",
+    };
+
+    for (size_t i = 0; i < len(sources); i++) {
+        const char *src = sources[i];
+        const char *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
+        if (get_modified_time(obj) >= get_modified_time(src)) {
+            continue;
+        }
+
+        fprintf(stderr, "Building '%s'\n", obj);
+
+        Cmd_Stdio proc_stdio = {0};
+#ifdef PLATFORM_X86_64_WINDOWS
+        proc_stdio.out = (FILE **) arena_alloc(&temp_arena, sizeof(FILE *));
+        procs.callback_before_wait = filter_cl_exe_output;
+
+        cmd_push(cmd, "cl", "/Z7", "/nologo", "/c", "/O2");
+        cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", obj));
+#else
+        cmd_push(cmd, "cc", "-c", "-ggdb", "-O3");
+        cmd_push(cmd, "-o", obj);
+#endif // PLATFORM_X86_64_WINDOWS
+
+        cmd_push(cmd, src);
+
+        const char *proc_name = cmd->data[0];
+        const Proc  proc = cmd_run_async(cmd, proc_stdio);
+        if (proc.id == PROC_INVALID) {
+            error("Could not start process '%s'", proc_name);
+            exit(1);
+        }
+
+        if (!procs_push(&procs, proc)) {
+            error("C Compiler exited abnormally");
+            exit(1);
+        }
+    }
+
+    if (!procs_flush(&procs)) {
+        error("C Compiler exited abnormally");
+        exit(1);
+    }
+
+    da_free(&procs);
+    arena_reset(&temp_arena, save);
+}
+
 static char single_char_prompt(FILE *in, FILE *out, const char *choices, const char **descriptions) {
     fprintf(out, " (");
     for (const char *p = choices, **d = descriptions; *p; p++, d++) {
@@ -1057,6 +1110,7 @@ int main(int argc, char **argv) {
     }
 
     build_glos(&cmd, nprocs);
+    build_stdlib_c_files(&cmd, nprocs);
 
     if (tests) {
         run_tests(&cmd, nprocs, interactive, optimization_level);
