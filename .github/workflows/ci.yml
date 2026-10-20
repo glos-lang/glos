@@ -21,6 +21,7 @@ jobs:
 
       - name: Raylib probe
         run: |
+          sudo apt install libx11-dev
           ./glos raylib.glos
 
   build-linux-musl:
@@ -44,6 +45,7 @@ jobs:
 
       - name: Raylib probe
         run: |
+          sudo apk add libx11-dev
           ./glos raylib.glos
 
   build-macos:
