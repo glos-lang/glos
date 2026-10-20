@@ -74,7 +74,7 @@ static void compile_type_info_init(Compiler *c, Type_Info_Compiler *tic, Type *t
 static void compile_type_info_fn(Compiler *c, Type_Info_Compiler *tic, bool skip_first_arg) {
     const void *checkpoint = arena_alloc(&temp_arena, 0);
 
-    LLVMValueRef fn_fields[3] = {0};
+    LLVMValueRef fn_fields[4] = {0};
     size_t       fn_fields_iota = 0;
 
     assert(tic->type->kind == TYPE_FN);

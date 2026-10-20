@@ -299,7 +299,6 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
         error_node(EK_ERROR, n, "This expression is not constant at compile time");
         exit(c, 1);
-        break;
 
     case TOKEN_BAND:
         value = eval_const_expr(c, unary->value, true);
