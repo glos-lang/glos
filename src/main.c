@@ -11,7 +11,7 @@ static void usage(FILE *f) {
     afprintf(f, ANSI_COLOR_GREEN | ANSI_BOLD, "    glos");
     fprintf(
         f,
-        " [FLAGS...] [FILE|DIRECTORY]\n"
+        " [FLAGS...] INPUT\n"
         "\n");
 
     afprintf(f, ANSI_COLOR_CYAN | ANSI_BOLD, "Flags:\n");
@@ -140,7 +140,12 @@ static Module *import_std_module(Compiler *c, SV name) {
 int main(int argc, char **argv) {
     basic_init();
     atexit(warnings_flush);
+
     shift(&argc, &argv, NULL); // The program
+    if (!argc) {
+        usage(stdout);
+        exit(0);
+    }
 
     int result = 0;
     Cmd cmd = {0};
