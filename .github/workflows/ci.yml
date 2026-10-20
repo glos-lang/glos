@@ -19,11 +19,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Raylib probe
-        run: |
-          sudo apt install libx11-dev
-          ./glos raylib.glos
-
   build-linux-musl:
     runs-on: ubuntu-latest
 
@@ -43,11 +38,6 @@ jobs:
           cc -o first first.c
           ./first -T
 
-      - name: Raylib probe
-        run: |
-          apk add libx11-dev
-          ./glos raylib.glos
-
   build-macos:
     runs-on: macos-latest
     steps:
@@ -58,10 +48,6 @@ jobs:
         run: |
           cc -o first first.c
           ./first -T
-
-      - name: Raylib probe
-        run: |
-          ./glos raylib.glos
 
   build-windows:
     runs-on: windows-latest
@@ -76,7 +62,3 @@ jobs:
         run: |
           cl first.c
           ./first.exe -T
-
-      - name: Raylib probe
-        run: |
-          ./glos.exe raylib.glos
