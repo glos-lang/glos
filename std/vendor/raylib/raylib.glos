@@ -871,13 +871,13 @@ extern {
     IsWindowResized :: () -> bool
 
     // Check if one specific window flag is enabled
-    IsWindowState :: (flag: C.unsigned_int) -> bool
+    IsWindowState :: (flag: ConfigFlags) -> bool
 
     // Set window configuration state using flags
-    SetWindowState :: (flags: C.unsigned_int)
+    SetWindowState :: (flags: ConfigFlags)
 
     // Clear window configuration state flags
-    ClearWindowState :: (flags: C.unsigned_int)
+    ClearWindowState :: (flags: ConfigFlags)
 
     // Toggle window state: fullscreen/windowed, resizes monitor to match window resolution
     ToggleFullscreen :: ()
@@ -1039,7 +1039,7 @@ extern {
     EndShaderMode :: ()
 
     // Begin blending mode (alpha, additive, multiplied, subtract, custom)
-    BeginBlendMode :: (mode: C.int)
+    BeginBlendMode :: (mode: BlendMode)
 
     // End blending mode (reset to default: alpha blending)
     EndBlendMode :: ()
@@ -1078,16 +1078,16 @@ extern {
     GetShaderLocationAttrib :: (shader: Shader, attribName: &C.char) -> C.int
 
     // Set shader uniform value
-    SetShaderValue :: (shader: Shader, locIndex: C.int, value: rawptr, uniformType: C.int)
+    SetShaderValue :: (shader: Shader, locIndex: ShaderLocationIndex, value: rawptr, uniformType: C.int)
 
     // Set shader uniform value vector
-    SetShaderValueV :: (shader: Shader, locIndex: C.int, value: rawptr, uniformType: C.int, count: C.int)
+    SetShaderValueV :: (shader: Shader, locIndex: ShaderLocationIndex, value: rawptr, uniformType: C.int, count: C.int)
 
     // Set shader uniform value (matrix 4x4)
-    SetShaderValueMatrix :: (shader: Shader, locIndex: C.int, mat: Matrix)
+    SetShaderValueMatrix :: (shader: Shader, locIndex: ShaderLocationIndex, mat: Matrix)
 
     // Set shader uniform value and bind the texture (sampler2d)
-    SetShaderValueTexture :: (shader: Shader, locIndex: C.int, texture: Texture2D)
+    SetShaderValueTexture :: (shader: Shader, locIndex: ShaderLocationIndex, texture: Texture2D)
 
     // Unload shader from GPU memory (VRAM)
     UnloadShader :: (shader: Shader)
@@ -1153,16 +1153,16 @@ extern {
     TakeScreenshot :: (fileName: &C.char)
 
     // Setup init configuration flags (view FLAGS)
-    SetConfigFlags :: (flags: C.unsigned_int)
+    SetConfigFlags :: (flags: ConfigFlags)
 
     // Open URL with default system browser (if available)
     OpenURL :: (url: &C.char)
 
     // Set the current threshold (minimum) log level
-    SetTraceLogLevel :: (logLevel: C.int)
+    SetTraceLogLevel :: (logLevel: TraceLogLevel)
 
     // Show trace log messages (LOG_DEBUG, LOG_INFO, LOG_WARNING, LOG_ERROR...)
-    TraceLog :: (logLevel: C.int, text: &C.char, ...)
+    TraceLog :: (logLevel: TraceLogLevel, text: &C.char, ...)
 
     // Set custom trace log
     SetTraceLogCallback :: (callback: TraceLogCallback)
@@ -1348,31 +1348,31 @@ extern {
     PlayAutomationEvent :: (event: AutomationEvent)
 
     // Check if a key has been pressed once
-    IsKeyPressed :: (key: C.int) -> bool
+    IsKeyPressed :: (key: KeyboardKey) -> bool
 
     // Check if a key has been pressed again
-    IsKeyPressedRepeat :: (key: C.int) -> bool
+    IsKeyPressedRepeat :: (key: KeyboardKey) -> bool
 
     // Check if a key is being pressed
-    IsKeyDown :: (key: C.int) -> bool
+    IsKeyDown :: (key: KeyboardKey) -> bool
 
     // Check if a key has been released once
-    IsKeyReleased :: (key: C.int) -> bool
+    IsKeyReleased :: (key: KeyboardKey) -> bool
 
     // Check if a key is NOT being pressed
-    IsKeyUp :: (key: C.int) -> bool
+    IsKeyUp :: (key: KeyboardKey) -> bool
 
     // Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
-    GetKeyPressed :: () -> C.int
+    GetKeyPressed :: () -> KeyboardKey
 
     // Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
-    GetCharPressed :: () -> C.int
+    GetCharPressed :: () -> rune
 
     // Get name of a QWERTY key on the current keyboard layout (eg returns string 'q' for KEY_A on an AZERTY keyboard)
-    GetKeyName :: (key: C.int) -> &C.char
+    GetKeyName :: (key: KeyboardKey) -> &C.char
 
     // Set a custom key to exit program (default is ESC)
-    SetExitKey :: (key: C.int)
+    SetExitKey :: (key: KeyboardKey)
 
     // Check if a gamepad is available
     IsGamepadAvailable :: (gamepad: C.int) -> bool
@@ -1381,25 +1381,25 @@ extern {
     GetGamepadName :: (gamepad: C.int) -> &C.char
 
     // Check if a gamepad button has been pressed once
-    IsGamepadButtonPressed :: (gamepad: C.int, button: C.int) -> bool
+    IsGamepadButtonPressed :: (gamepad: C.int, button: GamepadButton) -> bool
 
     // Check if a gamepad button is being pressed
-    IsGamepadButtonDown :: (gamepad: C.int, button: C.int) -> bool
+    IsGamepadButtonDown :: (gamepad: C.int, button: GamepadButton) -> bool
 
     // Check if a gamepad button has been released once
-    IsGamepadButtonReleased :: (gamepad: C.int, button: C.int) -> bool
+    IsGamepadButtonReleased :: (gamepad: C.int, button: GamepadButton) -> bool
 
     // Check if a gamepad button is NOT being pressed
-    IsGamepadButtonUp :: (gamepad: C.int, button: C.int) -> bool
+    IsGamepadButtonUp :: (gamepad: C.int, button: GamepadButton) -> bool
 
     // Get the last gamepad button pressed
-    GetGamepadButtonPressed :: () -> C.int
+    GetGamepadButtonPressed :: () -> GamepadButton
 
     // Get axis count for a gamepad
-    GetGamepadAxisCount :: (gamepad: C.int) -> C.int
+    GetGamepadAxisCount :: (gamepad: C.int) -> GamepadAxis
 
     // Get movement value for a gamepad axis
-    GetGamepadAxisMovement :: (gamepad: C.int, axis: C.int) -> C.float
+    GetGamepadAxisMovement :: (gamepad: C.int, axis: GamepadAxis) -> C.float
 
     // Set internal gamepad mappings (SDL_GameControllerDB)
     SetGamepadMappings :: (mappings: &C.char) -> C.int
@@ -1408,16 +1408,16 @@ extern {
     SetGamepadVibration :: (gamepad: C.int, leftMotor: C.float, rightMotor: C.float, duration: C.float)
 
     // Check if a mouse button has been pressed once
-    IsMouseButtonPressed :: (button: C.int) -> bool
+    IsMouseButtonPressed :: (button: MouseButton) -> bool
 
     // Check if a mouse button is being pressed
-    IsMouseButtonDown :: (button: C.int) -> bool
+    IsMouseButtonDown :: (button: MouseButton) -> bool
 
     // Check if a mouse button has been released once
-    IsMouseButtonReleased :: (button: C.int) -> bool
+    IsMouseButtonReleased :: (button: MouseButton) -> bool
 
     // Check if a mouse button is NOT being pressed
-    IsMouseButtonUp :: (button: C.int) -> bool
+    IsMouseButtonUp :: (button: MouseButton) -> bool
 
     // Get mouse position X
     GetMouseX :: () -> C.int
@@ -1447,7 +1447,7 @@ extern {
     GetMouseWheelMoveV :: () -> Vector2
 
     // Set mouse cursor
-    SetMouseCursor :: (cursor: C.int)
+    SetMouseCursor :: (cursor: MouseCursor)
 
     // Get touch position X for touch point 0 (relative to screen size)
     GetTouchX :: () -> C.int
@@ -1465,10 +1465,10 @@ extern {
     GetTouchPointCount :: () -> C.int
 
     // Enable a set of gestures using flags
-    SetGesturesEnabled :: (flags: C.unsigned_int)
+    SetGesturesEnabled :: (flags: Gesture)
 
     // Check if a gesture have been detected
-    IsGestureDetected :: (gesture: C.unsigned_int) -> bool
+    IsGestureDetected :: (gesture: Gesture) -> bool
 
     // Get latest detected gesture
     GetGestureDetected :: () -> C.int
@@ -1489,7 +1489,7 @@ extern {
     GetGesturePinchAngle :: () -> C.float
 
     // Update camera position for selected mode
-    UpdateCamera :: (camera: &Camera, mode: C.int)
+    UpdateCamera :: (camera: &Camera, mode: CameraMode)
 
     // Update camera movement/rotation
     UpdateCameraPro :: (camera: &Camera, movement: Vector3, rotation: Vector3, zoom: C.float)
@@ -1945,7 +1945,7 @@ extern {
     LoadTextureFromImage :: (image: Image) -> Texture2D
 
     // Load cubemap from image, multiple image cubemap layouts supported
-    LoadTextureCubemap :: (image: Image, layout: C.int) -> TextureCubemap
+    LoadTextureCubemap :: (image: Image, layout: CubemapLayout) -> TextureCubemap
 
     // Load texture for rendering (framebuffer)
     LoadRenderTexture :: (width: C.int, height: C.int) -> RenderTexture2D
@@ -1972,10 +1972,10 @@ extern {
     GenTextureMipmaps :: (texture: &Texture2D)
 
     // Set texture scaling filter mode
-    SetTextureFilter :: (texture: Texture2D, filter: C.int)
+    SetTextureFilter :: (texture: Texture2D, filter: TextureFilter)
 
     // Set texture wrapping mode
-    SetTextureWrap :: (texture: Texture2D, wrap: C.int)
+    SetTextureWrap :: (texture: Texture2D, wrap: TextureWrap)
 
     // Draw a Texture2D
     DrawTexture :: (texture: Texture2D, posX: C.int, posY: C.int, tint: Color)
@@ -2038,13 +2038,13 @@ extern {
     GetColor :: (hexValue: C.unsigned_int) -> Color
 
     // Get Color from a source pixel pointer of certain format
-    GetPixelColor :: (srcPtr: rawptr, format: C.int) -> Color
+    GetPixelColor :: (srcPtr: rawptr, format: PixelFormat) -> Color
 
     // Set color formatted into destination pixel pointer
-    SetPixelColor :: (dstPtr: rawptr, color: Color, format: C.int)
+    SetPixelColor :: (dstPtr: rawptr, color: Color, format: PixelFormat)
 
     // Get pixel data size in bytes for certain format
-    GetPixelDataSize :: (width: C.int, height: C.int, format: C.int) -> C.int
+    GetPixelDataSize :: (width: C.int, height: C.int, format: PixelFormat) -> C.int
 
     // Get the default Font
     GetFontDefault :: () -> Font
@@ -2065,7 +2065,7 @@ extern {
     IsFontValid :: (font: Font) -> bool
 
     // Load font data for further use
-    LoadFontData :: (fileData: &C.unsigned_char, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int, type: C.int, glyphCount: &C.int) -> &GlyphInfo
+    LoadFontData :: (fileData: &C.unsigned_char, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int, type: FontType, glyphCount: &C.int) -> &GlyphInfo
 
     // Generate image font atlas using chars info
     GenImageFontAtlas :: (glyphs: &GlyphInfo, glyphRecs: &&Rectangle, glyphCount: C.int, fontSize: C.int, padding: C.int, packMethod: C.int) -> Image
@@ -2125,25 +2125,25 @@ extern {
     UnloadUTF8 :: (text: &C.char)
 
     // Load all codepoints from a UTF-8 text string, codepoints count returned by parameter
-    LoadCodepoints :: (text: &C.char, count: &C.int) -> &C.int
+    LoadCodepoints :: (text: &C.char, count: &C.int) -> &rune
 
     // Unload codepoints data from memory
-    UnloadCodepoints :: (codepoints: &C.int)
+    UnloadCodepoints :: (codepoints: &rune)
 
     // Get total number of codepoints in a UTF-8 encoded string
     GetCodepointCount :: (text: &C.char) -> C.int
 
     // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-    GetCodepoint :: (text: &C.char, codepointSize: &C.int) -> C.int
+    GetCodepoint :: (text: &C.char, codepointSize: &C.int) -> rune
 
     // Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-    GetCodepointNext :: (text: &C.char, codepointSize: &C.int) -> C.int
+    GetCodepointNext :: (text: &C.char, codepointSize: &C.int) -> rune
 
     // Get previous codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
-    GetCodepointPrevious :: (text: &C.char, codepointSize: &C.int) -> C.int
+    GetCodepointPrevious :: (text: &C.char, codepointSize: &C.int) -> rune
 
     // Encode one codepoint into UTF-8 byte array (array length returned as parameter)
-    CodepointToUTF8 :: (codepoint: C.int, utf8Size: &C.int) -> &C.char
+    CodepointToUTF8 :: (codepoint: rune, utf8Size: &C.int) -> &C.char
 
     // Load text as separate lines ('\n')
     LoadTextLines :: (text: &C.char, count: &C.int) -> &&C.char
