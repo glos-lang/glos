@@ -1,0 +1,49 @@
+Write_Func :: (context: rawptr, data: rawptr, size: C.int)
+
+extern {
+    #link "stbi_write_png"
+    write_png :: (filename: &C.char, w: C.int, h: C.int, comp: C.int, data: rawptr, stride_in_bytes: C.int) -> C.int
+
+    #link "stbi_write_bmp"
+    write_bmp :: (filename: &C.char, w: C.int, h: C.int, comp: C.int, data: rawptr) -> C.int
+
+    #link "stbi_write_tga"
+    write_tga :: (filename: &C.char, w: C.int, h: C.int, comp: C.int, data: rawptr) -> C.int
+
+    #link "stbi_write_hdr"
+    write_hdr :: (filename: &C.char, w: C.int, h: C.int, comp: C.int, data: &C.float) -> C.int
+
+    #link "stbi_write_jpg"
+    write_jpg :: (filename: &C.char, x: C.int, y: C.int, comp: C.int, data: rawptr, quality: C.int) -> C.int
+
+    #link "stbi_write_png_to_func"
+    write_png_to_func :: (func: Write_Func, context: rawptr, w: C.int, h: C.int, comp: C.int, data: rawptr, stride_in_bytes: C.int) -> C.int
+
+    #link "stbi_write_bmp_to_func"
+    write_bmp_to_func :: (func: Write_Func, context: rawptr, w: C.int, h: C.int, comp: C.int, data: rawptr) -> C.int
+
+    #link "stbi_write_tga_to_func"
+    write_tga_to_func :: (func: Write_Func, context: rawptr, w: C.int, h: C.int, comp: C.int, data: rawptr) -> C.int
+
+    #link "stbi_write_hdr_to_func"
+    write_hdr_to_func :: (func: Write_Func, context: rawptr, w: C.int, h: C.int, comp: C.int, data: &C.float) -> C.int
+
+    #link "stbi_write_jpg_to_func"
+    write_jpg_to_func :: (func: Write_Func, context: rawptr, x: C.int, y: C.int, comp: C.int, data: rawptr, quality: C.int) -> C.int
+
+    #link "stbi_flip_vertically_on_write"
+    flip_vertically_on_write :: (flip_boolean: C.int)
+}
+
+#if PLATFORM == {
+case .LINUX
+    #library "../stb_image_write.o"
+
+case .MACOS
+    #library "../stb_image_write.o"
+
+case .WINDOWS
+    #library "../stb_image_write.obj"
+}
+
+C :: #import "C"

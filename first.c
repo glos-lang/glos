@@ -494,6 +494,8 @@ static void build_stdlib_c_files(Cmd *cmd, size_t nprocs) {
 
     static const char *sources[] = {
         "std/vendor/raylib/raygui.c",
+        "std/vendor/stb/stb_image.c",
+        "std/vendor/stb/stb_image_write.c",
     };
 
     for (size_t i = 0; i < len(sources); i++) {

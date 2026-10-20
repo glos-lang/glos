@@ -1,0 +1,183 @@
+STBI_VERSION :: 1
+
+IO_Callbacks :: struct {
+    read: (user: rawptr, data: &C.char, size: C.int) -> C.int // fill 'data' with 'size' bytes.  return number of bytes actually read
+    skip: (user: rawptr, n: C.int)                            // skip the next 'n' bytes, or 'unget' the last -n bytes if negative
+    eof:  (user: rawptr) -> C.int                             // returns nonzero if we are at end of file/data
+}
+
+extern {
+    ////////////////////////////////////
+    //
+    // 8-bits-per-channel interface
+    //
+    ////////////////////////////////////
+
+    #link "stbi_load_from_memory"
+    load_from_memory    :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+
+    #link "stbi_load_from_callbacks"
+    load_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+
+    #link "stbi_load"
+    load           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+
+    #link "stbi_load_from_file"
+    load_from_file :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char // file pointer is left pointing immediately after image
+
+    #link "stbi_load_gif_from_memory"
+    load_gif_from_memory :: (buffer: &C.unsigned_char, len: C.int, delays: &&C.int, x: &C.int, y: &C.int, z: &C.int, comp: &C.int, req_comp: C.int) -> &C.unsigned_char
+
+    ////////////////////////////////////
+    //
+    // 16-bits-per-channel interface
+    //
+    ////////////////////////////////////
+
+    #link "stbi_load_16_from_memory"
+    load_16_from_memory    :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+
+    #link "stbi_load_16_from_callbacks"
+    load_16_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+
+    #link "stbi_load_16"
+    load_16           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+
+    #link "stbi_load_from_file_16"
+    load_from_file_16 :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+
+    ////////////////////////////////////
+    //
+    // float-per-channel interface
+    //
+    ////////////////////////////////////
+
+    #link "stbi_loadf_from_memory"
+    loadf_from_memory :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.float
+
+    #link "stbi_loadf_from_callbacks"
+    loadf_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int,  channels_in_file: &C.int, desired_channels: C.int) -> &C.float
+
+    #link "stbi_loadf"
+    loadf :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.float
+
+    #link "stbi_loadf_from_file"
+    loadf_from_file :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.float
+
+    #link "stbi_hdr_to_ldr_gamma"
+    hdr_to_ldr_gamma :: (gamma: C.float)
+
+    #link "stbi_hdr_to_ldr_scale"
+    hdr_to_ldr_scale :: (scale: C.float)
+
+    #link "stbi_ldr_to_hdr_gamma"
+    ldr_to_hdr_gamma :: (gamma: C.float)
+
+    #link "stbi_ldr_to_hdr_scale"
+    ldr_to_hdr_scale :: (scale: C.float)
+
+    #link "stbi_is_hdr_from_callbacks"
+    is_hdr_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr) -> C.int
+
+    #link "stbi_is_hdr_from_memory"
+    is_hdr_from_memory :: (buffer: &C.unsigned_char, len: C.int) -> C.int
+
+    #link "stbi_is_hdr"
+    is_hdr :: (filename: &C.char) -> C.int
+
+    #link "stbi_is_hdr_from_file"
+    is_hdr_from_file :: (f: &C.FILE) -> C.int
+
+    // get a VERY brief reason for failure
+    // on most compilers (and ALL modern mainstream compilers) this is threadsafe
+    #link "stbi_failure_reason"
+    failure_reason :: () -> &C.char
+
+    // free the loaded image -- this is just free()
+    #link "stbi_image_free"
+    image_free :: (retval_from_stbi_load: rawptr)
+
+    // get image dimensions & components without fully decoding
+    #link "stbi_info_from_memory"
+    info_from_memory :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, comp: &C.int) -> C.int
+
+    #link "stbi_info_from_callbacks"
+    info_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, comp: &C.int) -> C.int
+
+    #link "stbi_is_16_bit_from_memory"
+    is_16_bit_from_memory :: (buffer: &C.unsigned_char, len: C.int) -> C.int
+
+    #link "stbi_is_16_bit_from_callbacks"
+    is_16_bit_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr) -> C.int
+
+    #link "stbi_info"
+    info :: (filename: &C.char,     x: &C.int, y: &C.int, comp: &C.int) -> C.int
+
+    #link "stbi_info_from_file"
+    info_from_file :: (f: &C.FILE,                  x: &C.int, y: &C.int, comp: &C.int) -> C.int
+
+    #link "stbi_is_16_bit"
+    is_16_bit :: (filename: &C.char) -> C.int
+
+    #link "stbi_is_16_bit_from_file"
+    is_16_bit_from_file :: (f: &C.FILE) -> C.int
+
+    // for image formats that explicitly notate that they have premultiplied alpha,
+    // we just return the colors as stored in the file. set this flag to force
+    // unpremultiplication. results are undefined if the unpremultiply overflow.
+    #link "stbi_set_unpremultiply_on_load"
+    set_unpremultiply_on_load :: (flag_true_if_should_unpremultiply: C.int)
+
+    // indicate whether we should process iphone images back to canonical format,
+    // or just pass them through "as-is"
+    #link "stbi_convert_iphone_png_to_rgb"
+    convert_iphone_png_to_rgb :: (flag_true_if_should_convert: C.int)
+
+    // flip the image vertically, so the first pixel in the output array is the bottom left
+    #link "stbi_set_flip_vertically_on_load"
+    set_flip_vertically_on_load :: (flag_true_if_should_flip: C.int)
+
+    // as above, but only applies to images loaded on the thread that calls the function
+    // this function is only available if your compiler supports thread-local variables;
+    // calling it will fail to link if your compiler doesn't
+    #link "stbi_set_unpremultiply_on_load_thread"
+    set_unpremultiply_on_load_thread :: (flag_true_if_should_unpremultiply: C.int)
+
+    #link "stbi_convert_iphone_png_to_rgb_thread"
+    convert_iphone_png_to_rgb_thread :: (flag_true_if_should_convert: C.int)
+
+    #link "stbi_set_flip_vertically_on_load_thread"
+    set_flip_vertically_on_load_thread :: (flag_true_if_should_flip: C.int)
+
+    // ZLIB client - used by PNG, available for other purposes
+    #link "stbi_zlib_decode_malloc_guesssize"
+    zlib_decode_malloc_guesssize :: (buffer: &C.char, len: C.int, initial_size: C.int, outlen: &C.int) -> &C.char
+
+    #link "stbi_zlib_decode_malloc_guesssize_headerflag"
+    zlib_decode_malloc_guesssize_headerflag :: (buffer: &C.char, len: C.int, initial_size: C.int, outlen: &C.int, parse_header: C.int) -> &C.char
+
+    #link "stbi_zlib_decode_malloc"
+    zlib_decode_malloc :: (buffer: &C.char, len: C.int, outlen: &C.int) -> &C.char
+
+    #link "stbi_zlib_decode_buffer"
+    zlib_decode_buffer :: (obuffer: &C.char, olen: C.int,  ibuffer: &C.char, ilen: C.int) -> C.int
+
+    #link "stbi_zlib_decode_noheader_malloc"
+    zlib_decode_noheader_malloc :: (buffer: &C.char, len: C.int, outlen: &C.int) -> &C.char
+
+    #link "stbi_zlib_decode_noheader_buffer"
+    zlib_decode_noheader_buffer :: (obuffer: &C.char, olen: C.int,  ibuffer: &C.char, ilen: C.int) -> C.int
+}
+
+#if PLATFORM == {
+case .LINUX
+    #library "../stb_image.o"
+
+case .MACOS
+    #library "../stb_image.o"
+
+case .WINDOWS
+    #library "../stb_image.obj"
+}
+
+C :: #import "C"
