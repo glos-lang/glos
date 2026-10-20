@@ -384,6 +384,7 @@ int main(int argc, char **argv) {
 #endif // PROFILING
 
     if (compiler.run) {
+        todo();
         const char *child_name = output_path;
 
 #ifndef PLATFORM_X86_64_WINDOWS
@@ -403,7 +404,6 @@ int main(int argc, char **argv) {
         }
 
         result = cmd_wait(child_proc);
-        todo();
     }
 
     warnings_flush();
