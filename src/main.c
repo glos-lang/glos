@@ -403,6 +403,7 @@ int main(int argc, char **argv) {
         }
 
         result = cmd_wait(child_proc);
+        todo();
     }
 
     warnings_flush();
