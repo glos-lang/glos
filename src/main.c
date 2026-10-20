@@ -298,13 +298,13 @@ int main(int argc, char **argv) {
     compiler.main_module = module_get(&parser, input_path);
     compiler.main_module->name = sv_from_cstr("main");
 
-    const bool input_is_directory = directory_exists(input_path);
-    if (input_is_directory) {
-        parser.root = sv_from_cstr(input_path);
-        input_path = get_relative_path(parser.cwd, parser.root, &default_arena);
-    } else {
+    compiler.main_module->is_file = !directory_exists(input_path);
+    if (compiler.main_module->is_file) {
         parser.root = sv_from_cstr(get_parent_dir_path(input_path, &default_arena));
         input_path = get_relative_path(parser.cwd, sv_from_cstr(input_path), &default_arena);
+    } else {
+        parser.root = sv_from_cstr(input_path);
+        input_path = get_relative_path(parser.cwd, parser.root, &default_arena);
     }
 
     // Import the builtin module
@@ -331,7 +331,12 @@ int main(int argc, char **argv) {
     perf_begin();
 
     parser.module_current = compiler.main_module;
-    if (input_is_directory) {
+    if (compiler.main_module->is_file) {
+        if (parse_file(&parser, input_path) != PARSE_OK) {
+            error_standalone(EK_ERROR, "Could not read file '%s'", input_path);
+            exit(1);
+        }
+    } else {
         switch (parse_directory(&parser, input_path)) {
         case PARSE_OK:
             // Pass
@@ -349,11 +354,6 @@ int main(int argc, char **argv) {
 
         default:
             unreachable();
-        }
-    } else {
-        if (parse_file(&parser, input_path) != PARSE_OK) {
-            error_standalone(EK_ERROR, "Could not read file '%s'", input_path);
-            exit(1);
         }
     }
 

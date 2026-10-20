@@ -2652,7 +2652,7 @@ rAudioProcessor :: distinct rawptr
 #if PLATFORM == {
 case .LINUX
     #library {
-        "raylib_linux"
+        "linux/raylib.a"
         "dl"
         "X11"
         "pthread"
@@ -2660,14 +2660,14 @@ case .LINUX
 
 case .MACOS
     #library {
-        "raylib_macos"
+        "macos/raylib.a"
 		"Cocoa.framework"
 		"OpenGL.framework"
 		"IOKit.framework"
     }
 case .WINDOWS
     #library {
-        "raylib_windows"
+        "windows/raylib.lib"
         "winmm"
         "gdi32"
         "user32"
