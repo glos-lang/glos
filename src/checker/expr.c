@@ -2344,7 +2344,22 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
         Node_Import *import = (Node_Import *) n;
         if (import->libraries.head) {
             ll_foreach(it, &import->libraries) {
-                link_flags_add_libname(c->link_flags, it->token.as.string);
+                SV name = it->token.as.string;
+                if (sv_find(name, '/', NULL)) {
+                    SV cwd = sv_from_cstr(n->module->absolute_path);
+                    if (n->module->is_file) {
+                        while (cwd.count && cwd.data[cwd.count - 1] != '/') {
+                            cwd.count--;
+                        }
+
+                        if (cwd.count > 1) {
+                            cwd.count--;
+                        }
+                    }
+                    da_push(c->link_flags, get_absolute_path(cwd, name, &default_arena));
+                } else {
+                    link_flags_add_libname(c->link_flags, name);
+                }
             }
         } else {
             make_sure_import_is_ready(c, import);

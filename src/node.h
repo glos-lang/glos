@@ -44,7 +44,8 @@ typedef enum {
 typedef struct Module Module;
 
 struct Module {
-    SV name;
+    SV   name;
+    bool is_file;
 
     const char *absolute_path;
     const char *relative_path;
