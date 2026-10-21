@@ -1,0 +1,114 @@
+Coord :: distinct C.int
+
+// Mostly for internal use, but this is the maximum supported coordinate value.
+MAXVAL :: 0x7FFFFFFF
+
+Rect :: struct {
+    // reserved for your use:
+    id: C.int
+
+    // input:
+    w, h: Coord
+
+    // output:
+    x, y: Coord
+    was_packed: C.int  // non-zero if valid packing
+}
+
+Node :: struct {
+    x, y: Coord
+    next: &Node
+}
+
+Context :: struct {
+    width:       C.int
+    height:      C.int
+    align:       C.int
+    init_mode:   C.int
+    heuristic:   C.int
+    num_nodes:   C.int
+    active_head: &Node
+    free_head:   &Node
+    extra:       [2]Node // we allocate two extra nodes so optimal user-node-count is 'width' not 'width+2'
+}
+
+Heuristic :: enum C.int {
+    Skyline_default = 0
+    Skyline_BL_sortHeight = 0
+    Skyline_BF_sortHeight
+}
+
+extern {
+    // Assign packed locations to rectangles. The rectangles are of type
+    // 'Rect' defined below, stored in the array 'rects', and there
+    // are 'num_rects' many of them.
+    //
+    // Rectangles which are successfully packed have the 'was_packed' flag
+    // set to a non-zero value and 'x' and 'y' store the minimum location
+    // on each axis (i.e. bottom-left in cartesian coordinates, top-left
+    // if you imagine y increasing downwards). Rectangles which do not fit
+    // have the 'was_packed' flag set to 0.
+    //
+    // You should not try to access the 'rects' array from another thread
+    // while this function is running, as the function temporarily reorders
+    // the array while it executes.
+    //
+    // To pack into another rectangle, you need to call stbrp_init_target
+    // again. To continue packing into the same rectangle, you can call
+    // this function again. Calling this multiple times with multiple rect
+    // arrays will probably produce worse packing results than calling it
+    // a single time with the full rectangle array, but the option is
+    // available.
+    //
+    // The function returns 1 if all of the rectangles were successfully
+    // packed and 0 otherwise.
+    #link "stbrp_pack_rects"
+    pack_rects :: (context: &Context, rects: &Rect, num_rects: C.int) -> C.int
+
+    // Initialize a rectangle packer to:
+    //    pack a rectangle that is 'width' by 'height' in dimensions
+    //    using temporary storage provided by the array 'nodes', which is 'num_nodes' long
+    //
+    // You must call this function every time you start packing into a new target.
+    //
+    // There is no "shutdown" function. The 'nodes' memory must stay valid for
+    // the following stbrp_pack_rects() call (or calls), but can be freed after
+    // the call (or calls) finish.
+    //
+    // Note: to guarantee best results, either:
+    //       1. make sure 'num_nodes' >= 'width'
+    //   or  2. call stbrp_allow_out_of_mem() defined below with 'allow_out_of_mem = 1'
+    //
+    // If you don't do either of the above things, widths will be quantized to multiples
+    // of small integers to guarantee the algorithm doesn't run out of temporary storage.
+    //
+    // If you do #2, then the non-quantized algorithm will be used, but the algorithm
+    // may run out of temporary storage and be unable to pack some rectangles.
+    #link "stbrp_init_target"
+    init_target :: (context: &Context, width: C.int, height: C.int, nodes: &Node, num_nodes: C.int)
+
+    // Optionally call this function after init but before doing any packing to
+    // change the handling of the out-of-temp-memory scenario, described above.
+    // If you call init again, this will be reset to the default (false).
+    #link "stbrp_setup_allow_out_of_mem"
+    setup_allow_out_of_mem :: (context: &Context, allow_out_of_mem: C.int)
+
+    // Optionally select which packing heuristic the library should use. Different
+    // heuristics will produce better/worse results for different data sets.
+    // If you call init again, this will be reset to the default.
+    #link "stbrp_setup_heuristic"
+    setup_heuristic :: (context: &Context, heuristic: Heuristic)
+}
+
+#if PLATFORM == {
+case .LINUX
+    #library "./stb_rect_pack.o"
+
+case .MACOS
+    #library "./stb_rect_pack.o"
+
+case .WINDOWS
+    #library "./stb_rect_pack.obj"
+}
+
+C :: #import "C"

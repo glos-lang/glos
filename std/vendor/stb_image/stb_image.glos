@@ -1,5 +1,3 @@
-STBI_VERSION :: 1
-
 IO_Callbacks :: struct {
     read: (user: rawptr, data: &C.char, size: C.int) -> C.int // fill 'data' with 'size' bytes.  return number of bytes actually read
     skip: (user: rawptr, n: C.int)                            // skip the next 'n' bytes, or 'unget' the last -n bytes if negative
