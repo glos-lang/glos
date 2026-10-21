@@ -37,13 +37,13 @@ extern {
 
 #if PLATFORM == {
 case .LINUX
-    #library "../stb_image_write.o"
+    #library "./stb_image_write.o"
 
 case .MACOS
-    #library "../stb_image_write.o"
+    #library "./stb_image_write.o"
 
 case .WINDOWS
-    #library "../stb_image_write.obj"
+    #library "./stb_image_write.obj"
 }
 
 C :: #import "C"

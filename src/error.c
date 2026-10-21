@@ -27,7 +27,7 @@ static void error_begin(Error_Kind kind) {
         break;
 
     case EK_WARN:
-        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Warn");
+        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "Warning");
         break;
 
     case EK_NOTE:

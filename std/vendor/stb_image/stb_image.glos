@@ -171,13 +171,13 @@ extern {
 
 #if PLATFORM == {
 case .LINUX
-    #library "../stb_image.o"
+    #library "./stb_image.o"
 
 case .MACOS
-    #library "../stb_image.o"
+    #library "./stb_image.o"
 
 case .WINDOWS
-    #library "../stb_image.obj"
+    #library "./stb_image.obj"
 }
 
 C :: #import "C"
