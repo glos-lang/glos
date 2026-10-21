@@ -791,7 +791,7 @@ void compile_stmt_return(Compiler *c, Node_Return *returnn) {
     compile_return(c, (Node *) returnn, compile_expr(c, returnn->value, false), group_values_count_save);
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 void compile_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -799,6 +799,7 @@ void compile_stmt(Compiler *c, Node *n) {
 
     switch (n->kind) {
     case NODE_ASSERT:
+    case NODE_LINKER:
         // Pass
         break;
 

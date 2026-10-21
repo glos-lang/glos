@@ -295,7 +295,7 @@ void check_stmt_return(Compiler *c, Node_Return *returnn) {
     n->type = *fn_type->return_type;
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 void check_stmt(Compiler *c, Node *n) {
     if (!n) {
         return;
@@ -305,6 +305,30 @@ void check_stmt(Compiler *c, Node *n) {
     case NODE_ASSERT:
         check_stmt_assert(c, (Node_Assert *) n);
         break;
+
+    case NODE_LINKER: {
+        Node_Linker *linker = (Node_Linker *) n;
+        ll_foreach(it, &linker->children) {
+            SV name = it->token.as.string;
+            if (n->token.kind == TOKEN_DIRECTIVE_LINKOPT) {
+                da_push(c->link_flags, arena_sv_to_cstr(&default_arena, name));
+            } else if (sv_find(name, '/', NULL)) {
+                SV cwd = sv_from_cstr(n->module->absolute_path);
+                if (n->module->is_file) {
+                    while (cwd.count && cwd.data[cwd.count - 1] != '/') {
+                        cwd.count--;
+                    }
+
+                    if (cwd.count > 1) {
+                        cwd.count--;
+                    }
+                }
+                da_push(c->link_flags, get_absolute_path(cwd, name, &default_arena));
+            } else {
+                link_flags_add_libname(c->link_flags, name);
+            }
+        }
+    } break;
 
     case NODE_DEFINE:
         check_stmt_define(c, (Node_Define *) n);

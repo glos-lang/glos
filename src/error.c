@@ -68,7 +68,7 @@ static void range_apply_token(Range *r, Token t) {
     }
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 static void range_apply_node(Range *r, const Node *n) {
     if (!n) {
         return;
@@ -141,6 +141,15 @@ static void range_apply_node(Range *r, const Node *n) {
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
         range_apply_token(r, import->path);
+    } break;
+
+    case NODE_LINKER: {
+        Node_Linker *linker = (Node_Linker *) n;
+        if (linker->end.kind == TOKEN_RBRACE) {
+            range_apply_token(r, linker->end);
+        } else {
+            range_apply_node(r, linker->children.tail);
+        }
     } break;
 
     case NODE_POLYMORPH: {

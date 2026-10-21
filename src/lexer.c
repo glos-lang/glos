@@ -355,7 +355,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     return token;
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 95, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
 
@@ -767,6 +767,8 @@ Token lexer_iter(Lexer *l) {
             token.kind = TOKEN_DIRECTIVE_THREAD;
         } else if (sv_match(token.sv, "#private")) {
             token.kind = TOKEN_DIRECTIVE_PRIVATE;
+        } else if (sv_match(token.sv, "#linkopt")) {
+            token.kind = TOKEN_DIRECTIVE_LINKOPT;
         } else if (sv_match(token.sv, "#library")) {
             token.kind = TOKEN_DIRECTIVE_LIBRARY;
         } else if (sv_match(token.sv, "#reference")) {

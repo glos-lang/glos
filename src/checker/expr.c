@@ -19,7 +19,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
     }
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node_Fn *check_assignment_lhs_for_arithmetics(Compiler *c, Node_Binary *binary, Node *n) {
     const Token_Kind op = binary->node.token.kind;
     if (op != TOKEN_SET && n->kind == NODE_INDEX) {
@@ -127,7 +127,7 @@ static void check_assignment(Compiler *c, Node_Binary *binary) {
 
 void check_expr_atom(Compiler *c, Node_Atom *atom, Ref_Kind ref, bool *is_ref_valid) {
     Node *n = (Node *) atom;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_INT:
         n->type = (Type) {.kind = TYPE_INT};
@@ -423,7 +423,7 @@ static void check_that_type_is_hashable(Compiler *c, Node *n, const Type *type, 
 
 void check_expr_unary(Compiler *c, Node_Unary *unary, bool *is_ref_valid) {
     Node *n = (Node *) unary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_SUB:
         check_expr(c, unary->value, REF_NONE);
@@ -534,7 +534,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
 
 void check_expr_binary(Compiler *c, Node_Binary *binary, bool check_children) {
     Node *n = (Node *) binary;
-    static_assert(COUNT_TOKENS == 94, "");
+    static_assert(COUNT_TOKENS == 95, "");
     switch (n->token.kind) {
     case TOKEN_ADD:
     case TOKEN_SUB:
@@ -2298,7 +2298,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
         return;
@@ -2342,28 +2342,7 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
-        if (import->libraries.head) {
-            ll_foreach(it, &import->libraries) {
-                SV name = it->token.as.string;
-                if (sv_find(name, '/', NULL)) {
-                    SV cwd = sv_from_cstr(n->module->absolute_path);
-                    if (n->module->is_file) {
-                        while (cwd.count && cwd.data[cwd.count - 1] != '/') {
-                            cwd.count--;
-                        }
-
-                        if (cwd.count > 1) {
-                            cwd.count--;
-                        }
-                    }
-                    da_push(c->link_flags, get_absolute_path(cwd, name, &default_arena));
-                } else {
-                    link_flags_add_libname(c->link_flags, name);
-                }
-            }
-        } else {
-            make_sure_import_is_ready(c, import);
-        }
+        make_sure_import_is_ready(c, import);
         n->type = (Type) {.kind = TYPE_MODULE, .spec.module = import->module};
     } break;
 

@@ -1173,7 +1173,7 @@ void hasher_add_const_value(Hasher *h, const Const_Value *v) {
     }
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {
         [NODE_ATOM] = sizeof(Node_Atom), // This comment is here to prevent clang-format from messing this up
@@ -1185,6 +1185,7 @@ size_t node_size(Node_Kind kind) {
         [NODE_MEMBER] = sizeof(Node_Member),
         [NODE_ASSERT] = sizeof(Node_Assert),
         [NODE_IMPORT] = sizeof(Node_Import),
+        [NODE_LINKER] = sizeof(Node_Linker),
         [NODE_DISTINCT] = sizeof(Node_Distinct),
         [NODE_POLYMORPH] = sizeof(Node_Polymorph),
         [NODE_INTERPOLATION] = sizeof(Node_Interpolation),
@@ -1365,7 +1366,7 @@ static void polymorphs_debug_impl(FILE *f, Polymorphs ns, int depth, const char 
     }
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label) {
     if (!n) {
         return;
@@ -1439,6 +1440,12 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
     case NODE_IMPORT: {
         Node_Import *import = (Node_Import *) n;
         fprintf(f, "Import '%s'\n ", import->module->relative_path);
+    } break;
+
+    case NODE_LINKER: {
+        Node_Linker *linker = (Node_Linker *) n;
+        fprintf(f, "Linker\n ");
+        nodes_debug_impl(f, linker->children, depth + 1, "Children");
     } break;
 
     case NODE_DISTINCT: {

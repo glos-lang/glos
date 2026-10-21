@@ -479,6 +479,7 @@ typedef enum {
     NODE_MEMBER,
     NODE_ASSERT,
     NODE_IMPORT,
+    NODE_LINKER,
     NODE_DISTINCT,
     NODE_POLYMORPH,
     NODE_INTERPOLATION,
@@ -744,10 +745,15 @@ struct Node_Import {
     Node    node;
     Token   path;
     Module *module;
-    Nodes   libraries;
 
     bool is_local;
 };
+
+typedef struct {
+    Node  node;
+    Nodes children;
+    Token end;
+} Node_Linker;
 
 struct Node_Polymorph {
     Node       node;

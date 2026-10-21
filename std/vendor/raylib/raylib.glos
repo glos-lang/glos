@@ -2670,6 +2670,8 @@ case .WINDOWS
         "user32"
         "shell32"
     }
+
+    #linkopt "/nodefaultlib:libcmt"
 }
 
 C :: #import "C"

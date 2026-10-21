@@ -460,7 +460,7 @@ static void monomorphize_replace(Compiler *c, Node **from) {
     }
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 static void monomorphize_node(Compiler *c, Node **np, bool first) {
     if (!*np) {
         return;
@@ -533,6 +533,7 @@ static void monomorphize_node(Compiler *c, Node **np, bool first) {
         monomorphize_node(c, &assertt->message, first);
     } break;
 
+    case NODE_LINKER:
     case NODE_IMPORT:
         // Pass
         break;

@@ -872,7 +872,7 @@ static void local_assert(Parser *p, bool expected_is_local, Token token, const c
     }
 }
 
-static_assert(COUNT_TOKENS == 94, "");
+static_assert(COUNT_TOKENS == 95, "");
 static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compounds_allowed, bool *should_be_switch) {
     Node_For *range_for = p->state.range_for; // Only lasts a singular level
     p->state.range_for = false;
@@ -962,7 +962,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
     case TOKEN_DISTINCT: {
         Node *value = parse_expr(p, POWER_PRE, false, compounds_allowed, NULL);
-        static_assert(COUNT_NODES == 34, "");
+        static_assert(COUNT_NODES == 35, "");
         switch (value->kind) {
         case NODE_ENUM:
         case NODE_TRAIT:
@@ -1769,7 +1769,7 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
     return node;
 }
 
-static_assert(COUNT_NODES == 34, "");
+static_assert(COUNT_NODES == 35, "");
 static Node *parse_stmt(Parser *p) {
     Node *node = NULL;
 
@@ -1974,18 +1974,22 @@ static Node *parse_stmt(Parser *p) {
         }
     } break;
 
+    case TOKEN_DIRECTIVE_LINKOPT:
     case TOKEN_DIRECTIVE_LIBRARY: {
-        node = node_alloc(p->module_current, NODE_IMPORT, token);
-        Node_Import *import = (Node_Import *) node;
+        node = node_alloc(p->module_current, NODE_LINKER, token);
+        Node_Linker *linker = (Node_Linker *) node;
         if (read_token(p, TOKEN_LBRACE)) {
             while (!read_token(p, TOKEN_RBRACE)) {
                 Node *library = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_STRING));
-                nodes_push(&import->libraries, library);
+                nodes_push(&linker->children, library);
                 expect_stmt_terminator(p);
             }
+
+            assert(p->state.ahead.kind == TOKEN_RBRACE);
+            linker->end = p->state.ahead;
         } else {
             Node *library = node_alloc(p->module_current, NODE_ATOM, expect_token(p, TOKEN_STRING));
-            nodes_push(&import->libraries, library);
+            nodes_push(&linker->children, library);
         }
     } break;
 
