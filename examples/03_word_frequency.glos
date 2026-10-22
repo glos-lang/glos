@@ -32,14 +32,12 @@ main :: () {
     words: map[string]s64
     defer words.free()
 
-    iter := strings.Split {
-        string(contents),
-        (r: rune) -> bool {
+    for contents := string(contents); contents != "" {
+        word: string
+        word, contents, _ = strings.split(contents, (r: rune) -> bool {
             return !unicode.is_alpha(r)
-        }
-    }
+        })
 
-    for _, word := range iter {
         if word == "" {
             continue
         }

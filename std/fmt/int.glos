@@ -15,7 +15,6 @@ Int :: struct {
 
 @format :: (this: &Int, w: io.Writer, nested: bool) -> s64, error {
     f := *this
-    if f.base         == 0 then f.base         = .DECIMAL
     if f.padding_char == 0 then f.padding_char = ' '
 
     digits: s64

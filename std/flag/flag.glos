@@ -195,7 +195,9 @@ usage :: (this: &Flags, w: io.Writer, location := #caller_location) {
         }
         wprintln(w)
 
-        for _, line := range (strings.Split {desc, '\n'}) {
+        for desc := desc; desc != "" {
+            line: string
+            line, desc, _ = strings.split(desc, '\n')
             wprintln(w, "        \{line}")
         }
 

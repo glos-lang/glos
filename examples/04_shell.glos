@@ -56,7 +56,10 @@ eval :: (this: &Shell) -> error {
         this.sb.push(ch)
     }
 
-    for _, it := range (strings.Split {string(this.sb[..])}) {
+    for line := string(this.sb[..]); line != "" {
+        it: string
+        it, line, _ = strings.split(line)
+
         if it == "" then continue
         if it == "|" {
             if this.pipe.count == 0 {
