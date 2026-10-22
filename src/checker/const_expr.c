@@ -339,35 +339,35 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
     }
 }
 
-static double fadd(double a, double b) {
+static double my_fadd(double a, double b) {
     return a + b;
 }
 
-static double fsub(double a, double b) {
+static double my_fsub(double a, double b) {
     return a - b;
 }
 
-static double fmul(double a, double b) {
+static double my_fmul(double a, double b) {
     return a * b;
 }
 
-static double fdiv(double a, double b) {
+static double my_fdiv(double a, double b) {
     return a / b;
 }
 
-static bool fgt(double a, double b) {
+static bool my_fgt(double a, double b) {
     return a > b;
 }
 
-static bool fge(double a, double b) {
+static bool my_fge(double a, double b) {
     return a >= b;
 }
 
-static bool flt(double a, double b) {
+static bool my_flt(double a, double b) {
     return a < b;
 }
 
-static bool fle(double a, double b) {
+static bool my_fle(double a, double b) {
     return a <= b;
 }
 
@@ -423,10 +423,10 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
 
         static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
-            [TOKEN_ADD] = {.i = int128_add, .f = fadd},
-            [TOKEN_SUB] = {.i = int128_sub, .f = fsub},
-            [TOKEN_MUL] = {.i = int128_mul, .f = fmul},
-            [TOKEN_DIV] = {.i = int128_div, .f = fdiv},
+            [TOKEN_ADD] = {.i = int128_add, .f = my_fadd},
+            [TOKEN_SUB] = {.i = int128_sub, .f = my_fsub},
+            [TOKEN_MUL] = {.i = int128_mul, .f = my_fmul},
+            [TOKEN_DIV] = {.i = int128_div, .f = my_fdiv},
             [TOKEN_MOD] = {.i = int128_mod, .f = fmod},
 
             [TOKEN_SHL] = {.i = int128_shl},
@@ -463,10 +463,10 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
 
         static_assert(COUNT_TOKENS == 95, "");
         static const Op ops[COUNT_TOKENS] = {
-            [TOKEN_GT] = {.i = int128_gt, .f = fgt},
-            [TOKEN_GE] = {.i = int128_ge, .f = fge},
-            [TOKEN_LT] = {.i = int128_lt, .f = flt},
-            [TOKEN_LE] = {.i = int128_le, .f = fle},
+            [TOKEN_GT] = {.i = int128_gt, .f = my_fgt},
+            [TOKEN_GE] = {.i = int128_ge, .f = my_fge},
+            [TOKEN_LT] = {.i = int128_lt, .f = my_flt},
+            [TOKEN_LE] = {.i = int128_le, .f = my_fle},
         };
 
         const Op op = ops[n->token.kind];
