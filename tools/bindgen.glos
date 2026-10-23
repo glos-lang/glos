@@ -154,7 +154,7 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
             defer clang_disposeString(name)
             name := strings.from_cstring(clang_getCString(name))
 
-            if is_keyword(name) {
+            if is_keyword(name) || name == "" {
                 wprint(&sb, "_\{name}: \{type}")
             } else {
                 wprint(&sb, "\{name}: \{type}")

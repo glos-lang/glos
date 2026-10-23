@@ -89,6 +89,11 @@ static void error_unterminated(Lexer *l, Pos begin, const char *label) {
 
 static void skip_whitespace(Lexer *l) {
     l->newline = false;
+    if (l->make_next_newline) {
+        l->newline = true;
+        l->make_next_newline = false;
+    }
+
     while (l->sv.count) {
         switch (*l->sv.data) {
         case ' ':
@@ -371,6 +376,7 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     token.as.string.data = arena_clone(&default_arena, default_sb.data + default_sb_count_save, token.as.string.count);
     default_sb.count = default_sb_count_save;
     l->inside_string_or_comment = false;
+    l->make_next_newline = is_raw;
     return token;
 }
 

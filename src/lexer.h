@@ -7,6 +7,7 @@ typedef struct {
     Pos  pos;
     SV   sv;
     bool newline;
+    bool make_next_newline;
     bool after_operator_keyword;
     bool inside_string_or_comment;
 } Lexer;
