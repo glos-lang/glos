@@ -1162,7 +1162,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
                         p->state.peeked = false;
 
                         const Token ahead = peek_token(p);
-                        if (ahead.newline || ahead.kind == TOKEN_LBRACE) {
+                        if (ahead.newline || ahead.kind == TOKEN_EOL || ahead.kind == TOKEN_EOF || //
+                            ahead.kind == TOKEN_LBRACE || ahead.kind == TOKEN_RBRACE ||            //
+                            ahead.kind == TOKEN_RPAREN)                                            //
+                        {
                             p->state.peeked = true;
                             fn->is_noreturn = true;
                             fn->noreturn_token = token;
