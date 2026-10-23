@@ -131,4 +131,19 @@ main :: () {
     //
     // Memory allocation can fail, so use the '!' operator to panic. Errors values will be described in a later document.
     puts(strings.to_cstring(s)!)
+    println()
+
+    // Lastly, let's look at raw strings. They start with a '\' character and continue till the end of the line
+    println(
+        \This is a raw string: \n\t\r\{34 + 35}
+    )
+
+    println(
+        \They can be
+        \multi-line.
+        \The advantage of using '\' before each line is the ability to
+        \control whitespace inside the string.
+        \
+        \    Example indentation.
+    )
 }

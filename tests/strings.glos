@@ -1,15 +1,10 @@
 main :: () {
-	print_str("Hello, world!\n")
+	print("Hello, world!\n")
+    println(
+        \This is a raw string
+        \Multiline works
+        \Raw: \n\t\r\0
+    )
 	assert("foo" == "foo")
 	assert("foo" != "bar")
-}
-
-print_str :: (s: string) {
-    for i := 0; i < s.count; i = i + 1 {
-        extern {
-            putchar :: (c: s32) -> s32
-        }
-
-        putchar(s32(s[i]))
-    }
 }

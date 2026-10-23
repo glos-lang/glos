@@ -306,7 +306,24 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
         .sv = l->sv,
     };
 
+    const bool is_raw = (token.sv.data[-1] == '\\');
     while (l->sv.count) {
+        if (is_raw) {
+            if (*l->sv.data == '\n') {
+                skip_whitespace(l);
+                if (l->sv.count && *l->sv.data == '\\') {
+                    next_char(l);
+                    sb_push(&default_sb, '\n');
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            sb_push(&default_sb, read_char(l));
+            continue;
+        }
+
         if (*l->sv.data == '"') {
             break;
         }
@@ -318,13 +335,13 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
         }
 
         if (!l->sv.count) {
-            error_unterminated(l, pos, "string");
+            error_unterminated(l, begin, "string");
         }
 
         char ch = read_char(l);
         if (ch == '\\') {
             if (!l->sv.count) {
-                error_unterminated(l, pos, "string");
+                error_unterminated(l, begin, "string");
             }
 
             Rune rune = 0;
@@ -342,12 +359,14 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
         sb_push(&default_sb, ch);
     }
 
-    if (!l->sv.count) {
-        error_unterminated(l, begin, "string");
+    if (!is_raw) {
+        if (!l->sv.count) {
+            error_unterminated(l, begin, "string");
+        }
+        next_char(l);
     }
-    next_char(l);
-    token.sv.count -= l->sv.count;
 
+    token.sv.count -= l->sv.count;
     token.as.string.count = default_sb.count - default_sb_count_save;
     token.as.string.data = arena_clone(&default_arena, default_sb.data + default_sb_count_save, token.as.string.count);
     default_sb.count = default_sb_count_save;
@@ -609,6 +628,7 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '"':
+    case '\\':
         token = lexer_get_string(l, token.pos, token.pos);
         token.newline = l->newline;
         token.sv.data--;

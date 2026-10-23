@@ -1,6 +1,9 @@
 EXIT 0
-STDOUT 14
+STDOUT 65
 Hello, world!
+This is a raw string
+Multiline works
+Raw: \n\t\r\0
 
 STDERR 0
 
