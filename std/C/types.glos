@@ -35,3 +35,16 @@ ptrdiff_t :: s64
 
 float  :: f32
 double :: f64
+
+#if PLATFORM == .LINUX {
+    __va_list_tag :: struct {
+        gp_offset:         unsigned_int
+        fp_offset:         unsigned_int
+        overflow_arg_area: rawptr
+        reg_save_area:     rawptr
+    }
+
+    va_list :: [1]__va_list_tag
+} else {
+    va_list :: distinct rawptr
+}

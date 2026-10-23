@@ -492,36 +492,57 @@ static void build_stdlib_c_files(Cmd *cmd, size_t nprocs) {
     const void *save = arena_alloc(&temp_arena, 0);
     Procs       procs = {.nprocs = nprocs};
 
-    static const char *sources[] = {
-        "std/vendor/raylib/raygui.c",
-        "std/vendor/stb_image/stb_image.c",
-        "std/vendor/stb_image_write/stb_image_write.c",
-        "std/vendor/stb_rect_pack/stb_rect_pack.c",
-        "std/vendor/stb_truetype/stb_truetype.c",
+    typedef struct {
+        const char *file;
+        const char *macro;
+    } Source;
+
+    static const Source sources[] = {
+        {"std/raylib/raygui.h", "RAYGUI_IMPLEMENTATION"},
+        {"std/stb_image/stb_image.h", "STB_IMAGE_IMPLEMENTATION"},
+        {"std/stb_image_write/stb_image_write.h", "STB_IMAGE_WRITE_IMPLEMENTATION"},
+        {"std/stb_rect_pack/stb_rect_pack.h", "STB_RECT_PACK_IMPLEMENTATION"},
+        {"std/stb_truetype/stb_truetype.h", "STB_TRUETYPE_IMPLEMENTATION"},
     };
 
     for (size_t i = 0; i < len(sources); i++) {
-        const char *src = sources[i];
-        const char *obj = temp_replace_suffix(src, ".c", OBJ_FILE_EXTENSION);
-        if (get_modified_time(obj) >= get_modified_time(src)) {
+        const Source it = sources[i];
+
+        const char *obj = NULL;
+        for (size_t i = strlen(it.file); i; i--) {
+            if (it.file[i - 1] == '.') {
+                obj = temp_replace_suffix(it.file, &it.file[i - 1], OBJ_FILE_EXTENSION);
+                break;
+            }
+        }
+        assert(obj);
+
+        if (get_modified_time(obj) >= get_modified_time(it.file)) {
             continue;
         }
 
         fprintf(stderr, "Building '%s'\n", obj);
 
         Cmd_Stdio proc_stdio = {0};
+
 #ifdef PLATFORM_X86_64_WINDOWS
         proc_stdio.out = (FILE **) arena_alloc(&temp_arena, sizeof(FILE *));
         procs.callback_before_wait = filter_cl_exe_output;
 
-        cmd_push(cmd, "cl", "/Z7", "/nologo", "/c", "/O2");
+        cmd_push(cmd, "cl", "/Z7", "/nologo", "/c", "/O2", "/TC");
+        if (it.macro) {
+            cmd_push(cmd, arena_sprintf(&temp_arena, "/D%s", it.macro));
+        }
         cmd_push(cmd, arena_sprintf(&temp_arena, "/Fo:%s", obj));
 #else
-        cmd_push(cmd, "cc", "-c", "-ggdb", "-O3");
+        cmd_push(cmd, "cc", "-c", "-ggdb", "-O3", "-x", "c");
+        if (it.macro) {
+            cmd_push(cmd, arena_sprintf(&temp_arena, "-D%s", it.macro));
+        }
         cmd_push(cmd, "-o", obj);
 #endif // PLATFORM_X86_64_WINDOWS
 
-        cmd_push(cmd, src);
+        cmd_push(cmd, it.file);
 
         const char *proc_name = cmd->data[0];
         const Proc  proc = cmd_run_async(cmd, proc_stdio);

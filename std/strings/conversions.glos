@@ -9,6 +9,9 @@ to_cstring :: (s: string, allocator := default_allocator) -> &C.char, error {
 }
 
 from_cstring :: (s: &C.char) -> string {
+    if s == null {
+        return ""
+    }
     return string([]C.char(s, C.strlen(s)))
 }
 

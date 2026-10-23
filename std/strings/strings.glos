@@ -212,3 +212,12 @@ ends_with :: (s: string, p: string) -> bool {
 clone :: inline (s: string, allocator := default_allocator) -> string, error {
     return string(mem.clone_array([]u8(s), allocator = allocator)?), null
 }
+
+print :: inline (vs: ...fmt.Format, allocator := default_allocator) -> string, error {
+    sb: Builder
+    defer sb.free()
+    wprint(&sb, ...vs)?
+    return sb.to_string(allocator = allocator)
+}
+
+fmt :: #import "fmt"

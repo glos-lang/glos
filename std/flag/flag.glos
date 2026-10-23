@@ -4,7 +4,7 @@ add :: inline (v: Var, name: string, description: string, location := #caller_lo
 
 parse :: inline (location := #caller_location) {
     flags.parse(os.args[1..], location)
-    flags.defs.free()
+    // flags.defs.free() // TODO: Think about this
 }
 
 usage :: inline (w: io.Writer, location := #caller_location) {
@@ -228,7 +228,7 @@ usage :: (this: &Flags, w: io.Writer, location := #caller_location) {
     }
 }
 
-args :: (this: Flags, location := #caller_location) -> []string {
+args :: inline (this: Flags, location := #caller_location) -> []string {
     if !this.read {
         panic("Cannot call this function before parsing flags", location = location)
     }

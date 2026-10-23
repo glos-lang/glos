@@ -1150,6 +1150,8 @@ typedef enum {
 *
 ************************************************************************************/
 
+#if defined(RAYGUI_IMPLEMENTATION)
+
 #include <stdio.h>              // Required for: FILE, fopen(), fclose(), fprintf(), feof(), fscanf(), snprintf(), vsprintf() [GuiLoadStyle(), GuiLoadIcons()]
 #include <string.h>             // Required for: strlen() [GuiTextBox(), GuiValueBox()], memset(), memcpy()
 #include <stdarg.h>             // Required for: va_list, va_start(), vfprintf(), va_end() [TextFormat()]
@@ -6454,3 +6456,5 @@ static int GetCodepointNext(const char *text, int *codepointSize)
     return codepoint;
 }
 #endif      // RAYGUI_STANDALONE
+
+#endif      // RAYGUI_IMPLEMENTATION

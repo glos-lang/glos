@@ -1,0 +1,796 @@
+// TODO: Glos keywords
+
+main :: () {
+    directives: [..]string
+
+    input, output: string
+    flag.add(&input, "i", "Set the input path")
+    flag.add(&output, "o", "Set the output path")
+    flag.add(&directives, "D", "Define a proprocessor directive")
+    flag.parse()
+
+    if input == "" {
+        eprintln("Error: Input path not provided")
+        eprintln()
+        flag.usage(os.stderr)
+        os.exit(1)
+    }
+
+    if output == "" {
+        eprintln("Error: Output path not provided")
+        eprintln()
+        flag.usage(os.stderr)
+        os.exit(1)
+    }
+
+    directives.push("-fparse-all-comments")
+    args := slices.apply(directives, (x: string) -> &C.char {
+        if x.count != 0 && x[0] == '-' {
+            return strings.to_cstring(x)!
+        }
+
+        return &C.char(strings.print("-D\{x}\0")!.data)
+    })
+
+    tu := clang_parseTranslationUnit(
+        clang_createIndex(0, 0),
+        strings.to_cstring(input)!,
+        args.data,
+        s32(args.count),
+        null,
+        0,
+        .DetailedPreprocessingRecord
+    )
+
+    if tu == null {
+        eprintln("Error: Could not parse file '\{input}'")
+        os.exit(1)
+    }
+
+    ok := true
+    for i := range clang_getNumDiagnostics(tu) {
+        it := clang_getDiagnostic(tu, i)
+        if clang_getDiagnosticSeverity(it) >= .Error {
+            ok = false
+        }
+        eprintln(clang_formatDiagnostic(it, clang_defaultDiagnosticDisplayOptions()))
+        clang_disposeDiagnostic(it)
+    }
+
+    if !ok {
+        os.exit(1)
+    }
+
+    clang_visitChildren(clang_getTranslationUnitCursor(tu), emit_node, null)
+
+    w, err := os.create_file(output)
+    if err != null {
+        eprintln("Error: Could not create file '\{output}'")
+        os.exit(1)
+    }
+    defer w.close()
+
+    wprint(w, string(regular[..]))!
+    if externs.count != 0 {
+        if regular.count != 0 {
+            wprintln(w)!
+        }
+
+        wprintln(w, "extern {")!
+        wprint(w, string(externs[..]))!
+        wprintln(w, "}\n")!
+    }
+
+    if regular.count != 0 || externs.count != 0 {
+        wprintln(w, "C :: #import \"C\"")!
+    }
+}
+
+regular: strings.Builder
+externs: strings.Builder
+anons:   map[CXCursor]string
+funcs:   map[string]struct {}
+aliases: map[string]struct {}
+decay:   bool
+
+emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
+    if !bool(clang_Location_isFromMainFile(clang_getCursorLocation(c))) {
+        return .Continue
+    }
+
+    #static previous: CXCursorKind
+    if clang_getCursorKind(c) == {
+    case .StructDecl
+        emit_prelude(c, &regular)
+        emit_struct(c)
+
+    case .UnionDecl
+        todo("Glos does not support C unions")
+
+    case .EnumDecl
+        emit_prelude(c, &regular)
+        emit_enum(c)
+
+    case .FunctionDecl
+        decay_save := decay
+        defer decay = decay_save
+        decay = true
+
+        name := clang_getCursorSpelling(c)
+        defer clang_disposeString(name)
+        name := strings.from_cstring(clang_getCString(name))
+
+        if funcs.contains(name) {
+            return .Continue
+        }
+        funcs[strings.clone(name)!] = {}
+
+        emit_prelude(c, &externs)
+
+        if is_keyword(name) {
+            wprintln(&externs, "    #link \"\{name}\"")
+            wprint(&externs, "    _\{name} :: (")
+        } else {
+            wprint(&externs, "    \{name} :: (")
+        }
+
+        argc := clang_Cursor_getNumArguments(c)
+        for i := range argc {
+            if i != 0 {
+                wprint(&externs, ", ")
+            }
+
+            it   := clang_Cursor_getArgument(c, C.unsigned(i))
+            type := clang_getCursorType(it)
+
+            name := clang_getCursorSpelling(it)
+            defer clang_disposeString(name)
+            name := strings.from_cstring(clang_getCString(name))
+
+            if is_keyword(name) {
+                wprint(&externs, "_\{name}: \{type}")
+            } else {
+                wprint(&externs, "\{name}: \{type}")
+            }
+        }
+
+        if bool(clang_Cursor_isVariadic(c)) {
+            if argc != 0 {
+                wprint(&externs, ", ...")
+            } else {
+                wprint(&externs, "...")
+            }
+        }
+        wprint(&externs, ')')
+
+        if ret := clang_getCursorResultType(c); ret.kind != .Void {
+            wprint(&externs, " -> \{ret}")
+        }
+
+        // After comment
+        {
+            tu      := clang_Cursor_getTranslationUnit(c)
+            extent  := clang_getCursorExtent(c)
+            end_loc := clang_getRangeEnd(extent)
+
+            file: CXFile
+            end_line, end_column, end_offset: C.unsigned_int
+            clang_getSpellingLocation(end_loc, &file, &end_line, &end_column, &end_offset)
+
+            if file != null {
+                lookahead_loc := clang_getLocation(tu, file, end_line, end_column + 300)
+                line_range    := clang_getRange(end_loc, lookahead_loc)
+
+                tokens: &CXToken
+                tokens_count: C.unsigned
+                clang_tokenize(tu, line_range, &tokens, &tokens_count)
+
+                tokens := []CXToken(tokens, tokens_count)
+                for i, token := range tokens {
+                    kind := clang_getTokenKind(token)
+
+                    token_loc := clang_getTokenLocation(tu, token)
+                    token_line, token_col: C.unsigned
+                    clang_getSpellingLocation(token_loc, null, &token_line, &token_col, null)
+
+                    if token_line > end_line {
+                        break
+                    }
+
+                    if kind == .Comment {
+                        wprint(&externs, " \{clang_getTokenSpelling(tu, token)}")
+                        break
+                    }
+                }
+
+                clang_disposeTokens(tu, tokens.data, C.unsigned(tokens.count))
+            }
+        }
+
+        wprint(&externs, '\n')
+
+    case .VarDecl
+        if bool(clang_Cursor_hasVarDeclExternalStorage(c)) {
+            emit_prelude(c, &externs)
+
+            name := clang_getCursorSpelling(c)
+            defer clang_disposeString(name)
+            name := strings.from_cstring(clang_getCString(name))
+
+            if is_keyword(name) {
+                wprintln(&externs, "    #link \"\{name}\"")
+                wprintln(&externs, "    _\{name}: \{clang_getCursorType(c)}")
+            } else {
+                wprintln(&externs, "    \{name}: \{clang_getCursorType(c)}")
+            }
+        }
+
+    case .TypedefDecl
+        name := clang_getCursorSpelling(c)
+        defer clang_disposeString(name)
+        name := strings.from_cstring(clang_getCString(name))
+
+        underlying := clang_getTypedefDeclUnderlyingType(c).unwrap()
+        if underlying.kind == .Enum || underlying.kind == .Record {
+            decl := clang_getTypeDeclaration(underlying)
+            def  := clang_getCursorDefinition(decl)
+
+            if decl.is_anon() {
+                if underlying.kind == .Enum {
+                    emit_enum(def, name)
+                    return .Continue
+                }
+
+                if underlying.kind == .Record {
+                    emit_struct(def, name)
+                    return .Continue
+                }
+            }
+
+            tag := clang_getCursorSpelling(decl)
+            defer clang_disposeString(tag)
+            tag := strings.from_cstring(clang_getCString(tag))
+
+            if tag == name {
+                return .Continue
+            }
+        }
+
+        save := regular.count
+        emit_prelude(c, &regular)
+
+        skip  := false
+        start := regular.count
+        if underlying.kind == .Pointer {
+            p := clang_getPointeeType(underlying).unwrap()
+            if p.kind == .FunctionProto || p.kind == .FunctionNoProto {
+                wprintln(&regular, "\{name} :: \{Function_Type(p)}")
+                skip = true
+            }
+        }
+
+        if !skip {
+            wprintln(&regular, "\{name} :: \{underlying}")
+        }
+
+        if alias := string(regular[start..]); aliases.contains(alias) {
+            regular.count = save
+        } else {
+            aliases[strings.clone(alias)!] = {}
+        }
+
+    case
+    }
+
+    return .Continue
+
+    emit_prelude :: (c: CXCursor, sb: &strings.Builder) {
+        kind    := clang_getCursorKind(c)
+        newline := false
+
+        if kind == {
+        case .StructDecl, .UnionDecl, .EnumDecl
+            if sb.count != 0 then wprintln(sb)
+            newline = true
+
+        case
+            if previous != kind {
+                if sb.count != 0 then wprintln(sb)
+                newline = true
+            }
+        }
+
+        previous = kind
+        emit_comment(c, sb, newline, sb == &externs)
+    }
+
+    is_keyword :: (name: string) -> bool {
+        for _, keyword := range keywords {
+            if name == keyword {
+                return true
+            }
+        }
+
+        return false
+
+        keywords :: [?]string {
+            "bool", "rune", "s8", "s16", "s32", "s64", "u8", "u16", "u32", "u64", "f32", "f64",
+            "rawptr", "error", "string", "map", "enum", "trait", "union", "struct", "range", "inline",
+            "distinct", "if", "then", "else", "for", "case", "defer", "break", "continue", "return",
+            "extern", "true", "false", "null", "this", "sizeof", "typeof"
+        }
+    }
+
+}
+
+emit_enum :: (c: CXCursor, name := "") {
+    if c.is_anon() {
+        if anon := anons.get(c); anon != null {
+            name = *anon
+        } else {
+            name     = strings.print("__Anon_\{anons.count}")!
+            anons[c] = name
+        }
+    }
+
+    label: fmt.Format
+    if name == "" {
+        label = clang_getCursorSpelling(c)
+    } else {
+        label = name
+    }
+
+    underlying := clang_getEnumDeclIntegerType(c)
+    wprintln(&regular, "\{label} :: enum \{underlying} {")
+
+    Data :: struct {
+        is_first, is_signed: bool
+    }
+
+    data := Data {
+        is_first  = true,
+        is_signed = underlying.is_signed()
+    }
+
+    clang_visitChildren(c, (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
+        if clang_getCursorKind(c) == .EnumConstantDecl {
+            data := &Data(data)
+
+            emit_comment(c, &regular, data.is_first, true)
+            wprint(&regular, "    \{clang_getCursorSpelling(c)} = ")
+            if data.is_signed {
+                wprint(&regular, clang_getEnumConstantDeclValue(c))
+            } else {
+                wprint(&regular, clang_getEnumConstantDeclUnsignedValue(c))
+            }
+            wprintln(&regular)
+
+            data.is_first = false
+        }
+
+        return .Continue
+    }, rawptr(&data))
+
+    wprintln(&regular, "}")
+}
+
+emit_struct :: (c: CXCursor, name := "") {
+    // TODO: Opaque structures are currently being generated as `struct {}`
+    // since Glos has no support for them yet.
+
+    if c.is_anon() {
+        if anon := anons.get(c); anon != null {
+            name = *anon
+        } else {
+            name     = strings.print("__Anon_\{anons.count}")!
+            anons[c] = name
+        }
+    }
+
+    if name == "" {
+        wprint(&regular, "\{clang_getCursorSpelling(c)} :: struct {")
+    } else {
+        wprint(&regular, "\{name} :: struct {")
+    }
+
+    empty := true
+    clang_visitChildren(c, (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
+        if clang_getCursorKind(c) == .FieldDecl {
+            if bool(clang_Cursor_isBitField(c)) {
+                todo("Glos does not support C bitfields")
+            }
+
+            wprintln(&regular)
+            emit_comment(c, &regular, *(&bool)(data), true)
+            wprint(&regular, "    \{clang_getCursorSpelling(c)}: \{clang_getCursorType(c)}")
+            *(&bool)(data) = false
+        }
+        return .Continue
+    }, rawptr(&empty))
+
+    if !empty {
+        wprintln(&regular)
+    }
+    wprintln(&regular, "}")
+}
+
+emit_comment :: (c: CXCursor, sb: &strings.Builder, newline: bool, indent: bool) {
+    comment := clang_Cursor_getRawCommentText(c)
+    defer clang_disposeString(comment)
+    comment := strings.from_cstring(clang_getCString(comment))
+
+    first := true
+    for comment != "" {
+        if first {
+            first = false
+            if !newline {
+                if sb.count != 0 then wprintln(sb)
+                newline = true
+            }
+        }
+
+        line: string
+        line, comment, _ = strings.split(comment, '\n')
+        if indent {
+            wprint(sb, "    ")
+        }
+
+        wprintln(sb, line)
+    }
+}
+
+Function_Type :: distinct CXType
+
+@format :: (this: &Function_Type, w: io.Writer, nested: bool) -> s64, error {
+    t := CXType(*this)
+
+    decay_save := decay
+    defer decay = decay_save
+    decay = true
+
+    n := w.write([]u8("("))?
+    argc := clang_getNumArgTypes(t)
+    for i := range argc {
+        if i != 0 {
+            n += w.write([]u8(", "))?
+        }
+        n += wprint(w, "_: \{clang_getArgType(t, C.unsigned(i))}")?
+    }
+
+    if bool(clang_isFunctionTypeVariadic(t)) {
+        if argc != 0 {
+            n += w.write([]u8(", ..."))?
+        } else {
+            n += w.write([]u8("..."))?
+        }
+    }
+    n += w.write([]u8(")"))?
+
+    if ret := clang_getResultType(t); ret.kind != .Void {
+        n += wprint(w, " -> \{ret}")?
+    }
+    return n, null
+}
+
+CXIndex           :: distinct rawptr
+CXTranslationUnit :: distinct rawptr
+CXDiagnostic      :: distinct rawptr
+CXClientData      :: rawptr
+
+CXCursor :: struct {
+    kind:  CXCursorKind
+    xdata: C.int
+    data:  [3]rawptr
+}
+
+is_anon :: (this: CXCursor) -> bool {
+    s := clang_getCursorSpelling(this)
+    defer clang_disposeString(s)
+    s := strings.from_cstring(clang_getCString(s))
+    return strings.contains(s, "(unnamed") || strings.contains(s, "(anonymous")
+}
+
+@hash :: inline (this: CXCursor, h: &hash.Hasher) {
+    n := clang_hashCursor(this)
+    h.bytes([]u8(&u8(&n), sizeof(n)))
+}
+
+operator <=> :: inline (this: CXCursor, that: CXCursor) -> Equivalence {
+    if bool(clang_equalCursors(this, that)) {
+        return .EQ
+    }
+    return .NE
+}
+
+CXCursorKind :: enum C.unsigned_int {
+    StructDecl       = 2
+    UnionDecl        = 3
+    EnumDecl         = 5
+    FieldDecl        = 6
+    EnumConstantDecl = 7
+    FunctionDecl     = 8
+    VarDecl          = 9
+    TypedefDecl      = 20
+}
+
+CXChildVisitResult :: enum C.unsigned_int {
+    Break
+    Continue
+    Recurse
+}
+
+CXCursorVisitor :: (cursor: CXCursor, parent: CXCursor, client_data: CXClientData) -> CXChildVisitResult
+
+CXFile :: distinct rawptr
+
+CXSourceRange :: struct {
+    ptr_data: [2]rawptr
+    begin_int_data: C.unsigned
+    end_int_data: C.unsigned
+}
+
+CXSourceLocation :: struct {
+    ptr_data: [2]rawptr
+    int_data: C.unsigned
+}
+
+CXToken :: struct {
+    int_data: [4]C.unsigned
+    ptr_data: rawptr
+}
+
+CXTokenKind :: enum C.unsigned_int {
+  Punctuation
+  Keyword
+  Identifier
+  Literal
+  Comment
+}
+
+CXString :: struct {
+    data:          rawptr
+    private_flags: C.unsigned
+}
+
+@format :: (this: &CXString, w: io.Writer, nested: bool) -> s64, error {
+    defer clang_disposeString(*this)
+    return w.write([]u8(strings.from_cstring(clang_getCString(*this))))
+}
+
+CXType :: struct {
+    kind: CXTypeKind
+    data: [2]rawptr
+}
+
+unwrap :: inline (this: CXType) -> CXType {
+    for this.kind == .Elaborated {
+        this = clang_Type_getNamedType(this)
+    }
+    return this
+}
+
+is_signed :: (this: CXType) -> bool {
+    if clang_getCanonicalType(this).kind == {
+    case .Bool, .Char_U, .UChar, .UShort, .UInt, .ULong, .ULongLong
+        return false
+
+    case
+        return true
+    }
+}
+
+@format :: (this: &CXType, w: io.Writer, nested: bool) -> s64, error {
+    decay_save := decay
+    decay = false
+    defer decay = decay_save
+
+    n := 0
+    if t := this.unwrap(); t.kind == {
+    case .Bool;      n += w.write([]u8("bool"))?
+    case .UChar;     n += w.write([]u8("C.unsigned_char"))?
+    case .UShort;    n += w.write([]u8("C.unsigned_short"))?
+    case .UInt;      n += w.write([]u8("C.unsigned_int"))?
+    case .ULong;     n += w.write([]u8("C.unsigned_long"))?
+    case .ULongLong; n += w.write([]u8("C.unsigned_long_long"))?
+    case .Char_S;    n += w.write([]u8("C.char"))?
+    case .SChar;     n += w.write([]u8("C.char"))?
+    case .Short;     n += w.write([]u8("C.short"))?
+    case .Int;       n += w.write([]u8("C.int"))?
+    case .Long;      n += w.write([]u8("C.long"))?
+    case .LongLong;  n += w.write([]u8("C.long_long"))?
+    case .Float;     n += w.write([]u8("C.float"))?
+    case .Double;    n += w.write([]u8("C.double"))?
+
+    case .Pointer
+        p := clang_getPointeeType(t).unwrap()
+        if p.kind == {
+        case .Void;                            n += w.write([]u8("rawptr"))?
+        case .FunctionProto, .FunctionNoProto; n += wprint(w, p)?
+        case;                                  n += wprint(w, "&\{p}")?
+        }
+
+    case .Record, .Enum
+        c := clang_getTypeDeclaration(t)
+        if c.is_anon() {
+            if anon := anons.get(c); anon != null {
+                n += w.write([]u8(*anon))?
+            } else {
+                name := strings.print("__Anon_\{anons.count}")!
+                anons[c] = name
+                n += w.write([]u8(*anon))?
+            }
+        } else {
+            n += wprint(w, clang_getCursorSpelling(c))?
+        }
+
+    case .Typedef
+        decl := clang_getTypeDeclaration(t)
+        real := clang_getCanonicalType(t).unwrap()
+
+        name := clang_getCursorSpelling(decl)
+        defer clang_disposeString(name)
+        name := strings.from_cstring(clang_getCString(name))
+
+        if name == "va_list" {
+            n += wprint(w, "C.\{name}")?
+        } else if real.kind == .ConstantArray && decay_save {
+            n += wprint(w, "&\{clang_getArrayElementType(real)}")?
+        } else {
+            n += wprint(w, name)?
+        }
+
+    case .FunctionNoProto, .FunctionProto
+        n += wprint(w, "(\{Function_Type(t)})")?
+
+    case .ConstantArray
+        if decay_save {
+            n += wprint(w, "&\{clang_getArrayElementType(t)}")?
+        } else {
+            n += wprint(w, "[\{clang_getArraySize(t)}]\{clang_getArrayElementType(t)}")?
+        }
+
+    case .IncompleteArray
+        n += wprint(w, "&\{clang_getArrayElementType(t)}")?
+
+    case
+        real := clang_getCanonicalType(t)
+        if bool(clang_equalTypes(t, real)) {
+            eprintln("Unsupported type '\{clang_getTypeSpelling(t)}'")
+            os.exit(1)
+        }
+        n += wprint(w, real)?
+    }
+
+    return n, null
+}
+
+CXTypeKind :: enum C.unsigned_int {
+    Void            = 2
+    Bool            = 3
+    Char_U          = 4
+    UChar           = 5
+    UShort          = 8
+    UInt            = 9
+    ULong           = 10
+    ULongLong       = 11
+    Char_S          = 13
+    SChar           = 14
+    Short           = 16
+    Int             = 17
+    Long            = 18
+    LongLong        = 19
+    Float           = 21
+    Double          = 22
+    Pointer         = 101
+    Record          = 105
+    Enum            = 106
+    Typedef         = 107
+    FunctionNoProto = 110
+    ConstantArray   = 112
+    FunctionProto   = 111
+    IncompleteArray = 114
+    Elaborated      = 119
+}
+
+CXUnsavedFile :: struct {
+    Filename: &C.char
+    Contents: &C.char
+    Length:   &C.unsigned_long
+}
+
+CXDiagnosticSeverity :: enum C.unsigned_int {
+    Ignored
+    Note
+    Warning
+    Error
+    Fatal
+}
+
+CXTranslationUnit_Flags :: enum C.unsigned_int {
+    DetailedPreprocessingRecord = 0x01
+}
+
+extern {
+    clang_createIndex :: (excludeDeclarationsFromPCH: C.int, displayDiagnostics: C.int) -> CXIndex
+
+    clang_parseTranslationUnit :: (
+        CIdx: CXIndex,
+        source_filename: &C.char,
+        command_line_args: &&C.char,
+        num_command_line_args: C.int,
+        unsaved_files: &CXUnsavedFile,
+        num_unsaved_files: C.unsigned,
+        options: CXTranslationUnit_Flags
+    ) -> CXTranslationUnit
+
+    clang_getNumDiagnostics :: (Unit: CXTranslationUnit) -> C.unsigned
+    clang_getDiagnostic :: (Unit: CXTranslationUnit, Index: C.unsigned) -> CXDiagnostic
+    clang_getDiagnosticSeverity :: (Diagnostic: CXDiagnostic) -> CXDiagnosticSeverity
+    clang_defaultDiagnosticDisplayOptions :: () -> C.unsigned
+    clang_formatDiagnostic :: (Diagnostic: CXDiagnostic, Options: C.unsigned) -> CXString
+    clang_disposeDiagnostic :: (Diagnostic: CXDiagnostic)
+
+    clang_getCString :: (String: CXString) -> &C.char
+    clang_disposeString :: (String: CXString)
+
+    clang_getTranslationUnitCursor :: (Unit: CXTranslationUnit) -> CXCursor
+    clang_visitChildren :: (parent: CXCursor, visitor: CXCursorVisitor, client_data: CXClientData) -> C.unsigned
+
+    clang_getCursorLocation :: (cursor: CXCursor) -> CXSourceLocation
+    clang_Location_isFromMainFile :: (location: CXSourceLocation) -> C.int
+    clang_getCursorKind :: (cursor: CXCursor) -> CXCursorKind
+    clang_Cursor_hasVarDeclExternalStorage :: (cursor: CXCursor) -> C.int
+    clang_getCursorSpelling :: (cursor: CXCursor) -> CXString
+    clang_hashCursor :: (cursor: CXCursor) -> C.unsigned
+    clang_equalCursors :: (a: CXCursor, b: CXCursor) -> C.unsigned
+    clang_getCursorDefinition :: (cursor: CXCursor) -> CXCursor
+    clang_isCursorDefinition :: (cursor: CXCursor) -> C.unsigned
+
+    clang_getCursorType :: (cursor: CXCursor) -> CXType
+    clang_getCanonicalType :: (T: CXType) -> CXType
+    clang_getTypeSpelling :: (CT: CXType) -> CXString
+    clang_equalTypes :: (A: CXType, B: CXType) -> C.unsigned
+    clang_Type_getNamedType :: (T: CXType) -> CXType
+    clang_getPointeeType :: (T: CXType) -> CXType
+    clang_getTypeDeclaration :: (T: CXType) -> CXCursor
+    clang_getArrayElementType :: (T: CXType) -> CXType
+    clang_getArraySize :: (T: CXType) -> C.long_long
+    clang_getNumArgTypes :: (T: CXType) -> C.int
+    clang_getArgType :: (T: CXType, i: C.unsigned) -> CXType
+    clang_isFunctionTypeVariadic :: (T: CXType) -> C.unsigned
+    clang_getResultType :: (T: CXType) -> CXType
+
+    clang_getEnumDeclIntegerType :: (cursor: CXCursor) -> CXType
+    clang_getEnumConstantDeclValue :: (cursor: CXCursor) -> C.long_long
+    clang_getEnumConstantDeclUnsignedValue :: (cursor: CXCursor) -> C.unsigned_long_long
+    clang_Cursor_isBitField :: (cursor: CXCursor) -> C.unsigned
+    clang_getTypedefDeclUnderlyingType :: (cursor: CXCursor) -> CXType
+    clang_Cursor_getNumArguments :: (cursor: CXCursor) -> C.int
+    clang_Cursor_getArgument :: (cursor: CXCursor, i: C.unsigned) -> CXCursor
+    clang_Cursor_isVariadic :: (cursor: CXCursor) -> C.unsigned
+    clang_getCursorResultType :: (cursor: CXCursor) -> CXType
+
+    clang_Cursor_getRawCommentText :: (cursor: CXCursor) -> CXString
+    clang_getCursorExtent :: (c: CXCursor) -> CXSourceRange
+    clang_getRangeEnd :: (Range: CXSourceRange) -> CXSourceLocation
+    clang_getSpellingLocation :: (location: CXSourceLocation, file: &CXFile, line: &C.unsigned, column: &C.unsigned, offset: &C.unsigned)
+    clang_getLocation :: (tu: CXTranslationUnit, file: CXFile, line: C.unsigned, column: C.unsigned) -> CXSourceLocation
+    clang_getRange :: (begin: CXSourceLocation, end: CXSourceLocation) -> CXSourceRange
+    clang_tokenize :: (TU: CXTranslationUnit, Range: CXSourceRange, Tokens: &&CXToken, NumTokens: &C.unsigned)
+    clang_getTokenKind :: (token: CXToken) -> CXTokenKind
+    clang_getTokenLocation :: (TU: CXTranslationUnit, token: CXToken) -> CXSourceLocation
+    clang_getTokenSpelling :: (TU: CXTranslationUnit, token: CXToken) -> CXString
+    clang_disposeTokens :: (TU: CXTranslationUnit, Tokens: &CXToken, NumTokens: C.unsigned)
+    clang_Cursor_getTranslationUnit :: (cursor: CXCursor) -> CXTranslationUnit
+
+    #library "clang"
+}
+
+C       :: #import "C"
+io      :: #import "io"
+os      :: #import "os"
+fmt     :: #import "fmt"
+flag    :: #import "flag"
+hash    :: #import "hash"
+slices  :: #import "slices"
+strings :: #import "strings"
