@@ -82,6 +82,7 @@ main :: () {
     }
 
     if regular.count != 0 || externs.count != 0 {
+        wprintln(w, "#private...")!
         wprintln(w, "C :: #import \"C\"")!
     }
 }
@@ -92,6 +93,23 @@ anons:   map[CXCursor]string
 funcs:   map[string]struct {}
 aliases: map[string]struct {}
 decay:   bool
+
+is_keyword :: (name: string) -> bool {
+    for _, keyword := range keywords {
+        if name == keyword {
+            return true
+        }
+    }
+
+    return false
+
+    keywords :: [?]string {
+        "bool", "rune", "s8", "s16", "s32", "s64", "u8", "u16", "u32", "u64", "f32", "f64",
+        "rawptr", "error", "string", "map", "enum", "trait", "union", "struct", "range", "inline",
+        "distinct", "if", "then", "else", "for", "case", "defer", "break", "continue", "return",
+        "extern", "true", "false", "null", "this", "sizeof", "typeof"
+    }
+}
 
 emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
     if !bool(clang_Location_isFromMainFile(clang_getCursorLocation(c))) {
@@ -126,7 +144,6 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
         funcs[strings.clone(name)!] = {}
 
         emit_prelude(c, &externs)
-
         if is_keyword(name) {
             wprintln(&externs, "    #link \"\{name}\"")
             wprint(&externs, "    _\{name} :: (")
@@ -303,24 +320,6 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
         previous = kind
         emit_comment(c, sb, newline, sb == &externs)
     }
-
-    is_keyword :: (name: string) -> bool {
-        for _, keyword := range keywords {
-            if name == keyword {
-                return true
-            }
-        }
-
-        return false
-
-        keywords :: [?]string {
-            "bool", "rune", "s8", "s16", "s32", "s64", "u8", "u16", "u32", "u64", "f32", "f64",
-            "rawptr", "error", "string", "map", "enum", "trait", "union", "struct", "range", "inline",
-            "distinct", "if", "then", "else", "for", "case", "defer", "break", "continue", "return",
-            "extern", "true", "false", "null", "this", "sizeof", "typeof"
-        }
-    }
-
 }
 
 emit_enum :: (c: CXCursor, name := "") {
@@ -357,7 +356,17 @@ emit_enum :: (c: CXCursor, name := "") {
             data := &Data(data)
 
             emit_comment(c, &regular, data.is_first, true)
-            wprint(&regular, "    \{clang_getCursorSpelling(c)} = ")
+
+            name := clang_getCursorSpelling(c)
+            defer clang_disposeString(name)
+            name := strings.from_cstring(clang_getCString(name))
+
+            if is_keyword(name) {
+                wprint(&regular, "    _\{name} = ")
+            } else {
+                wprint(&regular, "    \{name} = ")
+            }
+
             if data.is_signed {
                 wprint(&regular, clang_getEnumConstantDeclValue(c))
             } else {
@@ -402,7 +411,18 @@ emit_struct :: (c: CXCursor, name := "") {
 
             wprintln(&regular)
             emit_comment(c, &regular, *(&bool)(data), true)
-            wprint(&regular, "    \{clang_getCursorSpelling(c)}: \{clang_getCursorType(c)}")
+
+            name := clang_getCursorSpelling(c)
+            defer clang_disposeString(name)
+            name := strings.from_cstring(clang_getCString(name))
+
+            if is_keyword(name) {
+                wprint(&regular, "    _\{name}")
+            } else {
+                wprint(&regular, "    \{name}")
+            }
+
+            wprint(&regular, ": \{clang_getCursorType(c)}")
             *(&bool)(data) = false
         }
         return .Continue

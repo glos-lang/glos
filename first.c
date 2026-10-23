@@ -503,6 +503,7 @@ static void build_stdlib_c_files(Cmd *cmd, size_t nprocs) {
         {"std/stb_image_write/stb_image_write.h", "STB_IMAGE_WRITE_IMPLEMENTATION"},
         {"std/stb_rect_pack/stb_rect_pack.h", "STB_RECT_PACK_IMPLEMENTATION"},
         {"std/stb_truetype/stb_truetype.h", "STB_TRUETYPE_IMPLEMENTATION"},
+        {"std/stb_vorbis/stb_vorbis.c", NULL},
     };
 
     for (size_t i = 0; i < len(sources); i++) {
