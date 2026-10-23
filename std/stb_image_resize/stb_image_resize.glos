@@ -45,6 +45,20 @@ Pixel_Layout :: enum unsigned_int {
     AR_NO_AW = 16
 }
 
+extern {
+    //===============================================================
+    //  Simple-complexity API
+    //
+    //    If output_pixels is NULL (0), then we will allocate the buffer and return it to you.
+    //--------------------------------
+    #link "stbir_resize_uint8_srgb"
+    resize_uint8_srgb :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    #link "stbir_resize_uint8_linear"
+    resize_uint8_linear :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    #link "stbir_resize_float_linear"
+    resize_float_linear :: (input_pixels: &float, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &float, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &float
+}
+
 //===============================================================
 // Medium-complexity API
 //
@@ -119,6 +133,12 @@ Data_Type :: enum unsigned_int {
     TYPE_UINT16 = 3
     TYPE_FLOAT = 4
     TYPE_HALF_FLOAT = 5
+}
+
+extern {
+    // medium api
+    #link "stbir_resize"
+    resize :: (input_pixels: rawptr, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: rawptr, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_layout: Pixel_Layout, data_type: Data_Type, edge: Edge, filter: Filter) -> rawptr
 }
 
 // INPUT CALLBACK: this callback is used for input scanlines
@@ -198,22 +218,6 @@ State :: struct {
 }
 
 extern {
-    //===============================================================
-    //  Simple-complexity API
-    //
-    //    If output_pixels is NULL (0), then we will allocate the buffer and return it to you.
-    //--------------------------------
-    #link "stbir_resize_uint8_srgb"
-    resize_uint8_srgb :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
-    #link "stbir_resize_uint8_linear"
-    resize_uint8_linear :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
-    #link "stbir_resize_float_linear"
-    resize_float_linear :: (input_pixels: &float, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &float, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &float
-
-    // medium api
-    #link "stbir_resize"
-    resize :: (input_pixels: rawptr, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: rawptr, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_layout: Pixel_Layout, data_type: Data_Type, edge: Edge, filter: Filter) -> rawptr
-
     // First off, you must ALWAYS call stbir_resize_init on your resize structure before any of the other calls!
     #link "stbir_resize_init"
     resize_init :: (resize: &State, input_pixels: rawptr, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: rawptr, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_layout: Pixel_Layout, data_type: Data_Type)
