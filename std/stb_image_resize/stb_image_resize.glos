@@ -1,0 +1,321 @@
+// Pixel_Layout specifies:
+//   number of channels
+//   order of channels
+//   whether color is premultiplied by alpha
+// for back compatibility, you can cast the old channel count to an Pixel_Layout
+Pixel_Layout :: enum unsigned_int {
+    _1CHANNEL = 1
+    _2CHANNEL = 2
+
+    // 3-chan, with order specified (for channel flipping)
+    RGB = 3
+
+    // 3-chan, with order specified (for channel flipping)
+    BGR = 0
+    _4CHANNEL = 5
+
+    // alpha formats, where alpha is NOT premultiplied into color channels
+    RGBA = 4
+    BGRA = 6
+    ARGB = 7
+    ABGR = 8
+    RA = 9
+    AR = 10
+
+    // alpha formats, where alpha is premultiplied into color channels
+    RGBA_PM = 11
+    BGRA_PM = 12
+    ARGB_PM = 13
+    ABGR_PM = 14
+    RA_PM = 15
+    AR_PM = 16
+
+    // alpha formats, where NO alpha weighting is applied at all!
+    RGBA_NO_AW = 11
+
+    //   these are just synonyms for the _PM flags (which also do
+    BGRA_NO_AW = 12
+
+    //   no alpha weighting). These names just make it more clear
+    ARGB_NO_AW = 13
+
+    //   for some folks).
+    ABGR_NO_AW = 14
+    RA_NO_AW = 15
+    AR_NO_AW = 16
+}
+
+//===============================================================
+// Medium-complexity API
+//
+// This extends the easy-to-use API as follows:
+//
+//     * Can specify the datatype - U8, U8_SRGB, U16, FLOAT, HALF_FLOAT
+//     * Edge wrap can selected explicitly
+//     * Filter can be selected explicitly
+//--------------------------------
+Edge :: enum unsigned_int {
+    EDGE_CLAMP = 0
+    EDGE_REFLECT = 1
+
+    // this edge mode is slower and uses more memory
+    EDGE_WRAP = 2
+    EDGE_ZERO = 3
+}
+
+Filter :: enum unsigned_int {
+    // use same filter type that easy-to-use API chooses
+    FILTER_DEFAULT = 0
+
+    // A trapezoid w/1-pixel wide ramps, same result as box for integer scale ratios
+    FILTER_BOX = 1
+
+    // On upsampling, produces same results as bilinear texture filtering
+    FILTER_TRIANGLE = 2
+
+    // The cubic b-spline (aka Mitchell-Netrevalli with B=1,C=0), gaussian-esque
+    FILTER_CUBICBSPLINE = 3
+
+    // An interpolating cubic spline (the default when upsampling)
+    FILTER_CATMULLROM = 4
+
+    // Mitchell-Netrevalli filter with B=1/3, C=1/3 (the default when downsampling)
+    FILTER_MITCHELL = 5
+
+    // Simple point sampling
+    FILTER_POINT_SAMPLE = 6
+
+    // Mitchell-Netrevalli with B=1/4, C=3/8 (Robidoux), a little sharper than Mitchell
+    FILTER_MITCHELL_QUARTER = 7
+
+    // Mitchell-Netrevalli with B=1/6, C=5/12, sharper still
+    FILTER_MITCHELL_SIXTH = 8
+
+    // Mitchell-Netrevalli with B=-1/6, C=7/12, over-sharpening
+    FILTER_MITCHELL_NEG_SIXTH = 9
+
+    // Mitchell-Netrevalli with B=-1/3, C=2/3, more over-sharpening
+    FILTER_MITCHELL_NEG_THIRD = 10
+
+    // Lanczos with 2 lobes (4 taps at 1:1), sharp, some ringing on hard edges
+    FILTER_LANCZOS4 = 11
+
+    // Lanczos with 2.5 lobes (5 taps at 1:1), very sharp, often ringy
+    FILTER_LANCZOS5 = 12
+
+    // Casey Muratori's Bink 2 kernel (1 -4 19 19 -4 1)/32: sharper than Catmull-Rom, stable under repeated half pixel shifts when using 8-bit pixels
+    FILTER_MURATORI6 = 13
+
+    // User callback specified (keep last - the built-ins are everything below it)
+    FILTER_OTHER = 14
+}
+
+Data_Type :: enum unsigned_int {
+    TYPE_UINT8 = 0
+    TYPE_UINT8_SRGB = 1
+
+    // alpha channel, when present, should also be SRGB (this is very unusual)
+    TYPE_UINT8_SRGB_ALPHA = 2
+    TYPE_UINT16 = 3
+    TYPE_FLOAT = 4
+    TYPE_HALF_FLOAT = 5
+}
+
+// INPUT CALLBACK: this callback is used for input scanlines
+Input_Callback :: ((_: rawptr, _: rawptr, _: int, _: int, _: int, _: rawptr) -> rawptr)
+
+// OUTPUT CALLBACK: this callback is used for output scanlines (or pieces of scanlines - see below)
+Output_Callback :: ((_: rawptr, _: int, _: int, _: int, _: rawptr))
+
+// callbacks for user installed filters (there are old and new versions, please use the new versions from now on)
+Kernel_Callback :: ((_: float, _: float, _: rawptr) -> float)
+Support_Callback :: ((_: float, _: rawptr) -> float)
+Kernel_Callback_New :: ((_: double, _: double, _: rawptr) -> double)
+Support_Callback_New :: ((_: double, _: rawptr) -> double)
+Radius_Callback_New :: ((_: double, _: double, _: int, _: rawptr) -> double)
+
+Info :: struct {}
+
+State :: struct {
+    user_data: rawptr
+    input_pixels: rawptr
+    input_w: int
+    input_h: int
+    input_s0: double
+    input_t0: double
+    input_s1: double
+    input_t1: double
+
+    // the input region as fractions, when it was set in pixels: s0 = n0/d, s1 = n1/d (d is 0 when set as reals)
+    input_s_n0: int
+
+    // the input region as fractions, when it was set in pixels: s0 = n0/d, s1 = n1/d (d is 0 when set as reals)
+    input_s_n1: int
+
+    // the input region as fractions, when it was set in pixels: s0 = n0/d, s1 = n1/d (d is 0 when set as reals)
+    input_s_d: int
+    input_t_n0: int
+    input_t_n1: int
+    input_t_d: int
+    input_cb: &Input_Callback
+    output_pixels: rawptr
+    output_w: int
+    output_h: int
+    output_subx: int
+    output_suby: int
+    output_subw: int
+    output_subh: int
+    output_cb: &Output_Callback
+    input_stride_in_bytes: s64
+    output_stride_in_bytes: s64
+    splits: int
+    fast_alpha: int
+    needs_rebuild: int
+    called_alloc: int
+    input_pixel_layout_public: Pixel_Layout
+    output_pixel_layout_public: Pixel_Layout
+    input_data_type: Data_Type
+    output_data_type: Data_Type
+    horizontal_filter: Filter
+    vertical_filter: Filter
+    horizontal_edge: Edge
+    vertical_edge: Edge
+
+    // old callback form
+    horizontal_filter_kernel: &Kernel_Callback
+
+    // old callback form
+    horizontal_filter_support: &Support_Callback
+    vertical_filter_kernel: &Kernel_Callback
+    vertical_filter_support: &Support_Callback
+    horizontal_filter_kernel_new: &Kernel_Callback_New
+    horizontal_filter_support_new: &Support_Callback_New
+    horizontal_filter_radius: &Radius_Callback_New
+    vertical_filter_kernel_new: &Kernel_Callback_New
+    vertical_filter_support_new: &Support_Callback_New
+    vertical_filter_radius: &Radius_Callback_New
+    samplers: &Info
+}
+
+extern {
+    //===============================================================
+    //  Simple-complexity API
+    //
+    //    If output_pixels is NULL (0), then we will allocate the buffer and return it to you.
+    //--------------------------------
+    #link "stbir_resize_uint8_srgb"
+    resize_uint8_srgb :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    #link "stbir_resize_uint8_linear"
+    resize_uint8_linear :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    #link "stbir_resize_float_linear"
+    resize_float_linear :: (input_pixels: &float, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &float, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &float
+
+    // medium api
+    #link "stbir_resize"
+    resize :: (input_pixels: rawptr, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: rawptr, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_layout: Pixel_Layout, data_type: Data_Type, edge: Edge, filter: Filter) -> rawptr
+
+    // First off, you must ALWAYS call stbir_resize_init on your resize structure before any of the other calls!
+    #link "stbir_resize_init"
+    resize_init :: (resize: &State, input_pixels: rawptr, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: rawptr, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_layout: Pixel_Layout, data_type: Data_Type)
+
+    //===============================================================
+    // You can update these parameters any time after resize_init and there is no cost
+    //--------------------------------
+    #link "stbir_set_datatypes"
+    set_datatypes :: (resize: &State, input_type: Data_Type, output_type: Data_Type)
+    #link "stbir_set_pixel_callbacks"
+    set_pixel_callbacks :: (resize: &State, input_cb: &Input_Callback, output_cb: &Output_Callback) // no callbacks by default
+    #link "stbir_set_user_data"
+    set_user_data :: (resize: &State, user_data: rawptr) // pass back State* by default
+    #link "stbir_set_buffer_ptrs"
+    set_buffer_ptrs :: (resize: &State, input_pixels: rawptr, input_stride_in_bytes: s64, output_pixels: rawptr, output_stride_in_bytes: s64)
+
+    //===============================================================
+    // If you call any of these functions, you will trigger a sampler rebuild!
+    //--------------------------------
+    #link "stbir_set_pixel_layouts"
+    set_pixel_layouts :: (resize: &State, input_pixel_layout: Pixel_Layout, output_pixel_layout: Pixel_Layout) -> int // sets new buffer layouts
+    #link "stbir_set_edgemodes"
+    set_edgemodes :: (resize: &State, horizontal_edge: Edge, vertical_edge: Edge) -> int // CLAMP by default
+    #link "stbir_set_filters"
+    set_filters :: (resize: &State, horizontal_filter: Filter, vertical_filter: Filter) -> int // STBIR_DEFAULT_FILTER_UPSAMPLE/DOWNSAMPLE by default
+
+    // Your own filters: per axis, a kernel callback and one of two ways to give its extent (a support or a radius - both
+    //   on one axis returns 0; all null keeps the built-in filter). All in stbir_real (double unless user overridden to float).
+    //   the resizer places the taps in stbir_real and rounds each weight to float once, into the coefficient table.
+    //
+    //   The kernel returns the weight at x, in the filter's own pixels (output pixels when downsampling, input pixels when
+    //   upsampling), centered on zero. It is also passed the ratio <= 1 (output / input downsampling, input / output
+    //   upsampling), for kernels like the box whose shape depends on it.
+    //
+    //   The support returns the filter's radius in those same filter pixels, and is passed the same ratio. For most kernels
+    //   this is a constant (2 for the cubics, 1 for the triangle); the resizer converts it to input pixels itself.
+    //
+    //   The radius is the alternative for a kernel whose extent depends on the scale: it returns the radius in INPUT pixels,
+    //   from scale, inv_scale and the resizer's own up / down decision (is_upsample, 1:1 included), so an exact ratio gets
+    //   an exact tap count (the built-in box is 0.5 * inv_scale + 0.5).
+    //
+    //     static stbir_real my_kernel( stbir_real x, stbir_real scale, void * user ) { ... }
+    //     static stbir_real my_support( stbir_real scale, void * user ) { return 2.0; }
+    //     stbir_set_filter_callbacks_new( &resize, my_kernel, my_support, 0, my_kernel, my_support, 0 );
+    #link "stbir_set_filter_callbacks_new"
+    set_filter_callbacks_new :: (resize: &State, horizontal_filter: &Kernel_Callback_New, horizontal_support: &Support_Callback_New, horizontal_radius: &Radius_Callback_New, vertical_filter: &Kernel_Callback_New, vertical_support: &Support_Callback_New, vertical_radius: &Radius_Callback_New) -> int
+
+    // Old version of the filter callbacks (for backwards compatibility) - please use stbir_set_filter_callbacks_new for new code.
+    #link "stbir_set_filter_callbacks"
+    set_filter_callbacks :: (resize: &State, horizontal_filter: &Kernel_Callback, horizontal_support: &Support_Callback, vertical_filter: &Kernel_Callback, vertical_support: &Support_Callback) -> int
+    #link "stbir_set_pixel_subrect"
+    set_pixel_subrect :: (resize: &State, subx: int, suby: int, subw: int, subh: int) -> int // sets both sub-regions (full regions by default)
+    #link "stbir_set_input_subrect"
+    set_input_subrect :: (resize: &State, s0: double, t0: double, s1: double, t1: double) -> int // sets input sub-region (full region by default). a region past the image is clipped to it: the output pixels mapping outside aren't written
+    #link "stbir_set_output_pixel_subrect"
+    set_output_pixel_subrect :: (resize: &State, subx: int, suby: int, subw: int, subh: int) -> int // sets output sub-region (full region by default)
+
+    // when inputting AND outputting non-premultiplied alpha pixels, we use a slower but higher quality technique
+    //   that fills the zero alpha pixel's RGB values with something plausible.  If you don't care about areas of
+    //   zero alpha, you can call this function to get about a 25% speed improvement for STBIR_RGBA to STBIR_RGBA
+    //   types of resizes.
+    #link "stbir_set_non_pm_alpha_speed_over_quality"
+    set_non_pm_alpha_speed_over_quality :: (resize: &State, non_pma_alpha_speed_over_quality: int) -> int
+
+    // This builds the samplers and does one allocation
+    #link "stbir_build_samplers"
+    build_samplers :: (resize: &State) -> int
+
+    // You MUST call this, if you call stbir_build_samplers or stbir_build_samplers_with_splits
+    #link "stbir_free_samplers"
+    free_samplers :: (resize: &State)
+
+    // And this is the main function to perform the resize synchronously on one thread.
+    #link "stbir_resize_extended"
+    resize_extended :: (resize: &State) -> int
+
+    // This will build samplers for threading.
+    //   You can pass in the number of threads you'd like to use (try_splits).
+    //   It returns the number of splits (threads) that you can call it with.
+    //   It might be less: when the image can't be split up that many ways, or when
+    //   the build's estimate says more threads wouldn't help.
+    #link "stbir_build_samplers_with_splits"
+    build_samplers_with_splits :: (resize: &State, try_splits: int) -> int
+
+    // Usually, you will always call stbir_resize_extended_split with split_start as the thread_index
+    //   and "1" for the split_count.
+    // But, if you have a weird situation where you MIGHT want 8 threads, but sometimes
+    //   only 4 threads, you can use 0,2,4,6 for the split_start's and use "2" for the
+    //   split_count each time to turn in into a 4 thread resize. (This is unusual).
+    #link "stbir_resize_extended_split"
+    resize_extended_split :: (resize: &State, split_start: int, split_count: int) -> int
+}
+
+#if PLATFORM == {
+case .LINUX
+    #library "./stb_image_resize2.o"
+
+case .MACOS
+    #library "./stb_image_resize2.o"
+
+case .WINDOWS
+    #library "./stb_image_resize2.obj"
+}
+
+#import "C"
