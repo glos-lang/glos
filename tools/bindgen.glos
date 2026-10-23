@@ -82,8 +82,7 @@ main :: () {
     }
 
     if regular.count != 0 || externs.count != 0 {
-        wprintln(w, "#private...")!
-        wprintln(w, "C :: #import \"C\"")!
+        wprintln(w, "#import \"C\"")!
     }
 }
 
@@ -607,19 +606,19 @@ is_signed :: (this: CXType) -> bool {
     n := 0
     if t := this.unwrap(); t.kind == {
     case .Bool;      n += w.write([]u8("bool"))?
-    case .UChar;     n += w.write([]u8("C.unsigned_char"))?
-    case .UShort;    n += w.write([]u8("C.unsigned_short"))?
-    case .UInt;      n += w.write([]u8("C.unsigned_int"))?
-    case .ULong;     n += w.write([]u8("C.unsigned_long"))?
-    case .ULongLong; n += w.write([]u8("C.unsigned_long_long"))?
-    case .Char_S;    n += w.write([]u8("C.char"))?
-    case .SChar;     n += w.write([]u8("C.char"))?
-    case .Short;     n += w.write([]u8("C.short"))?
-    case .Int;       n += w.write([]u8("C.int"))?
-    case .Long;      n += w.write([]u8("C.long"))?
-    case .LongLong;  n += w.write([]u8("C.long_long"))?
-    case .Float;     n += w.write([]u8("C.float"))?
-    case .Double;    n += w.write([]u8("C.double"))?
+    case .UChar;     n += w.write([]u8("unsigned_char"))?
+    case .UShort;    n += w.write([]u8("unsigned_short"))?
+    case .UInt;      n += w.write([]u8("unsigned_int"))?
+    case .ULong;     n += w.write([]u8("unsigned_long"))?
+    case .ULongLong; n += w.write([]u8("unsigned_long_long"))?
+    case .Char_S;    n += w.write([]u8("char"))?
+    case .SChar;     n += w.write([]u8("char"))?
+    case .Short;     n += w.write([]u8("short"))?
+    case .Int;       n += w.write([]u8("int"))?
+    case .Long;      n += w.write([]u8("long"))?
+    case .LongLong;  n += w.write([]u8("long_long"))?
+    case .Float;     n += w.write([]u8("float"))?
+    case .Double;    n += w.write([]u8("double"))?
 
     case .Pointer
         p := clang_getPointeeType(t).unwrap()
@@ -651,9 +650,7 @@ is_signed :: (this: CXType) -> bool {
         defer clang_disposeString(name)
         name := strings.from_cstring(clang_getCString(name))
 
-        if name == "va_list" {
-            n += wprint(w, "C.\{name}")?
-        } else if real.kind == .ConstantArray && decay_save {
+        if real.kind == .ConstantArray && decay_save && name != "va_list" {
             n += wprint(w, "&\{clang_getArrayElementType(real)}")?
         } else {
             n += wprint(w, name)?
