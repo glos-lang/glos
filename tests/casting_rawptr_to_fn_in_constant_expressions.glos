@@ -1,0 +1,4 @@
+main :: () {
+    f :: ()(rawptr(-1))
+    println(f)
+}

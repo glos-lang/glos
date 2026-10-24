@@ -197,6 +197,7 @@ Int_Limit get_int_limit(Type type) {
             [TYPE_U32] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
             [TYPE_U64] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
             [TYPE_ERROR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT32_MAX)},
+            [TYPE_RAWPTR] = {.min = INT128_FROM_U64(0), .max = INT128_FROM_U64(UINT64_MAX)},
         };
         return limits[type_kind];
     }

@@ -44,7 +44,7 @@ LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
             return LLVMConstNull(type.llvm);
         }
 
-        if (type.kind == TYPE_RAWPTR) {
+        if (type.kind == TYPE_FN || type.kind == TYPE_RAWPTR) {
             return LLVMConstIntToPtr(
                 LLVMConstInt(
                     LLVMInt64TypeInContext(c->llvm_context), i64_from_int128(value.as.integer), type_is_signed(type)),
