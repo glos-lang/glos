@@ -30,7 +30,7 @@ get_error :: () -> Error {
         null)
 
     if count != 0 {
-        s, err := utf16.to_string(buffer[..count], allocator = temporary_allocator)
+        s, err := utf16.to_string(buffer[..count], allocator = &temporary_allocator)
         defer temporary_allocator.rewind(rawptr(s.data))
 
         if err == null {

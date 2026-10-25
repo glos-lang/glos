@@ -59,7 +59,7 @@ operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_loca
             capacity := this.capacity * 2
             if capacity == 0 then capacity = INIT_CAPACITY
 
-            data := mem.new(KV, capacity, allocator = this.allocator)!
+            data := mem.new(KV, capacity, allocator = &this.allocator)!
             for i := 0; i < this.capacity; i += 1 {
                 src := mem.offset(&KV(this.data), i)
                 if src.state == .OCCUPIED {

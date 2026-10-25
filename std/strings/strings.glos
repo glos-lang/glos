@@ -209,11 +209,11 @@ ends_with :: (s: string, p: string) -> bool {
     return s.count >= p.count && C.memcmp(rawptr(&s[s.count - p.count]), rawptr(p.data), u64(p.count)) == 0
 }
 
-clone :: inline (s: string, allocator := default_allocator) -> string, error {
+clone :: inline (s: string, allocator := &default_allocator) -> string, error {
     return string(mem.clone_array([]u8(s), allocator = allocator)?), null
 }
 
-print :: inline (vs: ...fmt.Format, allocator := default_allocator) -> string, error {
+print :: inline (vs: ...fmt.Format, allocator := &default_allocator) -> string, error {
     sb: Builder
     defer sb.free()
     wprint(&sb, ...vs)?

@@ -1,6 +1,6 @@
 create_dir :: (path: string) -> error {
     #if PLATFORM == .WINDOWS {
-        wstr := utf16.from_string(path, temporary_allocator)?.data
+        wstr := utf16.from_string(path, &temporary_allocator)?.data
         defer temporary_allocator.rewind(rawptr(wstr))
         return mkdir(path, wstr)
 
@@ -47,7 +47,7 @@ create_dir :: (path: string) -> error {
             ERROR_ALREADY_EXISTS :: 183
         }
     } else {
-        cstr := strings.to_cstring(path, temporary_allocator)?
+        cstr := strings.to_cstring(path, &temporary_allocator)?
         defer temporary_allocator.rewind(rawptr(cstr))
         return mkdir(path, cstr)
 

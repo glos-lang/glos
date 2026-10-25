@@ -37,7 +37,7 @@ type :: (this: &File_Info) -> File_Type {
 stat :: (path: string) -> File_Info, error {
     #if PLATFORM == {
     case .LINUX
-        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        path := strings.to_cstring(path, allocator = &temporary_allocator)?
         defer temporary_allocator.rewind(rawptr(path))
 
         stat: posix.Statx
@@ -47,7 +47,7 @@ stat :: (path: string) -> File_Info, error {
         return file_info_from_raw(stat)
 
     case .MACOS
-        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        path := strings.to_cstring(path, allocator = &temporary_allocator)?
         defer temporary_allocator.rewind(rawptr(path))
 
         stat: posix.Stat
@@ -57,7 +57,7 @@ stat :: (path: string) -> File_Info, error {
         return file_info_from_raw(stat)
 
     case .WINDOWS
-        path := utf16.from_string(path, allocator = temporary_allocator)?.data
+        path := utf16.from_string(path, allocator = &temporary_allocator)?.data
         defer temporary_allocator.rewind(rawptr(path))
 
         handle := win.CreateFileW(
@@ -91,18 +91,18 @@ exists :: (path: string) -> bool {
 
 move :: (old: string, new: string) -> error {
     #if PLATFORM == .WINDOWS {
-        old := utf16.from_string(old, allocator = temporary_allocator)?.data
+        old := utf16.from_string(old, allocator = &temporary_allocator)?.data
         defer temporary_allocator.rewind(rawptr(old))
 
-        new := utf16.from_string(new, allocator = temporary_allocator)?.data
+        new := utf16.from_string(new, allocator = &temporary_allocator)?.data
         if win.MoveFileExW(old, new, win.MOVEFILE_REPLACE_EXISTING) == win.FALSE {
             return win.get_error()
         }
     } else {
-        old := strings.to_cstring(old, allocator = temporary_allocator)?
+        old := strings.to_cstring(old, allocator = &temporary_allocator)?
         defer temporary_allocator.rewind(rawptr(old))
 
-        new := strings.to_cstring(new, allocator = temporary_allocator)?
+        new := strings.to_cstring(new, allocator = &temporary_allocator)?
         if C.rename(old, new) != 0 {
             return C.get_errno()
         }
@@ -120,7 +120,7 @@ remove :: (path: string) -> error {
 
     stat := stat(path)?
     if stat.type() != .DIRECTORY {
-        path := strings.to_cstring(path, allocator = temporary_allocator)?
+        path := strings.to_cstring(path, allocator = &temporary_allocator)?
         if C.remove(path) != 0 {
             return C.get_errno()
         }
@@ -136,10 +136,10 @@ remove :: (path: string) -> error {
     for it, err := range &di {
         err?
         if it.isdir {
-            dirs.push(strings.clone(it.path, allocator = temporary_allocator)?)
+            dirs.push(strings.clone(it.path, allocator = &temporary_allocator)?)
         } else {
             // Better to cleanup as soon as possible inside a loop
-            path := strings.to_cstring(it.path, allocator = temporary_allocator)?
+            path := strings.to_cstring(it.path, allocator = &temporary_allocator)?
             defer temporary_allocator.rewind(rawptr(path))
 
             if C.remove(path) != 0 {
@@ -156,14 +156,14 @@ remove :: (path: string) -> error {
 
     rmdir :: (path: string) -> error {
         #if PLATFORM == .WINDOWS {
-            path := utf16.from_string(path, allocator = temporary_allocator)?.data
+            path := utf16.from_string(path, allocator = &temporary_allocator)?.data
             defer temporary_allocator.rewind(rawptr(path))
 
             if win.RemoveDirectoryW(path) != 0 {
                 return C.get_errno()
             }
         } else {
-            path := strings.to_cstring(path, allocator = temporary_allocator)?
+            path := strings.to_cstring(path, allocator = &temporary_allocator)?
             defer temporary_allocator.rewind(rawptr(path))
 
             if posix.rmdir(path) != 0 {

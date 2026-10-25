@@ -176,14 +176,16 @@ void compile_stmt_define(Compiler *c, Node_Define *define) {
             LLVMValueRef value = compile_expr(c, define->expr, false);
             set_debug_pos(c, define->node.token.pos);
             if (define->count == 1) {
-                if (vars[0]) {
+                if (vars[0] && LLVMTypeIsSized(LLVMTypeOf(value))) {
                     LLVMBuildStore(c->llvm_builder, value, vars[0]);
                 }
             } else {
                 for (size_t i = 0; i < define->count; i++) {
                     if (vars[i]) {
                         LLVMValueRef value = c->group_values.data[group_values_count_save + i];
-                        LLVMBuildStore(c->llvm_builder, value, vars[i]);
+                        if (LLVMTypeIsSized(LLVMTypeOf(value))) {
+                            LLVMBuildStore(c->llvm_builder, value, vars[i]);
+                        }
                     }
                 }
             }

@@ -5,7 +5,7 @@ write :: inline (this: &Builder, bytes: []u8) -> s64, error {
     return bytes.count, null
 }
 
-to_string :: (this: &Builder, from := 0, rewind := true, allocator := default_allocator, location := #caller_location) -> string, error {
+to_string :: (this: &Builder, from := 0, rewind := true, allocator := &default_allocator, location := #caller_location) -> string, error {
     if from > this.count {
         panic("Bounds Check Failed: Index \{from} is invalid since length is \{this.count}", location = location)
     }
@@ -17,9 +17,9 @@ to_string :: (this: &Builder, from := 0, rewind := true, allocator := default_al
     return s, null
 }
 
-to_cstring :: inline (this: &Builder, from := 0, rewind := true, allocator := default_allocator, location := #caller_location) -> &C.char, error {
+to_cstring :: inline (this: &Builder, from := 0, rewind := true, allocator := &default_allocator, location := #caller_location) -> &C.char, error {
     this.write([]u8("\0"))?
-    return &C.char(this.to_string(from = from, rewind = rewind, allocator = default_allocator, location = location)?.data), null
+    return &C.char(this.to_string(from = from, rewind = rewind, allocator = allocator, location = location)?.data), null
 }
 
 @format :: (this: &Builder, w: io.Writer, nested := false) -> s64, error {

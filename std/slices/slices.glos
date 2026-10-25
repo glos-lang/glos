@@ -1,4 +1,4 @@
-apply :: (s: []$T, f: ((x: T) -> $E), into := []E {}, allocator := default_allocator) -> []E {
+apply :: (s: []$T, f: ((x: T) -> $E), into := []E {}, allocator := &default_allocator) -> []E {
     if s.count == 0 {
         into.count = 0
         return into
@@ -17,7 +17,7 @@ apply :: (s: []$T, f: ((x: T) -> $E), into := []E {}, allocator := default_alloc
     return into
 }
 
-filter :: (s: []$T, f: ((x: T) -> bool), into := []T {}, allocator := default_allocator) -> []T {
+filter :: (s: []$T, f: ((x: T) -> bool), into := []T {}, allocator := &default_allocator) -> []T {
     if s.count == 0 {
         into.count = 0
         return into
@@ -73,7 +73,7 @@ find :: (s: []$T, x: T, reverse := false) -> s64, bool {
     return 0, false
 }
 
-reverse :: (s: []$T, into := []T {}, allocator := default_allocator) -> []T {
+reverse :: (s: []$T, into := []T {}, allocator := &default_allocator) -> []T {
     if s.count == 0 {
         into.count = 0
         return into

@@ -20,7 +20,7 @@ copy :: (w: Writer, r: Reader, buffer := []u8 {}, count := -1) -> s64, error {
     return n, null
 }
 
-read_all :: (r: Reader, allocator := default_allocator) -> []u8, error {
+read_all :: (r: Reader, allocator := &default_allocator) -> []u8, error {
     b: strings.Builder
     defer b.free()
 

@@ -37,7 +37,7 @@ encode_into_dynamic_array :: (r: rune, buffer: &[..]u16) -> s64, bool {
     return n, ok
 }
 
-from_string :: (s: string, allocator := default_allocator) -> []u16, error {
+from_string :: (s: string, allocator := &default_allocator) -> []u16, error {
     n := 1
     for _, c := range s {
         if c < 0 then C.Errno.EILSEQ?
@@ -60,7 +60,7 @@ from_string :: (s: string, allocator := default_allocator) -> []u16, error {
     return result, null
 }
 
-to_string :: (u: []u16, allocator := default_allocator) -> string, error {
+to_string :: (u: []u16, allocator := &default_allocator) -> string, error {
     b: strings.Builder
     defer b.free()
 
@@ -68,7 +68,7 @@ to_string :: (u: []u16, allocator := default_allocator) -> string, error {
     return b.to_string(allocator = allocator)?, null
 }
 
-to_cstring :: (u: []u16, allocator := default_allocator) -> &C.char, error {
+to_cstring :: (u: []u16, allocator := &default_allocator) -> &C.char, error {
     b: strings.Builder
     defer b.free()
 

@@ -1,6 +1,6 @@
 free :: (this: &[..]$T) {
     if this.allocator == null then this.allocator = default_allocator
-    mem.free(this.data, allocator = this.allocator)
+    mem.free(this.data, allocator = &this.allocator)
     mem.zero(this)
 }
 
@@ -67,6 +67,6 @@ reserve :: (this: &[..]$T, count: s64) {
         for count > this.capacity {
             this.capacity *= 2
         }
-        this.data = &T(mem.resize(this.data, this.capacity, allocator = this.allocator)!)
+        this.data = &T(mem.resize(this.data, this.capacity, allocator = &this.allocator)!)
     }
 }

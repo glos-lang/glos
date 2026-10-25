@@ -1,7 +1,7 @@
 File :: distinct rawptr
 
 open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := u32(0o666)) -> File, error {
-    path := strings.to_cstring(path, temporary_allocator)?
+    path := strings.to_cstring(path, &temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
     fd := open(path, C.int(flags), C.unsigned_int(perm))
@@ -205,7 +205,7 @@ getchar :: (this: File) -> u8, error {
     return u8(ch), null
 }
 
-read_file :: (path: string, allocator := default_allocator) -> []u8, error {
+read_file :: (path: string, allocator := &default_allocator) -> []u8, error {
     f := open_file(path)?
     defer f.close()
 
