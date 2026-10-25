@@ -5,13 +5,9 @@
 
 // For this example, you can change your current directory inside this folder, and run glos.
 //
-//     $ glos
-//
-// Or
-//
 //     $ glos .
 //
-// You can pass the '-r' flag if you want. Just don't pass an input file.
+// You can pass the '-r' flag if you want.
 //
 // Another thing you can do, is stay in any other directory, and run glos providing the path
 // to this folder as the input.
