@@ -44,8 +44,7 @@ typedef enum {
 typedef struct Module Module;
 
 struct Module {
-    SV   name;
-    bool is_file;
+    SV name;
 
     const char *absolute_path;
     const char *relative_path;
@@ -56,6 +55,7 @@ struct Module {
 
     // For unqualified imports
     Check_Status orderless_check_status;
+    bool         is_file;
 
     Module *next;
 };
@@ -136,14 +136,14 @@ typedef struct {
     Node_Polymorph **polymorphs;
     size_t           polymorphs_count;
 
-    Variadics_Kind variadics_kind;
-    size_t         variadics_index;
+    size_t variadics_index;
 
     Type  *returns;
     size_t returns_count;
     Type  *return_type;
 
-    bool is_noreturn;
+    Variadics_Kind variadics_kind;
+    bool           is_noreturn;
 
     LLVMTypeRef llvm;
 } Type_Fn;
@@ -233,11 +233,12 @@ typedef struct {
 
 struct Type {
     Type_Kind kind;
-    size_t    ref;
 
     // A :: 69  // typeof(A) => Type { kind = TYPE_S64, is_meta = false }
     // B :: s64 // typeof(B) => Type { kind = TYPE_S64, is_meta = true  }
     bool is_meta;
+
+    size_t ref;
 
     Node_Atom *distinct;
 
@@ -538,16 +539,17 @@ typedef struct {
 
 struct Node {
     Node_Kind kind;
-    Type      type;
-    Node     *next;
-
-    Token token;
-    Token parenthesis;
 
     bool is_stmt;
     bool is_memory;
     bool is_called;
     bool is_defined_as_constant;
+
+    Type  type;
+    Node *next;
+
+    Token token;
+    Token parenthesis;
 
     Type *emit_type_info;
 
@@ -602,6 +604,10 @@ typedef struct {
     bool is_assigned;
     bool is_field;
     bool is_thread;
+    bool is_const;
+    bool is_const_value_evaluated;
+
+    Check_Status check_status;
 
     Node_Fn *static_var_fn;
 
@@ -622,11 +628,8 @@ typedef struct {
 
     Node_Block *defined_in_block;
 
-    Check_Status check_status;
-    size_t       partial_stack_index;
+    size_t partial_stack_index;
 
-    bool        is_const;
-    bool        is_const_value_evaluated;
     Const_Value const_value;
 
     // If this is non-empty, then use this as the linker symbol
@@ -803,8 +806,7 @@ struct Node_Fn {
     size_t args_count_min; // Minimum
     Token  args_end_token;
 
-    Variadics_Kind variadics_kind;
-    Token          variadics_spread_token;
+    Token variadics_spread_token;
 
     Nodes  returns;
     size_t returns_count;
@@ -822,6 +824,15 @@ struct Node_Fn {
     bool is_inline;
     bool is_noreturn;
     bool is_hook;
+
+    // <=> :: (this: $T, that: T) -> bool       // Partial, only implements equality
+    // <=> :: (this: $T, that: T) -> Comparison // Complete, implements equality AND ordering
+    bool is_compare_operator_complete;
+
+    bool checked_fully;
+    bool checked_signature;
+
+    Variadics_Kind variadics_kind;
 
     Token inline_token;
     Token noreturn_token;
@@ -842,15 +853,9 @@ struct Node_Fn {
     // }
     Node_Fn *wrapper_signature;
 
-    // <=> :: (this: $T, that: T) -> bool       // Partial, only implements equality
-    // <=> :: (this: $T, that: T) -> Comparison // Complete, implements equality AND ordering
-    bool is_compare_operator_complete;
-
     Node_Fn    *outer_fn;
     Node_Block *outer_block;
 
-    bool             checked_fully;
-    bool             checked_signature;
     Context_Replace *context_replace;
 
     Node_Atom *defined_as;
@@ -995,17 +1000,17 @@ typedef struct {
 
     Token end;
 
-    bool   is_typed_variadics_direct;
     size_t typed_variadics_count;
 
-    bool      is_type_cast;
+    bool is_typed_variadics_direct;
+    bool is_monomorphization_of_polymorphic_type;
+    bool is_type_cast;
+
     Type_Cast type_cast;
     union {
         Type_Trait_Impl *type_cast_trait_impl;
         size_t           type_cast_union_index;
     };
-
-    bool is_monomorphization_of_polymorphic_type;
 } Node_Call;
 
 typedef struct {
@@ -1013,12 +1018,11 @@ typedef struct {
     Node *a;
     Node *b;
 
-    Token_Kind direction;
-
     Node_Fn *overload;
     bool     overload_deref;
 
-    bool is_integer;
+    bool       is_integer;
+    Token_Kind direction;
 } Node_Range;
 
 typedef struct {

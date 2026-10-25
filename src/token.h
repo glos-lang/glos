@@ -5,12 +5,12 @@
 
 typedef struct {
     const char *path;
-    size_t      row;
-    size_t      col;
+    u32         row;
+    u32         col;
     SV          line;
 } Pos;
 
-#define Pos_Fmt    "%s:%zu:%zu:"
+#define Pos_Fmt    "%s:%u:%u:"
 #define Pos_Arg(p) ((p).path), ((p).row + 1), ((p).col + 1)
 
 typedef enum {
@@ -136,10 +136,10 @@ const char *token_kind_to_cstr(Token_Kind kind);
 
 typedef struct {
     Token_Kind kind;
+    bool       newline;
 
-    SV   sv;
-    Pos  pos;
-    bool newline;
+    SV  sv;
+    Pos pos;
 
     union {
         u64    integer;
