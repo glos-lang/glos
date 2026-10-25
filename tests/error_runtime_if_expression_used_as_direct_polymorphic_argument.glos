@@ -1,0 +1,4 @@
+foo  :: ($N: s32) {}
+main :: () {
+    foo(if true then 69 else 420)
+}

@@ -2298,6 +2298,29 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
     *is_ref_valid = ref == REF_ADDR || ref == REF_ADDR_MEMBER;
 }
 
+void check_expr_if(Compiler *c, Node_If *iff) {
+    Node *n = (Node *) iff;
+    check_expr(c, iff->condition, REF_NONE);
+    type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
+    if (iff->is_compile_time) {
+        Const_Value condition = eval_const_expr(c, iff->condition, false);
+        assert(condition.kind == CONST_VALUE_INT);
+
+        iff->compile_time_real = int128_is_zero(condition.as.integer) ? iff->antecedence : iff->consequence;
+        check_expr(c, iff->compile_time_real, REF_NONE);
+        n->type = iff->compile_time_real->type;
+    } else {
+        check_expr(c, iff->consequence, REF_NONE);
+        check_expr(c, iff->antecedence, REF_NONE);
+        n->type = type_assert_node(c, iff->antecedence, iff->consequence);
+        if (n->type.is_meta) {
+            try_auto_cast_type_to_rtti(c, iff->consequence, c->type_info_pointer_type);
+            try_auto_cast_type_to_rtti(c, iff->antecedence, c->type_info_pointer_type);
+            n->type = iff->consequence->type;
+        }
+    }
+}
+
 static_assert(COUNT_NODES == 35, "");
 void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
     if (!n) {
@@ -2531,6 +2554,10 @@ void check_expr(Compiler *c, Node *n, Ref_Kind ref) {
 
     case NODE_INDEXABLE:
         check_expr_indexable(c, (Node_Indexable *) n, ref, &is_ref_valid);
+        break;
+
+    case NODE_IF:
+        check_expr_if(c, (Node_If *) n);
         break;
 
     default:

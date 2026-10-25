@@ -70,11 +70,30 @@ compile_time_if_statements :: () {
     main :: () {
         if_statements()
         compile_time_if_statements()
+        if_expressions()
         loops()
         switch_statements()
         compile_time_switch_statements()
         defer_statements()
     }
+}
+
+if_expressions :: () {
+    // Runtime.
+    println(if true  then 69 else 420)
+    println(if false then 69 else 420)
+
+    // Compile time. Notice that only the real clause is checked.
+    println(#if true  then 1337      else Undefined)
+    println(#if false then Undefined else 80085)
+
+    // You can use if expressions in the type of a definition.
+    x: #if true then s32 else bool
+    println(typeof(x))
+
+    // But using 'if' instead of '#if' as a type is not allowed. The following line is thus erroneous.
+    //
+    // x: if true then s32 else bool
 }
 
 loops :: () {

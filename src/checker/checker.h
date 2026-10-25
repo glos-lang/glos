@@ -78,7 +78,7 @@ Type type_assert_numeric(Compiler *c, const Node *n, bool pointers_allowed, bool
 Type type_assert_numeric_grouped(
     Compiler *c, const Node *n, i64 group_index, bool pointers_allowed, bool floats_allowed);
 Type type_assert_scalar(Compiler *c, const Node *n);
-bool type_assert_type_noexit(const Node *n);
+bool type_assert_type_noexit(Compiler *c, const Node *n);
 Type type_assert_type(Compiler *c, const Node *n);
 void type_assert_type_or_Type(Compiler *c, const Node *n);
 
@@ -100,6 +100,7 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
 Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound);
 Const_Value eval_const_expr_call(Compiler *c, Node_Call *call);
 Const_Value eval_const_expr_index(Compiler *c, Node_Index *index);
+Const_Value eval_const_expr_if(Compiler *c, Node_If *iff);
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref);
 Const_Value eval_const_expr(Compiler *c, Node *n, bool ref);
 
@@ -263,6 +264,7 @@ void check_expr_compound(Compiler *c, Node_Compound *compound);
 void check_expr_call(Compiler *c, Node_Call *call);
 void check_expr_index(Compiler *c, Node_Index *index, Ref_Kind ref, bool *is_ref_valid);
 void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, bool *is_ref_valid);
+void check_expr_if(Compiler *c, Node_If *iff);
 void check_expr(Compiler *c, Node *n, Ref_Kind ref);
 
 void check_fn(

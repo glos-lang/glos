@@ -202,7 +202,7 @@ Type type_assert_scalar(Compiler *c, const Node *n) {
     exit(c, 1);
 }
 
-bool type_assert_type_noexit(const Node *n) {
+bool type_assert_type_noexit(Compiler *c, const Node *n) {
     if (!check_that_type_is_known_noexit(n)) {
         return false;
     }
@@ -211,12 +211,21 @@ bool type_assert_type_noexit(const Node *n) {
         return true;
     }
 
+    if (type_eq(n->type, c->type_info_pointer_type) && n->kind == NODE_IF) {
+        Node_If *iff = (Node_If *) n;
+        if (!iff->is_compile_time && iff->consequence->emit_type_info && iff->antecedence->emit_type_info) {
+            error_node(EK_ERROR, n, "This expression is not constant at compile time");
+            afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    Use '#if' here.\n\n");
+            return false;
+        }
+    }
+
     error_node(EK_ERROR, n, "Expected a type, got %s", type_to_cstr(n->type));
     return false;
 }
 
 Type type_assert_type(Compiler *c, const Node *n) {
-    if (type_assert_type_noexit(n)) {
+    if (type_assert_type_noexit(c, n)) {
         return n->type;
     }
     exit(c, 1);

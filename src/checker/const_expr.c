@@ -1070,6 +1070,43 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
     }
 }
 
+Const_Value eval_const_expr_if(Compiler *c, Node_If *iff) {
+    Node *n = (Node *) iff;
+    if (iff->is_compile_time) {
+        Const_Value value = eval_const_expr(c, iff->compile_time_real, false);
+        if (type_kind_eq(n->type, TYPE_INT) || iff->need_to_check_int_limits) {
+            iff->need_to_check_int_limits = false;
+            assert(value.kind == CONST_VALUE_INT);
+            check_int_limit(c, iff->compile_time_real, value.as.integer);
+        }
+        return value;
+    }
+
+    const bool is_or_was_int = type_kind_eq(n->type, TYPE_INT) || iff->need_to_check_int_limits;
+    if (!is_or_was_int && !iff->is_compile_time) {
+        error_node(EK_ERROR, n, "This expression is not constant at compile time");
+        afprintf(stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    Use '#if' instead.\n\n");
+        exit(c, 1);
+    }
+
+    Const_Value condition = eval_const_expr(c, iff->condition, false);
+    assert(condition.kind == CONST_VALUE_INT);
+
+    if (is_or_was_int) {
+        iff->need_to_check_int_limits = false;
+
+        Const_Value consequence = eval_const_expr(c, iff->consequence, false);
+        assert(consequence.kind == CONST_VALUE_INT);
+        check_int_limit(c, iff->consequence, consequence.as.integer);
+
+        Const_Value antecedence = eval_const_expr(c, iff->antecedence, false);
+        assert(antecedence.kind == CONST_VALUE_INT);
+        check_int_limit(c, iff->antecedence, antecedence.as.integer);
+        return int128_is_zero(condition.as.integer) ? antecedence : consequence;
+    }
+    return eval_const_expr(c, int128_is_zero(condition.as.integer) ? iff->antecedence : iff->consequence, false);
+}
+
 static_assert(COUNT_NODES == 35, "");
 Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -1180,6 +1217,9 @@ Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref) {
         }
         return const_value_type(n->type);
     }
+
+    case NODE_IF:
+        return eval_const_expr_if(c, (Node_If *) n);
 
     default:
         unreachable();

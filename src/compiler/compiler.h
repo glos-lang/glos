@@ -137,6 +137,7 @@ LLVMValueRef compile_expr_interpolation(Compiler *c, Node_Interpolation *interpo
 LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool ref);
 LLVMValueRef compile_expr_call(Compiler *c, Node_Call *call, bool ref);
 LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref);
+LLVMValueRef compile_expr_if(Compiler *c, Node_If *iff, bool ref);
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref);
 LLVMValueRef compile_expr(Compiler *c, Node *n, bool ref);
 

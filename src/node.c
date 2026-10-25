@@ -1373,7 +1373,7 @@ static void node_debug_impl(FILE *f, const Node *n, int depth, const char *label
     }
 
     fprintf(f, Indent_Fmt, Indent_Arg(depth));
-    fprintf(f, "[%p] (%s) ", (void *) n, type_to_cstr(n->type)); // @remove
+    // fprintf(f, "[%p] (%s) ", (void *) n, type_to_cstr(n->type)); // @remove
     if (label) {
         fprintf(f, "%s = ", label);
     }

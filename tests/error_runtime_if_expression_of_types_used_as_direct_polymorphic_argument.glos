@@ -1,0 +1,4 @@
+foo  :: ($T: Type) {}
+main :: () {
+    foo(if true then s32 else bool)
+}

@@ -469,6 +469,18 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
         }
         break;
 
+    case NODE_IF: {
+        Node_If *iff = (Node_If *) n;
+        iff->need_to_check_int_limits = true;
+        if (iff->is_compile_time) {
+            cast_untyped(c, iff->compile_time_real, expected);
+        } else {
+            cast_untyped(c, iff->consequence, expected);
+            cast_untyped(c, iff->antecedence, expected);
+        }
+        n->type = expected;
+    } break;
+
     case NODE_RETURN: {
         Node_Return *ret = (Node_Return *) n;
         cast_untyped(c, ret->value, expected);

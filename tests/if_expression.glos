@@ -1,0 +1,13 @@
+main :: () {
+    println(if true  then 69 else 420)
+    println(if false then 69 else 420)
+
+    println(#if true  then 1337  else Urmom)
+    println(#if false then Urmom else 80085)
+
+    a: #if true then s64 else bool
+    println(a)
+
+    b: #if false then s64 else bool
+    println(b)
+}

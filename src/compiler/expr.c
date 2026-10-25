@@ -2569,6 +2569,43 @@ LLVMValueRef compile_expr_index(Compiler *c, Node_Index *index, bool ref) {
     return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, ptr, "");
 }
 
+LLVMValueRef compile_expr_if(Compiler *c, Node_If *iff, bool ref) {
+    Node *n = (Node *) iff;
+    if (iff->is_compile_time) {
+        return compile_expr(c, iff->compile_time_real, ref);
+    }
+
+    // Condition
+    LLVMValueRef condition = compile_expr(c, iff->condition, false);
+
+    LLVMBasicBlockRef consequence_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef antecedence_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBasicBlockRef merge_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
+    LLVMBuildCondBr(c->llvm_builder, condition, consequence_block, antecedence_block);
+
+    // True
+    LLVMPositionBuilderAtEnd(c->llvm_builder, consequence_block);
+    LLVMValueRef consequence = compile_expr(c, iff->consequence, ref);
+    consequence_block = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+    LLVMBuildBr(c->llvm_builder, merge_block);
+
+    // False
+    LLVMPositionBuilderAtEnd(c->llvm_builder, antecedence_block);
+    LLVMValueRef antecedence = compile_expr(c, iff->antecedence, ref);
+    antecedence_block = LLVMGetInsertBlock(c->llvm_builder);
+    LLVMSetCurrentDebugLocation2(c->llvm_builder, NULL);
+    LLVMBuildBr(c->llvm_builder, merge_block);
+
+    // Merge
+    LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
+    LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
+    LLVMValueRef      phi_values[] = {consequence, antecedence};
+    LLVMBasicBlockRef phi_blocks[] = {consequence_block, antecedence_block};
+    LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
+    return phi;
+}
+
 static_assert(COUNT_NODES == 35, "");
 LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
     if (!n) {
@@ -2657,6 +2694,9 @@ LLVMValueRef compile_expr_impl(Compiler *c, Node *n, bool ref) {
 
     case NODE_INDEXABLE:
         unreachable();
+
+    case NODE_IF:
+        return compile_expr_if(c, (Node_If *) n, ref);
 
     default:
         unreachable();

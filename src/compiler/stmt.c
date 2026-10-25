@@ -811,9 +811,15 @@ void compile_stmt(Compiler *c, Node *n) {
         compile_stmt_block(c, (Node_Block *) n);
         break;
 
-    case NODE_IF:
-        compile_stmt_if(c, (Node_If *) n);
-        break;
+    case NODE_IF: {
+        Node_If *iff = (Node_If *) n;
+        if (iff->is_expr) {
+            compile_type(c, &n->type);
+            compile_expr_if(c, iff, false);
+        } else {
+            compile_stmt_if(c, iff);
+        }
+    } break;
 
     case NODE_FOR:
         compile_stmt_for(c, (Node_For *) n);

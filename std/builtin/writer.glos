@@ -3,8 +3,7 @@ wprint :: inline (w: io.Writer, vs: ...fmt.Format) -> s64, error {
 }
 
 wprintln :: inline (w: io.Writer, vs: ...fmt.Format) -> s64, error {
-    wprint(w, ...vs)?
-    return wprint(w, '\n')
+    return wprint(w, ...vs)? + wprint(w, '\n')?, null
 }
 
 print :: inline (vs: ...fmt.Format) -> s64, error {
