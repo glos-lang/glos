@@ -563,7 +563,7 @@ typedef struct {
 static DA(Warning) warnings;
 
 void warnings_add(Warning_Kind kind, Token token) {
-    da_push(&warnings, ((Warning) {.kind = kind, .token = token}));
+    da_push(&warnings, (Warning) {.kind = kind, .token = token});
 }
 
 static_assert(COUNT_WARNING_KINDS == 2, "");

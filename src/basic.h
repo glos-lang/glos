@@ -143,9 +143,10 @@ void afprintf(FILE *f, ANSI ansi, const char *fmt, ...) Printf_Like(3);
 
 #define da_grow(l, c) (da_resize((void **) &(l)->data, &(l)->capacity, sizeof(*(l)->data), c))
 #define da_free(l)    (da_grow(l, 0), (l)->count = 0)
-#define da_push(l, v) (da_grow(l, (l)->count + 1), (l)->data[(l)->count] = (v), (l)->count++)
 #define da_push_many(l, v, c)                                                                                          \
     (da_grow(l, (l)->count + c), memcpy((l)->data + (l)->count, (v), (c) * sizeof(*(l)->data)), (l)->count += (c))
+#define da_push(l, ...)                                                                                                \
+    da_push_many(l, ((__typeof__ (*(l)->data)[]) {__VA_ARGS__}), len(((__typeof__ (*(l)->data)[]) {__VA_ARGS__})))
 
 void da_resize(void **data, size_t *capacity, size_t size, size_t count);
 
@@ -410,8 +411,8 @@ typedef DA(const char *) Cmd;
 #define cmd_free da_free
 #define cmd_grow da_grow
 
-#define cmd_push(cmd, ...) da_push_many(cmd, ((const char *[]) {__VA_ARGS__}), len(((const char *[]) {__VA_ARGS__})))
-#define cmd_push_many      da_push_many
+#define cmd_push      da_push
+#define cmd_push_many da_push_many
 
 void cmd_show(Cmd cmd, FILE *f);
 
