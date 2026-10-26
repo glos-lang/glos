@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "error.h"
 #include "token.h"
+#include "unicode.h"
 #include <ctype.h>
 #include <errno.h>
 
@@ -380,6 +381,34 @@ Token lexer_get_string(Lexer *l, Pos pos, Pos begin) {
     return token;
 }
 
+static bool lexer_rune_is_ident(Lexer *l, size_t *count) {
+    if (!l->sv.count) {
+        return false;
+    }
+
+    SV   sv = l->sv;
+    Rune r = read_rune_from_sv(&sv);
+    if (count) {
+        *count = l->sv.count - sv.count;
+    }
+    return r == '_' || rune_is_alpha(r) || rune_is_number(r);
+}
+
+static bool lexer_read_if_rune_is_ident(Lexer *l) {
+    if (!l->sv.count) {
+        return false;
+    }
+
+    size_t count = 0;
+    if (!lexer_rune_is_ident(l, &count)) {
+        return false;
+    }
+
+    sv_drop_mut(&l->sv, count);
+    l->pos.col += count;
+    return true;
+}
+
 static_assert(COUNT_TOKENS == 95, "");
 Token lexer_iter(Lexer *l) {
     skip_whitespace(l);
@@ -458,7 +487,7 @@ Token lexer_iter(Lexer *l) {
         }
         token.sv.count -= l->sv.count;
 
-        if (l->sv.count && is_ident(*l->sv.data)) {
+        if (l->sv.count && lexer_rune_is_ident(l, NULL)) {
             error_invalid(l->pos, l->sv, digit);
         }
 
@@ -495,10 +524,8 @@ Token lexer_iter(Lexer *l) {
         exit(1);
     }
 
-    if (is_ident(*l->sv.data)) {
-        while (l->sv.count > 0 && is_ident(*l->sv.data)) {
-            next_char(l);
-        }
+    if (lexer_read_if_rune_is_ident(l)) {
+        while (lexer_read_if_rune_is_ident(l));
         token.sv.count -= l->sv.count;
 
         if (sv_match(token.sv, "true")) {
@@ -758,9 +785,7 @@ Token lexer_iter(Lexer *l) {
         break;
 
     case '@':
-        while (l->sv.count > 0 && is_ident(*l->sv.data)) {
-            next_char(l);
-        }
+        while (lexer_read_if_rune_is_ident(l));
         token.sv.count -= l->sv.count;
 
         if (sv_match(token.sv, "@hash") || sv_match(token.sv, "@format")) {
@@ -772,9 +797,7 @@ Token lexer_iter(Lexer *l) {
         return token;
 
     case '#':
-        while (l->sv.count > 0 && is_ident(*l->sv.data)) {
-            next_char(l);
-        }
+        while (lexer_read_if_rune_is_ident(l));
         token.sv.count -= l->sv.count;
 
         if (sv_match(token.sv, "#if")) {

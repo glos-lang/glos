@@ -271,7 +271,6 @@ char_properties := [MAX_LATIN1+1]u8 {
 	0xFF = pLl | pp, // 'ÿ'
 }
 
-
 alpha_ranges := [?]s32 {
 	0x00d8,  0x00f6,
 	0x00f8,  0x01f5,

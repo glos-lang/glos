@@ -1,5 +1,6 @@
 #include "node.h"
 #include "basic.h"
+#include "unicode.h"
 #include <stdio.h>
 
 void nodes_push(Nodes *ns, Node *n) {

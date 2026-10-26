@@ -274,6 +274,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     static const char *headers[] = {
         "src/int128.h",
         "src/basic.h",
+        "src/unicode.h",
         "src/token.h",
         "src/node.h",
 
@@ -296,6 +297,7 @@ static void build_glos(Cmd *cmd, size_t nprocs) {
     static const char *sources[] = {
         "src/int128.c",
         "src/basic.c",
+        "src/unicode.c",
         "src/token.c",
         "src/node.c",
 

@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "node.h"
 #include "token.h"
+#include "unicode.h"
 #include <assert.h>
 #include <stdarg.h>
 

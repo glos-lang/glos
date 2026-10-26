@@ -59,18 +59,21 @@ is_upper :: (r: rune) -> bool {
 	return in_range(r, lu_ranges) || in_range(r, other_uppercase_ranges)
 }
 
-is_alpha :: is_letter
-
-is_letter :: (r: rune) -> bool {
+is_alpha :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
 		return char_properties[u8(r)]&pLmask != 0
 	}
+
 	if is_upper(r) || is_lower(r) {
 		return true
 	}
 
 	ll_lu := in_range(r, ll_ranges) || in_range(r, lu_ranges)
 	return ll_lu || in_range(r, lo_ranges) || in_range(r, lt_ranges) || in_range(r, lm_ranges)
+}
+
+is_alnum :: (r: rune) -> bool {
+    return is_alpha(r) || is_number(r)
 }
 
 is_title :: (r: rune) -> bool {
@@ -129,11 +132,11 @@ is_graphic :: (r: rune) -> bool {
 		return char_properties[u8(r)]&pg != 0
 	}
 
-	if is_letter(r) || is_number(r) || is_punct(r) || is_symbol(r) || in_range(r, zs_ranges) {
+	if is_alpha(r) || is_number(r) || is_punct(r) || is_symbol(r) || in_range(r, zs_ranges) {
 		return true
 	}
 
-	if  in_range(r, mc_ranges) || in_range(r, me_ranges) || in_range(r, mn_ranges) {
+	if in_range(r, mc_ranges) || in_range(r, me_ranges) || in_range(r, mn_ranges) {
 		return true
 	}
 
