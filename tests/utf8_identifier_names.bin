@@ -1,6 +1,10 @@
 EXIT 0
-STDOUT 6
-Nice!
+STDOUT 50
+Nice! ×1
+Nice! ×2
+Nice! ×3
+Nice! ×4
+Nice! ×5
 
 STDERR 0
 

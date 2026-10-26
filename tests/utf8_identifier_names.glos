@@ -1,5 +1,7 @@
 ニース六十九 :: () {
-    println("Nice!")
+    for おっぱい := range 5 {
+        println("Nice! ×\{おっぱい + 1}")
+    }
 }
 
 main :: () {

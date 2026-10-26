@@ -97,6 +97,14 @@ main :: () {
     println(iota())
     println(iota())
 
+    // UTF-8 is supported
+    ニース六十九 :: () {
+        for おっぱい := range 5 {
+            println("Nice! ×\{おっぱい + 1}")
+        }
+    }
+
+    ニース六十九()
 }
 
 // Custom link names can be set for variables and functions defined in Glos
