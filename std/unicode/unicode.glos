@@ -1,133 +1,119 @@
-MAX_RUNE         :: '\U00010FFF' // Maximum valid unicode code point
-MAX_ASCII        :: '\u007F'     // Maximum ASCII value
-MAX_LATIN1       :: '\u00FF'     // Maximum Latin-1 value
-REPLACEMENT_CHAR :: '\uFFFD'     // Represented an invalid code point
+MAX_RUNE         :: '\U0010ffff' // Maximum valid unicode code point
+REPLACEMENT_CHAR :: '\ufffd'     // Represented an invalid code point
+MAX_ASCII        :: '\u007f'     // Maximum ASCII value
+MAX_LATIN1       :: '\u00ff'     // Maximum Latin-1 value
+
+ZERO_WIDTH_SPACE      :: '\u200B'
+ZERO_WIDTH_NON_JOINER :: '\u200C'
+ZERO_WIDTH_JOINER     :: '\u200D'
+WORD_JOINER           :: '\u2060'
 
 to_lower :: (r: rune) -> rune {
 	c := s32(r)
-	p := binary_search(c, to_lower_ranges, to_lower_ranges.count / 3, 3)
-	if p >= 0 && to_lower_ranges[p] <= c && c <= to_lower_ranges[p + 1] {
-		return rune(c + to_lower_ranges[p + 2] - 500)
+	p := binary_search(c, to_lower_ranges, to_lower_ranges.count/3, 3)
+	if p >= 0 && to_lower_ranges[p] <= c && c <= to_lower_ranges[p+1] {
+		return rune(c + to_lower_ranges[p+2] - 500)
 	}
 
-	p = binary_search(c, to_lower_singlets, to_lower_singlets.count / 2, 2)
+	p = binary_search(c, to_lower_singlets, to_lower_singlets.count/2, 2)
 	if p >= 0 && c == to_lower_singlets[p] {
-		return rune(c + to_lower_singlets[p + 1] - 500)
+		return rune(c + to_lower_singlets[p+1] - 500)
 	}
 	return rune(c)
 }
 
 to_upper :: (r: rune) -> rune {
 	c := s32(r)
-	p := binary_search(c, to_upper_ranges, to_upper_ranges.count / 3, 3)
-	if p >= 0 && to_upper_ranges[p] <= c && c <= to_upper_ranges[p + 1] {
-		return rune(c + to_upper_ranges[p + 2] - 500)
+	p := binary_search(c, to_upper_ranges, to_upper_ranges.count/3, 3)
+	if p >= 0 && to_upper_ranges[p] <= c && c <= to_upper_ranges[p+1] {
+		return rune(c + to_upper_ranges[p+2] - 500)
 	}
 
-	p = binary_search(c, to_upper_singlets, to_upper_singlets.count / 2, 2)
+	p = binary_search(c, to_upper_singlets, to_upper_singlets.count/2, 2)
 	if p >= 0 && c == to_upper_singlets[p] {
-		return rune(c + to_upper_singlets[p + 1] - 500)
+		return rune(c + to_upper_singlets[p+1] - 500)
 	}
 	return rune(c)
 }
 
 to_title :: (r: rune) -> rune {
 	c := s32(r)
-	p := binary_search(c, to_upper_singlets, to_title_singlets.count / 2, 2)
+	p := binary_search(c, to_upper_singlets, to_title_singlets.count/2, 2)
 	if p >= 0 && c == to_upper_singlets[p] {
-		return rune(c + to_title_singlets[p + 1] - 500)
+		return rune(c + to_title_singlets[p+1] - 500)
 	}
 	return rune(c)
 }
 
-is_alpha :: (r: rune) -> bool {
-	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pLmask != 0
-	}
-
-	if is_upper(r) || is_lower(r) {
-		return true
-	}
-
-	c := s32(r)
-	p := binary_search(c, alpha_ranges, alpha_ranges.count / 2, 2)
-	if p >= 0 && alpha_ranges[p] <= c && c <= alpha_ranges[p + 1] {
-		return true
-	}
-
-	p = binary_search(c, alpha_singlets, alpha_singlets.count, 1)
-	if p >= 0 && c == alpha_singlets[p] {
-		return true
-	}
-	return false
-}
-
-is_alnum :: (r: rune) -> bool {
-    return is_alpha(r) || is_digit(r)
-}
-
 is_lower :: (r: rune) -> bool {
 	if r <= MAX_ASCII {
-		return u32(r) - u32('a') < 26
+		return u32(r)-u32('a') < 26
 	}
-
-	c := s32(r)
-	p := binary_search(c, to_upper_ranges, to_upper_ranges.count / 3, 3)
-	if p >= 0 && to_upper_ranges[p] <= c && c <= to_upper_ranges[p + 1] {
-		return true
-	}
-
-	p = binary_search(c, to_upper_singlets, to_upper_singlets.count / 2, 2)
-	if p >= 0 && c == to_upper_singlets[p] {
-		return true
-	}
-	return false
+	return in_range(r, ll_ranges) || in_range(r, other_lowercase_ranges)
 }
 
 is_upper :: (r: rune) -> bool {
 	if r <= MAX_ASCII {
-		return u32(r) - u32('A') < 26
+		return u32(r)-u32('A') < 26
 	}
+	return in_range(r, lu_ranges) || in_range(r, other_uppercase_ranges)
+}
 
-	c := s32(r)
-	p := binary_search(c, to_lower_ranges, to_lower_ranges.count / 3, 3)
-	if p >= 0 && to_lower_ranges[p] <= c && c <= to_lower_ranges[p + 1] {
+is_alpha :: is_letter
+
+is_letter :: (r: rune) -> bool {
+	if u32(r) <= u32(MAX_LATIN1) {
+		return char_properties[u8(r)]&pLmask != 0
+	}
+	if is_upper(r) || is_lower(r) {
 		return true
 	}
 
-	p = binary_search(c, to_lower_singlets, to_lower_singlets.count / 2, 2)
-	if p >= 0 && c == to_lower_singlets[p] {
-		return true
-	}
-	return false
+	ll_lu := in_range(r, ll_ranges) || in_range(r, lu_ranges)
+	return ll_lu || in_range(r, lo_ranges) || in_range(r, lt_ranges) || in_range(r, lm_ranges)
 }
 
 is_title :: (r: rune) -> bool {
 	return is_upper(r) && is_lower(r)
 }
 
+is_decimal :: (r: rune) -> bool {
+	return in_range(r, nd_ranges)
+}
+
 is_digit :: (r: rune) -> bool {
 	if r <= MAX_LATIN1 {
-		return '0' <= r && r <= '9'
+		return ('0' <= r && r <= '9') || r == 0x00B9 || (r >= 0x00B2 && r <= 0x0B3)
 	}
+
+	if in_range(r, nd_ranges) {
+		return true
+	}
+
+	if in_range(r, extra_digits_ranges) {
+		return true
+	}
+
 	return false
 }
 
 is_space :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
 		if r == {
-        case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xa0; return true
-        case; return false
-		}
+		case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xa0; return true
+        }
+        return false
 	}
 
 	c := s32(r)
-	p := binary_search(c, space_ranges, space_ranges.count / 2, 2)
-	if p >= 0 && space_ranges[p] <= c && c <= space_ranges[p + 1] {
+	p := binary_search(c, space_ranges, space_ranges.count/2, 2)
+	if p >= 0 && space_ranges[p] <= c && c <= space_ranges[p+1] {
 		return true
 	}
 	return false
 }
+
+is_white_space :: is_space
 
 is_combining :: (r: rune) -> bool {
 	c := s32(r)
@@ -140,42 +126,66 @@ is_combining :: (r: rune) -> bool {
 
 is_graphic :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pg != 0
+		return char_properties[u8(r)]&pg != 0
 	}
+
+	if is_letter(r) || is_number(r) || is_punct(r) || is_symbol(r) || in_range(r, zs_ranges) {
+		return true
+	}
+
+	if  in_range(r, mc_ranges) || in_range(r, me_ranges) || in_range(r, mn_ranges) {
+		return true
+	}
+
 	return false
 }
 
 is_print :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pp != 0
+		return char_properties[u8(r)]&pp != 0
 	}
 	return false
 }
 
 is_control :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pC != 0
+		return char_properties[u8(r)]&pC != 0
 	}
 	return false
 }
 
 is_number :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pN != 0
+		return char_properties[u8(r)]&pN != 0
 	}
-	return false
+
+	return in_range(r, nd_ranges) || in_range(r, nl_ranges) || in_range(r, no_ranges)
 }
 
 is_punct :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pP != 0
+		return char_properties[u8(r)]&pP != 0
 	}
-	return false
+
+	if in_range(r, pc_ranges) || in_range(r, pd_ranges) || in_range(r, pe_ranges) {
+		return true
+	}
+
+	if in_range(r, pf_ranges) || in_range(r, pi_ranges) || in_range(r, po_ranges) {
+		return true
+	}
+
+	return in_range(r, ps_ranges)
 }
 
 is_symbol :: (r: rune) -> bool {
 	if u32(r) <= u32(MAX_LATIN1) {
-		return char_properties[u8(r)] & pS != 0
+		return char_properties[u8(r)]&pS != 0
+	}
+
+	s := in_range(r, sc_ranges) || in_range(r, sm_ranges)
+	if s || in_range(r, so_ranges) || in_range(r, sk_ranges) {
+		return true
 	}
 	return false
 }
@@ -196,32 +206,32 @@ is_regional_indicator :: (r: rune) -> bool {
 
 // General_Category=Enclosing_Mark
 is_enclosing_mark :: (r: rune) -> bool {
-    if r == {
-    case 0x0488, 0x0489, 0x1ABE; return true
-    }
+	if r == {
+	case 0x0488, 0x0489, 0x1ABE; return true
+	}
 
     if r >= 0x20DD && r <= 0x20E0 then return true
     if r >= 0x20E2 && r <= 0x20E4 then return true
     if r >= 0xA670 && r <= 0xA672 then return true
+
 	return false
 }
 
 // Prepended_Concatenation_Mark
 is_prepended_concatenation_mark :: (r: rune) -> bool {
-    if r == {
-	case 0x006DD, 0x0070F, 0x008E2, 0x110BD, 0x110CD; return true
-    }
-
     if r >= 0x00600 && r <= 0x00605 then return true
     if r >= 0x00890 && r <= 0x00891 then return true
+	if r == {
+	case 0x006DD, 0x0070F, 0x008E2, 0x110BD, 0x110CD; return true
+	}
     return false
 }
 
 // General_Category=Spacing_Mark
 is_spacing_mark :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, spacing_mark_ranges, spacing_mark_ranges.count / 2, 2)
-	if p >= 0 && spacing_mark_ranges[p] <= c && c <= spacing_mark_ranges[p + 1] {
+	p := binary_search(c, spacing_mark_ranges, spacing_mark_ranges.count/2, 2)
+	if p >= 0 && spacing_mark_ranges[p] <= c && c <= spacing_mark_ranges[p+1] {
 		return true
 	}
 	return false
@@ -230,8 +240,8 @@ is_spacing_mark :: (r: rune) -> bool {
 // General_Category=Nonspacing_Mark
 is_nonspacing_mark :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, nonspacing_mark_ranges, nonspacing_mark_ranges.count / 2, 2)
-	if p >= 0 && nonspacing_mark_ranges[p] <= c && c <= nonspacing_mark_ranges[p + 1] {
+	p := binary_search(c, nonspacing_mark_ranges, nonspacing_mark_ranges.count/2, 2)
+	if p >= 0 && nonspacing_mark_ranges[p] <= c && c <= nonspacing_mark_ranges[p+1] {
 		return true
 	}
 	return false
@@ -240,8 +250,8 @@ is_nonspacing_mark :: (r: rune) -> bool {
 // Extended_Pictographic
 is_emoji_extended_pictographic :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, emoji_extended_pictographic_ranges, emoji_extended_pictographic_ranges.count / 2, 2)
-	if p >= 0 && emoji_extended_pictographic_ranges[p] <= c && c <= emoji_extended_pictographic_ranges[p + 1] {
+	p := binary_search(c, emoji_extended_pictographic_ranges, emoji_extended_pictographic_ranges.count/2, 2)
+	if p >= 0 && emoji_extended_pictographic_ranges[p] <= c && c <= emoji_extended_pictographic_ranges[p+1] {
 		return true
 	}
 	return false
@@ -250,13 +260,12 @@ is_emoji_extended_pictographic :: (r: rune) -> bool {
 // Grapheme_Extend
 is_grapheme_extend :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, grapheme_extend_ranges, grapheme_extend_ranges.count / 2, 2)
-	if p >= 0 && grapheme_extend_ranges[p] <= c && c <= grapheme_extend_ranges[p + 1] {
+	p := binary_search(c, grapheme_extend_ranges, grapheme_extend_ranges.count/2, 2)
+	if p >= 0 && grapheme_extend_ranges[p] <= c && c <= grapheme_extend_ranges[p+1] {
 		return true
 	}
 	return false
 }
-
 
 // Hangul_Syllable_Type=Leading_Jamo
 is_hangul_syllable_leading :: (r: rune) -> bool {
@@ -286,8 +295,8 @@ is_hangul_syllable_lv :: (r: rune) -> bool {
 // Hangul_Syllable_Type=LVT_Syllable
 is_hangul_syllable_lvt :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, hangul_syllable_lvt_ranges, hangul_syllable_lvt_ranges.count / 2, 2)
-	if p >= 0 && hangul_syllable_lvt_ranges[p] <= c && c <= hangul_syllable_lvt_ranges[p + 1] {
+	p := binary_search(c, hangul_syllable_lvt_ranges, hangul_syllable_lvt_ranges.count/2, 2)
+	if p >= 0 && hangul_syllable_lvt_ranges[p] <= c && c <= hangul_syllable_lvt_ranges[p+1] {
 		return true
 	}
 	return false
@@ -303,9 +312,11 @@ is_indic_consonant_preceding_repha :: (r: rune) -> bool {
 
 // Indic_Syllabic_Category=Consonant_Prefixed
 is_indic_consonant_prefixed :: (r: rune) -> bool {
-    if r == 0x1193F || r == 0x11A3A then return true
-	if r >= 0x111C2 && r <= 0x111C3 then return true
-	if r >= 0x11A84 && r <= 0x11A89 then return true
+    if r >= 0x111C2 && r <= 0x111C3 then return true
+    if r >= 0x11A84 && r <= 0x11A89 then return true
+	if r == {
+	case 0x1193F, 0x11A3A; return true
+	}
     return false
 }
 
@@ -320,8 +331,8 @@ is_indic_conjunct_break_linker :: (r: rune) -> bool {
 // Indic_Conjunct_Break=Consonant
 is_indic_conjunct_break_consonant :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, indic_conjunct_break_consonant_ranges, indic_conjunct_break_consonant_ranges.count / 2, 2)
-	if p >= 0 && indic_conjunct_break_consonant_ranges[p] <= c && c <= indic_conjunct_break_consonant_ranges[p + 1] {
+	p := binary_search(c, indic_conjunct_break_consonant_ranges, indic_conjunct_break_consonant_ranges.count/2, 2)
+	if p >= 0 && indic_conjunct_break_consonant_ranges[p] <= c && c <= indic_conjunct_break_consonant_ranges[p+1] {
 		return true
 	}
 	return false
@@ -330,44 +341,69 @@ is_indic_conjunct_break_consonant :: (r: rune) -> bool {
 // Indic_Conjunct_Break=Extend
 is_indic_conjunct_break_extend :: (r: rune) -> bool {
 	c := s32(r)
-	p := binary_search(c, indic_conjunct_break_extend_ranges, indic_conjunct_break_extend_ranges.count / 2, 2)
-	if p >= 0 && indic_conjunct_break_extend_ranges[p] <= c && c <= indic_conjunct_break_extend_ranges[p + 1] {
+	p := binary_search(c, indic_conjunct_break_extend_ranges, indic_conjunct_break_extend_ranges.count/2, 2)
+	if p >= 0 && indic_conjunct_break_extend_ranges[p] <= c && c <= indic_conjunct_break_extend_ranges[p+1] {
 		return true
 	}
 	return false
 }
 
-
-/*
-For grapheme text segmentation, from Unicode TR 29 Rev 43:
-
-```
-Indic_Syllabic_Category = Consonant_Preceding_Repha, or
-Indic_Syllabic_Category = Consonant_Prefixed, or
-Prepended_Concatenation_Mark = Yes
-```
-*/
+// For grapheme text segmentation, from Unicode TR 29 Rev 43:
+//
+// ```
+// Indic_Syllabic_Category = Consonant_Preceding_Repha, or
+// Indic_Syllabic_Category = Consonant_Prefixed, or
+// Prepended_Concatenation_Mark = Yes
+// ```
 is_gcb_prepend_class :: (r: rune) -> bool {
 	return is_indic_consonant_preceding_repha(r) || is_indic_consonant_prefixed(r) || is_prepended_concatenation_mark(r)
 }
 
-/*
-For grapheme text segmentation, from Unicode TR 29 Rev 43:
-
-```
-Grapheme_Extend = Yes, or
-Emoji_Modifier = Yes
-
-This includes:
-General_Category = Nonspacing_Mark
-General_Category = Enclosing_Mark
-U+200C ZERO WIDTH NON-JOINER
-
-plus a few General_Category = Spacing_Mark needed for canonical equivalence.
-```
-*/
+// For grapheme text segmentation, from Unicode TR 29 Rev 43:
+//
+// ```
+// Grapheme_Extend = Yes, or
+// Emoji_Modifier = Yes
+//
+// This includes:
+// General_Category = Nonspacing_Mark
+// General_Category = Enclosing_Mark
+// U+200C ZERO WIDTH NON-JOINER
+//
+// plus a few General_Category = Spacing_Mark needed for canonical equivalence.
+// ```
 is_gcb_extend_class :: (r: rune) -> bool {
 	return is_grapheme_extend(r) || is_emoji_modifier(r)
+}
+
+// Return values:
+//
+// - 2 if East_Asian_Width=F or W, or
+// - 0 if non-printable / zero-width, or
+// - 1 in all other cases.
+//
+normalized_east_asian_width :: (r: rune) -> s64 {
+	// This is a different interpretation of the BOM which occurs in the middle of text.
+	ZERO_WIDTH_NO_BREAK_SPACE :: '\uFEFF'
+
+	if is_control(r) {
+		return 0
+	} else if r <= 0x10FF {
+		// Easy early out for low runes.
+		return 1
+	}
+
+	if r == {
+	case ZERO_WIDTH_NO_BREAK_SPACE, ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, WORD_JOINER
+		return 0
+	}
+
+	c := s32(r)
+	p := binary_search(c, normalized_east_asian_width_ranges, normalized_east_asian_width_ranges.count/3, 3)
+	if p >= 0 && normalized_east_asian_width_ranges[p] <= c && c <= normalized_east_asian_width_ranges[p+1] {
+		return s64(normalized_east_asian_width_ranges[p+2])
+	}
+	return 1
 }
 
 // Stolen from https://github.com/odin-lang/odin.
