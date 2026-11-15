@@ -181,7 +181,7 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
             end_loc := clang_getRangeEnd(extent)
 
             file: CXFile
-            end_line, end_column, end_offset: C.unsigned_int
+            end_line, end_column, end_offset: C.uint
             clang_getSpellingLocation(end_loc, &file, &end_line, &end_column, &end_offset)
 
             if file != null {
@@ -523,7 +523,7 @@ operator <=> :: inline (this: CXCursor, that: CXCursor) -> Equivalence {
     return .NE
 }
 
-CXCursorKind :: enum C.unsigned_int {
+CXCursorKind :: enum C.uint {
     StructDecl       = 2
     UnionDecl        = 3
     EnumDecl         = 5
@@ -534,7 +534,7 @@ CXCursorKind :: enum C.unsigned_int {
     TypedefDecl      = 20
 }
 
-CXChildVisitResult :: enum C.unsigned_int {
+CXChildVisitResult :: enum C.uint {
     Break
     Continue
     Recurse
@@ -560,7 +560,7 @@ CXToken :: struct {
     ptr_data: rawptr
 }
 
-CXTokenKind :: enum C.unsigned_int {
+CXTokenKind :: enum C.uint {
   Punctuation
   Keyword
   Identifier
@@ -608,17 +608,17 @@ is_signed :: (this: CXType) -> bool {
     n := 0
     if t := this.unwrap(); t.kind == {
     case .Bool;      n += w.write([]u8("bool"))?
-    case .UChar;     n += w.write([]u8("unsigned_char"))?
-    case .UShort;    n += w.write([]u8("unsigned_short"))?
-    case .UInt;      n += w.write([]u8("unsigned_int"))?
-    case .ULong;     n += w.write([]u8("unsigned_long"))?
-    case .ULongLong; n += w.write([]u8("unsigned_long_long"))?
+    case .UChar;     n += w.write([]u8("uchar"))?
+    case .UShort;    n += w.write([]u8("ushort"))?
+    case .UInt;      n += w.write([]u8("uint"))?
+    case .ULong;     n += w.write([]u8("ulong"))?
+    case .ULongLong; n += w.write([]u8("ulonglong"))?
     case .Char_S;    n += w.write([]u8("char"))?
     case .SChar;     n += w.write([]u8("char"))?
     case .Short;     n += w.write([]u8("short"))?
     case .Int;       n += w.write([]u8("int"))?
     case .Long;      n += w.write([]u8("long"))?
-    case .LongLong;  n += w.write([]u8("long_long"))?
+    case .LongLong;  n += w.write([]u8("longlong"))?
     case .Float;     n += w.write([]u8("float"))?
     case .Double;    n += w.write([]u8("double"))?
 
@@ -683,7 +683,7 @@ is_signed :: (this: CXType) -> bool {
     return n, null
 }
 
-CXTypeKind :: enum C.unsigned_int {
+CXTypeKind :: enum C.uint {
     Void            = 2
     Bool            = 3
     Char_U          = 4
@@ -714,10 +714,10 @@ CXTypeKind :: enum C.unsigned_int {
 CXUnsavedFile :: struct {
     Filename: &C.char
     Contents: &C.char
-    Length:   &C.unsigned_long
+    Length:   &C.ulong
 }
 
-CXDiagnosticSeverity :: enum C.unsigned_int {
+CXDiagnosticSeverity :: enum C.uint {
     Ignored
     Note
     Warning
@@ -725,7 +725,7 @@ CXDiagnosticSeverity :: enum C.unsigned_int {
     Fatal
 }
 
-CXTranslationUnit_Flags :: enum C.unsigned_int {
+CXTranslationUnit_Flags :: enum C.uint {
     DetailedPreprocessingRecord = 0x01
 }
 
@@ -773,15 +773,15 @@ extern {
     clang_getPointeeType :: (T: CXType) -> CXType
     clang_getTypeDeclaration :: (T: CXType) -> CXCursor
     clang_getArrayElementType :: (T: CXType) -> CXType
-    clang_getArraySize :: (T: CXType) -> C.long_long
+    clang_getArraySize :: (T: CXType) -> C.longlong
     clang_getNumArgTypes :: (T: CXType) -> C.int
     clang_getArgType :: (T: CXType, i: C.unsigned) -> CXType
     clang_isFunctionTypeVariadic :: (T: CXType) -> C.unsigned
     clang_getResultType :: (T: CXType) -> CXType
 
     clang_getEnumDeclIntegerType :: (cursor: CXCursor) -> CXType
-    clang_getEnumConstantDeclValue :: (cursor: CXCursor) -> C.long_long
-    clang_getEnumConstantDeclUnsignedValue :: (cursor: CXCursor) -> C.unsigned_long_long
+    clang_getEnumConstantDeclValue :: (cursor: CXCursor) -> C.longlong
+    clang_getEnumConstantDeclUnsignedValue :: (cursor: CXCursor) -> C.ulonglong
     clang_Cursor_isBitField :: (cursor: CXCursor) -> C.unsigned
     clang_getTypedefDeclUnderlyingType :: (cursor: CXCursor) -> CXType
     clang_Cursor_getNumArguments :: (cursor: CXCursor) -> C.int

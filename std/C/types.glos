@@ -1,24 +1,24 @@
-char          :: s8
-unsigned_char :: u8
+char  :: s8
+uchar :: u8
 
-short          :: s16
-unsigned_short :: u16
+short  :: s16
+ushort :: u16
 
-int          :: s32
-unsigned_int :: u32
+int  :: s32
+uint :: u32
 
 #if PLATFORM == .WINDOWS {
-    long          :: s32
-    unsigned_long :: u32
-    wchar_t       :: u16
+    long    :: s32
+    ulong   :: u32
+    wchar_t :: u16
 } else {
-    long          :: s64
-    unsigned_long :: u64
-    wchar_t       :: s32
+    long    :: s64
+    ulong   :: u64
+    wchar_t :: s32
 }
 
-long_long          :: s64
-unsigned_long_long :: u64
+longlong  :: s64
+ulonglong :: u64
 
 signed   :: s32
 unsigned :: u32
@@ -48,8 +48,8 @@ uint64_t :: u64
 
 #if PLATFORM == .LINUX {
     __va_list_tag :: struct {
-        gp_offset:         unsigned_int
-        fp_offset:         unsigned_int
+        gp_offset:         uint
+        fp_offset:         uint
         overflow_arg_area: rawptr
         reg_save_area:     rawptr
     }

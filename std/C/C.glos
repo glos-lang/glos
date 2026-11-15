@@ -28,8 +28,8 @@ extern {
     fread :: (ptr: rawptr, size: size_t, count: size_t, f: FILE) -> size_t
     feof :: (stream: FILE) -> int
     strtod :: (s: &char, end: &&char) -> double
-    strtoll :: (s: &char, end: &&char, base: int) -> long_long
-    strtoull :: (s: &char, end: &&char, base: int) -> unsigned_long_long
+    strtoll :: (s: &char, end: &&char, base: int) -> longlong
+    strtoull :: (s: &char, end: &&char, base: int) -> ulonglong
     rename :: (oldpath: &char, newpath: &char) -> int
     remove :: (pathname: &char) -> int
 }

@@ -4,7 +4,7 @@ open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := 
     path := strings.to_cstring(path, &temporary_allocator)?
     defer temporary_allocator.rewind(rawptr(path))
 
-    fd := open(path, C.int(flags), C.unsigned_int(perm))
+    fd := open(path, C.int(flags), C.uint(perm))
     if fd == -1 {
         return null, C.get_errno()
     }

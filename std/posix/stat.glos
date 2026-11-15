@@ -7,7 +7,7 @@ case .LINUX
     STATX_BTIME       :: 2048
 
     extern {
-        statx :: (dirfd: C.int, path: &C.char, flags: C.int, mask: C.unsigned_int, stat: &Statx) -> C.int
+        statx :: (dirfd: C.int, path: &C.char, flags: C.int, mask: C.uint, stat: &Statx) -> C.int
     }
 
     Statx :: struct {

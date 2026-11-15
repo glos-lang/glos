@@ -161,10 +161,10 @@ Matrix :: struct {
 
 // Color, 4 components, R8G8B8A8 (32bit)
 Color :: struct {
-    r: C.unsigned_char // Color red value
-    g: C.unsigned_char // Color green value
-    b: C.unsigned_char // Color blue value
-    a: C.unsigned_char // Color alpha value
+    r: C.uchar // Color red value
+    g: C.uchar // Color green value
+    b: C.uchar // Color blue value
+    a: C.uchar // Color alpha value
 }
 
 // Rectangle, 4 components
@@ -186,18 +186,18 @@ Image :: struct {
 
 // Texture, tex data stored in GPU memory (VRAM)
 Texture :: struct {
-    id:      C.unsigned_int // OpenGL texture id
-    width:   C.int          // Texture base width
-    height:  C.int          // Texture base height
-    mipmaps: C.int          // Mipmap levels, 1 by default
-    format:  C.int          // Data format (PixelFormat type)
+    id:      C.uint // OpenGL texture id
+    width:   C.int  // Texture base width
+    height:  C.int  // Texture base height
+    mipmaps: C.int  // Mipmap levels, 1 by default
+    format:  C.int  // Data format (PixelFormat type)
 }
 
 // RenderTexture, fbo for texture rendering
 RenderTexture :: struct {
-    id:      C.unsigned_int // OpenGL framebuffer object id
-    texture: Texture        // Color buffer attachment texture
-    depth:   Texture        // Depth buffer attachment texture
+    id:      C.uint  // OpenGL framebuffer object id
+    texture: Texture // Color buffer attachment texture
+    depth:   Texture // Depth buffer attachment texture
 }
 
 // NPatchInfo, n-patch layout info
@@ -248,28 +248,28 @@ Camera2D :: struct {
 
 // Mesh, vertex data and vao/vbo
 Mesh :: struct {
-    vertexCount:   C.int             // Number of vertices stored in arrays
-    triangleCount: C.int             // Number of triangles stored (indexed or not)
-    vertices:      &C.float          // Vertex position (XYZ - 3 components per vertex) (shader-location = 0)
-    texcoords:     &C.float          // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
-    texcoords2:    &C.float          // Vertex texture second coordinates (UV - 2 components per vertex) (shader-location = 5)
-    normals:       &C.float          // Vertex normals (XYZ - 3 components per vertex) (shader-location = 2)
-    tangents:      &C.float          // Vertex tangents (XYZW - 4 components per vertex) (shader-location = 4)
-    colors:        &C.unsigned_char  // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
-    indices:       &C.unsigned_short // Vertex indices (in case vertex data comes indexed)
-    boneCount:     C.int             // Number of bones (MAX: 256 bones)
-    boneIndices:   &C.unsigned_char  // Vertex bone indices, up to 4 bones influence by vertex (skinning) (shader-location = 6)
-    boneWeights:   &C.float          // Vertex bone weight, up to 4 bones influence by vertex (skinning) (shader-location = 7)
-    animVertices:  &C.float          // Animated vertex positions (after bones transformations)
-    animNormals:   &C.float          // Animated normals (after bones transformations)
-    vaoId:         C.unsigned_int    // OpenGL Vertex Array Object id
-    vboId:         &C.unsigned_int   // OpenGL Vertex Buffer Objects id (default vertex data)
+    vertexCount:   C.int     // Number of vertices stored in arrays
+    triangleCount: C.int     // Number of triangles stored (indexed or not)
+    vertices:      &C.float  // Vertex position (XYZ - 3 components per vertex) (shader-location = 0)
+    texcoords:     &C.float  // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
+    texcoords2:    &C.float  // Vertex texture second coordinates (UV - 2 components per vertex) (shader-location = 5)
+    normals:       &C.float  // Vertex normals (XYZ - 3 components per vertex) (shader-location = 2)
+    tangents:      &C.float  // Vertex tangents (XYZW - 4 components per vertex) (shader-location = 4)
+    colors:        &C.uchar  // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
+    indices:       &C.ushort // Vertex indices (in case vertex data comes indexed)
+    boneCount:     C.int     // Number of bones (MAX: 256 bones)
+    boneIndices:   &C.uchar  // Vertex bone indices, up to 4 bones influence by vertex (skinning) (shader-location = 6)
+    boneWeights:   &C.float  // Vertex bone weight, up to 4 bones influence by vertex (skinning) (shader-location = 7)
+    animVertices:  &C.float  // Animated vertex positions (after bones transformations)
+    animNormals:   &C.float  // Animated normals (after bones transformations)
+    vaoId:         C.uint    // OpenGL Vertex Array Object id
+    vboId:         &C.uint   // OpenGL Vertex Buffer Objects id (default vertex data)
 }
 
 // Shader
 Shader :: struct {
-    id:   C.unsigned_int // Shader program id
-    locs: &C.int         // Shader locations array (RL_MAX_SHADER_LOCATIONS)
+    id:   C.uint // Shader program id
+    locs: &C.int // Shader locations array (RL_MAX_SHADER_LOCATIONS)
 }
 
 // MaterialMap
@@ -349,35 +349,35 @@ BoundingBox :: struct {
 
 // Wave, audio wave data
 Wave :: struct {
-    frameCount: C.unsigned_int // Total number of frames (considering channels)
-    sampleRate: C.unsigned_int // Frequency (samples per second)
-    sampleSize: C.unsigned_int // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
-    channels:   C.unsigned_int // Number of channels (1-mono, 2-stereo, ...)
-    data:       rawptr         // Buffer data pointer
+    frameCount: C.uint // Total number of frames (considering channels)
+    sampleRate: C.uint // Frequency (samples per second)
+    sampleSize: C.uint // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
+    channels:   C.uint // Number of channels (1-mono, 2-stereo, ...)
+    data:       rawptr // Buffer data pointer
 }
 
 // AudioStream, custom audio stream
 AudioStream :: struct {
     buffer:     &rAudioBuffer    // Pointer to internal data used by the audio system
     processor:  &rAudioProcessor // Pointer to internal data processor, useful for audio effects
-    sampleRate: C.unsigned_int   // Frequency (samples per second)
-    sampleSize: C.unsigned_int   // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
-    channels:   C.unsigned_int   // Number of channels (1-mono, 2-stereo, ...)
+    sampleRate: C.uint           // Frequency (samples per second)
+    sampleSize: C.uint           // Bit depth (bits per sample): 8, 16, 32 (24 not supported)
+    channels:   C.uint           // Number of channels (1-mono, 2-stereo, ...)
 }
 
 // Sound
 Sound :: struct {
-    stream:     AudioStream    // Audio stream
-    frameCount: C.unsigned_int // Total number of frames (considering channels)
+    stream:     AudioStream // Audio stream
+    frameCount: C.uint      // Total number of frames (considering channels)
 }
 
 // Music, audio stream, anything longer than ~10 seconds should be streamed
 Music :: struct {
-    stream:     AudioStream    // Audio stream
-    frameCount: C.unsigned_int // Total number of frames (considering channels)
-    looping:    bool           // Music looping enable
-    ctxType:    C.int          // Type of music context (audio filetype)
-    ctxData:    rawptr         // Audio context data, depends on type
+    stream:     AudioStream // Audio stream
+    frameCount: C.uint      // Total number of frames (considering channels)
+    looping:    bool        // Music looping enable
+    ctxType:    C.int       // Type of music context (audio filetype)
+    ctxData:    rawptr      // Audio context data, depends on type
 }
 
 // VrDeviceInfo, Head-Mounted-Display device parameters
@@ -407,21 +407,21 @@ VrStereoConfig :: struct {
 
 // File path list
 FilePathList :: struct {
-    count: C.unsigned_int // Filepaths entries count
-    paths: &&C.char       // Filepaths entries
+    count: C.uint   // Filepaths entries count
+    paths: &&C.char // Filepaths entries
 }
 
 // Automation event
 AutomationEvent :: struct {
-    frame:  C.unsigned_int // Event frame
-    type:   C.unsigned_int // Event type (AutomationEventType)
-    params: [4]C.int       // Event parameters (if required)
+    frame:  C.uint   // Event frame
+    type:   C.uint   // Event type (AutomationEventType)
+    params: [4]C.int // Event parameters (if required)
 }
 
 // Automation event list
 AutomationEventList :: struct {
-    capacity: C.unsigned_int   // Events max entries (MAX_AUTOMATION_EVENTS)
-    count:    C.unsigned_int   // Events entries count
+    capacity: C.uint           // Events max entries (MAX_AUTOMATION_EVENTS)
+    count:    C.uint           // Events entries count
     events:   &AutomationEvent // Events entries
 }
 
@@ -785,7 +785,7 @@ BlendMode :: enum C.int {
 }
 
 // Gesture
-Gesture :: enum C.unsigned_int {
+Gesture :: enum C.uint {
     NONE        = 0   // No gesture
     TAP         = 1   // Tap gesture
     DOUBLETAP   = 2   // Double tap gesture
@@ -825,7 +825,7 @@ NPatchLayout :: enum C.int {
 TraceLogCallback :: (logLevel: C.int, text: &C.char, ...)
 
 // FileIO: Load binary data
-LoadFileDataCallback :: (fileName: &C.char, dataSize: &C.int) -> &C.unsigned_char
+LoadFileDataCallback :: (fileName: &C.char, dataSize: &C.int) -> &C.uchar
 
 // FileIO: Save binary data
 SaveFileDataCallback :: (fileName: &C.char, data: rawptr, dataSize: C.int) -> bool
@@ -837,7 +837,7 @@ LoadFileTextCallback :: (fileName: &C.char) -> &C.char
 SaveFileTextCallback :: (fileName: &C.char, text: &C.char) -> bool
 
 // Audio Loading and Playing Functions
-AudioCallback :: (bufferData: rawptr, frames: C.unsigned_int)
+AudioCallback :: (bufferData: rawptr, frames: C.uint)
 
 extern {
     // Initialize window and OpenGL context
@@ -1138,13 +1138,13 @@ extern {
     WaitTime :: (seconds: C.double)
 
     // Set the seed for the random number generator
-    SetRandomSeed :: (seed: C.unsigned_int)
+    SetRandomSeed :: (seed: C.uint)
 
     // Get a random value between min and max (both included)
     GetRandomValue :: (min: C.int, max: C.int) -> C.int
 
     // Load random values sequence, no values repeated
-    LoadRandomSequence :: (count: C.unsigned_int, min: C.int, max: C.int) -> &C.int
+    LoadRandomSequence :: (count: C.uint, min: C.int, max: C.int) -> &C.int
 
     // Unload random values sequence
     UnloadRandomSequence :: (sequence: &C.int)
@@ -1168,25 +1168,25 @@ extern {
     SetTraceLogCallback :: (callback: TraceLogCallback)
 
     // Internal memory allocator
-    MemAlloc :: (size: C.unsigned_int)
+    MemAlloc :: (size: C.uint)
 
     // Internal memory reallocator
-    MemRealloc :: (ptr: rawptr, size: C.unsigned_int)
+    MemRealloc :: (ptr: rawptr, size: C.uint)
 
     // Internal memory free
     MemFree :: (ptr: rawptr)
 
     // Load file data as byte array (read)
-    LoadFileData :: (fileName: &C.char, dataSize: &C.int) -> &C.unsigned_char
+    LoadFileData :: (fileName: &C.char, dataSize: &C.int) -> &C.uchar
 
     // Unload file data allocated by LoadFileData()
-    UnloadFileData :: (data: &C.unsigned_char)
+    UnloadFileData :: (data: &C.uchar)
 
     // Save data to file from byte array (write), returns true on success
     SaveFileData :: (fileName: &C.char, data: rawptr, dataSize: C.int) -> bool
 
     // Export data to code (.h), returns true on success
-    ExportDataAsCode :: (data: &C.unsigned_char, dataSize: C.int, fileName: &C.char) -> bool
+    ExportDataAsCode :: (data: &C.uchar, dataSize: C.int, fileName: &C.char) -> bool
 
     // Load text data from file (read), returns a '\0' terminated string
     LoadFileText :: (fileName: &C.char) -> &C.char
@@ -1294,34 +1294,34 @@ extern {
     UnloadDroppedFiles :: (files: FilePathList)
 
     // Get the file count in a directory
-    GetDirectoryFileCount :: (dirPath: &C.char) -> C.unsigned_int
+    GetDirectoryFileCount :: (dirPath: &C.char) -> C.uint
 
     // Get the file count in a directory with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
-    GetDirectoryFileCountEx :: (basePath: &C.char, filter: &C.char, scanSubdirs: bool) -> C.unsigned_int
+    GetDirectoryFileCountEx :: (basePath: &C.char, filter: &C.char, scanSubdirs: bool) -> C.uint
 
     // Compress data (DEFLATE algorithm), memory must be MemFree()
-    CompressData :: (data: &C.unsigned_char, dataSize: C.int, compDataSize: &C.int) -> &C.unsigned_char
+    CompressData :: (data: &C.uchar, dataSize: C.int, compDataSize: &C.int) -> &C.uchar
 
     // Decompress data (DEFLATE algorithm), memory must be MemFree()
-    DecompressData :: (compData: &C.unsigned_char, compDataSize: C.int, dataSize: &C.int) -> &C.unsigned_char
+    DecompressData :: (compData: &C.uchar, compDataSize: C.int, dataSize: &C.int) -> &C.uchar
 
     // Encode data to Base64 string (includes NULL terminator), memory must be MemFree()
-    EncodeDataBase64 :: (data: &C.unsigned_char, dataSize: C.int, outputSize: &C.int) -> &C.char
+    EncodeDataBase64 :: (data: &C.uchar, dataSize: C.int, outputSize: &C.int) -> &C.char
 
     // Decode Base64 string (expected NULL terminated), memory must be MemFree()
-    DecodeDataBase64 :: (text: &C.char, outputSize: &C.int) -> &C.unsigned_char
+    DecodeDataBase64 :: (text: &C.char, outputSize: &C.int) -> &C.uchar
 
     // Compute CRC32 hash code
-    ComputeCRC32 :: (data: &C.unsigned_char, dataSize: C.int) -> C.unsigned_int
+    ComputeCRC32 :: (data: &C.uchar, dataSize: C.int) -> C.uint
 
     // Compute MD5 hash code, returns static int[4] (16 bytes)
-    ComputeMD5 :: (data: &C.unsigned_char, dataSize: C.int) -> &C.unsigned_int
+    ComputeMD5 :: (data: &C.uchar, dataSize: C.int) -> &C.uint
 
     // Compute SHA1 hash code, returns static int[5] (20 bytes)
-    ComputeSHA1 :: (data: &C.unsigned_char, dataSize: C.int) -> &C.unsigned_int
+    ComputeSHA1 :: (data: &C.uchar, dataSize: C.int) -> &C.uint
 
     // Compute SHA256 hash code, returns static int[8] (32 bytes)
-    ComputeSHA256 :: (data: &C.unsigned_char, dataSize: C.int) -> &C.unsigned_int
+    ComputeSHA256 :: (data: &C.uchar, dataSize: C.int) -> &C.uint
 
     // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
     LoadAutomationEventList :: (fileName: &C.char) -> AutomationEventList
@@ -1711,10 +1711,10 @@ extern {
     LoadImageAnim :: (fileName: &C.char, frames: &C.int) -> Image
 
     // Load image sequence from memory buffer
-    LoadImageAnimFromMemory :: (fileType: &C.char, fileData: &C.unsigned_char, dataSize: C.int, frames: &C.int) -> Image
+    LoadImageAnimFromMemory :: (fileType: &C.char, fileData: &C.uchar, dataSize: C.int, frames: &C.int) -> Image
 
     // Load image from memory buffer, fileType refers to extension: i.e. '.png'
-    LoadImageFromMemory :: (fileType: &C.char, fileData: &C.unsigned_char, dataSize: C.int) -> Image
+    LoadImageFromMemory :: (fileType: &C.char, fileData: &C.uchar, dataSize: C.int) -> Image
 
     // Load image from GPU texture data
     LoadImageFromTexture :: (texture: Texture2D) -> Image
@@ -1732,7 +1732,7 @@ extern {
     ExportImage :: (image: Image, fileName: &C.char) -> bool
 
     // Export image to memory buffer, memory must be MemFree()
-    ExportImageToMemory :: (image: Image, fileType: &C.char, fileSize: &C.int) -> &C.unsigned_char
+    ExportImageToMemory :: (image: Image, fileType: &C.char, fileSize: &C.int) -> &C.uchar
 
     // Export image as code file defining an array of bytes, returns true on success
     ExportImageAsCode :: (image: Image, fileName: &C.char) -> bool
@@ -2035,7 +2035,7 @@ extern {
     ColorLerp :: (color1: Color, color2: Color, factor: C.float) -> Color
 
     // Get Color structure from hexadecimal value
-    GetColor :: (hexValue: C.unsigned_int) -> Color
+    GetColor :: (hexValue: C.uint) -> Color
 
     // Get Color from a source pixel pointer of certain format
     GetPixelColor :: (srcPtr: rawptr, format: PixelFormat) -> Color
@@ -2059,13 +2059,13 @@ extern {
     LoadFontFromImage :: (image: Image, key: Color, firstChar: C.int) -> Font
 
     // Load font from memory buffer, fileType refers to extension: i.e. '.ttf'
-    LoadFontFromMemory :: (fileType: &C.char, fileData: &C.unsigned_char, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int) -> Font
+    LoadFontFromMemory :: (fileType: &C.char, fileData: &C.uchar, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int) -> Font
 
     // Check if a font is valid (font data loaded, WARNING: GPU texture not checked)
     IsFontValid :: (font: Font) -> bool
 
     // Load font data for further use
-    LoadFontData :: (fileData: &C.unsigned_char, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int, type: FontType, glyphCount: &C.int) -> &GlyphInfo
+    LoadFontData :: (fileData: &C.uchar, dataSize: C.int, fontSize: C.int, codepoints: &C.int, codepointCount: C.int, type: FontType, glyphCount: &C.int) -> &GlyphInfo
 
     // Generate image font atlas using chars info
     GenImageFontAtlas :: (glyphs: &GlyphInfo, glyphRecs: &&Rectangle, glyphCount: C.int, fontSize: C.int, padding: C.int, packMethod: C.int) -> Image
@@ -2158,7 +2158,7 @@ extern {
     TextIsEqual :: (text1: &C.char, text2: &C.char) -> bool
 
     // Get text length, checks for '\0' ending
-    TextLength :: (text: &C.char) -> C.unsigned_int
+    TextLength :: (text: &C.char) -> C.uint
 
     // Text formatting with variables (sprintf() style)
     TextFormat :: (text: &C.char, ...) -> &C.char
@@ -2461,7 +2461,7 @@ extern {
     LoadWave :: (fileName: &C.char) -> Wave
 
     // Load wave from memory buffer, fileType refers to extension: i.e. '.wav'
-    LoadWaveFromMemory :: (fileType: &C.char, fileData: &C.unsigned_char, dataSize: C.int) -> Wave
+    LoadWaveFromMemory :: (fileType: &C.char, fileData: &C.uchar, dataSize: C.int) -> Wave
 
     // Checks if wave data is valid (data loaded and parameters)
     IsWaveValid :: (wave: Wave) -> bool
@@ -2539,7 +2539,7 @@ extern {
     LoadMusicStream :: (fileName: &C.char) -> Music
 
     // Load music stream from data
-    LoadMusicStreamFromMemory :: (fileType: &C.char, data: &C.unsigned_char, dataSize: C.int) -> Music
+    LoadMusicStreamFromMemory :: (fileType: &C.char, data: &C.uchar, dataSize: C.int) -> Music
 
     // Checks if a music stream is valid (context and buffers initialized)
     IsMusicValid :: (music: Music) -> bool
@@ -2584,7 +2584,7 @@ extern {
     GetMusicTimePlayed :: (music: Music) -> C.float
 
     // Load audio stream (to stream raw audio pcm data)
-    LoadAudioStream :: (sampleRate: C.unsigned_int, sampleSize: C.unsigned_int, channels: C.unsigned_int) -> AudioStream
+    LoadAudioStream :: (sampleRate: C.uint, sampleSize: C.uint, channels: C.uint) -> AudioStream
 
     // Checks if an audio stream is valid (buffers initialized)
     IsAudioStreamValid :: (stream: AudioStream) -> bool

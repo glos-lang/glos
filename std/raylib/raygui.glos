@@ -357,9 +357,9 @@ RAYGUI_VERSION_PATCH :: 0
 // Style property
 // NOTE: Used when exporting style as code for convenience
 GuiStyleProp :: struct {
-    controlId:     C.unsigned_short; // Control identifier
-    propertyId:    C.unsigned_short; // Property identifier
-    propertyValue: C.int;            // Property value
+    controlId:     C.ushort; // Control identifier
+    propertyId:    C.ushort; // Property identifier
+    propertyValue: C.int;    // Property value
 }
 
 // Gui control result
@@ -613,7 +613,7 @@ extern {
     GuiLoadStyle :: (fileName: &C.char)
 
     // Load style from memory (binary only)
-    GuiLoadStyleFromMemory :: (fileData: &C.unsigned_char, dataSize: C.int)
+    GuiLoadStyleFromMemory :: (fileData: &C.uchar, dataSize: C.int)
 
     // Load style default over global style
     GuiLoadStyleDefault :: ()
@@ -634,13 +634,13 @@ extern {
     GuiSetIconScale :: (scale: C.int)
 
     // Get raygui icons data pointer
-    GuiGetIcons :: () -> &C.unsigned_int
+    GuiGetIcons :: () -> &C.uint
 
     // Load raygui icons file (.rgi) into internal icons data
     GuiLoadIcons :: (fileName: &C.char, loadIconsName: bool) -> &&C.char
 
     // Load raygui icons file (.rgi) from memory into internal icons data
-    GuiLoadIconsFromMemory :: (fileData: &C.unsigned_char, dataSize: C.int, loadIconsName: bool) -> &&C.char
+    GuiLoadIconsFromMemory :: (fileData: &C.uchar, dataSize: C.int, loadIconsName: bool) -> &&C.char
 
     // Draw icon using pixel size at specified position
     GuiDrawIcon :: (iconId: GuiIconName, posX: C.int, posY: C.int, pixelSize: C.int, color: Color)

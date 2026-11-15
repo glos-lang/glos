@@ -98,9 +98,9 @@ main :: () {
 
     // First let's import the builtin "C" module, to get these convenient type aliases:
     //
-    //     char          :: s8
-    //     unsigned_char :: u8
-    //     int           :: s32
+    //     char  :: s8
+    //     uchar :: u8
+    //     int   :: s32
     //
     C :: #import "C"
 
@@ -109,7 +109,7 @@ main :: () {
         puts :: (s: &C.char) -> C.int
 
         #link "puts"
-        uputs :: (s: &C.unsigned_char) -> C.int
+        uputs :: (s: &C.uchar) -> C.int
 
         // The C FFI mechanisms will be described in detail later.
     }

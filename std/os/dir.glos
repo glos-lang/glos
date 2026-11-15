@@ -191,8 +191,8 @@ stat :: inline (this: Dir_Entry) -> File_Info, error {
     return stat(this.path)
 }
 
-#if PLATFORM == .WINDOWS {
-    range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
+range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
+    #if PLATFORM == .WINDOWS {
         for {
             if this.stack.count == 0 {
                 this.free()
@@ -249,9 +249,7 @@ stat :: inline (this: Dir_Entry) -> File_Info, error {
             this.entry.isdir = (it.ent.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0
             return &this.entry, null, true
         }
-    }
-} else {
-    range :: (this: &Dir_Iter, state: &struct {}) -> &Dir_Entry, error, bool {
+    } else {
         for {
             if this.stack.count == 0 {
                 this.free()

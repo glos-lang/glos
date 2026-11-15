@@ -12,19 +12,19 @@ extern {
     ////////////////////////////////////
 
     #link "stbi_load_from_memory"
-    load_from_memory    :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+    load_from_memory    :: (buffer: &C.uchar, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.uchar
 
     #link "stbi_load_from_callbacks"
-    load_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+    load_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.uchar
 
     #link "stbi_load"
-    load           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char
+    load           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.uchar
 
     #link "stbi_load_from_file"
-    load_from_file :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_char // file pointer is left pointing immediately after image
+    load_from_file :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.uchar // file pointer is left pointing immediately after image
 
     #link "stbi_load_gif_from_memory"
-    load_gif_from_memory :: (buffer: &C.unsigned_char, len: C.int, delays: &&C.int, x: &C.int, y: &C.int, z: &C.int, comp: &C.int, req_comp: C.int) -> &C.unsigned_char
+    load_gif_from_memory :: (buffer: &C.uchar, len: C.int, delays: &&C.int, x: &C.int, y: &C.int, z: &C.int, comp: &C.int, req_comp: C.int) -> &C.uchar
 
     ////////////////////////////////////
     //
@@ -33,16 +33,16 @@ extern {
     ////////////////////////////////////
 
     #link "stbi_load_16_from_memory"
-    load_16_from_memory    :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+    load_16_from_memory    :: (buffer: &C.uchar, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.ushort
 
     #link "stbi_load_16_from_callbacks"
-    load_16_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+    load_16_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.ushort
 
     #link "stbi_load_16"
-    load_16           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+    load_16           :: (filename: &C.char, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.ushort
 
     #link "stbi_load_from_file_16"
-    load_from_file_16 :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.unsigned_short
+    load_from_file_16 :: (f: &C.FILE, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.ushort
 
     ////////////////////////////////////
     //
@@ -51,7 +51,7 @@ extern {
     ////////////////////////////////////
 
     #link "stbi_loadf_from_memory"
-    loadf_from_memory :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.float
+    loadf_from_memory :: (buffer: &C.uchar, len: C.int, x: &C.int, y: &C.int, channels_in_file: &C.int, desired_channels: C.int) -> &C.float
 
     #link "stbi_loadf_from_callbacks"
     loadf_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int,  channels_in_file: &C.int, desired_channels: C.int) -> &C.float
@@ -78,7 +78,7 @@ extern {
     is_hdr_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr) -> C.int
 
     #link "stbi_is_hdr_from_memory"
-    is_hdr_from_memory :: (buffer: &C.unsigned_char, len: C.int) -> C.int
+    is_hdr_from_memory :: (buffer: &C.uchar, len: C.int) -> C.int
 
     #link "stbi_is_hdr"
     is_hdr :: (filename: &C.char) -> C.int
@@ -97,13 +97,13 @@ extern {
 
     // get image dimensions & components without fully decoding
     #link "stbi_info_from_memory"
-    info_from_memory :: (buffer: &C.unsigned_char, len: C.int, x: &C.int, y: &C.int, comp: &C.int) -> C.int
+    info_from_memory :: (buffer: &C.uchar, len: C.int, x: &C.int, y: &C.int, comp: &C.int) -> C.int
 
     #link "stbi_info_from_callbacks"
     info_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr, x: &C.int, y: &C.int, comp: &C.int) -> C.int
 
     #link "stbi_is_16_bit_from_memory"
-    is_16_bit_from_memory :: (buffer: &C.unsigned_char, len: C.int) -> C.int
+    is_16_bit_from_memory :: (buffer: &C.uchar, len: C.int) -> C.int
 
     #link "stbi_is_16_bit_from_callbacks"
     is_16_bit_from_callbacks :: (clbk: &IO_Callbacks, user: rawptr) -> C.int

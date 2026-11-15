@@ -3,7 +3,7 @@
 //   order of channels
 //   whether color is premultiplied by alpha
 // for back compatibility, you can cast the old channel count to an Pixel_Layout
-Pixel_Layout :: enum unsigned_int {
+Pixel_Layout :: enum uint {
     _1CHANNEL = 1
     _2CHANNEL = 2
 
@@ -52,9 +52,9 @@ extern {
     //    If output_pixels is NULL (0), then we will allocate the buffer and return it to you.
     //--------------------------------
     #link "stbir_resize_uint8_srgb"
-    resize_uint8_srgb :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    resize_uint8_srgb :: (input_pixels: &uchar, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &uchar, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &uchar
     #link "stbir_resize_uint8_linear"
-    resize_uint8_linear :: (input_pixels: &unsigned_char, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &unsigned_char, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &unsigned_char
+    resize_uint8_linear :: (input_pixels: &uchar, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &uchar, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &uchar
     #link "stbir_resize_float_linear"
     resize_float_linear :: (input_pixels: &float, input_w: int, input_h: int, input_stride_in_bytes: s64, output_pixels: &float, output_w: int, output_h: int, output_stride_in_bytes: s64, pixel_type: Pixel_Layout) -> &float
 }
@@ -68,7 +68,7 @@ extern {
 //     * Edge wrap can selected explicitly
 //     * Filter can be selected explicitly
 //--------------------------------
-Edge :: enum unsigned_int {
+Edge :: enum uint {
     EDGE_CLAMP = 0
     EDGE_REFLECT = 1
 
@@ -77,7 +77,7 @@ Edge :: enum unsigned_int {
     EDGE_ZERO = 3
 }
 
-Filter :: enum unsigned_int {
+Filter :: enum uint {
     // use same filter type that easy-to-use API chooses
     FILTER_DEFAULT = 0
 
@@ -124,7 +124,7 @@ Filter :: enum unsigned_int {
     FILTER_OTHER = 14
 }
 
-Data_Type :: enum unsigned_int {
+Data_Type :: enum uint {
     TYPE_UINT8 = 0
     TYPE_UINT8_SRGB = 1
 

@@ -6,7 +6,7 @@
 //
 
 Baked_Char :: struct {
-    x0, y0, x1, y1: C.unsigned_short // coordinates of bbox in bitmap
+    x0, y0, x1, y1: C.ushort // coordinates of bbox in bitmap
     xoff, yoff, xadvance: C.float
 }
 
@@ -21,11 +21,11 @@ extern {
     // if return is 0, no characters fit and no rows were used
     // This uses a very crappy packing.
     #link "stbtt_BakeFontBitmap"
-    BakeFontBitmap :: (data: &C.unsigned_char, offset: C.int,              // font location (use offset=0 for plain .ttf)
-                           pixel_height: C.float,                          // height of font in pixels
-                           pixels: &C.unsigned_char, pw: C.int, ph: C.int, // bitmap to be filled in
-                           first_char: C.int, num_chars: C.int,            // characters to bake
-                           chardata: &Baked_Char,                          // you allocate this, it's num_chars long
+    BakeFontBitmap :: (data: &C.uchar, offset: C.int,              // font location (use offset=0 for plain .ttf)
+                           pixel_height: C.float,                  // height of font in pixels
+                           pixels: &C.uchar, pw: C.int, ph: C.int, // bitmap to be filled in
+                           first_char: C.int, num_chars: C.int,    // characters to bake
+                           chardata: &Baked_Char,                  // you allocate this, it's num_chars long
     ) -> C.int
 
     // Call GetBakedQuad with char_index = 'character - first_char', and it
@@ -48,7 +48,7 @@ extern {
 
     // Query the font vertical metrics without having to create a font first.
     #link "stbtt_GetScaledFontVMetrics"
-    GetScaledFontVMetrics :: (fontdata: &C.unsigned_char, index: C.int, size: C.float, ascent: &C.float, descent: &C.float, lineGap: &C.float)
+    GetScaledFontVMetrics :: (fontdata: &C.uchar, index: C.int, size: C.float, ascent: &C.float, descent: &C.float, lineGap: &C.float)
 
 }
 
@@ -60,7 +60,7 @@ extern {
 // perfectly but better than nothing.
 
 Packed_Char :: struct {
-    x0, y0, x1, y1:       C.unsigned_short
+    x0, y0, x1, y1:       C.ushort
     xoff, yoff, xadvance: C.float
     xoff2, yoff2:         C.float
 }
@@ -71,15 +71,15 @@ Pack_Range :: struct {
     array_of_unicode_codepoints:      &rune
     num_chars:                        C.int
     chardata_for_range:               &Packed_Char
-    h_oversample, v_oversample:       C.unsigned_char // used internally to store oversample info
+    h_oversample, v_oversample:       C.uchar // used internally to store oversample info
 }
 
 Pack_Context :: struct {
     user_allocator_context, pack_info:       rawptr
     width, height, stride_in_bytes, padding: C.int
     skip_missing:                            C.int
-    h_oversample, v_oversample:              C.unsigned_int
-    pixels:                                  &C.unsigned_char
+    h_oversample, v_oversample:              C.uint
+    pixels:                                  &C.uchar
     nodes:                                   rawptr
 }
 
@@ -96,7 +96,7 @@ extern {
     //
     // Returns 0 on failure, 1 on success.
     #link "stbtt_PackBegin"
-    PackBegin :: (spc: &Pack_Context, pixels: &C.unsigned_char, width: C.int, height: C.int, stride_in_bytes: C.int, padding: C.int, alloc_context: rawptr) -> C.int
+    PackBegin :: (spc: &Pack_Context, pixels: &C.uchar, width: C.int, height: C.int, stride_in_bytes: C.int, padding: C.int, alloc_context: rawptr) -> C.int
 
     // Cleans up the packing context and frees all memory.
     #link "stbtt_PackEnd"
@@ -117,7 +117,7 @@ extern {
     //
     // Returns 0 on failure, 1 on success.
     #link "stbtt_PackFontRange"
-    PackFontRange :: (spc: &Pack_Context, fontdata: &C.unsigned_char, font_index: C.int, font_size: C.float, first_unicode_char_in_range: C.int, num_chars_in_range: C.int, chardata_for_range: &Packed_Char) -> C.int
+    PackFontRange :: (spc: &Pack_Context, fontdata: &C.uchar, font_index: C.int, font_size: C.float, first_unicode_char_in_range: C.int, num_chars_in_range: C.int, chardata_for_range: &Packed_Char) -> C.int
 
     // Creates character bitmaps from multiple ranges of characters stored in
     // ranges. This will usually create a better-packed bitmap than multiple
@@ -126,7 +126,7 @@ extern {
     //
     // Returns 0 on failure, 1 on success.
     #link "stbtt_PackFontRanges"
-    PackFontRanges :: (spc: &Pack_Context, fontdata: &C.unsigned_char, font_index: C.int, ranges: &Pack_Range, num_ranges: C.int) -> C.int
+    PackFontRanges :: (spc: &Pack_Context, fontdata: &C.uchar, font_index: C.int, ranges: &Pack_Range, num_ranges: C.int) -> C.int
 
     // Oversampling a font increases the quality by allowing higher-quality subpixel
     // positioning, and is especially valuable at smaller text sizes.
@@ -143,7 +143,7 @@ extern {
     // To use with PackFontRangesGather etc., you must set it before calls
     // call to PackFontRangesGatherRects.
     #link "stbtt_PackSetOversampling"
-    PackSetOversampling :: (spc: &Pack_Context, h_oversample: C.unsigned_int, v_oversample: C.unsigned_int)
+    PackSetOversampling :: (spc: &Pack_Context, h_oversample: C.uint, v_oversample: C.uint)
 
     // If skip != false, this tells stb_truetype to skip any codepoints for which
     // there is no corresponding glyph. If skip=false, which is the default, then
@@ -192,7 +192,7 @@ extern {
 
 Font_Info :: struct {
     userdata:  rawptr
-    data:      &C.unsigned_char
+    data:      &C.uchar
     fontstart: C.int
 
     numGlyphs: C.int
@@ -216,7 +216,7 @@ extern {
     // need to do anything special to free it, because the contents are pure
     // value data with no additional data structures. Returns 0 on failure.
     #link "stbtt_InitFont"
-    InitFont :: (info: &Font_Info, data: &C.unsigned_char, offset: C.int) -> C.int
+    InitFont :: (info: &Font_Info, data: &C.uchar, offset: C.int) -> C.int
 
     // This function will determine the number of fonts in a font file.  TrueType
     // collection (.ttc) files may contain multiple fonts, while TrueType font
@@ -224,7 +224,7 @@ extern {
     // indexing with the previous function where the index is between zero and one
     // less than the total fonts. If an error occurs, -1 is returned.
     #link "stbtt_GetNumberOfFonts"
-    GetNumberOfFonts :: (data: &C.unsigned_char) -> C.int
+    GetNumberOfFonts :: (data: &C.uchar) -> C.int
 
     // Each .ttf/.ttc file may have more than one font. Each font has a sequential
     // index number starting from 0. Call this function to get the font offset for
@@ -232,7 +232,7 @@ extern {
     // file will only define one font and it always be at offset 0, so it will
     // return '0' for index 0, and -1 for all other indices.
     #link "stbtt_GetFontOffsetForIndex"
-    GetFontOffsetForIndex :: (data: &C.unsigned_char, index: C.int) -> C.int
+    GetFontOffsetForIndex :: (data: &C.uchar, index: C.int) -> C.int
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -349,7 +349,7 @@ Vmove :: enum C.int {
 
 Vertex :: struct {
     x, y, cx, cy, cx1, cy1: C.short
-    type, padding:          C.unsigned_char
+    type, padding:          C.uchar
 }
 
 extern {
@@ -379,7 +379,7 @@ extern {
     // fills svg with the character's SVG data.
     // returns data size or 0 if SVG not found.
     #link "stbtt_FindSVGDoc"
-    FindSVGDoc :: (info: &Font_Info, gl: C.int) -> &C.unsigned_char
+    FindSVGDoc :: (info: &Font_Info, gl: C.int) -> &C.uchar
 
     #link "stbtt_GetCodepointSVG"
     GetCodepointSVG  :: (info: &Font_Info, unicode_codepoint: rune, svg: &&C.char) -> C.int
@@ -396,13 +396,13 @@ extern {
 
 Bitmap :: struct {
     w, h, stride: C.int
-    pixels: &C.unsigned_char
+    pixels: &C.uchar
 }
 
 extern {
     // frees the bitmap allocated below
     #link "stbtt_FreeBitmap"
-    FreeBitmap :: (bitmap: &C.unsigned_char, userdata: rawptr)
+    FreeBitmap :: (bitmap: &C.uchar, userdata: rawptr)
 
     // allocates a large-enough single-channel 8bpp bitmap and renders the
     // specified character/glyph at the specified scale into it, with
@@ -412,29 +412,29 @@ extern {
     //
     // xoff/yoff are the offset it pixel space from the glyph origin to the top-left of the bitmap
     #link "stbtt_GetCodepointBitmap"
-    GetCodepointBitmap :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, codepoint: rune, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetCodepointBitmap :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, codepoint: rune, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 
     // the same as stbtt_GetCodepoitnBitmap, but you can specify a subpixel
     // shift for the character
     #link "stbtt_GetCodepointBitmapSubpixel"
-    GetCodepointBitmapSubpixel :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, codepoint: rune, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetCodepointBitmapSubpixel :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, codepoint: rune, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 
     // the same as stbtt_GetCodepointBitmap, but you pass in storage for the bitmap
     // in the form of 'output', with row spacing of 'out_stride' bytes. the bitmap
     // is clipped to out_w/out_h bytes. Call stbtt_GetCodepointBitmapBox to get the
     // width and height and positioning info for it first.
     #link "stbtt_MakeCodepointBitmap"
-    MakeCodepointBitmap :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, codepoint: rune)
+    MakeCodepointBitmap :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, codepoint: rune)
 
     // same as stbtt_MakeCodepointBitmap, but you can specify a subpixel
     // shift for the character
     #link "stbtt_MakeCodepointBitmapSubpixel"
-    MakeCodepointBitmapSubpixel :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, codepoint: rune)
+    MakeCodepointBitmapSubpixel :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, codepoint: rune)
 
     // same as stbtt_MakeCodepointBitmapSubpixel, but prefiltering
     // is performed (see stbtt_PackSetOversampling)
     #link "stbtt_MakeCodepointBitmapSubpixelPrefilter"
-    MakeCodepointBitmapSubpixelPrefilter :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, oversample_x: C.int, oversample_y: C.int, sub_x: &C.float, sub_y: &C.float, codepoint: rune)
+    MakeCodepointBitmapSubpixelPrefilter :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, oversample_x: C.int, oversample_y: C.int, sub_x: &C.float, sub_y: &C.float, codepoint: rune)
 
     // get the bbox of the bitmap centered around the glyph origin; so the
     // bitmap width is ix1-ix0, height is iy1-iy0, and location to place
@@ -452,19 +452,19 @@ extern {
     // the following functions are equivalent to the above functions, but operate
     // on glyph indices instead of Unicode codepoints (for efficiency)
     #link "stbtt_GetGlyphBitmap"
-    GetGlyphBitmap :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, glyph: C.int, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetGlyphBitmap :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, glyph: C.int, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 
     #link "stbtt_GetGlyphBitmapSubpixel"
-    GetGlyphBitmapSubpixel :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, glyph: C.int, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetGlyphBitmapSubpixel :: (info: &Font_Info, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, glyph: C.int, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 
     #link "stbtt_MakeGlyphBitmap"
-    MakeGlyphBitmap :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, glyph: C.int)
+    MakeGlyphBitmap :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, glyph: C.int)
 
     #link "stbtt_MakeGlyphBitmapSubpixel"
-    MakeGlyphBitmapSubpixel :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, glyph: C.int)
+    MakeGlyphBitmapSubpixel :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, glyph: C.int)
 
     #link "stbtt_MakeGlyphBitmapSubpixelPrefilter"
-    MakeGlyphBitmapSubpixelPrefilter :: (info: &Font_Info, output: &C.unsigned_char, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, oversample_x: C.int, oversample_y: C.int, sub_x: &C.float, sub_y: &C.float, glyph: C.int)
+    MakeGlyphBitmapSubpixelPrefilter :: (info: &Font_Info, output: &C.uchar, out_w: C.int, out_h: C.int, out_stride: C.int, scale_x: C.float, scale_y: C.float, shift_x: C.float, shift_y: C.float, oversample_x: C.int, oversample_y: C.int, sub_x: &C.float, sub_y: &C.float, glyph: C.int)
 
     #link "stbtt_GetGlyphBitmapBox"
     GetGlyphBitmapBox :: (font: &Font_Info, glyph: C.int, scale_x: C.float, scale_y: C.float, ix0: &C.int, iy0: &C.int, ix1: &C.int, iy1: &C.int)
@@ -496,7 +496,7 @@ extern {
 extern {
     // frees the SDF bitmap allocated below
     #link "stbtt_FreeSDF"
-    FreeSDF :: (bitmap: &C.unsigned_char, userdata: rawptr)
+    FreeSDF :: (bitmap: &C.uchar, userdata: rawptr)
 
     // These functions compute a discretized SDF field for a single character, suitable for storing
     // in a single-channel texture, sampling with bilinear filtering, and testing against
@@ -546,10 +546,10 @@ extern {
     // if computing lots of characters or very large sizes.
 
     #link "stbtt_GetGlyphSDF"
-    GetGlyphSDF :: (info: &Font_Info, scale: C.float, glyph: C.int, padding: C.int, onedge_value: u8, pixel_dist_scale: C.float, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetGlyphSDF :: (info: &Font_Info, scale: C.float, glyph: C.int, padding: C.int, onedge_value: u8, pixel_dist_scale: C.float, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 
     #link "stbtt_GetCodepointSDF"
-    GetCodepointSDF :: (info: &Font_Info, scale: C.float, codepoint: C.int, padding: C.int, onedge_value: u8, pixel_dist_scale: C.float, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.unsigned_char
+    GetCodepointSDF :: (info: &Font_Info, scale: C.float, codepoint: C.int, padding: C.int, onedge_value: u8, pixel_dist_scale: C.float, width: &C.int, height: &C.int, xoff: &C.int, yoff: &C.int) -> &C.uchar
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -585,7 +585,7 @@ extern {
     //   if you use any other flag, use a font name like "Arial"; this checks
     //     the 'macStyle' header field; i don't know if fonts set this consistently
     #link "stbtt_FindMatchingFont"
-    FindMatchingFont :: (fontdata: &C.unsigned_char, name: &C.char, flags: C.int) -> C.int
+    FindMatchingFont :: (fontdata: &C.uchar, name: &C.char, flags: C.int) -> C.int
 
     // returns 1/0 whether the first string interpreted as utf8 is identical to
     // the second string interpreted as big-endian utf16... useful for strings from next func
@@ -647,7 +647,7 @@ MAC_LANG_ITALIAN, MAC_LANG_CHINESE_TRAD       :: 3,  19
 
 #private...
 Buf :: struct {
-    data:   &C.unsigned_char
+    data:   &C.uchar
     cursor: C.int
     size:   C.int
 }
