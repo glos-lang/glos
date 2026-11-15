@@ -41,8 +41,8 @@ open_file :: (path: string, flags := Open_Flag.RDONLY | Open_Flag.TEXT, perm := 
     return f, null
 }
 
-create_file :: (path: string, flags := Open_Flag.TEXT, perm := u32(0o666), create_parent := false) -> File, error {
-    if create_parent {
+create_file :: (path: string, flags := Open_Flag.TEXT, perm := u32(0o666), create_parent_dirs := false) -> File, error {
+    if create_parent_dirs {
         #if PLATFORM == .WINDOWS {
             n, found := strings.find(path, []rune{'/', '\\'}, reverse = true)
         } else {

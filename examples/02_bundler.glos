@@ -166,7 +166,7 @@ extract_bundle :: (input: string, output: string) {
             os.exit(1)
         }
 
-        dst, err := os.create_file(string(sb[..]), .BINARY, u32(perm), create_parent = true)
+        dst, err := os.create_file(string(sb[..]), .BINARY, u32(perm), create_parent_dirs = true)
         if err != null {
             eprintln("Error: Could not write file '\{sb}': \{err}")
             os.exit(1)
@@ -185,6 +185,8 @@ extract_bundle :: (input: string, output: string) {
             return *(&s64)(buffer.data), err
         }
     }
+
+    println("Extracted '\{input}' into '\{output}'")
 }
 
 io      :: #import "io"
