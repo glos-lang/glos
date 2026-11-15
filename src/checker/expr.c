@@ -2304,6 +2304,9 @@ void check_expr_if(Compiler *c, Node_If *iff) {
     type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
     if (iff->is_compile_time) {
         Const_Value condition = eval_const_expr(c, iff->condition, false);
+        while (condition.kind == CONST_VALUE_POLYMORPH) {
+            condition = condition.as.polymorph.polymorph->monomorphization_value;
+        }
         assert(condition.kind == CONST_VALUE_INT);
 
         iff->compile_time_real = int128_is_zero(condition.as.integer) ? iff->antecedence : iff->consequence;
