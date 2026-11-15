@@ -1,6 +1,6 @@
 // The purpose of this file is to describe the syntax and semantics regarding pointer operations
 // in Glos. This is NOT a tutorial for pointers themselves. Terminology will be used in this file
-// to describe the behaviour and usage, assumming the reader already knows what pointers are.
+// to describe the behaviour and usage, assuming the reader already knows what pointers are.
 
 main :: () {
     x: s64

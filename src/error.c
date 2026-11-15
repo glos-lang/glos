@@ -581,7 +581,7 @@ void warnings_flush(void) {
             break;
 
         case WARN_REDUNDANT_DISTINCT:
-            fprintf(stderr, "Application of '#distinct' is not needed here");
+            fprintf(stderr, "Application of 'distinct' is not needed here");
             break;
 
         default:
