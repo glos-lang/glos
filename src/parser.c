@@ -2324,7 +2324,7 @@ Parse_Result parse_directory(Parser *p, const char *path) {
     // Initialization
     {
         const char *first_path = arena_sprintf(&temp_arena, "%s/first.glos", path);
-        const char *first_done_path = arena_sprintf(&temp_arena, "%s/first.glos.done", path);
+        const char *first_done_path = arena_sprintf(&temp_arena, "%s/.first.glos.done", path);
         if (file_exists(first_path) && !directory_exists(first_path) && !file_exists(first_done_path)) {
             Cmd cmd = {0};
             cmd_push(&cmd, arena_sv_to_cstr(&temp_arena, p->self));
