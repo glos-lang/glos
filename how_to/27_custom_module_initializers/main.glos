@@ -1,0 +1,44 @@
+// Before running this program, first take a look at the filetree of this tutorial:
+//
+//     .
+//     ├── bar
+//     │   ├── bar.glos
+//     │   └── first.glos
+//     ├── foo
+//     │   ├── first.glos
+//     │   └── foo.glos
+//     └── main.glos
+//
+
+#import "foo"
+#import "bar"
+
+// If you inspect the modules 'foo' and 'bar', you will notice that they both make use of
+// undefined constants. So, logically, it makes sense that on compiling this tutorial, it would
+// throw an error.
+//
+// Compile and run it.
+//
+//     $ glos -r .
+//
+// You will notice that the real behaviour does not match the expected one.
+//
+//     A) It compiled just fine, instead of throwing "Error: Undefined identifier".
+//     B) Before "Start!", other things are printed, even though it is the first statement in 'main'.
+//     C) There are now 3 extra files:
+//
+//         1. foo/constant.glos
+//         2. bar/constant.glos
+//         2. bar/.first.glos.done
+//
+// What is going on?
+
+// This tutorial will explain the concept of module initializers.
+//
+// Open 'foo/first.glos'.
+
+main :: () {
+    println("Start!")
+    foo()
+    bar()
+}

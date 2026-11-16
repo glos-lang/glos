@@ -1,0 +1,43 @@
+// First take a look at this main function and compare it against the main function
+// defined in 'foo/first.glos'.
+
+main :: () {
+    println("Creating bar/constant.glos")
+
+    f := os.create_file("constant.glos")!
+    defer f.close()
+
+    wprintln(f, "BAR :: 420")
+
+    f := os.create_file(".first.glos.done")!
+    defer f.close()
+}
+
+// You will notice that it is mostly similar, except for the fact that it creates an
+// additional file ".first.glos.done". It is just an empty file, and yet it changes
+// some behaviour.
+
+// The first time you compiled and ran this tutorial, the output was something like
+// this:
+//
+//     $ glos -r .
+//     Creating foo/constant.glos
+//     Creating bar/constant.glos
+//     Start!
+//     69
+//     420
+//
+//
+// If you run it a second time, the output will differ:
+//
+//     $ glos -r .
+//     Creating foo/constant.glos
+//     Start!
+//     69
+//     420
+//
+// What changed?
+
+// When a module contains a '.first.glos.done' file, then 'first.glos' is not ran. Simple.
+
+os :: #import "os"

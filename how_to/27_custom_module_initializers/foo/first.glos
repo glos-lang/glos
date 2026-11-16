@@ -1,0 +1,29 @@
+// If you recall from '09_modules/', a module is a directory which contains '*.glos' files.
+// All those files in that directory are parsed and combined to produce a singular module
+// associated with that directory.
+//
+// The sole exception to this rule is 'first.glos'. Instead of being bundled into the module,
+// it gets immediately executed as a subprocess.
+//
+// In simple words, imagine that the compiler does
+//
+//     glos -r foo/first.glos
+//
+// right before parsing the module 'foo'.
+
+// I think it is pretty self explanatory what this function does.
+main :: () {
+    println("Creating foo/constant.glos")
+
+    f := os.create_file("constant.glos")!
+    defer f.close()
+
+    wprintln(f, "FOO :: 69")
+}
+
+// It should make sense now, where the 'foo/constant.glos' file is coming from, and why no
+// "Undefined identifier" error is thrown for 'FOO'.
+
+// Now head over to "bar/first.glos". There is one more concept left to be covered.
+
+os :: #import "os"

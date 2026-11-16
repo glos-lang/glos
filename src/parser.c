@@ -2204,6 +2204,7 @@ Parse_Result parse_file(Parser *p, const char *path) {
         expect_stmt_terminator(p);
     }
 
+    p->module_current->eof = next_token(p);
     p->state.after_private = false;
     return PARSE_OK;
 }
