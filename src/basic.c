@@ -975,6 +975,19 @@ defer:
     return result;
 }
 
+bool set_cwd(SV path) {
+    const char *cstr = arena_sv_to_cstr(&temp_arena, path);
+
+#ifdef PLATFORM_X86_64_WINDOWS
+    const bool result = SetCurrentDirectory(cstr);
+#else
+    const bool result = !chdir(cstr);
+#endif //
+
+    arena_reset(&temp_arena, cstr);
+    return result;
+}
+
 static bool is_path_separator(char ch) {
 #ifdef PLATFORM_X86_64_WINDOWS
     return ch == '/' || ch == '\\';

@@ -22,6 +22,7 @@ static void usage(FILE *f) {
     } flags[] = {
         {"h", "             Show this message"},
         {"r", "             Run the program"},
+        {"R", "             Run the program in the parent directory of the input"},
         {"o", "OUTPUT       Set the output path"},
         {"O", "LEVEL        Set the optimization level [0: None (Default), 1: Less, 2: Medium, 3: Aggressive]"},
         {"L", "PATH         Add a library search path"},
@@ -165,6 +166,7 @@ int main(int argc, char **argv) {
     const char *input_path = NULL;
     const char *output_path = NULL;
     Link_Flags  link_flags = {0};
+    bool        run_in_parent = false;
 
     static Compiler compiler = {0};
     while (argc) {
@@ -174,8 +176,41 @@ int main(int argc, char **argv) {
                 usage(stdout);
                 exit(0);
             } else if (!strcmp(arg, "-r")) {
+                if (output_path) {
+                    error_standalone(EK_ERROR, "The '-r' and '-o' flags cannot be combined");
+                    exit(1);
+                }
+
+                if (compiler.run && run_in_parent) {
+                    error_standalone(EK_ERROR, "The '-r' and '-R' flags cannot be combined");
+                    exit(1);
+                }
+
                 compiler.run = true;
+            } else if (!strcmp(arg, "-R")) {
+                if (output_path) {
+                    error_standalone(EK_ERROR, "The '-r' and '-o' flags cannot be combined");
+                    exit(1);
+                }
+
+                if (compiler.run && !run_in_parent) {
+                    error_standalone(EK_ERROR, "The '-r' and '-R' flags cannot be combined");
+                    exit(1);
+                }
+
+                compiler.run = true;
+                run_in_parent = true;
             } else if (!strcmp(arg, "-o")) {
+                if (compiler.run) {
+                    error_standalone(EK_ERROR, "The '-r' and '-o' flags cannot be combined");
+                    exit(1);
+                }
+
+                if (output_path) {
+                    error_standalone(EK_ERROR, "Multiple output paths provided");
+                    exit(1);
+                }
+
                 output_path = shift(&argc, &argv, "Output path");
             } else if (!strcmp(arg, "--")) {
                 break;
@@ -242,6 +277,15 @@ int main(int argc, char **argv) {
     }
     input_path = get_absolute_path(cwd, sv_from_cstr(input_path), &default_arena);
 
+    if (compiler.run) {
+        output_path = get_temp_file_path();
+        if (!output_path) {
+            error_standalone(EK_ERROR, "Could not get temporary file path");
+            exit(1);
+        }
+        temporary_files_push(output_path);
+    }
+
     if (!output_path) {
         if (directory_exists(input_path)) {
             output_path = get_path_last(input_path);
@@ -252,14 +296,6 @@ int main(int argc, char **argv) {
         } else {
             output_path =
                 arena_sv_to_cstr(&temp_arena, sv_strip_suffix(sv_from_cstr(input_path), sv_from_cstr(".glos")));
-        }
-
-        if (compiler.run) {
-            const char *temp_path = get_temp_file_path();
-            if (temp_path) {
-                temporary_files_push(temp_path);
-                output_path = temp_path;
-            }
         }
     }
 
@@ -290,6 +326,7 @@ int main(int argc, char **argv) {
     Parser parser = {
         .cwd = cwd,
         .std = sv_from_cstr(get_std_path(&default_arena, self)),
+        .self = self,
         .modules = &modules,
         .embed_interns = &embed_interns,
     };
@@ -389,25 +426,24 @@ int main(int argc, char **argv) {
 #endif // PROFILING
 
     if (compiler.run) {
-        const char *child_name = output_path;
-
-#ifndef PLATFORM_X86_64_WINDOWS
-        if (!sv_find(sv_from_cstr(child_name), '/', NULL)) {
-            child_name = arena_sprintf(&temp_arena, "./%s", child_name);
+        if (run_in_parent) {
+            set_cwd(sv_from_cstr(get_parent_dir_path(input_path, &default_arena)));
         }
-#endif // PLATFORM_X86_64_WINDOWS
 
         cmd.count = 0;
-        cmd_push(&cmd, child_name);
+        cmd_push(&cmd, output_path);
         cmd_push_many(&cmd, argv, argc);
 
         const Proc child_proc = cmd_run_async(&cmd, (Cmd_Stdio) {0});
         if (child_proc.id == PROC_INVALID) {
-            error_standalone(EK_ERROR, "Could not start process '%s'", child_name);
+            error_standalone(EK_ERROR, "Could not start process '%s'", output_path);
             exit(1);
         }
 
         result = cmd_wait(child_proc);
+        if (run_in_parent) {
+            set_cwd(cwd);
+        }
     }
 
     warnings_flush();

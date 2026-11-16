@@ -146,7 +146,7 @@ void afprintf(FILE *f, ANSI ansi, const char *fmt, ...) Printf_Like(3);
 #define da_push_many(l, v, c)                                                                                          \
     (da_grow(l, (l)->count + c), memcpy((l)->data + (l)->count, (v), (c) * sizeof(*(l)->data)), (l)->count += (c))
 #define da_push(l, ...)                                                                                                \
-    da_push_many(l, ((__typeof__ (*(l)->data)[]) {__VA_ARGS__}), len(((__typeof__ (*(l)->data)[]) {__VA_ARGS__})))
+    da_push_many(l, ((__typeof__(*(l)->data)[]) {__VA_ARGS__}), len(((__typeof__(*(l)->data)[]) {__VA_ARGS__})))
 
 void da_resize(void **data, size_t *capacity, size_t size, size_t count);
 
@@ -389,8 +389,9 @@ const char *get_absolute_path(SV cwd, SV path, Arena *a);    // `cwd` must be ab
 const char *get_relative_path(SV cwd, SV path, Arena *a);    // `cwd` and `path` must be absolute
 const char *get_parent_dir_path(const char *path, Arena *a); // `path` must be absolute
 
-SV get_cwd(Arena *a);
-SV get_self_path(Arena *a); // Get the absolute path of the executable itself
+SV   get_cwd(Arena *a);
+bool set_cwd(SV path);
+SV   get_self_path(Arena *a); // Get the absolute path of the executable itself
 
 #ifdef PLATFORM_X86_64_WINDOWS
 void unixify_path_separators_inplace(char *data, size_t count);
