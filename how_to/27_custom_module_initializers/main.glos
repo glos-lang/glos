@@ -13,6 +13,12 @@
 #import "foo"
 #import "bar"
 
+main :: () {
+    println("Start!")
+    foo()
+    bar()
+}
+
 // If you inspect the modules 'foo' and 'bar', you will notice that they both make use of
 // undefined constants. So, logically, it makes sense that on compiling this tutorial, it would
 // throw an error.
@@ -36,9 +42,3 @@
 // This tutorial will explain the concept of module initializers.
 //
 // Open 'foo/first.glos'.
-
-main :: () {
-    println("Start!")
-    foo()
-    bar()
-}

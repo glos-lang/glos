@@ -7,7 +7,7 @@
 //
 // In simple words, imagine that the compiler does
 //
-//     glos -r foo/first.glos
+//     glos -R foo/first.glos
 //
 // right before parsing the module 'foo'.
 
