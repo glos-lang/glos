@@ -41,6 +41,7 @@ typedef struct {
     SV cwd;
     SV std;
     SV root;
+    SV self;
 
     Parser_State state;
 

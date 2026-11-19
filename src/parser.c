@@ -2204,6 +2204,7 @@ Parse_Result parse_file(Parser *p, const char *path) {
         expect_stmt_terminator(p);
     }
 
+    p->module_current->eof = next_token(p);
     p->state.after_private = false;
     return PARSE_OK;
 }
@@ -2233,7 +2234,10 @@ static bool get_source_files(const char *path, Paths *items, Arena *a) {
             return_defer(false);
         }
 
-        if (!strcmp(find_file_data.cFileName, ".") || !strcmp(find_file_data.cFileName, "..")) {
+        if (!strcmp(find_file_data.cFileName, ".") ||        //
+            !strcmp(find_file_data.cFileName, "..") ||       //
+            !strcmp(find_file_data.cFileName, "first.glos")) //
+        {
             continue;
         }
 
@@ -2266,7 +2270,7 @@ static bool get_source_files(const char *path, Paths *items, Arena *a) {
     errno = 0;
     struct dirent *entry = NULL;
     while ((entry = readdir(dir))) {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || !strcmp(entry->d_name, "first.glos")) {
             continue;
         }
 
@@ -2317,6 +2321,24 @@ defer:
 Parse_Result parse_directory(Parser *p, const char *path) {
     assert(p->modules);
     assert(p->module_current);
+
+    // Initialization
+    {
+        const char *first_path = arena_sprintf(&temp_arena, "%s/first.glos", path);
+        const char *first_done_path = arena_sprintf(&temp_arena, "%s/.first.glos.done", path);
+        if (file_exists(first_path) && !directory_exists(first_path) && !file_exists(first_done_path)) {
+            Cmd cmd = {0};
+            cmd_push(&cmd, arena_sv_to_cstr(&temp_arena, p->self));
+            cmd_push(&cmd, "-R", first_path);
+
+            const int code = cmd_run_sync(&cmd, (Cmd_Stdio) {0});
+            if (code) {
+                error_standalone(EK_ERROR, "The subprocess for '%s' exited abnormally with code %d", first_path, code);
+                exit(1);
+            }
+        }
+        arena_reset(&temp_arena, first_path);
+    }
 
     const size_t start = p->paths.count;
     if (!get_source_files(path, &p->paths, &default_arena)) {

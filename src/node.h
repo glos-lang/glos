@@ -57,6 +57,8 @@ struct Module {
     Check_Status orderless_check_status;
     bool         is_file;
 
+    Token eof;
+
     Module *next;
 };
 

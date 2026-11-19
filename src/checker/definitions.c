@@ -37,7 +37,7 @@ Node_Fn *get_main(Compiler *c) {
 
     Node_Atom *main = module_globals_find(c, c->main_module, sv_from_cstr("main"));
     if (!main) {
-        error_standalone(EK_ERROR, "Function 'main' is not defined");
+        error_token(EK_ERROR, c->main_module->eof, "Function 'main' is not defined");
         afprintf(
             stderr,
             ANSI_COLOR_MAGENTA | ANSI_BOLD,

@@ -1,0 +1,8 @@
+main :: () {
+    println("Creating message.glos")
+    f := os.create_file("message.glos")!
+    defer f.close()
+    wprintln(f, "MESSAGE :: \"Hello, world!\"")
+}
+
+os :: #import "os"

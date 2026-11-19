@@ -1,0 +1,13 @@
+main :: () {
+    println(MESSAGE)
+
+    if os.exists("tests/custom_initialization/.first.glos.done") {
+        os.remove("tests/custom_initialization/.first.glos.done")
+        os.remove("tests/custom_initialization/message.glos")
+    } else {
+        f, _ := os.create_file("tests/custom_initialization/.first.glos.done")
+        f.close()
+    }
+}
+
+os :: #import "os"
