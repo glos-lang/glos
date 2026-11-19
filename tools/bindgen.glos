@@ -271,13 +271,17 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
         if underlying.kind == .Pointer {
             p := clang_getPointeeType(underlying).unwrap()
             if p.kind == .FunctionProto || p.kind == .FunctionNoProto {
-                wprintln(&sb, "\{name} :: \{Function_Type(p)}")
+                wprintln(&sb, "\{name} :: \{Function_Type {p, c}}")
                 skip = true
             }
         }
 
         if !skip {
-            wprintln(&sb, "\{name} :: \{underlying}")
+            if underlying.kind == .FunctionProto || underlying.kind == .FunctionNoProto {
+                wprintln(&sb, "\{name} :: \{Function_Type {underlying, c}}")
+            } else {
+                wprintln(&sb, "\{name} :: \{underlying}")
+            }
         }
 
         if alias := string(sb[start..]); aliases.contains(alias) {
@@ -460,25 +464,65 @@ emit_comment :: (c: CXCursor, sb: &strings.Builder, newline: bool, indent: bool)
     }
 }
 
-Function_Type :: distinct CXType
+Function_Type :: struct {
+    t: CXType
+    c: union {CXCursor}
+}
 
 @format :: (this: &Function_Type, w: io.Writer, nested: bool) -> s64, error {
-    t := CXType(*this)
+    f := *this
 
     decay_save := decay
     defer decay = decay_save
     decay = true
 
     n := w.write([]u8("("))?
-    argc := clang_getNumArgTypes(t)
+    argc := clang_getNumArgTypes(f.t)
     for i := range argc {
         if i != 0 {
             n += w.write([]u8(", "))?
         }
-        n += wprint(w, "_: \{clang_getArgType(t, C.unsigned(i))}")?
+
+        if c := f.c; c == CXCursor {
+            Data :: struct {
+                n:    C.int
+                iota: C.int
+                name: union {CXString}
+            }
+            data := Data {n = i}
+
+            if !bool(clang_Cursor_isNull(c)) && c.kind != .NoDeclFound {
+                clang_visitChildren(c, (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
+                    data := (&Data)(data)
+                    if clang_getCursorKind(c) == .ParmDecl {
+                        if data.iota == data.n {
+                            data.name = clang_getCursorSpelling(c)
+                            return .Break
+                        }
+                        data.iota += 1
+                    }
+                    return .Continue
+                }, rawptr(&data))
+            }
+
+            if name := data.name; name == CXString {
+                defer clang_disposeString(name)
+                name := strings.from_cstring(clang_getCString(name))
+
+                if is_keyword(name) {
+                    n += wprint(w, '_')?
+                }
+                n += wprint(w, name)?
+            } else {
+                n += wprint(w, '_')?
+            }
+        } else {
+            n += wprint(w, '_')?
+        }
+        n += wprint(w, ": \{clang_getArgType(f.t, C.unsigned(i))}")?
     }
 
-    if bool(clang_isFunctionTypeVariadic(t)) {
+    if bool(clang_isFunctionTypeVariadic(f.t)) {
         if argc != 0 {
             n += w.write([]u8(", ..."))?
         } else {
@@ -487,7 +531,7 @@ Function_Type :: distinct CXType
     }
     n += w.write([]u8(")"))?
 
-    if ret := clang_getResultType(t); ret.kind != .Void {
+    if ret := clang_getResultType(f.t); ret.kind != .Void {
         n += wprint(w, " -> \{ret}")?
     }
     return n, null
@@ -531,7 +575,9 @@ CXCursorKind :: enum C.uint {
     EnumConstantDecl = 7
     FunctionDecl     = 8
     VarDecl          = 9
+    ParmDecl         = 10
     TypedefDecl      = 20
+    NoDeclFound      = 71
 }
 
 CXChildVisitResult :: enum C.uint {
@@ -659,7 +705,7 @@ is_signed :: (this: CXType) -> bool {
         }
 
     case .FunctionNoProto, .FunctionProto
-        n += wprint(w, "(\{Function_Type(t)})")?
+        n += wprint(w, "(\{Function_Type {t}})")?
 
     case .ConstantArray
         if decay_save {
@@ -801,6 +847,7 @@ extern {
     clang_getTokenSpelling :: (TU: CXTranslationUnit, token: CXToken) -> CXString
     clang_disposeTokens :: (TU: CXTranslationUnit, Tokens: &CXToken, NumTokens: C.unsigned)
     clang_Cursor_getTranslationUnit :: (cursor: CXCursor) -> CXTranslationUnit
+    clang_Cursor_isNull :: (cursor: CXCursor) -> C.int
 
     #library "clang"
 }
