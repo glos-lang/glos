@@ -1,0 +1,147 @@
+// Description:
+//
+//     A simple OpenGL demonstration.
+//
+// Usage:
+//
+//     $ glos -r 05_opengl.glos
+//
+// Demonstrate:
+//
+//     - GLFW
+//     - OpenGL
+//
+
+vertices :: [?]f32 {
+    // Positions    Colors
+    -0.5, -0.5,     0.0, 1.0, 0.0,
+     0.5, -0.5,     0.0, 0.0, 1.0,
+     0.0,  0.5,     1.0, 0.0, 0.0,
+}
+
+vertex_shader ::
+    \#version 330 core
+    \
+    \layout (location = 0) in vec2 aPosition;
+    \layout (location = 1) in vec3 aColor;
+    \
+    \out vec3 color;
+    \
+    \void main() {
+    \    gl_Position = vec4(aPosition, 0.0, 1.0);
+    \    color = aColor;
+    \}
+
+fragment_shader ::
+    \#version 330 core
+    \
+    \in vec3 color;
+    \out vec4 FragColor;
+    \
+    \void main() {
+    \    FragColor = vec4(color, 1.0);
+    \}
+
+main :: () {
+    glfw.SetErrorCallback((code: s32, description: &s8) {
+        eprintln("Error: GLFW: \{strings.from_cstring(description)}")
+    })
+
+    glfw.Init()
+    defer glfw.Terminate()
+
+    glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 3)
+    glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, 3)
+    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+
+    window := glfw.CreateWindow(800, 600, "Hello Triangle", null, null)
+    if window == null {
+        os.exit(1)
+    }
+    defer glfw.DestroyWindow(window)
+
+    glfw.MakeContextCurrent(window)
+
+    // Load upto OpenGL 3.3
+    gl.load(3, 3, glfw.GetProcAddress)
+
+    vbo: u32
+    gl.GenBuffers(1, &vbo)
+    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+    gl.BufferData(gl.ARRAY_BUFFER, sizeof(vertices), rawptr(vertices.data), gl.STATIC_DRAW)
+
+    vao: u32
+    gl.GenVertexArrays(1, &vao)
+    gl.BindVertexArray(vao)
+    gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 5 * sizeof(f32), rawptr(0))
+    gl.EnableVertexAttribArray(0)
+
+    gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 5 * sizeof(f32), rawptr(2 * sizeof(f32)))
+    gl.EnableVertexAttribArray(1)
+
+    program: u32
+    defer gl.DeleteProgram(program)
+
+    {
+        vertex_shader := compile_shader(vertex_shader, gl.VERTEX_SHADER)
+        defer gl.DeleteShader(vertex_shader)
+
+        fragment_shader := compile_shader(fragment_shader, gl.FRAGMENT_SHADER)
+        defer gl.DeleteShader(fragment_shader)
+
+        program = link_shaders(vertex_shader, fragment_shader)
+        gl.UseProgram(program)
+    }
+
+    for !bool(glfw.WindowShouldClose(window)) {
+        w, h: s32
+        glfw.GetWindowSize(window, &w, &h)
+        gl.Viewport(0, 0, w, h)
+
+        gl.ClearColor(0.0, 0.0, 0.0, 1.0)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+        gl.DrawArrays(gl.TRIANGLES, 0, 3)
+
+        glfw.SwapBuffers(window)
+        glfw.PollEvents()
+    }
+}
+
+compile_shader :: (source: string, type: u32, location := #caller_location) -> u32 {
+    shader := gl.CreateShader(type)
+    length := s32(source.count)
+    gl.ShaderSource(shader, 1, &&s8(&source.data), &length)
+    gl.CompileShader(shader)
+
+    ok:  s32
+    log: [512]s8
+    gl.GetShaderiv(shader, gl.COMPILE_STATUS, &ok)
+    if ok == 0 {
+        gl.GetShaderInfoLog(shader, sizeof(log), null, log.data)
+        eprintln(location, strings.from_cstring(log.data))
+    }
+    return shader
+}
+
+link_shaders :: (shaders: ...u32, location := #caller_location) -> u32 {
+    program := gl.CreateProgram()
+    for _, shader := range shaders {
+        gl.AttachShader(program, shader)
+    }
+    gl.LinkProgram(program)
+
+    ok:  s32
+    log: [512]s8
+    gl.GetProgramiv(program, gl.LINK_STATUS, &ok)
+    if ok == 0 {
+        gl.GetProgramInfoLog(program, sizeof(log), null, log.data)
+        eprintln(location, strings.from_cstring(log.data))
+    }
+    return program
+}
+
+os      :: #import "os"
+strings :: #import "strings"
+
+gl   :: #import "opengl"
+glfw :: #import "glfw"
