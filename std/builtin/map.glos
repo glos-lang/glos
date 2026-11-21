@@ -1,6 +1,7 @@
 free :: (this: &map[$K]$V) {
-    if this.allocator == null then this.allocator = default_allocator
-    mem.free(&rawptr(this.data))!
+    if this.allocator != null {
+        mem.free(&rawptr(this.data))!
+    }
     mem.zero(this)
 }
 

@@ -1,9 +1,11 @@
 main :: () {
+    includes: [..]string
     directives: [..]string
 
     input, output: string
     flag.add(&input, "i", "Set the input path")
     flag.add(&output, "o", "Set the output path")
+    flag.add(&includes, "I", "Add an include path")
     flag.add(&directives, "D", "Define a proprocessor directive")
     flag.parse()
 
@@ -21,14 +23,15 @@ main :: () {
         os.exit(1)
     }
 
-    directives.push("-fparse-all-comments")
-    args := slices.apply(directives, (x: string) -> &C.char {
-        if x.count != 0 && x[0] == '-' {
-            return strings.to_cstring(x)!
-        }
+    args: [..]&C.char
+    args.push("-fparse-all-comments")
+    for _, x := range includes {
+        args.push(&C.char(strings.print("-I\{x}\0")!.data))
+    }
 
-        return &C.char(strings.print("-D\{x}\0")!.data)
-    })
+    for _, x := range directives {
+        args.push(&C.char(strings.print("-D\{x}\0")!.data))
+    }
 
     tu := clang_parseTranslationUnit(
         clang_createIndex(0, 0),
@@ -858,5 +861,4 @@ os      :: #import "os"
 fmt     :: #import "fmt"
 flag    :: #import "flag"
 hash    :: #import "hash"
-slices  :: #import "slices"
 strings :: #import "strings"

@@ -1,6 +1,7 @@
 free :: (this: &[..]$T) {
-    if this.allocator == null then this.allocator = default_allocator
-    mem.free(this.data, allocator = &this.allocator)
+    if this.allocator != null {
+        mem.free(this.data, allocator = &this.allocator)!
+    }
     mem.zero(this)
 }
 

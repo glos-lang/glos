@@ -19,7 +19,13 @@ Int :: struct {
 
     digits: s64
     buffer: [64]u8
-    if f.value.type.variant.(Type_Info_Integer).signed && f.base == .DECIMAL {
+
+    variant := f.value.type.variant
+    if v := variant; v == Type_Info_Enumeration {
+        variant = v.underlying.variant
+    }
+
+    if variant.(Type_Info_Integer).signed && f.base == .DECIMAL {
         v: s64
         if f.value.type.size == {
         case 1; v = s64(*(&s8)(f.value.data))

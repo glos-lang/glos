@@ -2783,8 +2783,10 @@ void check_fn(
             check_stmt_define(c, define);
             if (define->has_spread) {
                 fn_spec->variadics_index = iota;
-                it->node.type.kind = TYPE_SLICE;
-                it->node.type.spec.slice.element = &define->type->type;
+                it->node.type = (Type) {
+                    .kind = TYPE_SLICE,
+                    .spec.slice.element = &define->type->type,
+                };
             }
 
             const bool dont_allow_polymorphs_save = c->dont_allow_polymorphs;
