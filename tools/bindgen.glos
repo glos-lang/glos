@@ -736,7 +736,7 @@ is_signed :: (this: CXType) -> bool {
             } else {
                 name := strings.print("_Anon_\{anons.count}")!
                 anons[c] = name
-                n += w.write([]u8(*anon))?
+                n += w.write([]u8(name))?
             }
         } else {
             n += wprint(w, clang_getCursorSpelling(c))?
