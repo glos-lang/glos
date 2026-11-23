@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 151
+tests/error_atleast_one_variant_must_be_present_in_a_c_union.glos:1:6: Error: Atleast one variant must be present in a C union
+
+    A :: union 'C' {}
+
+

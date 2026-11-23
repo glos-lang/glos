@@ -1,0 +1,9 @@
+EXIT 1
+STDOUT 0
+
+STDERR 120
+tests/error_cannot_access_variants_of_c_union.glos:5:8: Error: Cannot access variant of 'Foo'
+
+    bar := Foo {}.(s64)
+
+

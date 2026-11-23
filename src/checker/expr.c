@@ -9,30 +9,6 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
             // OK
         } else if (!type_is_union(m->lhs->type, false) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ERROR})) {
             error_node(EK_ERROR, (Node *) m, "Cannot access variant of %s", type_to_cstr(m->lhs->type));
-            if (type_is_union(m->lhs->type, true)) {
-                afprintf(
-                    stderr,
-                    ANSI_COLOR_YELLOW | ANSI_BOLD,
-                    "    C unions are untagged, therefore their variant cannot be determined.\n"
-                    "    The type must be explicitly selected using a regular field access.\n\n");
-
-                afprintf(
-                    stderr,
-                    ANSI_COLOR_MAGENTA | ANSI_BOLD,
-
-                    "        C_Union :: union 'C' {\n"
-                    "            a: s64\n"
-                    "            b: f32\n"
-                    "        }\n"
-                    "\n"
-                    "        main :: () {\n"
-                    "            cu: C_Union\n"
-                    "\n"
-                    "            // Explicit access the type like this.\n"
-                    "            cu.a = 1116340224\n"
-                    "            println(cu.b)\n"
-                    "        }\n\n");
-            }
             exit(c, 1);
         }
     } else {

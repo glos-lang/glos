@@ -1,0 +1,11 @@
+main :: () {
+    Foo :: union 'C' {
+        a: s64
+        b: f32
+    }
+
+    f: Foo
+    f.a = 1116340224
+    println(f.b)
+    println(sizeof(f))
+}

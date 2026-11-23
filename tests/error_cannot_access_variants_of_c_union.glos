@@ -1,0 +1,5 @@
+Foo :: union 'C' {
+    a: s64
+}
+
+bar := Foo {}.(s64)
