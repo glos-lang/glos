@@ -27,8 +27,8 @@ bool type_is_trait(Type type) {
     return !type.ref && type_kind_eq(type, TYPE_TRAIT);
 }
 
-bool type_is_union(Type type) {
-    return !type.ref && type_kind_eq(type, TYPE_UNION);
+bool type_is_union(Type type, bool is_raw) {
+    return !type.ref && type_kind_eq(type, TYPE_UNION) && type.spec.unionn->definition->is_c_union == is_raw;
 }
 
 bool type_eq_without_distinct(Type a, Type b) {
@@ -687,7 +687,7 @@ bool try_auto_cast(Compiler *c, Node *n, Type expected, i64 group_index) {
         return true;
     }
 
-    if (type_is_union(expected) && !type_is_unknown(actual) && !type_kind_eq(actual, TYPE_MODULE)) {
+    if (type_is_union(expected, false) && !type_is_unknown(actual) && !type_kind_eq(actual, TYPE_MODULE)) {
         set_auto_cast(c, n, group_index, AUTO_CAST_TO_UNION, actual, expected);
         return true;
     }

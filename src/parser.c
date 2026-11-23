@@ -1422,10 +1422,49 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         unionn->defined_in_fn = p->state.fn_current;
         unionn->defined_in_block = p->state.block_current;
 
-        expect_token(p, TOKEN_LBRACE);
+        token = expect_token(p, TOKEN_CHAR, TOKEN_LBRACE);
+        if (token.kind == TOKEN_CHAR) {
+            if (token.as.integer != 'C') {
+                error_token(EK_ERROR, token, "Expected this character to be 'C'");
+                exit(1);
+            }
+
+            unionn->is_c_union = true;
+            token = expect_token(p, TOKEN_LBRACE);
+        }
+
         while (!read_token(p, TOKEN_RBRACE)) {
-            nodes_push(&unionn->variants, parse_expr(p, POWER_SET, false, true, NULL));
-            unionn->variants_count++;
+            Node *variant = NULL;
+            if (unionn->is_c_union) {
+                variant = parse_expr(p, POWER_NIL, true, true, NULL);
+                if (variant->kind != NODE_DEFINE) {
+                    error_node(EK_ERROR, variant, "Expected variant, got expression");
+                    exit(1);
+                }
+
+                Node_Define *define = (Node_Define *) variant;
+                if (define->is_const) {
+                    error_node(EK_ERROR, variant, "Expected variant, got constant definition");
+                    exit(1);
+                }
+
+                if (define->expr) {
+                    error_node(EK_ERROR, define->expr, "Variant definition cannot have assignment");
+                    exit(1);
+                }
+
+                Node_Atom *it = NULL;
+                while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                    it->definition_spec->is_field = true;
+                }
+
+                unionn->variants_count += define->count;
+            } else {
+                variant = parse_expr(p, POWER_SET, false, true, NULL);
+                unionn->variants_count++;
+            }
+
+            nodes_push(&unionn->variants, variant);
             expect_stmt_terminator(p);
         }
 
@@ -1433,6 +1472,11 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
         unionn->end = p->state.ahead;
 
         p->state.pb = pb_save;
+
+        if (unionn->is_c_union && !unionn->variants_count) {
+            error_node(EK_ERROR, node, "C unions must have atleast one variant");
+            exit(1);
+        }
     } break;
 
     case TOKEN_STRUCT: {

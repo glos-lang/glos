@@ -83,6 +83,7 @@ Type_Info_Trait :: struct {
 
 Type_Info_Union :: struct {
     variants: []Type
+    names:    []string // Only applicable for C unions
 }
 
 Type_Info_Structure :: struct {
@@ -94,7 +95,7 @@ Type_Info_Structure :: struct {
 
 Type_Info_Array :: struct {
     underlying: Type
-    count: s64
+    count:      s64
 }
 
 Type_Info_Dynamic_Array :: struct {

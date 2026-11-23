@@ -1795,6 +1795,13 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
         set_debug_pos(c, n->token.pos);
     }
 
+    if (member->lhs->type.kind == TYPE_UNION && member->lhs->type.spec.unionn->definition->is_c_union) {
+        if (ref) {
+            return lhs;
+        }
+        return LLVMBuildLoad2(c->llvm_builder, n->type.llvm, lhs, "");
+    }
+
     if (member->is_trait) {
         member->method_receiver_llvm = LLVMBuildLoad2(c->llvm_builder, c->llvm_trait_type, lhs, "");
 
@@ -2013,11 +2020,28 @@ LLVMValueRef compile_expr_compound(Compiler *c, Node_Compound *compound, bool re
     }
 
     if (compound->is_not_compound) {
+        Node *expr = compound->children.head;
+        if (expr && expr->kind == NODE_BINARY && expr->token.kind == TOKEN_SET) {
+            expr = ((Node_Binary *) expr)->rhs;
+        }
+
         LLVMValueRef memory = compile_alloca(c, n_type.llvm);
-        LLVMBuildStore(
-            c->llvm_builder,
-            compound->children.head ? compile_expr(c, compound->children.head, false) : LLVMConstNull(n_type.llvm),
-            memory);
+        LLVMBuildStore(c->llvm_builder, expr ? compile_expr(c, expr, false) : LLVMConstNull(n_type.llvm), memory);
+        if (expr && type_is_union(n->type, true)) {
+            const size_t total = compile_sizeof(c, &n->type);
+            const size_t stored = compile_sizeof(c, &expr->type);
+            const size_t left = total - stored;
+            if (left) {
+                LLVMTypeRef i8 = LLVMInt8TypeInContext(c->llvm_context);
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
+
+                LLVMValueRef indices[] = {LLVMConstInt(i64, stored, true)};
+                LLVMBuildStore(
+                    c->llvm_builder,
+                    LLVMConstNull(LLVMArrayType(i8, left)),
+                    LLVMBuildGEP2(c->llvm_builder, i8, memory, indices, len(indices), ""));
+            }
+        }
         return ref ? memory : LLVMBuildLoad2(c->llvm_builder, n_type.llvm, memory, "");
     }
 

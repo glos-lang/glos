@@ -19,7 +19,7 @@ const char *order_postfix(size_t n);
 i64         i64_from_int128(Compiler *c, Node *n, Int128 x, bool min_zero, const char *label);
 
 bool type_is_trait(Type type);
-bool type_is_union(Type type);
+bool type_is_union(Type type, bool is_raw);
 bool type_eq_without_distinct(Type a, Type b);
 
 bool is_atom_true(Node *n);

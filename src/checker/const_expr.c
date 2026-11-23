@@ -725,7 +725,22 @@ Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
 
     Const_Value value = default_const_value(c, n_type);
     if (compound->is_not_compound) {
-        return (compound->children.head) ? eval_const_expr(c, compound->children.head, false) : value;
+        Node *expr = compound->children.head;
+        if (expr) {
+            if (expr->kind == NODE_BINARY && expr->token.kind == TOKEN_SET) {
+                expr = ((Node_Binary *) expr)->rhs;
+            }
+            value = eval_const_expr(c, expr, false);
+        }
+
+        if (type_is_union(n_type, true)) {
+            Const_Value_Union unionn = {0};
+            unionn.spec = n_type.spec.unionn;
+            unionn.real = arena_clone(&default_arena, &value, sizeof(value));
+            unionn.c_union_real_type = &expr->type;
+            value = const_value_union(unionn);
+        }
+        return value;
     }
 
     size_t ordered_iota = 0;

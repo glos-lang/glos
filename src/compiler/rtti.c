@@ -224,15 +224,38 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         case TYPE_UNION: {
             const void *checkpoint = arena_alloc(&temp_arena, 0);
 
+            LLVMValueRef union_fields[2] = {0};
+            size_t       union_fields_iota = 0;
+
             const Type_Union *spec = tic->type->spec.unionn;
+
+            LLVMValueRef *names = NULL;
+            if (spec->definition->is_c_union) {
+                names = arena_alloc(&temp_arena, spec->variants_count * sizeof(*names));
+            }
 
             LLVMValueRef *variants = arena_alloc(&temp_arena, spec->variants_count * sizeof(*variants));
             for (size_t i = 0; i < spec->variants_count; i++) {
-                variants[i] = compile_type_info(c, &spec->variants[i].type);
+                Type_Union_Variant *it = &spec->variants[i];
+                if (names) {
+                    names[i] = compile_string_into_const_value(c, it->name);
+                }
+                variants[i] = compile_type_info(c, &it->type);
             }
-            tic->tiv_fields[tic->tiv_fields_iota++] = create_const_slice_from_memory(
+
+            union_fields[union_fields_iota++] = create_const_slice_from_memory(
                 c, LLVMPointerTypeInContext(c->llvm_context, 0), variants, spec->variants_count);
 
+            if (names) {
+                union_fields[union_fields_iota++] = create_const_slice_from_memory(
+                    c, LLVMPointerTypeInContext(c->llvm_context, 0), names, spec->variants_count);
+            } else {
+                union_fields[union_fields_iota++] =
+                    create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), names, 0);
+            }
+
+            tic->tiv_fields[tic->tiv_fields_iota++] =
+                LLVMConstStructInContext(c->llvm_context, union_fields, union_fields_iota, false);
             arena_reset(&temp_arena, checkpoint);
         } break;
 
