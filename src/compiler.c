@@ -4,6 +4,10 @@
 #include "error.h"
 #include "lld.h"
 
+#ifdef PLATFORM_X86_64_LINUX
+#include <dirent.h>
+#endif // PLATFORM_X86_64_LINUX
+
 void link_flags_add_libpath(Link_Flags *ls, SV path) {
 #ifdef PLATFORM_X86_64_WINDOWS
     da_push(ls, arena_sprintf(&default_arena, "/libpath:" SV_Fmt, SV_Arg(path)));
@@ -293,6 +297,45 @@ void compiler_build(Compiler *c, const char *output_path) {
 
         cmd_push(c->cmd, "-L", libc_dir);
         cmd_push(c->cmd, libc_crt1_path, libc_crti_path, libc_crtn_path);
+
+        static const char *gcc_base_dirs[] = {
+            "/usr/lib/gcc/x86_64-linux-gnu",
+            "/usr/lib/x86_64-redhat-linux",
+            "/usr/lib64/gcc/x86_64-linux-gnu",
+            "/usr/lib/gcc",
+            "/usr/lib64/gcc",
+        };
+
+        {
+            const void *checkpoint = arena_alloc(&temp_arena, 0);
+            for (size_t i = 0; i < len(gcc_base_dirs); i++) {
+                DIR *dir = opendir(gcc_base_dirs[i]);
+                if (!dir) {
+                    continue;
+                }
+
+                struct dirent *ent = NULL;
+                const char    *match = NULL;
+                while ((ent = readdir(dir)) != NULL) {
+                    if (ent->d_name[0] == '.') {
+                        continue;
+                    }
+
+                    const char *candidate = arena_sprintf(&temp_arena, "%s/%s/libgcc.a", gcc_base_dirs[i], ent->d_name);
+                    if (file_exists(candidate)) {
+                        match = candidate;
+                        break;
+                    }
+                    arena_reset(&temp_arena, checkpoint);
+                }
+                closedir(dir);
+
+                if (match) {
+                    cmd_push(c->cmd, match);
+                    break;
+                }
+            }
+        }
 
         cmd_push_many(c->cmd, c->link_flags->data, c->link_flags->count);
         cmd_push(c->cmd, "-lc", "-lm");
