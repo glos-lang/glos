@@ -1,0 +1,157 @@
+/**
+ * A font atlas draw command.
+ *
+ * \since This enum is available since SDL_ttf 3.0.0.
+ */
+DrawCommand :: enum uint {
+    NOOP = 0
+    FILL = 1
+    COPY = 2
+}
+
+/**
+ * A filled rectangle draw operation.
+ *
+ * \since This struct is available since SDL_ttf 3.0.0.
+ *
+ * \sa DrawOperation
+ */
+FillOperation :: struct {
+    /**< TTF_DRAW_COMMAND_FILL */
+    cmd: DrawCommand
+
+    /**< The rectangle to fill, in pixels. The x coordinate is relative to the left side of the text area, going right, and the y coordinate is relative to the top side of the text area, going down. */
+    rect: sdl.Rect
+}
+
+/**
+ * A texture copy draw operation.
+ *
+ * \since This struct is available since SDL_ttf 3.0.0.
+ *
+ * \sa DrawOperation
+ */
+CopyOperation :: struct {
+    /**< TTF_DRAW_COMMAND_COPY */
+    cmd: DrawCommand
+
+    /**< The offset in the text corresponding to this glyph.
+                                          There may be multiple glyphs with the same text offset
+                                          and the next text offset might be several Unicode codepoints
+                                          later. In this case the glyphs and codepoints are grouped
+                                          together and the group bounding box is the union of the dst
+                                          rectangles for the corresponding glyphs. */
+    text_offset: int
+
+    /**< The font containing the glyph to be drawn, can be passed to TTF_GetGlyphImageForIndex() */
+    glyph_font: &TTF_Font
+
+    /**< The glyph index of the glyph to be drawn, can be passed to TTF_GetGlyphImageForIndex() */
+    glyph_index: sdl.Uint32
+
+    /**< The area within the glyph to be drawn */
+    src: sdl.Rect
+
+    /**< The drawing coordinates of the glyph, in pixels. The x coordinate is relative to the left side of the text area, going right, and the y coordinate is relative to the top side of the text area, going down. */
+    dst: sdl.Rect
+    reserved: rawptr
+}
+
+/**
+ * A text engine draw operation.
+ *
+ * \since This struct is available since SDL_ttf 3.0.0.
+ */
+DrawOperation :: union 'C' {
+    cmd: DrawCommand
+    fill: FillOperation
+    copy: CopyOperation
+}
+
+TextLayout :: struct {}
+
+/* Private data in TTF_Text, available to implementations */
+TextData :: struct {
+    /**< The font used by this text, read-only. */
+    font: &TTF_Font
+
+    /**< The color of the text, read-only. */
+    color: sdl.FColor
+
+    /**< True if the layout needs to be updated */
+    needs_layout_update: bool
+
+    /**< Cached layout information, read-only. */
+    layout: &TextLayout
+
+    /**< The x offset of the upper left corner of this text, in pixels, read-only. */
+    x: int
+
+    /**< The y offset of the upper left corner of this text, in pixels, read-only. */
+    y: int
+
+    /**< The width of this text, in pixels, read-only. */
+    w: int
+
+    /**< The height of this text, in pixels, read-only. */
+    h: int
+
+    /**< The number of drawing operations to render this text, read-only. */
+    num_ops: int
+
+    /**< The drawing operations used to render this text, read-only. */
+    ops: &DrawOperation
+
+    /**< The number of substrings representing clusters of glyphs in the string, read-only */
+    num_clusters: int
+
+    /**< Substrings representing clusters of glyphs in the string, read-only */
+    clusters: &TTF_SubString
+
+    /**< Custom properties associated with this text, read-only. This field is created as-needed using TTF_GetTextProperties() and the properties may be then set and read normally */
+    props: sdl.PropertiesID
+
+    /**< True if the engine text needs to be updated */
+    needs_engine_update: bool
+
+    /**< The engine used to render this text, read-only. */
+    engine: &TextEngine
+
+    /**< The implementation-specific representation of this text */
+    engine_text: rawptr
+}
+
+/**
+ * A text engine interface.
+ *
+ * This structure should be initialized using SDL_INIT_INTERFACE()
+ *
+ * \since This struct is available since SDL_ttf 3.0.0.
+ *
+ * \sa SDL_INIT_INTERFACE
+ */
+TextEngine :: struct {
+    /**< The version of this interface */
+    version: sdl.Uint32
+
+    /**< User data pointer passed to callbacks */
+    userdata: rawptr
+
+    /* Create a text representation from draw instructions.
+         *
+         * All fields of `text` except `internal->engine_text` will already be filled out.
+         *
+         * This function should set the `internal->engine_text` field to a non-NULL value.
+         *
+         * \param userdata the userdata pointer in this interface.
+         * \param text the text object being created.
+         */
+    CreateText: ((_: rawptr, _: &TTF_Text) -> bool)
+
+    /**
+         * Destroy a text representation.
+         */
+    DestroyText: ((_: rawptr, _: &TTF_Text))
+}
+
+sdl :: #import "sdl3"
