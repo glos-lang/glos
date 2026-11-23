@@ -116,7 +116,8 @@ emit_node :: (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult
         emit_struct(c)
 
     case .UnionDecl
-        todo("Glos does not support C unions")
+        emit_prelude(c, false)
+        emit_union(c)
 
     case .EnumDecl
         emit_prelude(c, false)
@@ -388,6 +389,54 @@ emit_enum :: (c: CXCursor, name := "") {
         return .Continue
     }, rawptr(&data))
 
+    wprintln(&sb, "}")
+}
+
+emit_union :: (c: CXCursor, name := "") {
+    if c.is_anon() {
+        if anon := anons.get(c); anon != null {
+            name = *anon
+        } else {
+            name     = strings.print("_Anon_\{anons.count}")!
+            anons[c] = name
+        }
+    }
+
+    if name == "" {
+        wprint(&sb, "\{clang_getCursorSpelling(c)} :: union 'C' {")
+    } else {
+        wprint(&sb, "\{name} :: union 'C' {")
+    }
+
+    empty := true
+    clang_visitChildren(c, (c: CXCursor, parent: CXCursor, data: rawptr) -> CXChildVisitResult {
+        if clang_getCursorKind(c) == .FieldDecl {
+            if bool(clang_Cursor_isBitField(c)) {
+                todo("Glos does not support C bitfields")
+            }
+
+            wprintln(&sb)
+            emit_comment(c, &sb, *(&bool)(data), true)
+
+            name := clang_getCursorSpelling(c)
+            defer clang_disposeString(name)
+            name := strings.from_cstring(clang_getCString(name))
+
+            if is_keyword(name) {
+                wprint(&sb, "    _\{name}")
+            } else {
+                wprint(&sb, "    \{name}")
+            }
+
+            wprint(&sb, ": \{clang_getCursorType(c)}")
+            *(&bool)(data) = false
+        }
+        return .Continue
+    }, rawptr(&empty))
+
+    if !empty {
+        wprintln(&sb)
+    }
     wprintln(&sb, "}")
 }
 
