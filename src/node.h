@@ -317,6 +317,7 @@ struct Type_Trait_Method {
 
 struct Type_Union_Variant {
     Pos    pos;
+    SV     name; // For extern unions
     Type   type;
     size_t size;
     size_t align;
@@ -395,6 +396,7 @@ typedef struct {
     Type_Union  *spec;
     size_t       index;
     Const_Value *real;
+    Type        *c_union_real_type;
 } Const_Value_Union;
 
 typedef struct {
@@ -933,6 +935,7 @@ struct Node_Union {
     size_t     defined_as_anon_iota;
 
     Token end;
+    bool  is_c_union;
 
     Node_Fn    *defined_in_fn;
     Node_Block *defined_in_block;

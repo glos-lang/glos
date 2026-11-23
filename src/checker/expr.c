@@ -7,7 +7,7 @@ static void check_whether_member_access_is_valid(Compiler *c, Node_Member *m) {
         assert(m->lhs); // A bare '.(Type)' will error out at parse time
         if (!m->lhs->type.ref && m->lhs->type.kind == TYPE_TRAIT) {
             // OK
-        } else if (!type_is_union(m->lhs->type) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ERROR})) {
+        } else if (!type_is_union(m->lhs->type, false) && !type_eq(m->lhs->type, (Type) {.kind = TYPE_ERROR})) {
             error_node(EK_ERROR, (Node *) m, "Cannot access variant of %s", type_to_cstr(m->lhs->type));
             exit(c, 1);
         }
@@ -502,7 +502,7 @@ static bool check_expr_binary_equality(Compiler *c, Node_Binary *binary, Node *l
         return true;
     }
 
-    if (type_is_union(lhs->type)) {
+    if (type_is_union(lhs->type, false)) {
         binary->union_check = lhs;
         if (!node_is_null(rhs)) {
             type_assert_type(c, rhs);
@@ -842,11 +842,29 @@ void check_expr_member(Compiler *c, Node_Member *member, Ref_Kind ref, bool *is_
                     member->union_index = get_union_type_index(c, member->rhs, member->lhs->type);
                     n->type = type_without_meta(member->rhs->type);
                 } else {
-                    if (sv_match(n->token.sv, "type")) {
-                        n->type = (Type) {.kind = TYPE_S64};
-                        member->field_index = 0;
+                    const Type_Union *spec = member->lhs->type.spec.unionn;
+                    if (spec->definition->is_c_union) {
+                        bool found = false;
+                        for (size_t i = 0; i < spec->variants_count; i++) {
+                            const Type_Union_Variant *it = &spec->variants[i];
+                            if (sv_eq(it->name, n->token.sv)) {
+                                n->type = it->type;
+                                member->field_index = 0;
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if (!found) {
+                            error_undefined_in(c, &n->token, &member->lhs->type, "variant or method");
+                        }
                     } else {
-                        error_undefined_in(c, &n->token, &member->lhs->type, "field or method");
+                        if (sv_match(n->token.sv, "type")) {
+                            n->type = (Type) {.kind = TYPE_S64};
+                            member->field_index = 0;
+                        } else {
+                            error_undefined_in(c, &n->token, &member->lhs->type, "field or method");
+                        }
                     }
                 }
             } else if (type_kind_eq(member->lhs->type, TYPE_STRUCT)) {
@@ -1242,22 +1260,50 @@ void check_expr_union(Compiler *c, Node_Union *unionn) {
     spec->variants_count = unionn->variants_count;
 
     size_t iota = 0;
-    ll_foreach(it, &unionn->variants) {
-        check_expr(c, it, REF_NONE);
-        type_assert_type(c, it);
+    if (unionn->is_c_union) {
+        ll_foreach(variant, &unionn->variants) {
+            if (variant->kind == NODE_DEFINE) {
+                Node_Define *define = (Node_Define *) variant;
 
-        Type_Union_Variant *variant = &spec->variants[iota];
-        variant->pos = it->token.pos;
-        variant->type = type_without_meta(it->type);
+                Node_Atom *it = NULL;
+                while ((it = (Node_Atom *) node_iter((Node *) it, define->name))) {
+                    for (size_t i = 0; i < iota; i++) {
+                        const Type_Union_Variant *prev = &spec->variants[i];
+                        if (sv_eq(prev->name, it->node.token.sv)) {
+                            error_redefinition(c, (Node *) it, &prev->pos);
+                        }
+                    }
 
-        for (size_t i = 0; i < iota; i++) {
-            const Type_Union_Variant *prev = &spec->variants[i];
-            if (type_eq(prev->type, variant->type)) {
-                error_redefinition(c, it, &prev->pos);
+                    it->definition_spec->is_local = false;
+                    check_definition(c, it, define->expr, define->type, false);
+
+                    Type_Union_Variant *variant = &spec->variants[iota++];
+                    variant->pos = it->node.token.pos;
+                    variant->name = it->node.token.sv;
+                    variant->type = type_without_meta(it->node.type);
+                }
+            } else {
+                unreachable();
             }
         }
+    } else {
+        ll_foreach(it, &unionn->variants) {
+            check_expr(c, it, REF_NONE);
+            type_assert_type(c, it);
 
-        iota++;
+            Type_Union_Variant *variant = &spec->variants[iota];
+            variant->pos = it->token.pos;
+            variant->type = type_without_meta(it->type);
+
+            for (size_t i = 0; i < iota; i++) {
+                const Type_Union_Variant *prev = &spec->variants[i];
+                if (type_eq(prev->type, variant->type)) {
+                    error_redefinition(c, it, &prev->pos);
+                }
+            }
+
+            iota++;
+        }
     }
 }
 
@@ -1472,8 +1518,14 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
             (n->type.ref || (n->type.kind != TYPE_STRUCT && n->type.kind != TYPE_ARRAY && n->type.kind != TYPE_SLICE));
     }
 
+    // For C union literal
+    const Type_Union *c_union_spec = NULL;
+    if (type_is_union(n->type, true)) {
+        c_union_spec = n->type.spec.unionn;
+    }
+
     // For structure literal
-    Type_Struct *struct_spec = NULL;
+    const Type_Struct *struct_spec = NULL;
     if (n->type.kind == TYPE_STRUCT) {
         struct_spec = n->type.spec.structt;
     }
@@ -1486,13 +1538,33 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
         size_t it_iota = 0;
         Node  *it = iter;
         if (it->kind == NODE_BINARY && it->token.kind == TOKEN_SET) {
-            if (compound->is_not_compound) {
-                error_node(EK_ERROR, it, "Cannot have designated_initializers for %s", type_to_cstr(n->type));
+            if (compound->is_not_compound && !c_union_spec) {
+                error_node(EK_ERROR, it, "Cannot have designated initializers for %s", type_to_cstr(n->type));
                 exit(c, 1);
             }
 
             Node_Binary *it_binary = (Node_Binary *) it;
-            if (n->type.kind == TYPE_STRUCT) {
+            if (c_union_spec) {
+                if (it_binary->lhs->kind != NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
+                    error_node(EK_ERROR, it_binary->lhs, "Expected designated initializer to be variant name");
+                    exit(c, 1);
+                }
+                Node_Atom *it_field_name = (Node_Atom *) it_binary->lhs;
+
+                bool ok = false;
+                for (size_t i = 0; i < c_union_spec->variants_count; i++) {
+                    const Type_Union_Variant *variant = &c_union_spec->variants[i];
+                    if (sv_eq(variant->name, it_field_name->node.token.sv)) {
+                        it->token.as.integer = i;
+                        ok = true;
+                        break;
+                    }
+                }
+
+                if (!ok) {
+                    error_undefined_in(c, &it_field_name->node.token, &n->type, "variant");
+                }
+            } else if (struct_spec) {
                 if (it_binary->lhs->kind != NODE_ATOM || it_binary->lhs->token.kind != TOKEN_IDENT) {
                     error_node(EK_ERROR, it_binary->lhs, "Expected designated initializer to be field name");
                     exit(c, 1);
@@ -1501,8 +1573,8 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
 
                 bool ok = false;
                 for (size_t i = 0; i < struct_spec->fields_count; i++) {
-                    Type_Struct_Field field = struct_spec->fields[i];
-                    if (sv_eq(field.name, it_field_name->node.token.sv)) {
+                    const Type_Struct_Field *field = &struct_spec->fields[i];
+                    if (sv_eq(field->name, it_field_name->node.token.sv)) {
                         it->token.as.integer = i;
                         ok = true;
                         break;
@@ -1538,7 +1610,7 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
                 unreachable();
             }
 
-            if (n->type.kind == TYPE_STRUCT || n->type.kind == TYPE_ARRAY || n->type.kind == TYPE_SLICE) {
+            if (c_union_spec || struct_spec || n->type.kind == TYPE_ARRAY || n->type.kind == TYPE_SLICE) {
                 for (size_t i = designated_initializers_count_save; i < c->designated_initializers.count; i++) {
                     const size_t it_index = it->token.as.integer;
 
@@ -1598,10 +1670,12 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
         }
 
         const Type *it_type = NULL;
-        if (compound->is_not_compound) {
-            it_type = &n->type;
-        } else if (n->type.kind == TYPE_STRUCT) {
+        if (c_union_spec) {
+            it_type = &c_union_spec->variants[it_iota].type;
+        } else if (struct_spec) {
             it_type = &struct_spec->fields[it_iota].type;
+        } else if (compound->is_not_compound) {
+            it_type = &n->type;
         } else if (n->type.kind == TYPE_ARRAY) {
             it_type = n->type.spec.array.element;
         } else if (n->type.kind == TYPE_SLICE) {
@@ -1907,7 +1981,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                 same = true;
             } else if (type_is_trait(*to_type)) {
                 to_trait = true;
-            } else if (type_is_union(*to_type)) {
+            } else if (type_is_union(*to_type, false)) {
                 to_union = true;
             } else if (
                 (type_eq(*to_type, (Type) {.kind = TYPE_ERROR}) || type_is_error_enum(*to_type)) &&

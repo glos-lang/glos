@@ -10,7 +10,7 @@ void check_switch_expr_and_alloc_preds(Compiler *c, Node_Switch *sw) {
         sw->enumeration = sw->expr->type.spec.enumm.definition;
     } else if (type_is_trait(sw->expr->type)) {
         sw->trait = sw->expr->type.spec.trait->definition;
-    } else if (type_is_union(sw->expr->type)) {
+    } else if (type_is_union(sw->expr->type, false)) {
         sw->unionn = sw->expr->type.spec.unionn->definition;
     } else if (type_is_error_enum(sw->expr->type) || type_eq(sw->expr->type, (Type) {.kind = TYPE_ERROR})) {
         sw->is_expr_error_or_error_enum = true;

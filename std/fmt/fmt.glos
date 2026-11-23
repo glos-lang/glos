@@ -98,7 +98,12 @@ type :: (w: io.Writer, t: Type) -> s64, error {
         n += w.write([]u8("}"))?
 
     case Type_Info_Union
-        n += w.write([]u8("union {"))?
+        if v.is_c {
+            n += w.write([]u8("union 'C' {"))?
+        } else {
+            n += w.write([]u8("union {"))?
+        }
+
         if v.variants.count != 0 {
             n += w.write([]u8(" "))?
             for i := 0; i < v.variants.count; i += 1 {
@@ -106,6 +111,10 @@ type :: (w: io.Writer, t: Type) -> s64, error {
                     n += w.write([]u8("; "))?
                 }
 
+                if i < v.names.count {
+                    n += w.write([]u8(v.names[i]))?
+                    n += w.write([]u8(": "))?
+                }
                 n += type(w, v.variants[i])?
             }
             n += w.write([]u8(" "))?
@@ -284,16 +293,20 @@ value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
         }
 
     case Type_Info_Union
-        tag := *(&s64)(f.data)
-        if tag == 0 {
-            return w.write([]u8("null"))
-        } else if tag - 1 >= v.variants.count {
-            return wprint(w, "(Invalid union tag: \{tag})")
+        if v.is_c {
+            return value(w, []u8(&u8(f.data), f.type.size), nested)
         } else {
-            t: Format
-            t.type = v.variants[tag - 1]
-            t.data = f.data + rawptr(8)
-            return value(w, t, nested)
+            tag := *(&s64)(f.data)
+            if tag == 0 {
+                return w.write([]u8("null"))
+            } else if tag - 1 >= v.variants.count {
+                return wprint(w, "(Invalid union tag: \{tag})")
+            } else {
+                t: Format
+                t.type = v.variants[tag - 1]
+                t.data = f.data + rawptr(8)
+                return value(w, t, nested)
+            }
         }
 
     case Type_Info_Structure

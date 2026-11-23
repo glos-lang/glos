@@ -86,23 +86,35 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
     case TYPE_UNION: {
         Type_Union *spec = type->spec.unionn;
         if (!spec->llvm) {
+            LLVMTypeRef largest_type = NULL;
             for (size_t i = 0; i < spec->variants_count; i++) {
                 Type_Union_Variant *it = &spec->variants[i];
                 compile_type(c, &it->type);
 
                 it->size = LLVMABISizeOfType(c->llvm_target_data, it->type.llvm);
-                spec->variants_size_max = max(spec->variants_size_max, it->size);
+                if (spec->variants_size_max < it->size) {
+                    spec->variants_size_max = it->size;
+                    largest_type = it->type.llvm;
+                }
 
                 it->align = LLVMABIAlignmentOfType(c->llvm_target_data, it->type.llvm);
                 spec->variants_align_max = max(spec->variants_align_max, it->align);
             }
 
-            LLVMTypeRef fields[] = {
-                LLVMInt64TypeInContext(c->llvm_context),
-                LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), spec->variants_size_max),
-            };
+            if (spec->definition->is_c_union) {
+                if (largest_type) {
+                    spec->llvm = largest_type;
+                } else {
+                    spec->llvm = LLVMStructTypeInContext(c->llvm_context, NULL, 0, false);
+                }
+            } else {
+                LLVMTypeRef fields[] = {
+                    LLVMInt64TypeInContext(c->llvm_context),
+                    LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), spec->variants_size_max),
+                };
 
-            spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
+                spec->llvm = LLVMStructTypeInContext(c->llvm_context, fields, len(fields), false);
+            }
         }
         type->llvm = spec->llvm;
     } break;
@@ -431,7 +443,10 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
 
             LLVMMetadataRef scope_metadata = c->llvm_debug_compile_unit;
             LLVMMetadataRef file_metadata = get_debug_file(c, spec->definition->node.token.pos.path);
-            LLVMMetadataRef fields[2];
+
+            LLVMMetadataRef  fields[2];
+            LLVMMetadataRef *fields_data = fields;
+            size_t           fields_count = len(fields);
 
             spec->debug = LLVMDIBuilderCreateReplaceableCompositeType(
                 c->llvm_debug_builder,
@@ -449,7 +464,10 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 0);
 
             // Case
-            {
+            if (spec->definition->is_c_union) {
+                fields_data++;
+                fields_count--;
+            } else {
                 Type            case_type = {.kind = TYPE_S64};
                 LLVMMetadataRef case_type_metadata = get_debug_for_type(c, &case_type);
 
@@ -548,8 +566,8 @@ LLVMMetadataRef get_debug_for_type(Compiler *c, Type *type) {
                 LLVMABIAlignmentOfType(c->llvm_target_data, spec->llvm) * 8,
                 0,
                 NULL,
-                fields,
-                len(fields),
+                fields_data,
+                fields_count,
                 0,
                 NULL,
                 "",

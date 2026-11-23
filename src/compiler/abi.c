@@ -124,9 +124,17 @@ static void split_type_into_qwords(Compiler *c, QWords *words, const Type *type,
         put_scalar_type_into_qword(c, words, LLVMPointerTypeInContext(c->llvm_context, 0), offset + 16);
         break;
 
-    case TYPE_UNION:
-        put_raw_bytes_into_words(c, words, offset, size);
-        break;
+    case TYPE_UNION: {
+        const Type_Union *spec = type->spec.unionn;
+        if (spec->definition->is_c_union) {
+            for (size_t i = 0; i < spec->variants_count; i++) {
+                const Type_Union_Variant *it = &spec->variants[i];
+                split_type_into_qwords(c, words, &it->type, offset, it->size);
+            }
+        } else {
+            put_raw_bytes_into_words(c, words, offset, size);
+        }
+    } break;
 
     case TYPE_STRUCT: {
         const Type_Struct *spec = type->spec.structt;

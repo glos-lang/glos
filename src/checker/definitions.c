@@ -402,8 +402,10 @@ void push_context_replace(Compiler *c, Context_Replace *replace, Node_Atom *from
 }
 
 bool push_context_replace_if_needed(Compiler *c, Context_Replace *replace, Node *from, Node *to) {
-    if ((type_is_trait(from->type) || type_is_union(from->type) || type_eq(from->type, (Type) {.kind = TYPE_ERROR})) &&
-        from->kind == NODE_ATOM) //
+    if ((type_is_trait(from->type) ||                         //
+         type_is_union(from->type, false) ||                  //
+         type_eq(from->type, (Type) {.kind = TYPE_ERROR})) && //
+        from->kind == NODE_ATOM)                              //
     {
         if (!node_is_null(to)) {
             push_context_replace(c, replace, ((Node_Atom *) from)->definition, to->type);

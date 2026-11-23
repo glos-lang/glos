@@ -109,22 +109,33 @@ LLVMValueRef compile_const_value(Compiler *c, Const_Value value, Type type) {
 
         LLVMValueRef fields[3] = {0};
         size_t       fields_iota = 0;
-        fields[fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value.as.unionn.index, true);
 
         size_t real_size = 0;
-        if (value.as.unionn.index) {
-            Type type = spec->variants[value.as.unionn.index - 1].type;
-            real_size = compile_sizeof(c, &type);
+        if (spec->definition->is_c_union) {
+            if (value.as.unionn.real) {
+                Type *type = value.as.unionn.c_union_real_type;
+                real_size = compile_sizeof(c, type);
+                fields[fields_iota++] = compile_const_value(c, *value.as.unionn.real, *type);
+            }
+        } else {
+            fields[fields_iota++] = LLVMConstInt(LLVMInt64TypeInContext(c->llvm_context), value.as.unionn.index, true);
+            if (value.as.unionn.index) {
+                Type type = spec->variants[value.as.unionn.index - 1].type;
+                real_size = compile_sizeof(c, &type);
 
-            assert(value.as.unionn.real); // The index is not zero, that means a real value exists
-            fields[fields_iota++] = compile_const_value(c, *value.as.unionn.real, type);
+                assert(value.as.unionn.real); // The index is not zero, that means a real value exists
+                fields[fields_iota++] = compile_const_value(c, *value.as.unionn.real, type);
+            }
         }
 
-        const size_t padding = LLVMABISizeOfType(c->llvm_target_data, spec->llvm) - 8 - real_size;
+        size_t padding = LLVMABISizeOfType(c->llvm_target_data, spec->llvm) - real_size;
+        if (!spec->definition->is_c_union) {
+            padding -= 8;
+        }
+
         if (padding) {
             fields[fields_iota++] = LLVMConstNull(LLVMArrayType(LLVMInt8TypeInContext(c->llvm_context), padding));
         }
-
         return LLVMConstStructInContext(c->llvm_context, fields, fields_iota, false);
     }
 

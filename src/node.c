@@ -259,7 +259,12 @@ void sb_push_type(SB *sb, Type type) {
         if (defined_as) {
             sb_push_sv(sb, defined_as->node.token.sv);
         } else {
-            sb_push_cstr(sb, "union {");
+            if (spec->definition->is_c_union) {
+                sb_push_cstr(sb, "union 'C' {");
+            } else {
+                sb_push_cstr(sb, "union {");
+            }
+
             if (spec->variants_count) {
                 sb_push(sb, ' ');
             }
@@ -440,6 +445,10 @@ static bool type_trait_eq(Type_Trait *a, Type_Trait *b) {
 static bool type_union_eq(Type_Union *a, Type_Union *b) {
     if (a->definition->defined_as || b->definition->defined_as) {
         return a->definition->defined_as == b->definition->defined_as;
+    }
+
+    if (a->definition->is_c_union != b->definition->is_c_union) {
+        return false;
     }
 
     if (a->variants_count != b->variants_count) {
@@ -901,6 +910,13 @@ bool const_value_eq(Const_Value a, Const_Value b) {
             return false;
         }
 
+        if (a.as.unionn.spec->definition->is_c_union) {
+            if (!a.as.unionn.real || !b.as.unionn.real) {
+                return a.as.unionn.real == b.as.unionn.real;
+            }
+            return const_value_eq(*a.as.unionn.real, *a.as.unionn.real);
+        }
+
         if (a.as.unionn.index != b.as.unionn.index) {
             return false;
         }
@@ -1017,10 +1033,15 @@ static void sb_push_const_value_impl(SB *sb, Type type, Const_Value v, bool raw)
         break;
 
     case CONST_VALUE_UNION:
-        if (v.as.unionn.real) {
-            sb_push_const_value_impl(sb, v.as.unionn.spec->variants[v.as.unionn.index].type, *v.as.unionn.real, raw);
+        if (v.as.unionn.spec->definition->is_c_union) {
+            sb_push_cstr(sb, "{C union}");
         } else {
-            sb_push_cstr(sb, "null");
+            if (v.as.unionn.real) {
+                sb_push_const_value_impl(
+                    sb, v.as.unionn.spec->variants[v.as.unionn.index].type, *v.as.unionn.real, raw);
+            } else {
+                sb_push_cstr(sb, "null");
+            }
         }
         break;
 
