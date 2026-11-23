@@ -98,7 +98,7 @@ type :: (w: io.Writer, t: Type) -> s64, error {
         n += w.write([]u8("}"))?
 
     case Type_Info_Union
-        if v.names.count != 0 {
+        if v.is_c {
             n += w.write([]u8("union 'C' {"))?
         } else {
             n += w.write([]u8("union {"))?
@@ -293,7 +293,7 @@ value :: (w: io.Writer, f: Format, nested: bool) -> s64, error {
         }
 
     case Type_Info_Union
-        if v.names.count != 0 {
+        if v.is_c {
             return value(w, []u8(&u8(f.data), f.type.size), nested)
         } else {
             tag := *(&s64)(f.data)

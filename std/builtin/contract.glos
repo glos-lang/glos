@@ -84,6 +84,7 @@ Type_Info_Trait :: struct {
 Type_Info_Union :: struct {
     variants: []Type
     names:    []string // Only applicable for C unions
+    is_c:     bool
 }
 
 Type_Info_Structure :: struct {

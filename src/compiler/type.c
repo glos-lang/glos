@@ -102,8 +102,11 @@ LLVMTypeRef compile_type(Compiler *c, Type *type) {
             }
 
             if (spec->definition->is_c_union) {
-                assert(largest_type);
-                spec->llvm = largest_type;
+                if (largest_type) {
+                    spec->llvm = largest_type;
+                } else {
+                    spec->llvm = LLVMStructTypeInContext(c->llvm_context, NULL, 0, false);
+                }
             } else {
                 LLVMTypeRef fields[] = {
                     LLVMInt64TypeInContext(c->llvm_context),

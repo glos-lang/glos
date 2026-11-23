@@ -1473,10 +1473,10 @@ static Node *parse_expr(Parser *p, Power mbp, bool groups_allowed, bool compound
 
         p->state.pb = pb_save;
 
-        if (unionn->is_c_union && !unionn->variants_count) {
-            error_node(EK_ERROR, node, "Atleast one variant must be present in a C union");
-            exit(1);
-        }
+        // if (unionn->is_c_union && !unionn->variants_count) {
+        //     error_node(EK_ERROR, node, "Atleast one variant must be present in a C union");
+        //     exit(1);
+        // }
     } break;
 
     case TOKEN_STRUCT: {

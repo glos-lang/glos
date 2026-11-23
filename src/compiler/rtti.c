@@ -224,7 +224,7 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
         case TYPE_UNION: {
             const void *checkpoint = arena_alloc(&temp_arena, 0);
 
-            LLVMValueRef union_fields[2] = {0};
+            LLVMValueRef union_fields[3] = {0};
             size_t       union_fields_iota = 0;
 
             const Type_Union *spec = tic->type->spec.unionn;
@@ -253,6 +253,9 @@ static void compile_type_info_variant(Compiler *c, Type_Info_Compiler *tic) {
                 union_fields[union_fields_iota++] =
                     create_const_slice_from_memory(c, LLVMPointerTypeInContext(c->llvm_context, 0), names, 0);
             }
+
+            union_fields[union_fields_iota++] =
+                LLVMConstInt(LLVMInt1TypeInContext(c->llvm_context), spec->definition->is_c_union, true);
 
             tic->tiv_fields[tic->tiv_fields_iota++] =
                 LLVMConstStructInContext(c->llvm_context, union_fields, union_fields_iota, false);
