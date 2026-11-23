@@ -44,7 +44,7 @@ CopyOperation :: struct {
     text_offset: int
 
     /**< The font containing the glyph to be drawn, can be passed to TTF_GetGlyphImageForIndex() */
-    glyph_font: &TTF_Font
+    glyph_font: &Font
 
     /**< The glyph index of the glyph to be drawn, can be passed to TTF_GetGlyphImageForIndex() */
     glyph_index: sdl.Uint32
@@ -70,10 +70,10 @@ DrawOperation :: union 'C' {
 
 TextLayout :: struct {}
 
-/* Private data in TTF_Text, available to implementations */
+/* Private data in Text, available to implementations */
 TextData :: struct {
     /**< The font used by this text, read-only. */
-    font: &TTF_Font
+    font: &Font
 
     /**< The color of the text, read-only. */
     color: sdl.FColor
@@ -106,7 +106,7 @@ TextData :: struct {
     num_clusters: int
 
     /**< Substrings representing clusters of glyphs in the string, read-only */
-    clusters: &TTF_SubString
+    clusters: &SubString
 
     /**< Custom properties associated with this text, read-only. This field is created as-needed using TTF_GetTextProperties() and the properties may be then set and read normally */
     props: sdl.PropertiesID
@@ -146,12 +146,12 @@ TextEngine :: struct {
          * \param userdata the userdata pointer in this interface.
          * \param text the text object being created.
          */
-    CreateText: ((_: rawptr, _: &TTF_Text) -> bool)
+    CreateText: ((_: rawptr, _: &Text) -> bool)
 
     /**
          * Destroy a text representation.
          */
-    DestroyText: ((_: rawptr, _: &TTF_Text))
+    DestroyText: ((_: rawptr, _: &Text))
 }
 
 sdl :: #import "sdl3"

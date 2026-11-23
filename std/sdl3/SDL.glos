@@ -25,7 +25,16 @@ MINOR_VERSION :: 4
  */
 MICRO_VERSION :: 20
 
-C :: #import "C"
+/**
+ * This is the version number macro for the current SDL version.
+ *
+ * \threadsafety It is safe to call this macro from any thread.
+ *
+ * \since This macro is available since SDL 3.2.0.
+ *
+ * \sa SDL_GetVersion
+ */
+VERSION :: MAJOR_VERSION * 1000000 + MINOR_VERSION * 1000 + MICRO_VERSION
 
 char :: C.char
 uchar :: C.uchar
@@ -55,5 +64,7 @@ int64_t :: C.int64_t
 uint64_t :: C.uint64_t
 
 va_list :: C.va_list
+
+C :: #import "C"
 
 #library "SDL3"
