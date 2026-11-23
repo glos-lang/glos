@@ -1,0 +1,242 @@
+_XEvent :: union 'C' {}
+
+/* this is defined in Xlib's headers, just need a simple declaration here. */
+XEvent :: _XEvent
+
+/**
+ * A callback to be used with SDL_SetX11EventHook.
+ *
+ * This callback may modify the event, and should return true if the event
+ * should continue to be processed, or false to prevent further processing.
+ *
+ * As this is processing an event directly from the X11 event loop, this
+ * callback should do the minimum required work and return quickly.
+ *
+ * \param userdata the app-defined pointer provided to SDL_SetX11EventHook.
+ * \param xevent a pointer to an Xlib XEvent union to process.
+ * \returns true to let event continue on, false to drop it.
+ *
+ * \threadsafety This may only be called (by SDL) from the thread handling the
+ *               X11 event loop.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ *
+ * \sa SDL_SetX11EventHook
+ */
+X11EventHook :: (userdata: rawptr, xevent: &XEvent) -> bool
+
+extern {
+    /**
+     * Set a callback for every X11 event.
+     *
+     * The callback may modify the event, and should return true if the event
+     * should continue to be processed, or false to prevent further processing.
+     *
+     * \param callback the X11EventHook function to call.
+     * \param userdata a pointer to pass to every iteration of `callback`.
+     *
+     * \threadsafety This function should only be called on the main thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_SetX11EventHook"
+    SetX11EventHook :: (callback: X11EventHook, userdata: rawptr)
+
+    /**
+     * Sets the UNIX nice value for a thread.
+     *
+     * This uses setpriority() if possible, and RealtimeKit if available.
+     *
+     * \param threadID the Unix thread ID to change priority of.
+     * \param priority the new, Unix-specific, priority value.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_SetLinuxThreadPriority"
+    SetLinuxThreadPriority :: (threadID: Sint64, priority: int) -> bool
+
+    /**
+     * Sets the priority (not nice level) and scheduling policy for a thread.
+     *
+     * This uses setpriority() if possible, and RealtimeKit if available.
+     *
+     * \param threadID the Unix thread ID to change priority of.
+     * \param sdlPriority the new ThreadPriority value.
+     * \param schedPolicy the new scheduling policy (SCHED_FIFO, SCHED_RR,
+     *                    SCHED_OTHER, etc...).
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_SetLinuxThreadPriorityAndPolicy"
+    SetLinuxThreadPriorityAndPolicy :: (threadID: Sint64, sdlPriority: int, schedPolicy: int) -> bool
+
+    /**
+     * Query if the current device is a tablet.
+     *
+     * If SDL can't determine this, it will return false.
+     *
+     * \returns true if the device is a tablet, false otherwise.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_IsTablet"
+    IsTablet :: () -> bool
+
+    /**
+     * Query if the current device is a TV.
+     *
+     * If SDL can't determine this, it will return false.
+     *
+     * \returns true if the device is a TV, false otherwise.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_IsTV"
+    IsTV :: () -> bool
+}
+
+/**
+ * Application sandbox environment.
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+Sandbox :: enum uint {
+    NONE = 0
+    UNKNOWN_CONTAINER = 1
+    FLATPAK = 2
+    SNAP = 3
+    MACOS = 4
+}
+
+extern {
+    /**
+     * Get the application sandbox environment, if any.
+     *
+     * \returns the application sandbox environment or SDL_SANDBOX_NONE if the
+     *          application is not running in a sandbox environment.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetSandbox"
+    GetSandbox :: () -> Sandbox
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationWillTerminate.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationWillTerminate"
+    OnApplicationWillTerminate :: ()
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationDidReceiveMemoryWarning.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationDidReceiveMemoryWarning"
+    OnApplicationDidReceiveMemoryWarning :: ()
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationWillResignActive.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationWillEnterBackground"
+    OnApplicationWillEnterBackground :: ()
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationDidEnterBackground.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationDidEnterBackground"
+    OnApplicationDidEnterBackground :: ()
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationWillEnterForeground.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationWillEnterForeground"
+    OnApplicationWillEnterForeground :: ()
+
+    /**
+     * Let iOS apps with external event handling report
+     * onApplicationDidBecomeActive.
+     *
+     * This functions allows iOS apps that have their own event handling to hook
+     * into SDL to generate SDL events. This maps directly to an iOS-specific
+     * event, but since it doesn't do anything iOS-specific internally, it is
+     * available on all platforms, in case it might be useful for some specific
+     * paradigm. Most apps do not need to use this directly; SDL's internal event
+     * code will handle all this for windows created by SDL_CreateWindow!
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_OnApplicationDidEnterForeground"
+    OnApplicationDidEnterForeground :: ()
+}

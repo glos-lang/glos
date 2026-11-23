@@ -1,0 +1,127 @@
+/**
+ * A unique ID for a touch device.
+ *
+ * This ID is valid for the time the device is connected to the system, and is
+ * never reused for the lifetime of the application.
+ *
+ * The value 0 is an invalid ID.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+TouchID :: Uint64
+
+/**
+ * A unique ID for a single finger on a touch device.
+ *
+ * This ID is valid for the time the finger (stylus, etc) is touching and will
+ * be unique for all fingers currently in contact, so this ID tracks the
+ * lifetime of a single continuous touch. This value may represent an index, a
+ * pointer, or some other unique ID, depending on the platform.
+ *
+ * The value 0 is an invalid ID.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+FingerID :: Uint64
+
+/**
+ * An enum that describes the type of a touch device.
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+TouchDeviceType :: enum int {
+    INVALID = -1
+
+    /**< touch screen with window-relative coordinates */
+    DIRECT = 0
+
+    /**< trackpad with absolute device coordinates */
+    INDIRECT_ABSOLUTE = 1
+
+    /**< trackpad with screen cursor-relative coordinates */
+    INDIRECT_RELATIVE = 2
+}
+
+/**
+ * Data about a single finger in a multitouch event.
+ *
+ * Each touch event is a collection of fingers that are simultaneously in
+ * contact with the touch device (so a "touch" can be a "multitouch," in
+ * reality), and this struct reports details of the specific fingers.
+ *
+ * \since This struct is available since SDL 3.2.0.
+ *
+ * \sa SDL_GetTouchFingers
+ */
+Finger :: struct {
+    /**< the finger ID */
+    id: FingerID
+
+    /**< the x-axis location of the touch event, normalized (0...1) */
+    x: float
+
+    /**< the y-axis location of the touch event, normalized (0...1) */
+    y: float
+
+    /**< the quantity of pressure applied, normalized (0...1) */
+    pressure: float
+}
+
+extern {
+    /**
+     * Get a list of registered touch devices.
+     *
+     * On some platforms SDL first sees the touch device if it was actually used.
+     * Therefore the returned list might be empty, although devices are available.
+     * After using all devices at least once the number will be correct.
+     *
+     * \param count a pointer filled in with the number of devices returned, may
+     *              be NULL.
+     * \returns a 0 terminated array of touch device IDs or NULL on failure; call
+     *          SDL_GetError() for more information. This should be freed with
+     *          SDL_free() when it is no longer needed.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetTouchDevices"
+    GetTouchDevices :: (count: &int) -> &TouchID
+
+    /**
+     * Get the touch device name as reported from the driver.
+     *
+     * \param touchID the touch device instance ID.
+     * \returns touch device name, or NULL on failure; call SDL_GetError() for
+     *          more information.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetTouchDeviceName"
+    GetTouchDeviceName :: (touchID: TouchID) -> &char
+
+    /**
+     * Get the type of the given touch device.
+     *
+     * \param touchID the ID of a touch device.
+     * \returns touch device type.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetTouchDeviceType"
+    GetTouchDeviceType :: (touchID: TouchID) -> TouchDeviceType
+
+    /**
+     * Get a list of active fingers for a given touch device.
+     *
+     * \param touchID the ID of a touch device.
+     * \param count a pointer filled in with the number of fingers returned, can
+     *              be NULL.
+     * \returns a NULL terminated array of Finger pointers or NULL on failure;
+     *          call SDL_GetError() for more information. This is a single
+     *          allocation that should be freed with SDL_free() when it is no
+     *          longer needed.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetTouchFingers"
+    GetTouchFingers :: (touchID: TouchID, count: &int) -> &&Finger
+}

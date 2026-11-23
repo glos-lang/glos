@@ -476,12 +476,15 @@ Token lexer_iter(Lexer *l) {
                 }
             }
 
-            if (peek_char(l, 0) == 'e' && isdigit(peek_char(l, 1))) {
-                next_char(l);
-                next_char(l);
-                token.kind = TOKEN_FLOAT;
-                while (l->sv.count > 0 && (isdigit(*l->sv.data) || *l->sv.data == '_')) {
+            if (peek_char(l, 0) == 'e') {
+                const char ahead = peek_char(l, 1);
+                if (isdigit(ahead) || ahead == '-') {
                     next_char(l);
+                    next_char(l);
+                    token.kind = TOKEN_FLOAT;
+                    while (l->sv.count > 0 && (isdigit(*l->sv.data) || *l->sv.data == '_')) {
+                        next_char(l);
+                    }
                 }
             }
         }

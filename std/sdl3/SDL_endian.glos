@@ -1,0 +1,63 @@
+/**
+ * A value to represent littleendian byteorder.
+ *
+ * This is used with the preprocessor macro SDL_BYTEORDER, to determine a
+ * platform's byte ordering:
+ *
+ * ```c
+ * #if SDL_BYTEORDER == SDL_LIL_ENDIAN
+ * SDL_Log("This system is littleendian.");
+ * #endif
+ * ```
+ *
+ * \since This macro is available since SDL 3.2.0.
+ *
+ * \sa SDL_BYTEORDER
+ * \sa SDL_BIG_ENDIAN
+ */
+SDL_LIL_ENDIAN :: 1234
+
+/**
+ * A value to represent bigendian byteorder.
+ *
+ * This is used with the preprocessor macro SDL_BYTEORDER, to determine a
+ * platform's byte ordering:
+ *
+ * ```c
+ * #if SDL_BYTEORDER == SDL_BIG_ENDIAN
+ * SDL_Log("This system is bigendian.");
+ * #endif
+ * ```
+ *
+ * \since This macro is available since SDL 3.2.0.
+ *
+ * \sa SDL_BYTEORDER
+ * \sa SDL_LIL_ENDIAN
+ */
+SDL_BIG_ENDIAN :: 4321
+
+/* @} */
+
+extern {
+    /**
+     * Byte-swap a floating point number.
+     *
+     * This will always byte-swap the value, whether it's currently in the native
+     * byteorder of the system or not. You should use SDL_SwapFloatLE or
+     * SDL_SwapFloatBE instead, in most cases.
+     *
+     * Note that this is a forced-inline function in a header, and not a public
+     * API function available in the SDL library (which is to say, the code is
+     * embedded in the calling program and the linker and dynamic loader will not
+     * be able to find this function inside SDL itself).
+     *
+     * \param x the value to byte-swap.
+     * \returns x, with its bytes in the opposite endian order.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_SwapFloat"
+    SwapFloat :: (x: float) -> float
+}

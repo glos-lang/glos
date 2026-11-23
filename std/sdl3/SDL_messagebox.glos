@@ -1,0 +1,183 @@
+/**
+ * Message box flags.
+ *
+ * If supported will display warning icon, etc.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+MessageBoxFlags :: enum Uint32 {
+    ERROR                 = 0x00000010 /**< error dialog */
+    WARNING               = 0x00000020 /**< warning dialog */
+    INFORMATION           = 0x00000040 /**< informational dialog */
+    BUTTONS_LEFT_TO_RIGHT = 0x00000080 /**< buttons placed left to right */
+    BUTTONS_RIGHT_TO_LEFT = 0x00000100 /**< buttons placed right to left */
+}
+
+/**
+ * MessageBoxButtonData flags.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+MessageBoxButtonFlags :: enum Uint32 {
+    RETURNKEY_DEFAULT = 0x00000001 /**< Marks the default button when return is hit */
+    ESCAPEKEY_DEFAULT = 0x00000002 /**< Marks the default button when escape is hit */
+}
+
+/**
+ * Individual button data.
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+MessageBoxButtonData :: struct {
+    flags: MessageBoxButtonFlags
+
+    /**< User defined button id (value returned via SDL_ShowMessageBox) */
+    buttonID: int
+
+    /**< The UTF-8 button text */
+    text: &char
+}
+
+/**
+ * RGB value used in a message box color scheme
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+MessageBoxColor :: struct {
+    r: Uint8
+    g: Uint8
+    b: Uint8
+}
+
+/**
+ * An enumeration of indices inside the colors array of
+ * MessageBoxColorScheme.
+ */
+MessageBoxColorType :: enum uint {
+    BACKGROUND = 0
+    TEXT = 1
+    BUTTON_BORDER = 2
+    BUTTON_BACKGROUND = 3
+    BUTTON_SELECTED = 4
+
+    /**< Size of the colors array of MessageBoxColorScheme. */
+    COUNT = 5
+}
+
+/**
+ * A set of colors to use for message box dialogs
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+MessageBoxColorScheme :: struct {
+    colors: [5]MessageBoxColor
+}
+
+/**
+ * MessageBox structure containing title, text, window, etc.
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+MessageBoxData :: struct {
+    flags: MessageBoxFlags
+
+    /**< Parent window, can be NULL */
+    window: &Window
+
+    /**< UTF-8 title */
+    title: &char
+
+    /**< UTF-8 message text */
+    message: &char
+    numbuttons: int
+    buttons: &MessageBoxButtonData
+
+    /**< MessageBoxColorScheme, can be NULL to use system settings */
+    colorScheme: &MessageBoxColorScheme
+}
+
+extern {
+    /**
+     * Create a modal message box.
+     *
+     * If your needs aren't complex, it might be easier to use
+     * SDL_ShowSimpleMessageBox.
+     *
+     * This function should be called on the thread that created the parent
+     * window, or on the main thread if the messagebox has no parent. It will
+     * block execution of that thread until the user clicks a button or closes the
+     * messagebox.
+     *
+     * This function may be called at any time, even before SDL_Init(). This makes
+     * it useful for reporting errors like a failure to create a renderer or
+     * OpenGL context.
+     *
+     * On X11, SDL rolls its own dialog box with X11 primitives instead of a
+     * formal toolkit like GTK+ or Qt.
+     *
+     * Note that if SDL_Init() would fail because there isn't any available video
+     * target, this function is likely to fail for the same reasons. If this is a
+     * concern, check the return value from this function and fall back to writing
+     * to stderr if you can.
+     *
+     * \param messageboxdata the MessageBoxData structure with title, text and
+     *                       other options.
+     * \param buttonid the pointer to which user id of hit button should be
+     *                 copied.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety This function should only be called on the main thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_ShowSimpleMessageBox
+     */
+    #link "SDL_ShowMessageBox"
+    ShowMessageBox :: (messageboxdata: &MessageBoxData, buttonid: &int) -> bool
+
+    /**
+     * Display a simple modal message box.
+     *
+     * If your needs aren't complex, this function is preferred over
+     * SDL_ShowMessageBox.
+     *
+     * `flags` may be any of the following:
+     *
+     * - `SDL_MESSAGEBOX_ERROR`: error dialog
+     * - `SDL_MESSAGEBOX_WARNING`: warning dialog
+     * - `SDL_MESSAGEBOX_INFORMATION`: informational dialog
+     *
+     * This function should be called on the thread that created the parent
+     * window, or on the main thread if the messagebox has no parent. It will
+     * block execution of that thread until the user clicks a button or closes the
+     * messagebox.
+     *
+     * This function may be called at any time, even before SDL_Init(). This makes
+     * it useful for reporting errors like a failure to create a renderer or
+     * OpenGL context.
+     *
+     * On X11, SDL rolls its own dialog box with X11 primitives instead of a
+     * formal toolkit like GTK+ or Qt.
+     *
+     * Note that if SDL_Init() would fail because there isn't any available video
+     * target, this function is likely to fail for the same reasons. If this is a
+     * concern, check the return value from this function and fall back to writing
+     * to stderr if you can.
+     *
+     * \param flags an MessageBoxFlags value.
+     * \param title UTF-8 title text.
+     * \param message UTF-8 message text.
+     * \param window the parent window, or NULL for no parent.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety This function should only be called on the main thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_ShowMessageBox
+     */
+    #link "SDL_ShowSimpleMessageBox"
+    ShowSimpleMessageBox :: (flags: MessageBoxFlags, title: &char, message: &char, window: &Window) -> bool
+}

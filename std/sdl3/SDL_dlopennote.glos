@@ -1,0 +1,44 @@
+/**
+ * Use this macro with SDL_ELF_NOTE_DLOPEN() to note that a dynamic shared
+ * library dependency is optional.
+ *
+ * Optional functionality uses the dependency, the binary will work and the
+ * dependency is only needed for full-featured installations.
+ *
+ * \since This macro is available since SDL 3.4.0.
+ *
+ * \sa SDL_ELF_NOTE_DLOPEN
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_RECOMMENDED
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_REQUIRED
+ */
+ELF_NOTE_DLOPEN_PRIORITY_SUGGESTED :: "suggested"
+
+/**
+ * Use this macro with SDL_ELF_NOTE_DLOPEN() to note that a dynamic shared
+ * library dependency is recommended.
+ *
+ * Important functionality needs the dependency, the binary will work but in
+ * most cases the dependency should be provided.
+ *
+ * \since This macro is available since SDL 3.4.0.
+ *
+ * \sa SDL_ELF_NOTE_DLOPEN
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_SUGGESTED
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_REQUIRED
+ */
+ELF_NOTE_DLOPEN_PRIORITY_RECOMMENDED :: "recommended"
+
+/**
+ * Use this macro with SDL_ELF_NOTE_DLOPEN() to note that a dynamic shared
+ * library dependency is required.
+ *
+ * Core functionality needs the dependency, the binary will not work if it
+ * cannot be found.
+ *
+ * \since This macro is available since SDL 3.4.0.
+ *
+ * \sa SDL_ELF_NOTE_DLOPEN
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_SUGGESTED
+ * \sa SDL_ELF_NOTE_DLOPEN_PRIORITY_RECOMMENDED
+ */
+ELF_NOTE_DLOPEN_PRIORITY_REQUIRED :: "required"

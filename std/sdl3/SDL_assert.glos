@@ -1,0 +1,224 @@
+/**
+ * Possible outcomes from a triggered assertion.
+ *
+ * When an enabled assertion triggers, it may call the assertion handler
+ * (possibly one provided by the app via SDL_SetAssertionHandler), which will
+ * return one of these values, possibly after asking the user.
+ *
+ * Then SDL will respond based on this outcome (loop around to retry the
+ * condition, try to break in a debugger, kill the program, or ignore the
+ * problem).
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+AssertState :: enum uint {
+    /**< Retry the assert immediately. */
+    RETRY = 0
+
+    /**< Make the debugger trigger a breakpoint. */
+    BREAK = 1
+
+    /**< Terminate the program. */
+    ABORT = 2
+
+    /**< Ignore the assert. */
+    IGNORE = 3
+
+    /**< Ignore the assert from now on. */
+    ALWAYS_IGNORE = 4
+}
+
+/**
+ * Information about an assertion failure.
+ *
+ * This structure is filled in with information about a triggered assertion,
+ * used by the assertion handler, then added to the assertion report. This is
+ * returned as a linked list from SDL_GetAssertionReport().
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+AssertData :: struct {
+    /**< true if app should always continue when assertion is triggered. */
+    always_ignore: bool
+
+    /**< Number of times this assertion has been triggered. */
+    trigger_count: uint
+
+    /**< A string of this assert's test code. */
+    condition: &char
+
+    /**< The source file where this assert lives. */
+    filename: &char
+
+    /**< The line in `filename` where this assert lives. */
+    linenum: int
+
+    /**< The name of the function where this assert lives. */
+    function: &char
+
+    /**< next item in the linked list. */
+    next: &AssertData
+}
+
+extern {
+    /**
+     * Never call this directly.
+     *
+     * Use the SDL_assert macros instead.
+     *
+     * \param data assert data structure.
+     * \param func function name.
+     * \param file file name.
+     * \param line line number.
+     * \returns assert state.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_ReportAssertion"
+    ReportAssertion :: (data: &AssertData, func: &char, file: &char, line: int) -> AssertState
+}
+
+/**
+ * A callback that fires when an SDL assertion fails.
+ *
+ * \param data a pointer to the AssertData structure corresponding to the
+ *             current assertion.
+ * \param userdata what was passed as `userdata` to SDL_SetAssertionHandler().
+ * \returns an AssertState value indicating how to handle the failure.
+ *
+ * \threadsafety This callback may be called from any thread that triggers an
+ *               assert at any time.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+AssertionHandler :: (data: &AssertData, userdata: rawptr) -> AssertState
+
+extern {
+    /**
+     * Set an application-defined assertion handler.
+     *
+     * This function allows an application to show its own assertion UI and/or
+     * force the response to an assertion failure. If the application doesn't
+     * provide this, SDL will try to do the right thing, popping up a
+     * system-specific GUI dialog, and probably minimizing any fullscreen windows.
+     *
+     * This callback may fire from any thread, but it runs wrapped in a mutex, so
+     * it will only fire from one thread at a time.
+     *
+     * This callback is NOT reset to SDL's internal handler upon SDL_Quit()!
+     *
+     * \param handler the AssertionHandler function to call when an assertion
+     *                fails or NULL for the default handler.
+     * \param userdata a pointer that is passed to `handler`.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetAssertionHandler
+     */
+    #link "SDL_SetAssertionHandler"
+    SetAssertionHandler :: (handler: AssertionHandler, userdata: rawptr)
+
+    /**
+     * Get the default assertion handler.
+     *
+     * This returns the function pointer that is called by default when an
+     * assertion is triggered. This is an internal function provided by SDL, that
+     * is used for assertions when SDL_SetAssertionHandler() hasn't been used to
+     * provide a different function.
+     *
+     * \returns the default AssertionHandler that is called when an assert
+     *          triggers.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetAssertionHandler
+     */
+    #link "SDL_GetDefaultAssertionHandler"
+    GetDefaultAssertionHandler :: () -> AssertionHandler
+
+    /**
+     * Get the current assertion handler.
+     *
+     * This returns the function pointer that is called when an assertion is
+     * triggered. This is either the value last passed to
+     * SDL_SetAssertionHandler(), or if no application-specified function is set,
+     * is equivalent to calling SDL_GetDefaultAssertionHandler().
+     *
+     * The parameter `puserdata` is a pointer to a void*, which will store the
+     * "userdata" pointer that was passed to SDL_SetAssertionHandler(). This value
+     * will always be NULL for the default handler. If you don't care about this
+     * data, it is safe to pass a NULL pointer to this function to ignore it.
+     *
+     * \param puserdata pointer which is filled with the "userdata" pointer that
+     *                  was passed to SDL_SetAssertionHandler().
+     * \returns the AssertionHandler that is called when an assert triggers.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_SetAssertionHandler
+     */
+    #link "SDL_GetAssertionHandler"
+    GetAssertionHandler :: (puserdata: &rawptr) -> AssertionHandler
+
+    /**
+     * Get a list of all assertion failures.
+     *
+     * This function gets all assertions triggered since the last call to
+     * SDL_ResetAssertionReport(), or the start of the program.
+     *
+     * The proper way to examine this data looks something like this:
+     *
+     * ```c
+     * const AssertData *item = SDL_GetAssertionReport();
+     * while (item) {
+     *    printf("'%s', %s (%s:%d), triggered %u times, always ignore: %s.\\n",
+     *           item->condition, item->function, item->filename,
+     *           item->linenum, item->trigger_count,
+     *           item->always_ignore ? "yes" : "no");
+     *    item = item->next;
+     * }
+     * ```
+     *
+     * \returns a list of all failed assertions or NULL if the list is empty. This
+     *          memory should not be modified or freed by the application. This
+     *          pointer remains valid until the next call to SDL_Quit() or
+     *          SDL_ResetAssertionReport().
+     *
+     * \threadsafety This function is not thread safe. Other threads calling
+     *               SDL_ResetAssertionReport() simultaneously, may render the
+     *               returned pointer invalid.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_ResetAssertionReport
+     */
+    #link "SDL_GetAssertionReport"
+    GetAssertionReport :: () -> &AssertData
+
+    /**
+     * Clear the list of all assertion failures.
+     *
+     * This function will clear the list of all assertions triggered up to that
+     * point. Immediately following this call, SDL_GetAssertionReport will return
+     * no items. In addition, any previously-triggered assertions will be reset to
+     * a trigger_count of zero, and their always_ignore state will be false.
+     *
+     * \threadsafety This function is not thread safe. Other threads triggering an
+     *               assertion, or simultaneously calling this function may cause
+     *               memory leaks or crashes.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetAssertionReport
+     */
+    #link "SDL_ResetAssertionReport"
+    ResetAssertionReport :: ()
+}

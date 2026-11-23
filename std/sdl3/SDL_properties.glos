@@ -1,0 +1,530 @@
+/**
+ * A generic property for naming things.
+ *
+ * This property is intended to be added to any SDL_PropertiesID that needs a
+ * generic name associated with the property set. It is not guaranteed that
+ * any property set will include this key, but it is convenient to have a
+ * standard key that any piece of code could reasonably agree to use.
+ *
+ * For example, the properties associated with an SDL_Texture might have a
+ * name string of "player sprites", or an SDL_AudioStream might have
+ * "background music", etc. This might also be useful for an SDL_IOStream to
+ * list the path to its asset.
+ *
+ * There is no format for the value set with this key; it is expected to be
+ * human-readable and informational in nature, possibly for logging or
+ * debugging purposes.
+ *
+ * SDL does not currently set this property on any objects it creates, but
+ * this may change in later versions; it is currently expected that apps and
+ * external libraries will take advantage of it, when appropriate.
+ *
+ * \since This macro is available since SDL 3.4.0.
+ */
+PROP_NAME_STRING :: "SDL.name"
+
+/**
+ * An ID that represents a properties set.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+PropertiesID :: Uint32
+
+/**
+ * SDL property type
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+PropertyType :: enum uint {
+    INVALID = 0
+    POINTER = 1
+    STRING = 2
+    NUMBER = 3
+    FLOAT = 4
+    BOOLEAN = 5
+}
+
+extern {
+    /**
+     * Get the global SDL properties.
+     *
+     * \returns a valid property ID on success or 0 on failure; call
+     *          SDL_GetError() for more information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetGlobalProperties"
+    GetGlobalProperties :: () -> PropertiesID
+
+    /**
+     * Create a group of properties.
+     *
+     * All properties are automatically destroyed when SDL_Quit() is called.
+     *
+     * \returns an ID for a new group of properties, or 0 on failure; call
+     *          SDL_GetError() for more information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_DestroyProperties
+     */
+    #link "SDL_CreateProperties"
+    CreateProperties :: () -> PropertiesID
+
+    /**
+     * Copy a group of properties.
+     *
+     * Copy all the properties from one group of properties to another, with the
+     * exception of properties requiring cleanup (set using
+     * SDL_SetPointerPropertyWithCleanup()), which will not be copied. Any
+     * property that already exists on `dst` will be overwritten.
+     *
+     * \param src the properties to copy.
+     * \param dst the destination properties.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread. This
+     *               function acquires simultaneous mutex locks on both the source
+     *               and destination property sets.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_CopyProperties"
+    CopyProperties :: (src: PropertiesID, dst: PropertiesID) -> bool
+
+    /**
+     * Lock a group of properties.
+     *
+     * Obtain a multi-threaded lock for these properties. Other threads will wait
+     * while trying to lock these properties until they are unlocked. Properties
+     * must be unlocked before they are destroyed.
+     *
+     * The lock is automatically taken when setting individual properties, this
+     * function is only needed when you want to set several properties atomically
+     * or want to guarantee that properties being queried aren't freed in another
+     * thread.
+     *
+     * \param props the properties to lock.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_UnlockProperties
+     */
+    #link "SDL_LockProperties"
+    LockProperties :: (props: PropertiesID) -> bool
+
+    /**
+     * Unlock a group of properties.
+     *
+     * \param props the properties to unlock.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_LockProperties
+     */
+    #link "SDL_UnlockProperties"
+    UnlockProperties :: (props: PropertiesID)
+}
+
+/**
+ * A callback used to free resources when a property is deleted.
+ *
+ * This should release any resources associated with `value` that are no
+ * longer needed.
+ *
+ * This callback is set per-property. Different properties in the same group
+ * can have different cleanup callbacks.
+ *
+ * This callback will be called _during_ SDL_SetPointerPropertyWithCleanup if
+ * the function fails for any reason.
+ *
+ * \param userdata an app-defined pointer passed to the callback.
+ * \param value the pointer assigned to the property to clean up.
+ *
+ * \threadsafety This callback may fire without any locks held; if this is a
+ *               concern, the app should provide its own locking.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ *
+ * \sa SDL_SetPointerPropertyWithCleanup
+ */
+CleanupPropertyCallback :: (userdata: rawptr, value: rawptr)
+
+extern {
+    /**
+     * Set a pointer property in a group of properties with a cleanup function
+     * that is called when the property is deleted.
+     *
+     * The cleanup function is also called if setting the property fails for any
+     * reason.
+     *
+     * For simply setting basic data types, like numbers, bools, or strings, use
+     * SDL_SetNumberProperty, SDL_SetBooleanProperty, or SDL_SetStringProperty
+     * instead, as those functions will handle cleanup on your behalf. This
+     * function is only for more complex, custom data.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property, or NULL to delete the property.
+     * \param cleanup the function to call when this property is deleted, or NULL
+     *                if no cleanup is necessary.
+     * \param userdata a pointer that is passed to the cleanup function.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPointerProperty
+     * \sa SDL_SetPointerProperty
+     * \sa CleanupPropertyCallback
+     */
+    #link "SDL_SetPointerPropertyWithCleanup"
+    SetPointerPropertyWithCleanup :: (props: PropertiesID, name: &char, value: rawptr, cleanup: CleanupPropertyCallback, userdata: rawptr) -> bool
+
+    /**
+     * Set a pointer property in a group of properties.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property, or NULL to delete the property.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPointerProperty
+     * \sa SDL_HasProperty
+     * \sa SDL_SetBooleanProperty
+     * \sa SDL_SetFloatProperty
+     * \sa SDL_SetNumberProperty
+     * \sa SDL_SetPointerPropertyWithCleanup
+     * \sa SDL_SetStringProperty
+     */
+    #link "SDL_SetPointerProperty"
+    SetPointerProperty :: (props: PropertiesID, name: &char, value: rawptr) -> bool
+
+    /**
+     * Set a string property in a group of properties.
+     *
+     * This function makes a copy of the string; the caller does not have to
+     * preserve the data after this call completes.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property, or NULL to delete the property.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetStringProperty
+     */
+    #link "SDL_SetStringProperty"
+    SetStringProperty :: (props: PropertiesID, name: &char, value: &char) -> bool
+
+    /**
+     * Set an integer property in a group of properties.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetNumberProperty
+     */
+    #link "SDL_SetNumberProperty"
+    SetNumberProperty :: (props: PropertiesID, name: &char, value: Sint64) -> bool
+
+    /**
+     * Set a floating point property in a group of properties.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetFloatProperty
+     */
+    #link "SDL_SetFloatProperty"
+    SetFloatProperty :: (props: PropertiesID, name: &char, value: float) -> bool
+
+    /**
+     * Set a boolean property in a group of properties.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to modify.
+     * \param value the new value of the property.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetBooleanProperty
+     */
+    #link "SDL_SetBooleanProperty"
+    SetBooleanProperty :: (props: PropertiesID, name: &char, value: bool) -> bool
+
+    /**
+     * Return whether a property exists in a group of properties.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \returns true if the property exists, or false if it doesn't.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPropertyType
+     */
+    #link "SDL_HasProperty"
+    HasProperty :: (props: PropertiesID, name: &char) -> bool
+
+    /**
+     * Get the type of a property in a group of properties.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \returns the type of the property, or SDL_PROPERTY_TYPE_INVALID if it is
+     *          not set.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_HasProperty
+     */
+    #link "SDL_GetPropertyType"
+    GetPropertyType :: (props: PropertiesID, name: &char) -> PropertyType
+
+    /**
+     * Get a pointer property from a group of properties.
+     *
+     * By convention, the names of properties that SDL exposes on objects will
+     * start with "SDL.", and properties that SDL uses internally will start with
+     * "SDL.internal.". These should be considered read-only and should not be
+     * modified by applications.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \param default_value the default value of the property.
+     * \returns the value of the property, or `default_value` if it is not set or
+     *          not a pointer property.
+     *
+     * \threadsafety It is safe to call this function from any thread, although
+     *               the data returned is not protected and could potentially be
+     *               freed if you call SDL_SetPointerProperty() or
+     *               SDL_ClearProperty() on these properties from another thread.
+     *               If you need to avoid this, use SDL_LockProperties() and
+     *               SDL_UnlockProperties().
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetBooleanProperty
+     * \sa SDL_GetFloatProperty
+     * \sa SDL_GetNumberProperty
+     * \sa SDL_GetPropertyType
+     * \sa SDL_GetStringProperty
+     * \sa SDL_HasProperty
+     * \sa SDL_SetPointerProperty
+     */
+    #link "SDL_GetPointerProperty"
+    GetPointerProperty :: (props: PropertiesID, name: &char, default_value: rawptr) -> rawptr
+
+    /**
+     * Get a string property from a group of properties.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \param default_value the default value of the property.
+     * \returns the value of the property, or `default_value` if it is not set or
+     *          not a string property.
+     *
+     * \threadsafety It is safe to call this function from any thread, although
+     *               the data returned is not protected and could potentially be
+     *               freed if you call SDL_SetStringProperty() or
+     *               SDL_ClearProperty() on these properties from another thread.
+     *               If you need to avoid this, use SDL_LockProperties() and
+     *               SDL_UnlockProperties().
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPropertyType
+     * \sa SDL_HasProperty
+     * \sa SDL_SetStringProperty
+     */
+    #link "SDL_GetStringProperty"
+    GetStringProperty :: (props: PropertiesID, name: &char, default_value: &char) -> &char
+
+    /**
+     * Get a number property from a group of properties.
+     *
+     * You can use SDL_GetPropertyType() to query whether the property exists and
+     * is a number property.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \param default_value the default value of the property.
+     * \returns the value of the property, or `default_value` if it is not set or
+     *          not a number property.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPropertyType
+     * \sa SDL_HasProperty
+     * \sa SDL_SetNumberProperty
+     */
+    #link "SDL_GetNumberProperty"
+    GetNumberProperty :: (props: PropertiesID, name: &char, default_value: Sint64) -> Sint64
+
+    /**
+     * Get a floating point property from a group of properties.
+     *
+     * You can use SDL_GetPropertyType() to query whether the property exists and
+     * is a floating point property.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \param default_value the default value of the property.
+     * \returns the value of the property, or `default_value` if it is not set or
+     *          not a float property.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPropertyType
+     * \sa SDL_HasProperty
+     * \sa SDL_SetFloatProperty
+     */
+    #link "SDL_GetFloatProperty"
+    GetFloatProperty :: (props: PropertiesID, name: &char, default_value: float) -> float
+
+    /**
+     * Get a boolean property from a group of properties.
+     *
+     * You can use SDL_GetPropertyType() to query whether the property exists and
+     * is a boolean property.
+     *
+     * \param props the properties to query.
+     * \param name the name of the property to query.
+     * \param default_value the default value of the property.
+     * \returns the value of the property, or `default_value` if it is not set or
+     *          not a boolean property.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetPropertyType
+     * \sa SDL_HasProperty
+     * \sa SDL_SetBooleanProperty
+     */
+    #link "SDL_GetBooleanProperty"
+    GetBooleanProperty :: (props: PropertiesID, name: &char, default_value: bool) -> bool
+
+    /**
+     * Clear a property from a group of properties.
+     *
+     * \param props the properties to modify.
+     * \param name the name of the property to clear.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_ClearProperty"
+    ClearProperty :: (props: PropertiesID, name: &char) -> bool
+}
+
+/**
+ * A callback used to enumerate all the properties in a group of properties.
+ *
+ * This callback is called from SDL_EnumerateProperties(), and is called once
+ * per property in the set.
+ *
+ * \param userdata an app-defined pointer passed to the callback.
+ * \param props the PropertiesID that is being enumerated.
+ * \param name the next property name in the enumeration.
+ *
+ * \threadsafety SDL_EnumerateProperties holds a lock on `props` during this
+ *               callback.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ *
+ * \sa SDL_EnumerateProperties
+ */
+EnumeratePropertiesCallback :: (userdata: rawptr, props: PropertiesID, name: &char)
+
+extern {
+    /**
+     * Enumerate the properties contained in a group of properties.
+     *
+     * The callback function is called for each property in the group of
+     * properties. The properties are locked during enumeration.
+     *
+     * \param props the properties to query.
+     * \param callback the function to call for each property.
+     * \param userdata a pointer that is passed to `callback`.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_EnumerateProperties"
+    EnumerateProperties :: (props: PropertiesID, callback: EnumeratePropertiesCallback, userdata: rawptr) -> bool
+
+    /**
+     * Destroy a group of properties.
+     *
+     * All properties are deleted and their cleanup functions will be called, if
+     * any.
+     *
+     * \param props the properties to destroy.
+     *
+     * \threadsafety This function should not be called while these properties are
+     *               locked or other threads might be setting or getting values
+     *               from these properties.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_CreateProperties
+     */
+    #link "SDL_DestroyProperties"
+    DestroyProperties :: (props: PropertiesID)
+}

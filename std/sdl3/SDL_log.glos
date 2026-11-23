@@ -1,0 +1,483 @@
+/**
+ * The predefined log categories
+ *
+ * By default the application and gpu categories are enabled at the INFO
+ * level, the assert category is enabled at the WARN level, test is enabled at
+ * the VERBOSE level and all other categories are enabled at the ERROR level.
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+LogCategory :: enum uint {
+    APPLICATION = 0
+    ERROR = 1
+    ASSERT = 2
+    SYSTEM = 3
+    AUDIO = 4
+    VIDEO = 5
+    RENDER = 6
+    INPUT = 7
+    TEST = 8
+    GPU = 9
+
+    /* Reserved for future SDL library use */
+    RESERVED2 = 10
+
+    /* Reserved for future SDL library use */
+    RESERVED3 = 11
+
+    /* Reserved for future SDL library use */
+    RESERVED4 = 12
+
+    /* Reserved for future SDL library use */
+    RESERVED5 = 13
+
+    /* Reserved for future SDL library use */
+    RESERVED6 = 14
+
+    /* Reserved for future SDL library use */
+    RESERVED7 = 15
+
+    /* Reserved for future SDL library use */
+    RESERVED8 = 16
+
+    /* Reserved for future SDL library use */
+    RESERVED9 = 17
+
+    /* Reserved for future SDL library use */
+    RESERVED10 = 18
+
+    /* Beyond this point is reserved for application use, e.g.
+           enum {
+               MYAPP_CATEGORY_AWESOME1 = SDL_LOG_CATEGORY_CUSTOM,
+               MYAPP_CATEGORY_AWESOME2,
+               MYAPP_CATEGORY_AWESOME3,
+               ...
+           };
+         */
+    CUSTOM = 19
+}
+
+/**
+ * The predefined log priorities
+ *
+ * \since This enum is available since SDL 3.2.0.
+ */
+LogPriority :: enum uint {
+    INVALID = 0
+    TRACE = 1
+    VERBOSE = 2
+    DEBUG = 3
+    INFO = 4
+    WARN = 5
+    ERROR = 6
+    CRITICAL = 7
+    COUNT = 8
+}
+
+extern {
+    /**
+     * Set the priority of all log categories.
+     *
+     * \param priority the LogPriority to assign.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_ResetLogPriorities
+     * \sa SDL_SetLogPriority
+     */
+    #link "SDL_SetLogPriorities"
+    SetLogPriorities :: (priority: LogPriority)
+
+    /**
+     * Set the priority of a particular log category.
+     *
+     * \param category the category to assign a priority to.
+     * \param priority the LogPriority to assign.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetLogPriority
+     * \sa SDL_ResetLogPriorities
+     * \sa SDL_SetLogPriorities
+     */
+    #link "SDL_SetLogPriority"
+    SetLogPriority :: (category: int, priority: LogPriority)
+
+    /**
+     * Get the priority of a particular log category.
+     *
+     * \param category the category to query.
+     * \returns the LogPriority for the requested category.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_SetLogPriority
+     */
+    #link "SDL_GetLogPriority"
+    GetLogPriority :: (category: int) -> LogPriority
+
+    /**
+     * Reset all priorities to default.
+     *
+     * This is called by SDL_Quit().
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_SetLogPriorities
+     * \sa SDL_SetLogPriority
+     */
+    #link "SDL_ResetLogPriorities"
+    ResetLogPriorities :: ()
+
+    /**
+     * Set the text prepended to log messages of a given priority.
+     *
+     * By default SDL_LOG_PRIORITY_INFO and below have no prefix, and
+     * SDL_LOG_PRIORITY_WARN and higher have a prefix showing their priority, e.g.
+     * "WARNING: ".
+     *
+     * This function makes a copy of its string argument, **prefix**, so it is not
+     * necessary to keep the value of **prefix** alive after the call returns.
+     *
+     * \param priority the LogPriority to modify.
+     * \param prefix the prefix to use for that log priority, or NULL to use no
+     *               prefix.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_SetLogPriorities
+     * \sa SDL_SetLogPriority
+     */
+    #link "SDL_SetLogPriorityPrefix"
+    SetLogPriorityPrefix :: (priority: LogPriority, prefix: &char) -> bool
+
+    /**
+     * Log a message with SDL_LOG_CATEGORY_APPLICATION and SDL_LOG_PRIORITY_INFO.
+     *
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the `fmt` string, if
+     *            any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_Log"
+    Log :: (fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_TRACE.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogTrace"
+    LogTrace :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_VERBOSE.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogVerbose"
+    LogVerbose :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_DEBUG.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogDebug"
+    LogDebug :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_INFO.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogInfo"
+    LogInfo :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_WARN.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     */
+    #link "SDL_LogWarn"
+    LogWarn :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_ERROR.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogError"
+    LogError :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with SDL_LOG_PRIORITY_CRITICAL.
+     *
+     * \param category the category of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogCritical"
+    LogCritical :: (category: int, fmt: &char, ...)
+
+    /**
+     * Log a message with the specified category and priority.
+     *
+     * \param category the category of the message.
+     * \param priority the priority of the message.
+     * \param fmt a printf() style message format string.
+     * \param ... additional parameters matching % tokens in the **fmt** string,
+     *            if any.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessageV
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogMessage"
+    LogMessage :: (category: int, priority: LogPriority, fmt: &char, ...)
+
+    /**
+     * Log a message with the specified category and priority.
+     *
+     * \param category the category of the message.
+     * \param priority the priority of the message.
+     * \param fmt a printf() style message format string.
+     * \param ap a variable argument list.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_Log
+     * \sa SDL_LogCritical
+     * \sa SDL_LogDebug
+     * \sa SDL_LogError
+     * \sa SDL_LogInfo
+     * \sa SDL_LogMessage
+     * \sa SDL_LogTrace
+     * \sa SDL_LogVerbose
+     * \sa SDL_LogWarn
+     */
+    #link "SDL_LogMessageV"
+    LogMessageV :: (category: int, priority: LogPriority, fmt: &char, ap: va_list)
+}
+
+/**
+ * The prototype for the log output callback function.
+ *
+ * This function is called by SDL when there is new text to be logged. A mutex
+ * is held so that this function is never called by more than one thread at
+ * once.
+ *
+ * \param userdata what was passed as `userdata` to
+ *                 SDL_SetLogOutputFunction().
+ * \param category the category of the message.
+ * \param priority the priority of the message.
+ * \param message the message being output.
+ *
+ * \since This datatype is available since SDL 3.2.0.
+ */
+LogOutputFunction :: (userdata: rawptr, category: int, priority: LogPriority, message: &char)
+
+extern {
+    /**
+     * Get the default log output function.
+     *
+     * \returns the default log output callback. It should be called with NULL for
+     *          the userdata argument.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_SetLogOutputFunction
+     * \sa SDL_GetLogOutputFunction
+     */
+    #link "SDL_GetDefaultLogOutputFunction"
+    GetDefaultLogOutputFunction :: () -> LogOutputFunction
+
+    /**
+     * Get the current log output function.
+     *
+     * \param callback an LogOutputFunction filled in with the current log
+     *                 callback.
+     * \param userdata a pointer filled in with the pointer that is passed to
+     *                 `callback`.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetDefaultLogOutputFunction
+     * \sa SDL_SetLogOutputFunction
+     */
+    #link "SDL_GetLogOutputFunction"
+    GetLogOutputFunction :: (callback: &LogOutputFunction, userdata: &rawptr)
+
+    /**
+     * Replace the default log output function with one of your own.
+     *
+     * \param callback an LogOutputFunction to call instead of the default.
+     * \param userdata a pointer that is passed to `callback`.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     *
+     * \sa SDL_GetDefaultLogOutputFunction
+     * \sa SDL_GetLogOutputFunction
+     */
+    #link "SDL_SetLogOutputFunction"
+    SetLogOutputFunction :: (callback: LogOutputFunction, userdata: rawptr)
+}

@@ -1,0 +1,227 @@
+/**
+ * A structure holding a calendar date and time broken down into its
+ * components.
+ *
+ * \since This struct is available since SDL 3.2.0.
+ */
+DateTime :: struct {
+    /**< Year */
+    year: int
+
+    /**< Month [01-12] */
+    month: int
+
+    /**< Day of the month [01-31] */
+    day: int
+
+    /**< Hour [0-23] */
+    hour: int
+
+    /**< Minute [0-59] */
+    minute: int
+
+    /**< Seconds [0-60] */
+    second: int
+
+    /**< Nanoseconds [0-999999999] */
+    nanosecond: int
+
+    /**< Day of the week [0-6] (0 being Sunday) */
+    day_of_week: int
+
+    /**< Seconds east of UTC */
+    utc_offset: int
+}
+
+/**
+ * The preferred date format of the current system locale.
+ *
+ * \since This enum is available since SDL 3.2.0.
+ *
+ * \sa SDL_GetDateTimeLocalePreferences
+ */
+DateFormat :: enum uint {
+    /**< Year/Month/Day */
+    YYYYMMDD = 0
+
+    /**< Day/Month/Year */
+    DDMMYYYY = 1
+
+    /**< Month/Day/Year */
+    MMDDYYYY = 2
+}
+
+/**
+ * The preferred time format of the current system locale.
+ *
+ * \since This enum is available since SDL 3.2.0.
+ *
+ * \sa SDL_GetDateTimeLocalePreferences
+ */
+TimeFormat :: enum uint {
+    /**< 24 hour time */
+    _24HR = 0
+
+    /**< 12 hour time */
+    _12HR = 1
+}
+
+extern {
+    /**
+     * Gets the current preferred date and time format for the system locale.
+     *
+     * This might be a "slow" call that has to query the operating system. It's
+     * best to ask for this once and save the results. However, the preferred
+     * formats can change, usually because the user has changed a system
+     * preference outside of your program.
+     *
+     * \param dateFormat a pointer to the DateFormat to hold the returned date
+     *                   format, may be NULL.
+     * \param timeFormat a pointer to the TimeFormat to hold the returned time
+     *                   format, may be NULL.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety This function is not thread safe.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetDateTimeLocalePreferences"
+    GetDateTimeLocalePreferences :: (dateFormat: &DateFormat, timeFormat: &TimeFormat) -> bool
+
+    /**
+     * Gets the current value of the system realtime clock in nanoseconds since
+     * Jan 1, 1970 in Universal Coordinated Time (UTC).
+     *
+     * \param ticks the Time to hold the returned tick count.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetCurrentTime"
+    GetCurrentTime :: (ticks: &Time) -> bool
+
+    /**
+     * Converts an Time in nanoseconds since the epoch to a calendar time in
+     * the DateTime format.
+     *
+     * \param ticks the Time to be converted.
+     * \param dt the resulting DateTime.
+     * \param localTime the resulting DateTime will be expressed in local time
+     *                  if true, otherwise it will be in Universal Coordinated
+     *                  Time (UTC).
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_TimeToDateTime"
+    TimeToDateTime :: (ticks: Time, dt: &DateTime, localTime: bool) -> bool
+
+    /**
+     * Converts a calendar time to an Time in nanoseconds since the epoch.
+     *
+     * This function ignores the day_of_week member of the DateTime struct, so
+     * it may remain unset.
+     *
+     * \param dt the source DateTime.
+     * \param ticks the resulting Time.
+     * \returns true on success or false on failure; call SDL_GetError() for more
+     *          information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_DateTimeToTime"
+    DateTimeToTime :: (dt: &DateTime, ticks: &Time) -> bool
+
+    /**
+     * Converts an SDL time into a Windows FILETIME (100-nanosecond intervals
+     * since January 1, 1601).
+     *
+     * This function fills in the two 32-bit values of the FILETIME structure.
+     *
+     * \param ticks the time to convert.
+     * \param dwLowDateTime a pointer filled in with the low portion of the
+     *                      Windows FILETIME value.
+     * \param dwHighDateTime a pointer filled in with the high portion of the
+     *                       Windows FILETIME value.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_TimeToWindows"
+    TimeToWindows :: (ticks: Time, dwLowDateTime: &Uint32, dwHighDateTime: &Uint32)
+
+    /**
+     * Converts a Windows FILETIME (100-nanosecond intervals since January 1,
+     * 1601) to an SDL time.
+     *
+     * This function takes the two 32-bit values of the FILETIME structure as
+     * parameters.
+     *
+     * \param dwLowDateTime the low portion of the Windows FILETIME value.
+     * \param dwHighDateTime the high portion of the Windows FILETIME value.
+     * \returns the converted SDL time.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_TimeFromWindows"
+    TimeFromWindows :: (dwLowDateTime: Uint32, dwHighDateTime: Uint32) -> Time
+
+    /**
+     * Get the number of days in a month for a given year.
+     *
+     * \param year the year.
+     * \param month the month [1-12].
+     * \returns the number of days in the requested month or -1 on failure; call
+     *          SDL_GetError() for more information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetDaysInMonth"
+    GetDaysInMonth :: (year: int, month: int) -> int
+
+    /**
+     * Get the day of year for a calendar date.
+     *
+     * \param year the year component of the date.
+     * \param month the month component of the date.
+     * \param day the day component of the date.
+     * \returns the day of year [0-365] if the date is valid or -1 on failure;
+     *          call SDL_GetError() for more information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetDayOfYear"
+    GetDayOfYear :: (year: int, month: int, day: int) -> int
+
+    /**
+     * Get the day of week for a calendar date.
+     *
+     * \param year the year component of the date.
+     * \param month the month component of the date.
+     * \param day the day component of the date.
+     * \returns a value between 0 and 6 (0 being Sunday) if the date is valid or
+     *          -1 on failure; call SDL_GetError() for more information.
+     *
+     * \threadsafety It is safe to call this function from any thread.
+     *
+     * \since This function is available since SDL 3.2.0.
+     */
+    #link "SDL_GetDayOfWeek"
+    GetDayOfWeek :: (year: int, month: int, day: int) -> int
+}
