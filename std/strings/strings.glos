@@ -153,21 +153,24 @@ trim_left :: (s: string, p: Predicate = unicode.is_space) -> string {
 }
 
 trim_right :: (s: string, p: Predicate = unicode.is_space) -> string {
+    li := s.count
     if p == {
     case rune
         for i, c := range Reverse(s) {
             if c != p {
-                return s[..i + 1]
+                return s[..li]
             }
+            li = i
         }
 
     case []rune
         for i, c := range Reverse(s) {
             for _, p := range p {
                 if c != p {
-                    return s[..i + 1]
+                    return s[..li]
                 }
             }
+            li = i
         }
 
     case string
@@ -185,8 +188,9 @@ trim_right :: (s: string, p: Predicate = unicode.is_space) -> string {
 
         for i, c := range Reverse(s) {
             if !p(c) {
-                return s[..i + 1]
+                return s[..li]
             }
+            li = i
         }
 
     case null; unreachable()
