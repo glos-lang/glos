@@ -1,0 +1,7 @@
+foo :: () -> s64, s64 {
+    return 69, 420
+}
+
+main :: () {
+    println(if true then foo() else false)
+}

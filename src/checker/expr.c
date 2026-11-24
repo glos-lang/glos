@@ -2383,9 +2383,33 @@ void check_expr_if(Compiler *c, Node_If *iff) {
 
         iff->compile_time_real = int128_is_zero(condition.as.integer) ? iff->antecedence : iff->consequence;
         check_expr(c, iff->compile_time_real, REF_NONE);
+        if (type_kind_eq(iff->compile_time_real->type, TYPE_GROUP)) {
+            error_node(
+                EK_ERROR,
+                iff->compile_time_real,
+                "A conditional expression can only result in a single value, got %zu instead",
+                iff->compile_time_real->type.spec.group.count);
+            afprintf(
+                stderr,
+                ANSI_COLOR_YELLOW | ANSI_BOLD,
+                "    The type is %s\n\n",
+                type_to_cstr(iff->compile_time_real->type));
+            exit(c, 1);
+        }
         n->type = iff->compile_time_real->type;
     } else {
         check_expr(c, iff->consequence, REF_NONE);
+        if (type_kind_eq(iff->consequence->type, TYPE_GROUP)) {
+            error_node(
+                EK_ERROR,
+                iff->consequence,
+                "A conditional expression can only result in a single value, got %zu instead",
+                iff->consequence->type.spec.group.count);
+            afprintf(
+                stderr, ANSI_COLOR_YELLOW | ANSI_BOLD, "    The type is %s\n\n", type_to_cstr(iff->consequence->type));
+            exit(c, 1);
+        }
+
         check_expr(c, iff->antecedence, REF_NONE);
         n->type = type_assert_node(c, iff->antecedence, iff->consequence);
         if (n->type.is_meta) {

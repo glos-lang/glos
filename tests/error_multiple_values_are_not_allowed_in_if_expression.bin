@@ -1,0 +1,11 @@
+EXIT 1
+STDOUT 0
+
+STDERR 228
+tests/error_multiple_values_are_not_allowed_in_if_expression.glos:6:26: Error: A conditional expression can only result in a single value, got 2 instead
+
+    println(if true then foo() else false)
+
+    The type is '(s64, s64)'
+
+
