@@ -118,10 +118,30 @@ main :: () {
     v.(string).count = 4
     println(v)
 
+    // Now let's take a look at C unions.
+    c_unions()
+}
+
+c_unions :: () {
+    Foo :: union 'C' {
+        i: s64
+        f: f32
+    }
+
+    foo: Foo
+    foo.i = 1116340224
+    println(foo.f)
+
+    // You cannot do the operations associated with regular unions for C unions.
+    // The following lines are erroneous:
+    //
+    // foo == s64
+    // foo.(s64)
+
+    // Lastly, let's talk about how string interpolations are represented at runtime.
     string_interpolation_explanation()
 }
 
-// We can now talk about how string interpolations are represented at runtime.
 string_interpolation_explanation :: () {
     // There is this union defined in the standard module "fmt":
     //
