@@ -48,6 +48,10 @@ bool type_is_compound(Type type);
 LLVMValueRef get_load_ptr(LLVMValueRef value);
 LLVMValueRef undo_load(LLVMValueRef value);
 
+// NOTE: Use this instead of LLVMBuildPhi. Otherwise the assumptions of the compiler will be wrong
+LLVMValueRef
+llvm_build_phi(Compiler *c, LLVMTypeRef type, LLVMValueRef *values, LLVMBasicBlockRef *blocks, size_t count);
+
 const char     *temp_nested_fn_name(Node_Fn *fn, Module *module);
 LLVMMetadataRef get_debug_file(Compiler *c, const char *path);
 LLVMMetadataRef get_scope_of_definition(Compiler *c, Node *node, Node_Fn *defined_in);

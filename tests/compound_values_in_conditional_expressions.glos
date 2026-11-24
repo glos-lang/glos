@@ -1,0 +1,8 @@
+main :: () {
+    foo(if true  then "foo" else "bar")
+    foo(if false then "foo" else "bar")
+}
+
+foo :: (s: string) {
+    println(s)
+}

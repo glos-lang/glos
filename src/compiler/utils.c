@@ -38,6 +38,31 @@ LLVMValueRef undo_load(LLVMValueRef value) {
     return ptr;
 }
 
+LLVMValueRef
+llvm_build_phi(Compiler *c, LLVMTypeRef type, LLVMValueRef *values, LLVMBasicBlockRef *blocks, size_t count) //
+{
+    bool all_loads = true;
+    for (size_t i = 0; i < count; i++) {
+        if (LLVMGetInstructionOpcode(values[i]) != LLVMLoad) {
+            all_loads = false;
+            break;
+        }
+    }
+
+    if (all_loads) {
+        LLVMValueRef phi = LLVMBuildPhi(c->llvm_builder, LLVMPointerTypeInContext(c->llvm_context, 0), "");
+        for (size_t i = 0; i < count; i++) {
+            values[i] = undo_load(values[i]);
+        }
+        LLVMAddIncoming(phi, values, blocks, count);
+        return LLVMBuildLoad2(c->llvm_builder, type, phi, "");
+    }
+
+    LLVMValueRef phi = LLVMBuildPhi(c->llvm_builder, type, "");
+    LLVMAddIncoming(phi, values, blocks, count);
+    return phi;
+}
+
 const char *temp_nested_fn_name(Node_Fn *fn, Module *module) {
     const size_t start = default_sb.count;
     sb_push_fn_name(&default_sb, fn, module);

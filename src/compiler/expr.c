@@ -3,9 +3,9 @@
 #include "../error.h"
 #include "compiler.h"
 
-static LLVMValueRef compile_load_if_not_null(Compiler *c, LLVMValueRef ptr, LLVMTypeRef type) {
-    LLVMValueRef is_null =
-        LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, ptr, LLVMConstNull(LLVMPointerTypeInContext(c->llvm_context, 0)), "");
+static LLVMValueRef compile_load_if_not_null(Compiler *c, LLVMValueRef ptr) {
+    LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
+    LLVMValueRef is_null = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, ptr, LLVMConstNull(ptr_type), "");
 
     LLVMBasicBlockRef null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
     LLVMBasicBlockRef not_null_block = LLVMAppendBasicBlockInContext(c->llvm_context, c->llvm_fn, "");
@@ -13,19 +13,17 @@ static LLVMValueRef compile_load_if_not_null(Compiler *c, LLVMValueRef ptr, LLVM
     LLVMBuildCondBr(c->llvm_builder, is_null, null_block, not_null_block);
 
     LLVMPositionBuilderAtEnd(c->llvm_builder, null_block);
-    LLVMValueRef null_value = LLVMConstNull(type);
+    LLVMValueRef null_value = LLVMConstNull(ptr_type);
     LLVMBuildBr(c->llvm_builder, merge_block);
 
     LLVMPositionBuilderAtEnd(c->llvm_builder, not_null_block);
-    LLVMValueRef not_null_value = LLVMBuildLoad2(c->llvm_builder, type, ptr, "");
+    LLVMValueRef not_null_value = LLVMBuildLoad2(c->llvm_builder, ptr_type, ptr, "");
     LLVMBuildBr(c->llvm_builder, merge_block);
 
     LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
-    LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, type, "");
     LLVMValueRef      phi_values[] = {null_value, not_null_value};
     LLVMBasicBlockRef phi_blocks[] = {null_block, not_null_block};
-    LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
-    return phi;
+    return llvm_build_phi(c, ptr_type, phi_values, phi_blocks, len(phi_blocks));
 }
 
 static LLVMValueRef
@@ -1668,11 +1666,9 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
         // Merge
         LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
-        LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
         LLVMValueRef      phi_values[] = {lhs, rhs};
         LLVMBasicBlockRef phi_blocks[] = {lhs_block, rhs_block};
-        LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
-        return phi;
+        return llvm_build_phi(c, n->type.llvm, phi_values, phi_blocks, len(phi_blocks));
     }
 
     case TOKEN_LAND: {
@@ -1695,11 +1691,9 @@ LLVMValueRef compile_expr_binary(Compiler *c, Node_Binary *binary) {
 
         // Merge
         LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
-        LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
         LLVMValueRef      phi_values[] = {lhs, rhs};
         LLVMBasicBlockRef phi_blocks[] = {lhs_block, rhs_block};
-        LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
-        return phi;
+        return llvm_build_phi(c, n->type.llvm, phi_values, phi_blocks, len(phi_blocks));
     }
 
     case TOKEN_MAP: {
@@ -1861,8 +1855,7 @@ LLVMValueRef compile_expr_member(Compiler *c, Node_Member *member, bool ref) {
 
             LLVMTypeRef i64 = LLVMInt64TypeInContext(c->llvm_context);
             if (member->lhs->type.kind == TYPE_TRAIT) {
-                LLVMTypeRef  ptr_type = LLVMPointerTypeInContext(c->llvm_context, 0);
-                LLVMValueRef actual = compile_load_if_not_null(c, lhs, ptr_type);
+                LLVMValueRef actual = compile_load_if_not_null(c, lhs);
                 LLVMValueRef expected = compile_type_info(c, &n->type);
 
                 LLVMValueRef check = LLVMBuildICmp(c->llvm_builder, LLVMIntEQ, actual, expected, "");
@@ -2623,11 +2616,9 @@ LLVMValueRef compile_expr_if(Compiler *c, Node_If *iff, bool ref) {
 
     // Merge
     LLVMPositionBuilderAtEnd(c->llvm_builder, merge_block);
-    LLVMValueRef      phi = LLVMBuildPhi(c->llvm_builder, n->type.llvm, "");
     LLVMValueRef      phi_values[] = {consequence, antecedence};
     LLVMBasicBlockRef phi_blocks[] = {consequence_block, antecedence_block};
-    LLVMAddIncoming(phi, phi_values, phi_blocks, len(phi_blocks));
-    return phi;
+    return llvm_build_phi(c, n->type.llvm, phi_values, phi_blocks, len(phi_blocks));
 }
 
 static_assert(COUNT_NODES == 35, "");
