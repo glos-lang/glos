@@ -377,7 +377,6 @@ bool directory_exists(const char *path);
 u64 get_modified_time(const char *path);
 
 bool is_cmd_available_in_path(const char *cmd);
-bool is_lld_available_in_path(void);
 
 const char *temp_replace_suffix(const char *path, const char *old_, const char *new_);
 

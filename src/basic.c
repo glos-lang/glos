@@ -896,21 +896,6 @@ bool is_cmd_available_in_path(const char *cmd) {
     return false;
 }
 
-bool is_lld_available_in_path(void) {
-#ifdef PLATFORM_X86_64_WINDOWS
-    return is_cmd_available_in_path("lld-link");
-#endif // PLATFORM_X86_64_WINDOWS
-
-#ifdef PLATFORM_X86_64_LINUX
-    return is_cmd_available_in_path("ld.lld");
-#endif // PLATFORM_X86_64_LINUX
-
-#ifdef PLATFORM_ARM64_MACOS
-    // The C compiler in macOS is a custom version of clang which does not fare well with lld.
-    return false;
-#endif // PLATFORM_ARM64_MACOS
-}
-
 const char *temp_replace_suffix(const char *path, const char *old, const char *new) {
     const SV base = sv_strip_suffix(sv_from_cstr(path), sv_from_cstr(old));
     return arena_sprintf(&temp_arena, SV_Fmt "%s", SV_Arg(base), new);
