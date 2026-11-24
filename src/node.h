@@ -474,6 +474,10 @@ void const_value_debug(FILE *f, Type type, Const_Value v);
 
 void hasher_add_const_value(Hasher *h, const Const_Value *v);
 
+Const_Value default_const_value(Type type);
+void        unwrap_const_value_polymorph(Const_Value *v);
+void        unwrap_const_value_polymorph_default(Const_Value *v, Type expected);
+
 typedef enum {
     NODE_ATOM,
     NODE_EMBED,

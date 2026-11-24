@@ -2,88 +2,6 @@
 #include "checker.h"
 #include <math.h>
 
-static_assert(COUNT_TYPES == 32, "");
-Const_Value default_const_value(Compiler *c, Type type) {
-    if (type.ref) {
-        return const_value_u64(0);
-    }
-
-    switch (type.kind) {
-    case TYPE_BOOL:
-    case TYPE_RUNE:
-
-    case TYPE_S8:
-    case TYPE_S16:
-    case TYPE_S32:
-    case TYPE_S64:
-    case TYPE_INT:
-
-    case TYPE_U8:
-    case TYPE_U16:
-    case TYPE_U32:
-    case TYPE_U64:
-
-    case TYPE_RAWPTR:
-    case TYPE_FN:
-    case TYPE_ENUM:
-        return const_value_u64(0);
-
-    case TYPE_F32:
-    case TYPE_F64:
-    case TYPE_FLOAT:
-        return const_value_float(0.0);
-
-    case TYPE_TRAIT:
-        return const_value_trait((Const_Value_Trait) {0});
-
-    case TYPE_UNION:
-        return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
-
-    case TYPE_STRUCT: {
-        Const_Value_Struct structure = {0};
-        structure.spec = type.spec.structt;
-        structure.fields = arena_alloc(&default_arena, structure.spec->fields_count * sizeof(*structure.fields));
-        for (size_t i = 0; i < structure.spec->fields_count; i++) {
-            structure.fields[i] = default_const_value(c, structure.spec->fields[i].type);
-        }
-        return const_value_struct(structure);
-    }
-
-    case TYPE_ARRAY: {
-        Const_Value_Array array = {0};
-        array.count = type.spec.array.count;
-        array.data = arena_alloc(&default_arena, array.count * sizeof(*array.data));
-        array.element_type = type.spec.array.element;
-        for (size_t i = 0; i < array.count; i++) {
-            array.data[i] = default_const_value(c, *array.element_type);
-        }
-        return const_value_array(array);
-    }
-
-    case TYPE_DYNAMIC_ARRAY:
-        return const_value_dynamic_array(type.spec.dynamic_array.element);
-
-    case TYPE_MAP:
-        return const_value_map(type.spec.map);
-
-    case TYPE_SLICE: {
-        Const_Value_Array array = {0};
-        array.is_slice = true;
-        array.element_type = type.spec.slice.element;
-        return const_value_array(array);
-    }
-
-    case TYPE_ERROR:
-        return const_value_u64(0);
-
-    case TYPE_STRING:
-        return const_value_string((SV) {0});
-
-    default:
-        unreachable();
-    }
-}
-
 // n    -> Final type (trait)
 // type -> Original type
 Const_Value const_value_to_trait(Node *n, Type *type, Type_Trait_Impl *impl, Const_Value value) {
@@ -107,6 +25,8 @@ Const_Value const_value_to_union(Type union_type, size_t union_index, Const_Valu
 bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
     Const_Value lhs = eval_const_expr(c, binary->lhs, false);
     Const_Value rhs = eval_const_expr(c, binary->rhs, false);
+    unwrap_const_value_polymorph(&lhs);
+    unwrap_const_value_polymorph(&rhs);
 
     if (binary->trait_check) {
         Const_Value trait;
@@ -160,9 +80,9 @@ bool eval_const_binary_equality(Compiler *c, Node_Binary *binary) {
     return const_value_eq(lhs, rhs);
 }
 
-Const_Value const_value_of_var(Compiler *c, Node_Atom *var) {
+Const_Value const_value_of_var(Node_Atom *var) {
     if (!var->definition_spec->is_const_value_evaluated) {
-        var->definition_spec->const_value = default_const_value(c, var->node.type);
+        var->definition_spec->const_value = default_const_value(var->node.type);
         var->definition_spec->is_const_value_evaluated = true;
     }
 
@@ -225,7 +145,7 @@ Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref) {
                 return const_value_var(atom->definition);
             }
 
-            return const_value_of_var(c, atom->definition);
+            return const_value_of_var(atom->definition);
         }
 
         assert(!ref);
@@ -284,6 +204,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
     switch (n->token.kind) {
     case TOKEN_SUB:
         value = eval_const_expr(c, unary->value, false);
+        unwrap_const_value_polymorph(&value);
         if (type_is_float(n->type)) {
             value.as.real = -value.as.real;
             return value;
@@ -294,7 +215,7 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
     case TOKEN_MUL:
         value = eval_const_expr(c, unary->value, false);
         if (value.kind == CONST_VALUE_VAR) {
-            return const_value_of_var(c, value.as.var);
+            return const_value_of_var(value.as.var);
         }
 
         error_node(EK_ERROR, n, "This expression is not constant at compile time");
@@ -309,10 +230,12 @@ Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary) {
 
     case TOKEN_BNOT:
         value = eval_const_expr(c, unary->value, false);
+        unwrap_const_value_polymorph(&value);
         return const_value_int(int128_not(value.as.integer));
 
     case TOKEN_LNOT:
         value = eval_const_expr(c, unary->value, false);
+        unwrap_const_value_polymorph(&value);
         return const_value_u64(int128_is_zero(value.as.integer));
 
     case TOKEN_SIZEOF:
@@ -378,9 +301,11 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
     Const_Value rhs = {0};
     if (type_eq(binary->lhs->type, (Type) {.kind = TYPE_STRING}) && token_kind_to_power(n->token.kind) == POWER_CMP) {
         lhs = eval_const_expr(c, binary->lhs, false);
+        unwrap_const_value_polymorph_default(&lhs, binary->lhs->type);
         assert(lhs.kind == CONST_VALUE_STRING);
 
         rhs = eval_const_expr(c, binary->rhs, false);
+        unwrap_const_value_polymorph_default(&rhs, binary->rhs->type);
         assert(rhs.kind == CONST_VALUE_STRING);
 
         const int ordering = sv_cmp(lhs.as.string, rhs.as.string);
@@ -440,12 +365,16 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
         if (type_is_float(binary->lhs->type) && op.f) {
             lhs = eval_const_expr(c, binary->lhs, false);
             rhs = eval_const_expr(c, binary->rhs, false);
+            unwrap_const_value_polymorph(&lhs);
+            unwrap_const_value_polymorph(&rhs);
             return const_value_float(op.f(lhs.as.real, rhs.as.real));
         }
 
         if (op.i) {
             lhs = eval_const_expr(c, binary->lhs, false);
             rhs = eval_const_expr(c, binary->rhs, false);
+            unwrap_const_value_polymorph(&lhs);
+            unwrap_const_value_polymorph(&rhs);
             if ((n->token.kind == TOKEN_DIV || n->token.kind == TOKEN_MOD) && int128_is_zero(rhs.as.integer)) {
                 error_node(EK_ERROR, binary->rhs, "Cannot divide by zero");
                 exit(c, 1);
@@ -473,12 +402,16 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
         if (type_is_float(binary->lhs->type) && op.f) {
             lhs = eval_const_expr(c, binary->lhs, false);
             rhs = eval_const_expr(c, binary->rhs, false);
+            unwrap_const_value_polymorph(&lhs);
+            unwrap_const_value_polymorph(&rhs);
             return const_value_u64(op.f(lhs.as.real, rhs.as.real));
         }
 
         if (op.i) {
             lhs = eval_const_expr(c, binary->lhs, false);
             rhs = eval_const_expr(c, binary->rhs, false);
+            unwrap_const_value_polymorph(&lhs);
+            unwrap_const_value_polymorph(&rhs);
             return const_value_u64(op.i(lhs.as.integer, rhs.as.integer, type_is_signed(n->type)));
         }
     }
@@ -487,28 +420,37 @@ Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary) {
     switch (n->token.kind) {
     case TOKEN_LOR:
         lhs = eval_const_expr(c, binary->lhs, false);
+        unwrap_const_value_polymorph(&lhs);
         assert(lhs.kind == CONST_VALUE_INT);
         if (!int128_is_zero(lhs.as.integer)) {
             return lhs;
         }
 
         rhs = eval_const_expr(c, binary->rhs, false);
+        unwrap_const_value_polymorph(&rhs);
+        assert(rhs.kind == CONST_VALUE_INT);
         return rhs;
 
     case TOKEN_LAND:
         lhs = eval_const_expr(c, binary->lhs, false);
+        unwrap_const_value_polymorph(&lhs);
         assert(lhs.kind == CONST_VALUE_INT);
         if (!int128_is_zero(lhs.as.integer)) {
             return lhs;
         }
 
         rhs = eval_const_expr(c, binary->rhs, false);
+        unwrap_const_value_polymorph(&rhs);
+        assert(rhs.kind == CONST_VALUE_INT);
         return rhs;
 
     case TOKEN_LXOR:
         lhs = eval_const_expr(c, binary->lhs, false);
-        assert(lhs.kind == CONST_VALUE_INT);
         rhs = eval_const_expr(c, binary->rhs, false);
+        unwrap_const_value_polymorph(&lhs);
+        unwrap_const_value_polymorph(&rhs);
+
+        assert(lhs.kind == CONST_VALUE_INT);
         assert(rhs.kind == CONST_VALUE_INT);
         return const_value_u64(int128_ne(lhs.as.integer, rhs.as.integer));
 
@@ -545,8 +487,9 @@ Const_Value eval_const_expr_member(Compiler *c, Node_Member *member) {
 
     Const_Value lhs = eval_const_expr(c, member->lhs, false);
     while (lhs.kind == CONST_VALUE_VAR) {
-        lhs = const_value_of_var(c, lhs.as.var);
+        lhs = const_value_of_var(lhs.as.var);
     }
+    unwrap_const_value_polymorph_default(&lhs, member->lhs->type);
 
     if (type_eq(member->lhs->type, (Type) {.kind = TYPE_ERROR})) {
         assert(member->rhs);
@@ -699,7 +642,8 @@ Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *inter
             it->type = it->auto_casts->from;
         }
 
-        const Const_Value result = eval_const_expr_impl(c, it, false);
+        Const_Value result = eval_const_expr_impl(c, it, false);
+        unwrap_const_value_polymorph_default(&result, it->type);
         sb_push_const_value_raw(&default_sb, it->type, result);
 
         if (it->auto_casts) {
@@ -723,7 +667,7 @@ Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
         };
     }
 
-    Const_Value value = default_const_value(c, n_type);
+    Const_Value value = default_const_value(n_type);
     if (compound->is_not_compound) {
         Node *expr = compound->children.head;
         if (expr) {
@@ -731,6 +675,7 @@ Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
                 expr = ((Node_Binary *) expr)->rhs;
             }
             value = eval_const_expr(c, expr, false);
+            unwrap_const_value_polymorph_default(&value, expr->type);
         }
 
         if (type_is_union(n_type, true)) {
@@ -755,13 +700,17 @@ Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound) {
             it_iota = ordered_iota++;
         }
 
+        Const_Value *dst = NULL;
         if (n_type.kind == TYPE_STRUCT) {
-            value.as.structt.fields[it_iota] = eval_const_expr(c, it, false);
+            dst = &value.as.structt.fields[it_iota];
         } else if (n_type.kind == TYPE_ARRAY) {
-            value.as.array.data[it_iota] = eval_const_expr(c, it, false);
+            dst = &value.as.array.data[it_iota];
         } else {
             unreachable();
         }
+
+        *dst = eval_const_expr(c, it, false);
+        unwrap_const_value_polymorph_default(dst, it->type);
     }
 
     if (n->type.kind == TYPE_SLICE) {
@@ -783,6 +732,7 @@ Const_Value eval_const_expr_call(Compiler *c, Node_Call *call) {
     Node *from = call->args.head;
 
     Const_Value value = eval_const_expr(c, from, false);
+    unwrap_const_value_polymorph_default(&value, from->type);
     if (value.kind == CONST_VALUE_VAR || (!n->type.is_meta && n->type.ref)) {
         if (type_kind_eq(n->type, TYPE_TRAIT) && !n->type.ref) {
             return const_value_to_trait(n, &from->type, call->type_cast_trait_impl, value);
@@ -942,7 +892,9 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
         exit(c, 1);
     }
 
-    const Const_Value lhs = eval_const_expr(c, index->lhs, false);
+    Const_Value a, b;
+    Const_Value lhs = eval_const_expr(c, index->lhs, false);
+    unwrap_const_value_polymorph_default(&lhs, index->lhs->type);
     if (index->is_ranged) {
         if (type_is_pointer(index->lhs->type)) {
             error_node(EK_ERROR, n, "Cannot construct slices from pointers in constant expressions");
@@ -956,14 +908,16 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
 
             i64 begin = 0;
             if (index->a) {
-                begin = i64_from_int128(
-                    c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "beginning of range");
+                a = eval_const_expr(c, index->a, false);
+                unwrap_const_value_polymorph_default(&a, index->a->type);
+                begin = i64_from_int128(c, index->a, a.as.integer, true, "beginning of range");
             }
 
             i64 end = array.count;
             if (index->b) {
-                end =
-                    i64_from_int128(c, index->a, eval_const_expr(c, index->b, false).as.integer, true, "end of range");
+                b = eval_const_expr(c, index->b, false);
+                unwrap_const_value_polymorph_default(&b, index->b->type);
+                end = i64_from_int128(c, index->b, b.as.integer, true, "end of range");
             }
 
             if (begin > end) {
@@ -988,14 +942,16 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
         case CONST_VALUE_DYNAMIC_ARRAY: {
             i64 begin = 0;
             if (index->a) {
-                begin = i64_from_int128(
-                    c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "beginning of range");
+                a = eval_const_expr(c, index->a, false);
+                unwrap_const_value_polymorph_default(&a, index->a->type);
+                begin = i64_from_int128(c, index->a, a.as.integer, true, "beginning of range");
             }
 
             i64 end = 0;
             if (index->b) {
-                end =
-                    i64_from_int128(c, index->a, eval_const_expr(c, index->b, false).as.integer, true, "end of range");
+                b = eval_const_expr(c, index->b, false);
+                unwrap_const_value_polymorph_default(&b, index->b->type);
+                end = i64_from_int128(c, index->b, b.as.integer, true, "end of range");
             }
 
             if (begin > end) {
@@ -1019,14 +975,16 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
 
             i64 begin = 0;
             if (index->a) {
-                begin = i64_from_int128(
-                    c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "beginning of range");
+                a = eval_const_expr(c, index->a, false);
+                unwrap_const_value_polymorph_default(&a, index->a->type);
+                begin = i64_from_int128(c, index->a, a.as.integer, true, "beginning of range");
             }
 
             i64 end = sv.count;
             if (index->b) {
-                end =
-                    i64_from_int128(c, index->a, eval_const_expr(c, index->b, false).as.integer, true, "end of range");
+                b = eval_const_expr(c, index->b, false);
+                unwrap_const_value_polymorph_default(&b, index->b->type);
+                end = i64_from_int128(c, index->b, b.as.integer, true, "end of range");
             }
 
             if (begin > end) {
@@ -1051,7 +1009,9 @@ Const_Value eval_const_expr_index(Compiler *c, Node_Index *index) {
             unreachable();
         }
     } else {
-        const i64 at = i64_from_int128(c, index->a, eval_const_expr(c, index->a, false).as.integer, true, "index");
+        a = eval_const_expr(c, index->a, false);
+        unwrap_const_value_polymorph_default(&a, index->a->type);
+        const i64 at = i64_from_int128(c, index->a, a.as.integer, true, "index");
 
         static_assert(COUNT_CONST_VALUES == 14, "");
         switch (lhs.kind) {
@@ -1089,6 +1049,7 @@ Const_Value eval_const_expr_if(Compiler *c, Node_If *iff) {
     Node *n = (Node *) iff;
     if (iff->is_compile_time) {
         Const_Value value = eval_const_expr(c, iff->compile_time_real, false);
+        unwrap_const_value_polymorph_default(&value, iff->compile_time_real->type);
         if (type_kind_eq(n->type, TYPE_INT) || iff->need_to_check_int_limits) {
             iff->need_to_check_int_limits = false;
             assert(value.kind == CONST_VALUE_INT);
@@ -1105,20 +1066,25 @@ Const_Value eval_const_expr_if(Compiler *c, Node_If *iff) {
     }
 
     Const_Value condition = eval_const_expr(c, iff->condition, false);
+    unwrap_const_value_polymorph_default(&condition, iff->condition->type);
     assert(condition.kind == CONST_VALUE_INT);
 
     if (is_or_was_int) {
         iff->need_to_check_int_limits = false;
 
         Const_Value consequence = eval_const_expr(c, iff->consequence, false);
+        unwrap_const_value_polymorph_default(&consequence, iff->consequence->type);
         assert(consequence.kind == CONST_VALUE_INT);
         check_int_limit(c, iff->consequence, consequence.as.integer);
 
         Const_Value antecedence = eval_const_expr(c, iff->antecedence, false);
+        unwrap_const_value_polymorph_default(&antecedence, iff->antecedence->type);
         assert(antecedence.kind == CONST_VALUE_INT);
         check_int_limit(c, iff->antecedence, antecedence.as.integer);
+
         return int128_is_zero(condition.as.integer) ? antecedence : consequence;
     }
+
     return eval_const_expr(c, int128_is_zero(condition.as.integer) ? iff->antecedence : iff->consequence, false);
 }
 

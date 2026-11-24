@@ -85,12 +85,11 @@ void type_assert_type_or_Type(Compiler *c, const Node *n);
 Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type type, Type_Trait *trait, Node *n, i64 group_index);
 
 // Constant Expressions ////////////////////////////////////////////////////////////////////////////
-Const_Value default_const_value(Compiler *c, Type type);
 Const_Value const_value_to_trait(Node *n, Type *type, Type_Trait_Impl *impl, Const_Value value);
 Const_Value const_value_to_union(Type union_type, size_t union_index, Const_Value value);
 
 bool        eval_const_binary_equality(Compiler *c, Node_Binary *binary);
-Const_Value const_value_of_var(Compiler *c, Node_Atom *var);
+Const_Value const_value_of_var(Node_Atom *var);
 
 Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref);
 Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary);

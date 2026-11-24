@@ -1,0 +1,7 @@
+Byte_Array :: ($T: Type, $N: s64) -> [sizeof(T) * N]u8 {
+    return {}
+}
+
+main :: () {
+    println(typeof(Byte_Array(s16, 3)))
+}

@@ -1195,6 +1195,111 @@ void hasher_add_const_value(Hasher *h, const Const_Value *v) {
     }
 }
 
+static_assert(COUNT_TYPES == 32, "");
+Const_Value default_const_value(Type type) {
+    if (type.ref) {
+        return const_value_u64(0);
+    }
+
+    switch (type.kind) {
+    case TYPE_BOOL:
+    case TYPE_RUNE:
+
+    case TYPE_S8:
+    case TYPE_S16:
+    case TYPE_S32:
+    case TYPE_S64:
+    case TYPE_INT:
+
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    case TYPE_U64:
+
+    case TYPE_RAWPTR:
+    case TYPE_FN:
+    case TYPE_ENUM:
+        return const_value_u64(0);
+
+    case TYPE_F32:
+    case TYPE_F64:
+    case TYPE_FLOAT:
+        return const_value_float(0.0);
+
+    case TYPE_TRAIT:
+        return const_value_trait((Const_Value_Trait) {0});
+
+    case TYPE_UNION:
+        return const_value_union((Const_Value_Union) {.spec = type.spec.unionn});
+
+    case TYPE_STRUCT: {
+        Const_Value_Struct structure = {0};
+        structure.spec = type.spec.structt;
+        structure.fields = arena_alloc(&default_arena, structure.spec->fields_count * sizeof(*structure.fields));
+        for (size_t i = 0; i < structure.spec->fields_count; i++) {
+            structure.fields[i] = default_const_value(structure.spec->fields[i].type);
+        }
+        return const_value_struct(structure);
+    }
+
+    case TYPE_ARRAY: {
+        Const_Value_Array array = {0};
+        array.count = type.spec.array.count;
+        array.data = arena_alloc(&default_arena, array.count * sizeof(*array.data));
+        array.element_type = type.spec.array.element;
+        for (size_t i = 0; i < array.count; i++) {
+            array.data[i] = default_const_value(*array.element_type);
+        }
+        return const_value_array(array);
+    }
+
+    case TYPE_DYNAMIC_ARRAY:
+        return const_value_dynamic_array(type.spec.dynamic_array.element);
+
+    case TYPE_MAP:
+        return const_value_map(type.spec.map);
+
+    case TYPE_SLICE: {
+        Const_Value_Array array = {0};
+        array.is_slice = true;
+        array.element_type = type.spec.slice.element;
+        return const_value_array(array);
+    }
+
+    case TYPE_ERROR:
+        return const_value_u64(0);
+
+    case TYPE_STRING:
+        return const_value_string((SV) {0});
+
+    default:
+        unreachable();
+    }
+}
+
+void unwrap_const_value_polymorph(Const_Value *v) {
+    while (v->kind == CONST_VALUE_POLYMORPH) {
+        *v = v->as.polymorph.polymorph->monomorphization_value;
+    }
+}
+
+void unwrap_const_value_polymorph_default(Const_Value *v, Type expected) {
+    bool unwrapped = false;
+    while (v->kind == CONST_VALUE_POLYMORPH) {
+        *v = v->as.polymorph.polymorph->monomorphization_value;
+        unwrapped = true;
+    }
+
+    if (unwrapped && v->kind == CONST_VALUE_INT && //
+        !type_is_integer(expected) &&              //
+        !type_is_pointer(expected) &&              //
+        !type_kind_eq(expected, TYPE_FN) &&        //
+        !type_kind_eq(expected, TYPE_BOOL))        //
+    {
+        *v = default_const_value(expected);
+    }
+}
+
 static_assert(COUNT_NODES == 35, "");
 size_t node_size(Node_Kind kind) {
     static const size_t sizes[COUNT_NODES] = {

@@ -167,7 +167,7 @@ void add_monomorph_parameter_default_value(
     if (default_value) {
         add_monomorph_parameter(c, polymorph, type, *default_value, NULL);
     } else if (default_value_as_caller_location) {
-        Const_Value location = default_const_value(c, type);
+        Const_Value location = default_const_value(type);
         assert(location.kind == CONST_VALUE_STRUCT);
 
         Const_Value_Struct *structure = &location.as.structt;
