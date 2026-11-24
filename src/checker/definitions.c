@@ -222,7 +222,7 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
             check_expr(c, iff->condition, REF_NONE);
             type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
 
-            const Const_Value value = eval_const_expr(c, iff->condition, false);
+            const Const_Value value = eval_const_expr(c, iff->condition, false, false);
             iff->compile_time_real = !int128_is_zero(value.as.integer) ? iff->consequence : iff->antecedence;
 
             if (iff->compile_time_real) {
@@ -260,7 +260,7 @@ void define_orderless_node(Compiler *c, Node *n, const size_t block_start) {
             c->current_comptime_conditional_stmt = n;
 
             check_switch_expr_and_alloc_preds(c, sw);
-            const Const_Value value = eval_const_expr(c, sw->expr, false);
+            const Const_Value value = eval_const_expr(c, sw->expr, false, false);
 
             size_t iota = 0;
             for (Node *it = sw->cases.head; it; it = it->next) {
@@ -566,7 +566,7 @@ void check_definition(Compiler *c, Node_Atom *it, Node *it_expr, Node *type, boo
 
     if (it_expr && it->definition_spec->definition_node->is_value_known_at_compile_time) {
         if (!it->definition_spec->is_const_value_evaluated) {
-            it->definition_spec->const_value = eval_const_expr(c, it_expr, false);
+            it->definition_spec->const_value = eval_const_expr(c, it_expr, false, false);
             it->definition_spec->is_const_value_evaluated = true;
         }
     }

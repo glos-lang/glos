@@ -471,7 +471,6 @@ void cast_untyped(Compiler *c, Node *n, Type expected) {
 
     case NODE_IF: {
         Node_If *iff = (Node_If *) n;
-        iff->need_to_check_int_limits = true;
         if (iff->is_compile_time) {
             cast_untyped(c, iff->compile_time_real, expected);
         } else {
@@ -500,7 +499,7 @@ void finalize_untyped_type(Compiler *c, Node *n) {
             assert(range->is_integer);
 
             {
-                value = eval_const_expr(c, range->a, false);
+                value = eval_const_expr(c, range->a, false, true);
                 range->a->type.kind = TYPE_S64;
 
                 assert(value.kind == CONST_VALUE_INT);
@@ -508,7 +507,7 @@ void finalize_untyped_type(Compiler *c, Node *n) {
             }
 
             if (range->b) {
-                value = eval_const_expr(c, range->b, false);
+                value = eval_const_expr(c, range->b, false, true);
                 range->b->type.kind = TYPE_S64;
 
                 assert(value.kind == CONST_VALUE_INT);
@@ -517,7 +516,7 @@ void finalize_untyped_type(Compiler *c, Node *n) {
 
             n->type.kind = TYPE_S64;
         } else {
-            const Const_Value value = eval_const_expr(c, n, false);
+            const Const_Value value = eval_const_expr(c, n, false, true);
             n->type.kind = TYPE_S64;
 
             assert(value.kind == CONST_VALUE_INT);
@@ -544,7 +543,7 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
                 {
                     cast_untyped(c, range->a, expected);
-                    value = eval_const_expr(c, range->a, false);
+                    value = eval_const_expr(c, range->a, false, true);
 
                     assert(value.kind == CONST_VALUE_INT);
                     check_int_limit(c, range->a, value.as.integer);
@@ -552,7 +551,7 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
 
                 if (range->b) {
                     cast_untyped(c, range->b, expected);
-                    value = eval_const_expr(c, range->b, false);
+                    value = eval_const_expr(c, range->b, false, true);
 
                     assert(value.kind == CONST_VALUE_INT);
                     check_int_limit(c, range->b, value.as.integer);
@@ -562,8 +561,7 @@ bool try_auto_cast_untyped(Compiler *c, Node *n, Type expected) {
             } else {
                 cast_untyped(c, n, expected);
 
-                // Only constant expressions can be untyped integers
-                const Const_Value value = eval_const_expr(c, n, false);
+                const Const_Value value = eval_const_expr(c, n, false, true);
                 assert(value.kind == CONST_VALUE_INT);
 
                 check_int_limit(c, n, value.as.integer);

@@ -41,6 +41,41 @@ get :: (this: &map[$K]$V, key: K) -> &V {
     return null
 }
 
+put :: (this: &map[$K]$V, key: K) -> &V {
+    KV :: Map_Entry(K, V)
+
+    LOAD_FACTOR   :: 0.75
+    INIT_CAPACITY :: 128
+
+    if this.count >= s64(f64(this.capacity) * LOAD_FACTOR) {
+        if this.allocator == null then this.allocator = default_allocator
+        capacity := this.capacity * 2
+        if capacity == 0 then capacity = INIT_CAPACITY
+
+        data := mem.new(KV, capacity, allocator = &this.allocator)!
+        for i := 0; i < this.capacity; i += 1 {
+            src := mem.offset(&KV(this.data), i)
+            if src.state == .OCCUPIED {
+                dst := map_entry_find(data, capacity, src.key)
+                *dst = *src
+            }
+        }
+
+        mem.free(&rawptr(this.data))!
+        this.data = rawptr(data)
+        this.capacity = capacity
+    }
+
+    dst := map_entry_find(&KV(this.data), this.capacity, key)
+    if dst.state != .OCCUPIED {
+        dst.state = .OCCUPIED
+        this.count += 1
+    }
+
+    dst.key = key
+    return &dst.value
+}
+
 extend :: (this: &map[$K]$V, that: map[K]V, overwrite := true) {
     for k, v := range that {
         if !this.contains(k) || overwrite {
@@ -52,43 +87,14 @@ extend :: (this: &map[$K]$V, that: map[K]V, overwrite := true) {
 operator [] :: (this: &map[$K]$V, key: K, assign: bool, location := #caller_location) -> &V {
     KV :: Map_Entry(K, V)
     if assign {
-        LOAD_FACTOR   :: 0.75
-        INIT_CAPACITY :: 128
-
-        if this.count >= s64(f64(this.capacity) * LOAD_FACTOR) {
-            if this.allocator == null then this.allocator = default_allocator
-            capacity := this.capacity * 2
-            if capacity == 0 then capacity = INIT_CAPACITY
-
-            data := mem.new(KV, capacity, allocator = &this.allocator)!
-            for i := 0; i < this.capacity; i += 1 {
-                src := mem.offset(&KV(this.data), i)
-                if src.state == .OCCUPIED {
-                    dst := map_entry_find(data, capacity, src.key)
-                    *dst = *src
-                }
-            }
-
-            mem.free(&rawptr(this.data))!
-            this.data = rawptr(data)
-            this.capacity = capacity
-        }
-
-        dst := map_entry_find(&KV(this.data), this.capacity, key)
-        if dst.state != .OCCUPIED {
-            dst.state = .OCCUPIED
-            this.count += 1
-        }
-
-        dst.key = key
-        return &dst.value
-    } else {
-        src := map_entry_find(&KV(this.data), this.capacity, key)
-        if src != null && src.state == .OCCUPIED {
-            return &src.value
-        }
-        map_entry_not_found(location, key)
+        return this.put(key)
     }
+
+    src := map_entry_find(&KV(this.data), this.capacity, key)
+    if src != null && src.state == .OCCUPIED {
+        return &src.value
+    }
+    map_entry_not_found(location, key)
 }
 
 range :: (this: &map[$K]$V, index: &s64) -> K, #reference V, bool {

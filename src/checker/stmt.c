@@ -66,7 +66,7 @@ Const_Value check_switch_pred(Compiler *c, Node_Switch *sw, Node *pred, size_t *
         }
     } else {
         type_assert(c, pred, sw->expr->type);
-        value = eval_const_expr(c, pred, false);
+        value = eval_const_expr(c, pred, false, false);
     }
 
     for (size_t i = 0; i < *iota; i++) {
@@ -119,11 +119,11 @@ void check_stmt_assert(Compiler *c, Node_Assert *assertt) {
         }
     }
 
-    if (int128_is_zero(eval_const_expr(c, assertt->expr, false).as.integer)) {
+    if (int128_is_zero(eval_const_expr(c, assertt->expr, false, false).as.integer)) {
         error_node_begin(EK_BLANK, n);
         afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, "Assertion Failed");
         if (assertt->message) {
-            Const_Value message = eval_const_expr(c, assertt->message, false);
+            Const_Value message = eval_const_expr(c, assertt->message, false, false);
             afprintf(stderr, ANSI_COLOR_RED | ANSI_BOLD, ": ");
 
             if (is_message_interpolation) {

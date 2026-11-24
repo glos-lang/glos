@@ -1104,7 +1104,7 @@ void check_expr_enum(Compiler *c, Node_Enum *enumm) {
             check_expr(c, ev->expr, REF_NONE);
             type_assert(c, ev->expr, is_error ? (Type) {.kind = TYPE_U32} : underlying);
 
-            const Const_Value value = eval_const_expr(c, ev->expr, false);
+            const Const_Value value = eval_const_expr(c, ev->expr, false, false);
             assert(value.kind == CONST_VALUE_INT);
             iota = value.as.integer;
 
@@ -1362,7 +1362,7 @@ void check_expr_struct(Compiler *c, Node_Struct *structt) {
                     }
                 }
 
-                it->name->definition_spec->const_value = eval_const_expr(c, define->expr, false);
+                it->name->definition_spec->const_value = eval_const_expr(c, define->expr, false, false);
                 it->name->definition_spec->is_const_value_evaluated = true;
             } else {
                 spec->polymorphs_count_min++;
@@ -1588,7 +1588,7 @@ void check_expr_compound(Compiler *c, Node_Compound *compound) {
                 check_expr(c, it_binary->lhs, REF_NONE);
                 type_assert_numeric(c, it_binary->lhs, false, false);
 
-                const Const_Value value = eval_const_expr(c, it_binary->lhs, false);
+                const Const_Value value = eval_const_expr(c, it_binary->lhs, false, false);
                 assert(value.kind == CONST_VALUE_INT);
 
                 if (n->type.kind == TYPE_ARRAY &&
@@ -1898,7 +1898,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                     }
 
                     if (!done) {
-                        const Const_Value value = eval_const_expr(c, it, false);
+                        const Const_Value value = eval_const_expr(c, it, false, false);
                         if (from_polymorph->is_type && value.kind != CONST_VALUE_TYPE &&
                             value.kind != CONST_VALUE_POLYMORPH) //
                         {
@@ -2100,7 +2100,7 @@ void check_expr_call(Compiler *c, Node_Call *call) {
                                 call->type_cast = TYPE_CAST_NORMAL;
 
                                 // This is guaranted to be a constant expression, since we are casting from 'float'
-                                eval_const_expr(c, n, false);
+                                eval_const_expr(c, n, false, true);
                             }
                         } else if (type_kind_eq(*from_type, TYPE_FLOAT) && type_is_float(*to_type)) {
                             // untyped float -> float
@@ -2325,7 +2325,7 @@ void check_expr_indexable(Compiler *c, Node_Indexable *indexable, Ref_Kind ref, 
             }
         } else {
             type_assert_numeric(c, indexable->count, false, false);
-            count_value = eval_const_expr(c, indexable->count, false);
+            count_value = eval_const_expr(c, indexable->count, false, false);
         }
 
         if (has_count) {
@@ -2377,7 +2377,7 @@ void check_expr_if(Compiler *c, Node_If *iff) {
     check_expr(c, iff->condition, REF_NONE);
     type_assert(c, iff->condition, (Type) {.kind = TYPE_BOOL});
     if (iff->is_compile_time) {
-        Const_Value condition = eval_const_expr(c, iff->condition, false);
+        Const_Value condition = eval_const_expr(c, iff->condition, false, false);
         unwrap_const_value_polymorph(&condition);
         assert(condition.kind == CONST_VALUE_INT);
 
@@ -2890,7 +2890,7 @@ void check_fn(
                 c->dont_allow_polymorphs = true;
                 if (define->type) {
                     define->type->type.is_meta = true;
-                    eval_const_expr(c, define->type, false);
+                    eval_const_expr(c, define->type, false, false);
                     define->type->type.is_meta = false;
                 }
             }
@@ -2899,7 +2899,7 @@ void check_fn(
                 if (is_node_caller_location(define->expr)) {
                     it_arg->default_value_is_caller_location = true;
                 } else {
-                    it->definition_spec->const_value = eval_const_expr(c, define->expr, false);
+                    it->definition_spec->const_value = eval_const_expr(c, define->expr, false, false);
                     it_arg->default_value = &it->definition_spec->const_value;
                 }
                 it_arg->has_default_value = true;

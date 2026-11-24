@@ -88,20 +88,20 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type type, Type_Trait *
 Const_Value const_value_to_trait(Node *n, Type *type, Type_Trait_Impl *impl, Const_Value value);
 Const_Value const_value_to_union(Type union_type, size_t union_index, Const_Value value);
 
-bool        eval_const_binary_equality(Compiler *c, Node_Binary *binary);
+bool        eval_const_binary_equality(Compiler *c, Node_Binary *binary, bool casting_untyped);
 Const_Value const_value_of_var(Node_Atom *var);
 
-Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref);
-Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary);
-Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary);
-Const_Value eval_const_expr_member(Compiler *c, Node_Member *member);
-Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *interpolation);
-Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound);
-Const_Value eval_const_expr_call(Compiler *c, Node_Call *call);
-Const_Value eval_const_expr_index(Compiler *c, Node_Index *index);
-Const_Value eval_const_expr_if(Compiler *c, Node_If *iff);
-Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref);
-Const_Value eval_const_expr(Compiler *c, Node *n, bool ref);
+Const_Value eval_const_expr_atom(Compiler *c, Node_Atom *atom, bool ref, bool casting_untyped);
+Const_Value eval_const_expr_unary(Compiler *c, Node_Unary *unary, bool casting_untyped);
+Const_Value eval_const_expr_binary(Compiler *c, Node_Binary *binary, bool casting_untyped);
+Const_Value eval_const_expr_member(Compiler *c, Node_Member *member, bool casting_untyped);
+Const_Value eval_const_expr_interpolation(Compiler *c, Node_Interpolation *interpolation, bool casting_untyped);
+Const_Value eval_const_expr_compound(Compiler *c, Node_Compound *compound, bool casting_untyped);
+Const_Value eval_const_expr_call(Compiler *c, Node_Call *call, bool casting_untyped);
+Const_Value eval_const_expr_index(Compiler *c, Node_Index *index, bool casting_untyped);
+Const_Value eval_const_expr_if(Compiler *c, Node_If *iff, bool casting_untyped);
+Const_Value eval_const_expr_impl(Compiler *c, Node *n, bool ref, bool casting_untyped);
+Const_Value eval_const_expr(Compiler *c, Node *n, bool ref, bool casting_untyped);
 
 // Definitions /////////////////////////////////////////////////////////////////////////////////////
 Node_Atom *module_globals_find_ex(Compiler *c, Module *m, SV name, Module *skip);

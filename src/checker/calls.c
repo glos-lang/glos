@@ -391,7 +391,7 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
                 if (argument && argument->polymorph) {
                     if (argument->polymorph->is_type) {
                         type_assert_type_or_Type(c, it);
-                        Const_Value value = eval_const_expr(c, it, false);
+                        Const_Value value = eval_const_expr(c, it, false, false);
                         if (value.kind == CONST_VALUE_TYPE) {
                             value.as.type.is_meta = false;
                         } else {
@@ -403,7 +403,8 @@ void check_call_arguments(Compiler *c, Call_Checker *cc, bool check_arguments_pr
                         add_monomorph_parameter(c, argument->polymorph, it->type, value, NULL);
                     } else {
                         type_assert(c, it, argument->type);
-                        add_monomorph_parameter(c, argument->polymorph, it->type, eval_const_expr(c, it, false), NULL);
+                        add_monomorph_parameter(
+                            c, argument->polymorph, it->type, eval_const_expr(c, it, false, false), NULL);
                     }
 
                     assert(count == 1); // This is guaranteed to be a singular value.

@@ -1092,7 +1092,6 @@ typedef struct {
     Node *antecedence;
 
     bool is_expr;
-    bool need_to_check_int_limits;
 
     bool  is_compile_time;
     Node *compile_time_real;
