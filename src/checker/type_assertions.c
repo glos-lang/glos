@@ -338,6 +338,17 @@ Type_Trait_Impl *check_type_satisfies_trait(Compiler *c, Type receiver, Type_Tra
 
     if (trait->methods_count) {
         check_that_methods_can_be_accessed(c, n);
+        if (type_kind_eq(receiver, TYPE_TRAIT) && receiver.spec.trait == trait) {
+            // Traits are virtual types, and thus cannot have methods. Therefore this can only be a reference error.
+            assert(receiver.ref);
+            error_node(
+                EK_ERROR,
+                n,
+                "Expected %s, got %s. Perhaps try dereferencing?",
+                type_to_cstr((Type) {.kind = TYPE_TRAIT, .spec.trait = trait}),
+                type_to_cstr(receiver));
+            exit(c, 1);
+        }
     }
 
     ll_foreach(it, &trait->impls) {

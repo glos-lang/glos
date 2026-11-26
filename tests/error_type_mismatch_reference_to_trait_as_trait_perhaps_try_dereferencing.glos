@@ -1,0 +1,12 @@
+Foo :: trait {
+    foo: ()
+}
+
+foo :: (f: Foo) {
+    println(f)
+}
+
+main :: () {
+    a: &Foo
+    foo(a)
+}
