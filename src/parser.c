@@ -2418,7 +2418,7 @@ Parse_Result parse_directory(Parser *p, const char *path) {
             error_standalone(EK_ERROR, "Could not read file '%s'", it);
 
             // @remove
-            system(arena_sprintf(&temp_arena, "ls -Al %s", path));
+            system(arena_sprintf(&temp_arena, "ls -Al %s/", path));
 
             exit(1);
         }
