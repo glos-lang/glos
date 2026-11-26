@@ -1,0 +1,14 @@
+main :: () {
+    {
+        f := os.create_file("foo.glos")!
+        defer f.close()
+        wprintln(f, "X :: 69")
+        println("Created foo.glos")
+    }
+
+    cmd: os.Cmd
+    cmd.push("ls", "-Al")
+    cmd.run()!
+}
+
+os :: #import "os"
