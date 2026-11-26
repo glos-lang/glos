@@ -1,0 +1,11 @@
+v := 69
+
+foo :: (x := v) {
+    println(x)
+}
+
+main :: () {
+    foo()
+    v = 420
+    foo()
+}

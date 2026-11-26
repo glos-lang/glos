@@ -281,6 +281,9 @@ struct Type_Fn_Arg {
 
     bool has_default_value;
 
+    // foo :: (x := variable) {}
+    bool is_default_value_actually_a_var;
+
     // $A: B
     Node_Polymorph *polymorph;
 };
