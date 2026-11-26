@@ -441,7 +441,6 @@ int main(int argc, char **argv) {
         }
 
         result = cmd_wait(child_proc);
-
         if (run_in_parent) {
             set_cwd(cwd);
         }
