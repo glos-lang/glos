@@ -427,7 +427,7 @@ int main(int argc, char **argv) {
 
     if (compiler.run) {
         if (run_in_parent) {
-            set_cwd(sv_from_cstr(get_parent_dir_path(input_path, &default_arena)));
+            assert(set_cwd(sv_from_cstr(get_parent_dir_path(input_path, &default_arena))));
         }
 
         cmd.count = 0;
@@ -442,7 +442,7 @@ int main(int argc, char **argv) {
 
         result = cmd_wait(child_proc);
         if (run_in_parent) {
-            set_cwd(cwd);
+            assert(set_cwd(cwd));
         }
     }
 

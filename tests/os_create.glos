@@ -1,0 +1,16 @@
+main :: () {
+    write()
+    read()
+}
+
+read :: () {
+    print(string(os.read_file("foo.glos")!))
+}
+
+write :: () {
+    f := os.create_file("foo.glos")!
+    defer f.close()
+    wprintln(f, "MESSAGE :: \"Hello, world!\"")
+}
+
+os :: #import "os"
