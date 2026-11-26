@@ -427,7 +427,13 @@ int main(int argc, char **argv) {
 
     if (compiler.run) {
         if (run_in_parent) {
-            assert(set_cwd(sv_from_cstr(get_parent_dir_path(input_path, &default_arena))));
+            const char *parent_dir = get_parent_dir_path(input_path, &default_arena);
+            puts(parent_dir);
+
+            set_cwd(sv_from_cstr(parent_dir));
+
+            // @remove
+            system("ls -Al");
         }
 
         cmd.count = 0;
@@ -442,7 +448,10 @@ int main(int argc, char **argv) {
 
         result = cmd_wait(child_proc);
         if (run_in_parent) {
-            assert(set_cwd(cwd));
+            // @remove
+            system("ls -Al");
+
+            set_cwd(cwd);
         }
     }
 
