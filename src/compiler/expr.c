@@ -580,6 +580,10 @@ void compile_optional_arguments(Compiler *c, Typed_LLVM_Value *args, const Type_
                 }
 
                 value = arg->default_value_llvm;
+                if (arg->is_default_value_actually_a_var) {
+                    assert(arg->default_value->kind == CONST_VALUE_VAR);
+                    value = LLVMBuildLoad2(c->llvm_builder, arg->type.llvm, value, "");
+                }
                 break;
             }
         }
