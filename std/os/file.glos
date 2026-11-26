@@ -54,6 +54,7 @@ create_file :: (path: string, flags := Open_Flag.TEXT, perm := u32(0o666), creat
         }
     }
 
+    println(flags, perm)
     return open_file(path, flags | .CREAT | .TRUNC | .WRONLY, perm)
 }
 
