@@ -430,7 +430,8 @@ int main(int argc, char **argv) {
             const char *parent_dir = get_parent_dir_path(input_path, &default_arena);
             puts(parent_dir);
 
-            set_cwd(sv_from_cstr(parent_dir));
+            // @enable
+            // set_cwd(sv_from_cstr(parent_dir));
 
             // @remove
             system("ls -Al");
@@ -447,11 +448,13 @@ int main(int argc, char **argv) {
         }
 
         result = cmd_wait(child_proc);
+
         if (run_in_parent) {
             // @remove
             system("ls -Al");
 
-            set_cwd(cwd);
+            // @enable
+            // set_cwd(cwd);
         }
     }
 
