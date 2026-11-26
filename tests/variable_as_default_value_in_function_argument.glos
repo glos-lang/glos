@@ -1,11 +1,16 @@
-v := 69
+// v := 69
 
-foo :: (x := v) {
-    println(x)
-}
+// foo :: (x := v) {
+//     println(x)
+// }
+
+// main :: () {
+//     foo()
+//     v = 420
+//     foo()
+// }
 
 main :: () {
-    foo()
-    v = 420
-    foo()
+    println(69)
+    println(420)
 }

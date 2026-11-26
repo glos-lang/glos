@@ -2405,7 +2405,7 @@ Parse_Result parse_directory(Parser *p, const char *path) {
 
         empty = false;
         if (parse_file(p, it) != PARSE_OK) {
-            error_standalone(EK_ERROR, "Could not read file '%s': %s", it, strerror(errno));
+            error_standalone(EK_ERROR, "Could not read file '%s'", it);
             exit(1);
         }
     }
