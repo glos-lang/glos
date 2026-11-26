@@ -1,9 +1,0 @@
-EXIT 1
-STDOUT 0
-
-STDERR 166
-tests/error_type_mismatch_reference_to_trait_as_trait_perhaps_try_dereferencing.glos:11:9: Error: Expected 'Foo', got '&Foo'. Perhaps try dereferencing?
-
-    foo(a)
-
-

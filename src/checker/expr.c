@@ -2899,28 +2899,7 @@ void check_fn(
                 if (is_node_caller_location(define->expr)) {
                     it_arg->default_value_is_caller_location = true;
                 } else {
-                    // if (define->expr->kind == NODE_ATOM && define->expr->token.kind == TOKEN_IDENT) {
-                    //     Node_Atom *atom = (Node_Atom *) define->expr;
-                    //     if (atom->definition &&                             //
-                    //         !atom->definition->definition_spec->is_const && //
-                    //         !atom->definition->definition_spec->is_local)   //
-                    //     {
-                    //         it_arg->is_default_value_actually_a_var = true;
-                    //         it->definition_spec->const_value = const_value_var(atom->definition);
-                    //     }
-                    // } else if (define->expr->kind == NODE_MEMBER) {
-                    //     Node_Member *member = (Node_Member *) define->expr;
-                    //     if (member->module_access_definition &&                           //
-                    //         !member->module_access_definition->definition_spec->is_const) //
-                    //     {
-                    //         it_arg->is_default_value_actually_a_var = true;
-                    //         it->definition_spec->const_value = const_value_var(member->module_access_definition);
-                    //     }
-                    // }
-
-                    if (!it_arg->is_default_value_actually_a_var) {
-                        it->definition_spec->const_value = eval_const_expr(c, define->expr, false, false);
-                    }
+                    it->definition_spec->const_value = eval_const_expr(c, define->expr, false, false);
                     it_arg->default_value = &it->definition_spec->const_value;
                 }
                 it_arg->has_default_value = true;

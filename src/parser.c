@@ -299,6 +299,11 @@ parse_if(Parser *p, Token token, bool is_expr, bool compounds_allowed, bool is_c
             iff->consequence = parse_block(p, token, !is_compile_time);
         } else {
             its = ITS_YES;
+            token = peek_token(p);
+            if (token.kind == TOKEN_LBRACE) {
+                error_token(EK_ERROR, token, "Cannot have '{' in an 'if ... then' construct");
+                exit(1);
+            }
             iff->consequence = is_expr ? parse_expr(p, POWER_SET, false, compounds_allowed, NULL) : parse_stmt(p);
         }
         p->state.after_private = after_private_save;
@@ -313,6 +318,11 @@ parse_if(Parser *p, Token token, bool is_expr, bool compounds_allowed, bool is_c
                 if (read_token(p, TOKEN_IF)) {
                     iff->antecedence = parse_if(p, token, is_expr, compounds_allowed, is_compile_time, its);
                 } else {
+                    token = peek_token(p);
+                    if (token.kind == TOKEN_LBRACE) {
+                        error_token(EK_ERROR, token, "Cannot have '{' in an 'if ... then' construct");
+                        exit(1);
+                    }
                     iff->antecedence =
                         is_expr ? parse_expr(p, POWER_SET, false, compounds_allowed, NULL) : parse_stmt(p);
                 }
