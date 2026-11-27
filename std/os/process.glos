@@ -322,15 +322,21 @@ Cmd_Capture :: enum {
 }
 
 start :: inline (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Capture.NOP, capture_stderr := Cmd_Capture.NOP, reset := true) -> Process, error {
-    p := spawn(...*this, capture_stdin = capture_stdin, capture_stdout = capture_stdout, capture_stderr = capture_stderr)?
+    p, err := spawn(...*this, capture_stdin = capture_stdin, capture_stdout = capture_stdout, capture_stderr = capture_stderr)
     if reset {
         this.count = 0
     }
-    return p, null
+    return p, err
 }
 
 run :: inline (this: &Cmd, reset := true) -> s32, error {
-    return spawn(...*this)?.wait()
+    p, err := spawn(...*this)
+    if reset {
+        this.count = 0
+    }
+
+    err?
+    return p.wait()
 }
 
 mem :: #import "memory"
