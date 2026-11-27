@@ -1,17 +1,5 @@
-Cmd :: distinct [..]string
-
-Cmd_Error :: enum error {
-    No_Command "No command"
-}
-
-Cmd_Capture :: enum {
-    NOP
-    TEXT
-    BINARY
-}
-
-start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Capture.NOP, capture_stderr := Cmd_Capture.NOP, reset := true) -> Process, error {
-    if this.count == 0 {
+spawn :: (args: ...string, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Capture.NOP, capture_stderr := Cmd_Capture.NOP) -> Process, error {
+    if args.count == 0 {
         Cmd_Error.No_Command?
     }
 
@@ -62,7 +50,7 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         cmdline: [..]win.WCHAR
         defer cmdline.free()
 
-        for i, s := range *this {
+        for i, s := range args {
             if i > 0 {
                 utf16.encode_into_dynamic_array(' ', &cmdline)
             }
@@ -106,10 +94,6 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
         }
 
         cmdline.push(0)
-
-        if reset {
-            this.count = 0
-        }
 
         pi: win.PROCESS_INFORMATION
         if win.CreateProcessW(null, cmdline.data, null, null, win.BOOL(true), 0, null, null, &si, &pi) == 0 {
@@ -195,21 +179,17 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
                 posix.close(err[1])
             }
 
-            args := mem.new_array(&C.char, this.count + 1, zeroed = false)!
-            for i, it := range *this {
-                args[i] = strings.to_cstring(it)!
+            c_args := mem.new_array(&C.char, args.count + 1, zeroed = false)!
+            for i, it := range args {
+                c_args[i] = strings.to_cstring(it)!
             }
-            args[this.count] = null
+            c_args[args.count] = null
 
             posix.close(fail[0])
-            posix.execvp(args[0], args.data)
+            posix.execvp(c_args[0], c_args.data)
             posix.write(fail[1], "E", 1)
             posix.close(fail[1])
             exit(127)
-        }
-
-        if reset {
-            this.count = 0
         }
 
         posix.close(fail[1])
@@ -248,10 +228,6 @@ start :: (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Ca
 
         return p, null
     }
-}
-
-run :: inline (this: &Cmd, reset := true) -> s32, error {
-    return this.start(reset = reset)?.wait()
 }
 
 #if PLATFORM == .WINDOWS {
@@ -331,6 +307,30 @@ kill :: (this: Process, force := false) -> error {
     }
 
     return null
+}
+
+Cmd :: distinct [..]string
+
+Cmd_Error :: enum error {
+    No_Command "No command"
+}
+
+Cmd_Capture :: enum {
+    NOP
+    TEXT
+    BINARY
+}
+
+start :: inline (this: &Cmd, capture_stdin := Cmd_Capture.NOP, capture_stdout := Cmd_Capture.NOP, capture_stderr := Cmd_Capture.NOP, reset := true) -> Process, error {
+    p := spawn(...*this, capture_stdin = capture_stdin, capture_stdout = capture_stdout, capture_stderr = capture_stderr)?
+    if reset {
+        this.count = 0
+    }
+    return p, null
+}
+
+run :: inline (this: &Cmd, reset := true) -> s32, error {
+    return spawn(...*this)?.wait()
 }
 
 mem :: #import "memory"

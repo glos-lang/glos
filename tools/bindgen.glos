@@ -561,7 +561,7 @@ Function_Type :: struct {
                 defer clang_disposeString(name)
                 name := strings.from_cstring(clang_getCString(name))
 
-                if is_keyword(name) {
+                if is_keyword(name) || name == "" {
                     n += wprint(w, '_')?
                 }
                 n += wprint(w, name)?
