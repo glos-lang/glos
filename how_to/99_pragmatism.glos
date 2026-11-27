@@ -1,0 +1,250 @@
+/*
+
+        One should not abandon duties born of one’s nature, even if one sees defects in
+        them, O son of Kunti. Indeed, all endeavors are veiled by some flaw, as fire is
+        by smoke.
+
+                              Bhagavad Gita: Chapter 18, Verse 48
+
+
+    This file is different from the previous ones. It does not describe a language feature,
+    nor does it attempt to teach you anything. It simply explains why this language exists.
+
+
+    Let's start with a confession: Glos exists because other languages failed me.
+
+    Not because they were poorly designed, or because their creators did not know what they
+    were doing. Quite the opposite. Many are remarkable pieces of engineering, and I have
+    learned a great deal from them.
+
+    But somewhere along the way, I think software development lost something important.
+
+    We have spent decades developing programming languages, frameworks, abstractions, build
+    systems, package managers, design patterns, and guidelines. We have debated ownership,
+    immutability, purity, object orientation, functional programming, and countless other
+    ideas. We have found increasingly complicated ways to express very ordinary things.
+
+    And somewhere in all this, we seem to have forgotten why we started programming.
+
+    Most of us got into this field because we wanted to MAKE things. We wanted to write
+    programs, solve problems, try ideas, and turn something in our imagination into
+    something real.
+
+    Yet building things has somehow become the last priority.
+
+    Software projects have too many dependencies, too many tools, and too many layers.
+    Simple programs require too much boilerplate. Sometimes building and configuring a
+    project feels like a project of its own.
+
+    We introduce abstractions even when the problem doesn't need them. And when an
+    abstraction gets in the way, we add another one to work around it.
+
+    We have become so used to fighting our tools that we consider it a normal part of
+    programming.
+
+    It doesn't have to be this way.
+
+
+    There is another problem, too.
+
+    The programming world has divided itself into camps. Imperative programming, functional
+    programming, object-oriented programming, this language, that language, and so on.
+    These were meant to be different ways of solving problems. Instead, they have become
+    identities.
+
+    You are either an OOP programmer or you are not. You are either part of the functional
+    programming camp or you are not. You are expected to follow certain principles, use
+    certain words, and defend a particular way of doing things.
+
+    What was meant to be an instrument has become an identity. Imagine telling someone that
+    you are an "if else" expert, or a "for loop" specialist. Doesn't it sound absurd?
+
+    These are just tools. Use a struct when it makes sense. Use a function when it makes
+    sense. Keep things immutable when that helps. Mutate when that is simpler. Use an
+    abstraction when it makes the problem easier to solve, and leave it out when it doesn't.
+
+    There is no prize for following a programming paradigm perfectly.
+
+
+    This compiler is, in a sense, a result of that frustration.
+
+    I have used many languages, and each has taught me something. I took the features I
+    liked, left behind the ones I didn't, and tried to bring the good ideas together.
+
+    The result is Glos.
+
+    It is not an attempt to invent a new way of programming, or to prove that one language
+    design is better than all others. It is simply my idea of an ideal systems programming
+    language.
+
+    A language that takes the intuitive semantics and good APIs of Go, the freedom and
+    control of C, and useful ideas from other languages.
+
+    A language that doesn't follow any particular dogma.
+
+    A language where you can choose how memory is managed, work with C without unnecessary
+    ceremony, use high-level features without losing low-level control, and write efficient
+    programs without fighting the language.
+
+    A language where things Just Work.
+
+
+    PRAGMATISM
+
+    If there is one word that describes the philosophy behind Glos, it is pragmatism.
+
+    Not theoretical elegance. Not purity. Not safety at absolutely any cost.
+
+    The important questions are simple:
+
+        Does this solve a real problem?
+        Does it make programming easier or more enjoyable?
+        Is it worth the complexity it introduces?
+
+    Safety, performance, and consistency all matter. But they are not goals in themselves.
+    They are there to help us build better software.
+
+    And that is the point: to build things, enjoy doing so, and get the job done.
+
+
+    SOME ADVICE
+
+    Write simple programs.
+
+    Write code that gets the job done. Don't feel compelled to introduce patterns, layers,
+    or abstractions just because they are considered good practice.
+
+    Try things out. Experiment. Use whatever approach makes sense for the problem. Don't
+    follow an ideal just because someone else says it is the right way to write software.
+
+    Don't worry too much about styling. Consistency is useful, but it isn't the purpose of
+    programming. Pick a reasonable style and stick to it. Don't spend more time debating
+    formatting than solving the problem.
+
+    Don't be afraid of repeating code. When you start working on a problem, you often don't
+    know what abstractions will make sense. Instead of creating wrapper functions and
+    structures too early, start with a simple solution, even if it is messy or repetitive.
+
+    Once you have something that works, you will start to notice patterns. Perhaps the same
+    group of statements appears in several places. Perhaps some variables are always passed
+    together. Perhaps certain functions naturally belong with a particular data structure.
+
+    These are good places to refactor. Let the code show you where abstractions are useful,
+    instead of trying to guess them all beforehand.
+
+    Of course, this doesn't mean you should never plan ahead. Just don't mistake designing
+    a solution for understanding the problem.
+
+    Write as little code as reasonably possible, but don't confuse brevity with readability.
+    The goal isn't to minimize the number of characters. It is to minimize how much code
+    someone has to understand.
+
+    Prefer simple, separate statements over deeply nested expressions. Long expressions can
+    be difficult to read, debug, and change. Sometimes a temporary variable and a few extra
+    lines make things much clearer.
+
+    Practise temperance.
+
+    Just because the language supports operator overloading doesn't mean you should overload
+    every operator. Keep it to cases where the meaning is obvious, such as mathematics and
+    indexing. An operator should never surprise the reader.
+
+    The same goes for 'first.glos'. It is useful for setting up the build environment,
+    generating assets, and similar tasks. But don't turn it into an excuse to make an
+    elaborate metaprogram.
+
+    Keep the number of moving parts small. Every dependency, configuration file, and tool
+    is another thing someone has to understand and maintain. Add them only when they are
+    worth the trouble.
+
+    Dependencies deserve particular care. They are code you don't control, and every one
+    comes with a contract that you must keep up with. They can change, break, become
+    abandoned, introduce bugs, or bring in requirements of their own.
+
+    You cannot avoid all of this, but you can be careful about how much of it you take on.
+
+    Don't write hundreds of lines when a handful will do. Don't build a framework when a
+    function is enough. Don't write a library when a few definitions will suffice. When
+    working with a C library, don't write bindings for functions you don't actually need
+    just for the sake of completeness.
+
+    Use assertions freely. The compile-time directive '#assert' has no runtime cost, and
+    can catch entire classes of bugs. Don't avoid runtime assertions just to save a little
+    performance, either. Your future self will thank you.
+
+    Be willing to try different approaches. Just because something has always been done
+    one way doesn't mean it is the best way. Try different APIs, algorithms, and designs.
+    You might find something better.
+
+    And above all, remain humble.
+
+    Don't write clever code just to show that you can. Write code that other people,
+    including your future self, can understand. Cleverness is no substitute for clarity.
+
+
+    A WORD ON PERFORMANCE
+
+    Of course, this doesn't mean clever code is always bad.
+
+    Sometimes a simple implementation is too slow. You may need a better algorithm, a
+    different data structure, or special treatment for a hot path.
+
+    That's perfectly fine.
+
+    But profile first.
+
+    Don't make code harder to read for performance gains you haven't measured. Find the
+    bottleneck, measure it, and optimize the part that actually matters.
+
+    If you do write something clever for performance reasons, explain why. Document what
+    it does and, if possible, include the measurements that justify it. You can also put
+    it in a small inline function to keep the surrounding code readable.
+
+    There is nothing wrong with clever code when there is a good reason for it.
+    There is something wrong with writing it when there isn't.
+
+
+    JOY OF PROGRAMMING
+
+    Ultimately, all of this comes down to one thing.
+
+    Programming should be enjoyable. You should be able to open your editor, write some
+    code, and see your ideas come to life without having to fight your tools every step
+    of the way.
+
+    This doesn't mean programming will always be easy. Some problems are genuinely hard.
+    Some algorithms are complicated. Some systems require a lot of care.
+
+    But things should not be difficult without a good reason.
+
+    That is what Glos hopes to achieve.
+
+    It will not be perfect. No language is. There will be trade-offs, limitations, and
+    decisions that some people disagree with. That's inevitable.
+
+    Be pragmatic. Build things. Have fun.
+
+
+    And finally, a small reminder.
+
+    After all these years of programming language research, type systems, optimizations,
+    and endless debates about the correct way to write software, there is still one program
+    that we can all agree is perfect.
+
+    It has no bugs. It has no unnecessary abstractions. It has no dependencies to manage.
+    It needs no configuration, no build system, and no documentation.
+
+    It simply says:
+
+        Hello, world!
+
+    Perhaps we should remember how to write programs like this.
+
+
+    Now, go build something.
+
+*/
+
+main :: () {
+    println("Hello, world!")
+}
